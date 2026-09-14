@@ -180,7 +180,14 @@ try {
   const withGps = await sharp({
     create: { width: 900, height: 1200, channels: 3, background: { r: 40, g: 110, b: 160 } },
   })
-    .withExif({ IFD0: { Make: 'TestPhone' }, GPS: { GPSLatitudeRef: 'N', GPSLongitudeRef: 'E' } })
+    // Cast because sharp's `Exif` type names only IFD0/IFD1/IFD2/IFD3 and not GPS,
+    // while libvips writes the GPS block perfectly well -- and a GPS block is exactly
+    // what this check needs the upload path to strip. The runtime behaviour is the
+    // assertion; the type is just behind its own library.
+    .withExif({
+      IFD0: { Make: 'TestPhone' },
+      GPS: { GPSLatitudeRef: 'N', GPSLongitudeRef: 'E' },
+    } as unknown as Parameters<ReturnType<typeof sharp>["withExif"]>[0])
     .jpeg()
     .toBuffer();
 
