@@ -7,7 +7,7 @@
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { FlatList, Pressable, Text, View } from 'react-native';
 import { useChat } from '../../features/chat/use-chat';
 import { useSession } from '../../store/session';
 import { getConfig, type Config } from '../../lib/api';
@@ -30,6 +30,7 @@ const STARTERS = [
 export default function ChatScreen() {
   const p = usePalette();
   const bubbles = useSession((s) => s.bubbles);
+  const newSession = useSession((s) => s.newSession);
   const question = useSession((s) => s.question);
   const connected = useSession((s) => s.connected);
   const { send } = useChat();
@@ -81,11 +82,41 @@ export default function ChatScreen() {
         </View>
       }
     >
-      {/* Required at the start of every session, and it is the first thing on screen
-          rather than buried in a settings page. */}
-      <Disclosure
-        text={config?.disclosure.perSession ?? 'This is an AI, not a person.'}
-      />
+      {/* A WAY OUT OF THE CONVERSATION, once there is one to leave.
+          
+          This is a tab, so it has no back button and nothing to navigate to -- and the
+          moment somebody said anything, the cards underneath (what it knows, who it can
+          reach, the prompts to tell it something) were replaced by the transcript for
+          good. There was no gesture, button or tab that brought them back. Reported by
+          a person using it, and invisible to the stranded-screen test, which exempts
+          tab roots precisely because they normally cannot trap you.
+          
+          `newSession` is the existing verb for this: it clears the transcript and mints
+          a new session id, which is also what tells the server this conversation ended
+          and its facts can be extracted. Nothing is lost by tapping it. */}
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center',
+          paddingHorizontal: space.screen, gap: space.sm,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Disclosure
+            text={config?.disclosure.perSession ?? 'This is an AI, not a person.'}
+          />
+        </View>
+        {bubbles.length > 0 && (
+          <Pressable
+            onPress={() => newSession()}
+            accessibilityRole="button"
+            accessibilityLabel="End this conversation and go back"
+            hitSlop={12}
+            style={{ paddingVertical: space.xs }}
+          >
+            <Text style={[type.callout, { color: p.accent }]}>Done</Text>
+          </Pressable>
+        )}
+      </View>
 
       {!connected && (
         <View style={{ paddingHorizontal: space.screen }}>
