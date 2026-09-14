@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { tenantSession } from '../db/client.js';
-import { checkBudget, record, BudgetExceeded } from '../metering.js';
+import { BudgetExceeded, metered } from '../metering.js';
 import { gradeSelfTest, nextSelfTest, readiness, PASS_MARK, TEST_SIZE } from '../memory/selftest.js';
 import { log } from '../log.js';
 
@@ -35,14 +35,17 @@ export const selfTestRoutes = new Hono()
       throw err;
     }
 
+    // `nextSelfTest` makes the model call, so the meter goes around it -- checking
+    // the budget before and recording what it cost after, rather than checking here
+    // and never recording at all.
+    let item;
     try {
-      await tenantSession(ctx, (db) => checkBudget(db, ctx.tenantId, ctx.userId));
+      item = await tenantSession(ctx, (db) =>
+        metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), db));
     } catch (err) {
       if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
       throw err;
     }
-
-    const item = await tenantSession(ctx, (db) => nextSelfTest(db, ctx));
     if (!item) {
       return c.json({
         error: 'nothing to test',

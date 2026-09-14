@@ -133,17 +133,24 @@ export const REGISTRY: Record<string, Caps> = {
    * work it carries -- pulling facts out of a paragraph -- is not where model quality
    * shows. gemini-2.5-* is retired for new API keys; Google's own 404 points here.
    *
-   * PRICES UNVERIFIED. Confirm against Google's live pricing page before routing
-   * production traffic; the app refuses to boot on an unverified price unless
-   * ALLOW_UNVERIFIED_PRICING=true, which is the point of that flag.
+   * PRICES VERIFIED 2026-09-14 against ai.google.dev/gemini-api/docs/pricing, paid
+   * tier, Standard (not Batch): input $0.30 per 1M tokens, output $2.50 per 1M. They
+   * had been carried as guesses since the routing moved to Gemini, with
+   * ALLOW_UNVERIFIED_PRICING=true in the running config to let the server boot -- so
+   * every cost figure the project quoted, including the per-pair number in the
+   * rendezvous notes, rested on numbers nothing had checked. They happen to have been
+   * right. That was luck, and it is now a fact with a date on it.
    */
   'google:gemini-3.5-flash-lite': {
     price: {
       input: 0.3, output: 2.5,
-      // Implicit caching, applied by the provider rather than requested.
+      // Implicit caching, applied by the provider rather than requested. The page
+      // quotes cached input at $0.03 against $0.30 standard, which is the 0.25
+      // multiplier below rounded to the published figure's precision -- keep the
+      // multiplier, and re-check it if the cache line ever stops being a tenth.
       cacheWriteMultiplier: 1.0, cacheReadMultiplier: 0.25, batchDiscount: 0.5,
-      verified: false,
-      source: 'UNVERIFIED - confirm at ai.google.dev/gemini-api/docs/pricing',
+      verified: true,
+      source: 'ai.google.dev/gemini-api/docs/pricing, paid tier Standard, fetched 2026-09-14',
     },
     maxContext: 1_000_000, maxOutput: 65_536,
     // No explicit breakpoints: Gemini caches a long prefix on its own and there is

@@ -32,6 +32,7 @@
 import type { PoolClient } from 'pg';
 import { matchmakerSession } from '../db/client.js';
 import { env } from '../env.js';
+import { metered } from '../metering.js';
 import { log } from '../log.js';
 import { candidateIds } from './candidates.js';
 import { rank } from './score.js';
@@ -136,25 +137,40 @@ export async function runRound(userId: string): Promise<RoundResult> {
 
   if (plan.stop) return empty(plan.stop);
 
-  // ── model. No transaction open. ─────────────────────────────────────────────
-  const runs = await converse(plan.a, plan.b);
-  const ok = passes(runs.bothYes, runs.counted);
-
-  // The concern each agent recorded about the OTHER person, carried through verbatim
-  // rather than rewritten. The last one, because it was formed with the most of the
-  // conversation behind it.
+  // ── model. No transaction open, and metered. ───────────────────────────────
   //
-  // Keyed to the SIDES OF THIS CONVERSATION, which is what `runs.results` holds --
-  // `recordRuns` normalises to the table's own order when it writes, and these never
-  // go near the table.
-  const last = runs.results[runs.results.length - 1];
-  const concerns = { a: last?.aConcern ?? '', b: last?.bConcern ?? '' };
+  // ONE METER ROUND THE WHOLE ROUND. Five simulated conversations plus two briefs is
+  // the most expensive thing a tap can do in this product, and until now the only
+  // path that recorded any of it was the HTTP endpoint -- so the seven real rounds,
+  // which were all launched from scripts/round.ts, spent money the daily cap never
+  // saw. Opening the meter here rather than at the endpoint means the script, the
+  // endpoint and any future scheduler are all counted by the same code.
+  //
+  // No `db` argument: this phase deliberately holds no transaction, which is the
+  // entire reason the orchestrator is split into three phases.
+  const spender = { tenantId: plan.a.tenantId, userId: plan.a.userId };
+  const { runs, ok, briefs, concerns } = await metered(spender, 'rendezvous', async () => {
+    const runs = await converse(plan.a, plan.b);
+    const ok = passes(runs.bothYes, runs.counted);
 
-  // The dossiers go in too: a person who tapped through onboarding has no quotable
-  // sentence anywhere, and a brief built only from quotes would be no brief at all.
-  const briefs = ok
-    ? await composeBoth(plan.a, plan.b)
-    : { forA: null, forB: null, costUsd: 0 };
+    // The concern each agent recorded about the OTHER person, carried through
+    // verbatim rather than rewritten. The last one, because it was formed with the
+    // most of the conversation behind it.
+    //
+    // Keyed to the SIDES OF THIS CONVERSATION, which is what `runs.results` holds --
+    // `recordRuns` normalises to the table's own order when it writes, and these
+    // never go near the table.
+    const last = runs.results[runs.results.length - 1];
+    const concerns = { a: last?.aConcern ?? '', b: last?.bConcern ?? '' };
+
+    // The dossiers go in too: a person who tapped through onboarding has no quotable
+    // sentence anywhere, and a brief built only from quotes would be no brief at all.
+    const briefs = ok
+      ? await composeBoth(plan.a, plan.b)
+      : { forA: null, forB: null, costUsd: 0 };
+
+    return { runs, ok, briefs, concerns };
+  });
 
   // ── write ───────────────────────────────────────────────────────────────────
   await matchmakerSession(async (c) => {

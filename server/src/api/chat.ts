@@ -12,8 +12,8 @@ import { ClientMessage, HEARTBEAT_MS, type ServerEvent } from '@clone/shared';
 import { tenantSession, type TenantCtx } from '../db/client.js';
 import { llm, modelFor } from '../llm/index.js';
 import { UnsupportedCapability } from '../llm/caps.js';
-import type { Message, Usage } from '../llm/port.js';
-import { BudgetExceeded, checkBudget, record } from '../metering.js';
+import type { Message } from '../llm/port.js';
+import { BudgetExceeded, metered } from '../metering.js';
 import * as episodes from '../memory/episodes.js';
 import { factsTouchedBy, markRetrieved, recall } from '../memory/retrieval.js';
 import { coreProfileText, voiceText } from '../memory/profile.js';
@@ -288,8 +288,6 @@ async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void>
     const existing = await episodes.findByTurnId(c, ctx.userId, msg.turnId);
     if (existing) return { replay: existing.rawText } as const;
 
-    await checkBudget(c, ctx.tenantId, ctx.userId);
-
     const stored = await episodes.append(c, {
       tenantId: ctx.tenantId,
       userId: ctx.userId,
@@ -354,9 +352,17 @@ async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void>
   // bloat is how this database fails, not throughput.
   const model = modelFor('chat');
   let text = '';
-  let usage: Usage | null = null;
+  // The stream's own error event ends the turn. Tracked separately because the
+  // `return` that used to do it now leaves only the metered closure.
+  let failed = false;
 
   try {
+    // Metered around the stream, not around the whole turn. The budget is checked
+    // here -- before a single token is bought -- and the spend is recorded from the
+    // provider's own final usage event when the loop ends, including when the caller
+    // abandons the stream halfway. Phase 3 used to do the recording by hand, which
+    // worked and which nine other call sites forgot to copy.
+    await metered(ctx, 'chat', async () => {
     for await (const ev of llm.stream(
       {
         task: 'chat',
@@ -377,8 +383,6 @@ async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void>
       if (ev.type === 'text.delta') {
         text += ev.text;
         send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });
-      } else if (ev.type === 'usage.final') {
-        usage = ev.usage;
       } else if (ev.type === 'error') {
         send(ws, {
           type: 'error',
@@ -386,10 +390,22 @@ async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void>
           message: ev.message,
           retryable: ev.retryable,
         });
+        failed = true;
         return;
       }
     }
+    });
+    if (failed) return;
   } catch (err) {
+    if (err instanceof BudgetExceeded) {
+      send(ws, {
+        type: 'error',
+        code: 'budget_exceeded',
+        message: 'That is enough for today. Try again tomorrow.',
+        retryable: false,
+      });
+      return;
+    }
     if (err instanceof UnsupportedCapability) {
       // Rule 2 firing. A routed model cannot express something we asked for -- a
       // config problem, not a user problem. Loud on purpose.
@@ -418,7 +434,6 @@ async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void>
       rawText: text,
       occurredAt: new Date(),
     });
-    if (usage) await record(c, ctx.tenantId, ctx.userId, 'chat', usage);
     return stored?.id ?? null;
   });
 

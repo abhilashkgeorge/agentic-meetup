@@ -56,7 +56,7 @@ describe('G9: the extraction schema stays inside the provider grammar subset', (
       ),
     });
 
-    const json = JSON.stringify(zodOutputFormat(Extraction, 'extraction'));
+    const json = JSON.stringify(zodOutputFormat(Extraction));
     // Anthropic's grammar subset excludes recursion, minimum/maximum,
     // minLength/maxLength, external $ref, and array constraints beyond minItems 0|1.
     for (const banned of ['"minimum"', '"maximum"', '"minLength"', '"maxLength"', '"maxItems"']) {

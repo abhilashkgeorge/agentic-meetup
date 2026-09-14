@@ -6,7 +6,7 @@ import {
 } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { tenantSession } from '../db/client.js';
-import { checkBudget, record, BudgetExceeded } from '../metering.js';
+import { BudgetExceeded, metered } from '../metering.js';
 import { importPastedText } from '../memory/pasteImport.js';
 import { extractVoice, saveVoice } from '../memory/chatImport.js';
 import { log } from '../log.js';
@@ -58,27 +58,19 @@ export const importRoutes = new Hono()
 
     // Import is a large extraction call, so it goes through the same budget gate as
     // any other spend. A user pasting their life story repeatedly is a real cost.
+    //
+    // The model call and the writes share one transaction here, unlike the chat path:
+    // an import is a single bounded call, not a stream, and the facts are worthless
+    // without it. Still short -- if this ever grows, split it like chat.ts does. The
+    // meter is handed that same transaction so it does not take a second connection.
+    let result;
     try {
-      await tenantSession(ctx, (db) => checkBudget(db, ctx.tenantId, ctx.userId));
+      result = await tenantSession(ctx, (db) =>
+        metered(ctx, 'extract', () => importPastedText(db, ctx, parsed.data.text, parsed.data.source), db));
     } catch (err) {
       if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
       throw err;
     }
-
-    // The model call and the writes share one transaction here, unlike the chat path:
-    // an import is a single bounded call, not a stream, and the facts are worthless
-    // without it. Still short -- if this ever grows, split it like chat.ts does.
-    const result = await tenantSession(ctx, async (db) => {
-      const r = await importPastedText(db, ctx, parsed.data.text, parsed.data.source);
-      if (r.costUsd > 0) {
-        await record(db, ctx.tenantId, ctx.userId, 'extract', {
-          inputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0,
-          reasoningTokens: 0, provider: 'anthropic', modelId: r.model,
-          costUsd: r.costUsd, latencyMs: 0,
-        });
-      }
-      return r;
-    });
 
     log.info({ userId: ctx.userId, ...result }, 'paste import');
 
@@ -122,14 +114,13 @@ export const chatImportRoutes = new Hono()
     if (!body.success) return c.json({ error: 'bad request' }, 400);
     const { messages } = body.data;
 
+    let voice;
     try {
-      await tenantSession(ctx, (db) => checkBudget(db, ctx.tenantId, ctx.userId));
+      voice = await metered(ctx, 'extract', () => extractVoice(ctx, messages));
     } catch (err) {
       if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
       throw err;
     }
-
-    const voice = await extractVoice(ctx, messages);
     if (!voice) {
       return c.json({
         error: 'not enough messages',
@@ -137,14 +128,7 @@ export const chatImportRoutes = new Hono()
       }, 400);
     }
 
-    await tenantSession(ctx, async (db) => {
-      await saveVoice(db, ctx, voice);
-      await record(db, ctx.tenantId, ctx.userId, 'extract', {
-        inputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0,
-        reasoningTokens: 0, provider: 'anthropic', modelId: 'voice',
-        costUsd: voice.costUsd, latencyMs: 0,
-      });
-    });
+    await tenantSession(ctx, (db) => saveVoice(db, ctx, voice));
 
     log.info({ userId: ctx.userId, messagesUsed: voice.messagesUsed }, 'voice learned');
     // Only the derived style is kept. The transcript is not stored, and neither is

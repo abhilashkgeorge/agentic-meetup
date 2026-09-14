@@ -197,8 +197,15 @@ export async function* stream(req: LLMRequest, model: ModelRef): AsyncIterable<E
  */
 export async function embed(texts: readonly string[]): Promise<number[][]> {
   if (!texts.length) return [];
+  // Read from the routing config rather than hardcoded, so the embedding model is
+  // swappable in one place like every other model in this system. Noted 2026-09-14:
+  // Google's pricing page now lists `gemini-embedding-2` and no longer shows
+  // `gemini-embedding-001`, which is the configured default. The old id still
+  // answers, but it is on a clock -- and unlike the chat models, nothing checks an
+  // embedding model's retirement date, because embeddings never go through the
+  // capability table.
   const res = await client().models.embedContent({
-    model: 'gemini-embedding-001',
+    model: env.EMBEDDING_MODEL.replace(/^google:/, ''),
     contents: texts.map((t) => ({ parts: [{ text: t }] })),
     config: { outputDimensionality: env.EMBEDDING_DIMENSIONS },
   });

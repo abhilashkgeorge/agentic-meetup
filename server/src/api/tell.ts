@@ -19,7 +19,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { tenantSession } from '../db/client.js';
-import { checkBudget, record, BudgetExceeded } from '../metering.js';
+import { BudgetExceeded, metered } from '../metering.js';
 import { extractSessionFacts } from '../memory/extract.js';
 import { commit, currentState } from '../memory/facts.js';
 import * as episodes from '../memory/episodes.js';
@@ -43,13 +43,6 @@ export const tellRoutes = new Hono().post('/v1/tell', async (c) => {
   if (!body.success) return c.json({ error: 'bad request' }, 400);
   const { text, sessionId } = body.data;
 
-  try {
-    await tenantSession(ctx, (db) => checkBudget(db, ctx.tenantId, ctx.userId));
-  } catch (err) {
-    if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
-    throw err;
-  }
-
   // Stored as an episode first. If extraction finds nothing, the sentence is still
   // kept and the nightly pass can have another go -- losing what someone typed
   // because one model call came back empty would be the worse failure.
@@ -68,23 +61,26 @@ export const tellRoutes = new Hono().post('/v1/tell', async (c) => {
 
   // Outside a transaction: a model call with an open transaction holds the xmin
   // horizon, and bloat is how this database fails.
-  const out = await extractSessionFacts(
-    { transcript: [{ role: 'user', content: text }], currentFacts: known, tenantId: ctx.tenantId, userId: ctx.userId },
-    stored ? [stored.id] : [],
-  );
+  //
+  // The meter checks the budget before the call and records what it actually cost
+  // after, per call and with real token counts -- replacing a hand-written row of
+  // zeroes that could never be reconciled against an invoice.
+  let out;
+  try {
+    out = await metered(ctx, 'extract', () => extractSessionFacts(
+      { transcript: [{ role: 'user', content: text }], currentFacts: known, tenantId: ctx.tenantId, userId: ctx.userId },
+      stored ? [stored.id] : [],
+    ));
+  } catch (err) {
+    if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
+    throw err;
+  }
 
   const learned = await tenantSession(ctx, async (db) => {
     let n = 0;
     for (const cand of out.candidates) {
       const r = await commit(db, ctx, cand);
       if (r.outcome !== 'rejected') n++;
-    }
-    if (out.costUsd > 0) {
-      await record(db, ctx.tenantId, ctx.userId, 'extract', {
-        inputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0,
-        reasoningTokens: 0, provider: 'anthropic', modelId: out.model,
-        costUsd: out.costUsd, latencyMs: 0,
-      });
     }
     return n;
   });

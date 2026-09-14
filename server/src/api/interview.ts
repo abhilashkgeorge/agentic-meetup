@@ -19,6 +19,7 @@ import { rebuildMatchProfile, setPreference } from '../matching/profile.js';
 import { candidateIds } from '../matching/candidates.js';
 import { BY_ID, GATING } from '../onboarding/questions.js';
 import { nextQuestion } from '../onboarding/next-question.js';
+import { metered } from '../metering.js';
 import { mapDealbreaker } from '../onboarding/dealbreaker.js';
 import { log } from '../log.js';
 
@@ -221,7 +222,12 @@ export const interviewRoutes = new Hono()
       );
 
       try {
-        const m = await mapDealbreaker(ctx, sentence);
+        // Metered. This was the clearest unmetered path in the system: a model call
+        // fired from a question in setup, with no budget check before it and no row
+        // in llm_calls after it. The whole point of the free-text dealbreaker is that
+        // everybody answers it, which makes it the last call site that should have
+        // been invisible to the cap.
+        const m = await metered(ctx, 'extract', () => mapDealbreaker(ctx, sentence));
         mapped = { predicate: m.predicate, excludes: m.excludes };
 
         if (m.predicate && m.excludes.length) {

@@ -15,6 +15,7 @@ import {
   type ModelRef,
   type Task,
 } from './caps.js';
+import { noteUsage } from '../metering.js';
 import type { Event, LLMPort, LLMRequest, LLMResponse } from './port.js';
 import * as anthropic from './adapters/anthropic.js';
 import * as openai from './adapters/openai.js';
@@ -39,12 +40,28 @@ export function modelFor(task: Task): ModelRef {
 
 const adapters = { anthropic, openai, google } as const;
 
+/**
+ * THE CHOKE POINT. Every model call in the system goes through these two functions,
+ * which is why the meter lives here rather than at the eleven call sites that used to
+ * be individually responsible for remembering. See `metered` in ../metering.ts.
+ */
 export const llm: LLMPort = {
-  complete(req: LLMRequest, model: ModelRef): Promise<LLMResponse> {
-    return adapters[providerOf(model)].complete(req, model);
+  async complete(req: LLMRequest, model: ModelRef): Promise<LLMResponse> {
+    const res = await adapters[providerOf(model)].complete(req, model);
+    noteUsage(res.usage, `complete(${model})`);
+    return res;
   },
   stream(req: LLMRequest, model: ModelRef): AsyncIterable<Event> {
-    return adapters[providerOf(model)].stream(req, model);
+    const source = adapters[providerOf(model)].stream(req, model);
+    // Counted on the final usage event rather than at the end of iteration: a stream
+    // the caller abandons halfway has still been paid for up to that point, and the
+    // provider reports what that was.
+    return (async function* metered() {
+      for await (const ev of source) {
+        if (ev.type === 'usage.final') noteUsage(ev.usage, `stream(${model})`);
+        yield ev;
+      }
+    })();
   },
   capabilities(model: ModelRef): Caps {
     return capabilities(model);

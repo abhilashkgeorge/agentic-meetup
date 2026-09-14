@@ -9,7 +9,7 @@ import type { PoolClient } from 'pg';
 import { adminSession, discoverySession, tenantSession, type TenantCtx } from '../db/client.js';
 import { CORE_PREDICATE_NAMES } from '@clone/shared';
 import { log } from '../log.js';
-import { record } from '../metering.js';
+import { metered } from '../metering.js';
 import { commit, currentState } from './facts.js';
 import { extractSessionFacts } from './extract.js';
 import { multiValuedExisting, resolveConflicts } from './resolve.js';
@@ -44,6 +44,18 @@ export interface ExtractionSummary {
  * after no new turns is a no-op, so the sweeper can be as dumb as it likes.
  */
 export async function extractSession(
+  ctx: TenantCtx,
+  sessionId: string,
+): Promise<ExtractionSummary | null> {
+  // Metered around the whole thing rather than around each phase: extraction,
+  // conflict resolution and the profile rebuild are three model calls belonging to
+  // one operation, and the budget question is whether this session is affordable, not
+  // whether its third call is. The meter takes its own connection, since the phases
+  // deliberately open and close their own.
+  return metered(ctx, 'extract', () => extractSessionInner(ctx, sessionId));
+}
+
+async function extractSessionInner(
   ctx: TenantCtx,
   sessionId: string,
 ): Promise<ExtractionSummary | null> {
@@ -160,12 +172,6 @@ export async function extractSession(
              facts_staged = session_extractions.facts_staged + EXCLUDED.facts_staged`,
       [ctx.tenantId, ctx.userId, sessionId, prep.lastIndex, staged],
     );
-
-    await record(c, ctx.tenantId, ctx.userId, 'extract', {
-      inputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0,
-      reasoningTokens: 0, provider: 'anthropic', modelId: out.model,
-      costUsd: out.costUsd, latencyMs: 0,
-    });
 
     return {
       sessionId, turns: prep.turns.length, staged, asserted, superseded,

@@ -202,10 +202,18 @@ export async function runCase(
 ): Promise<CaseResult> {
   const ctx = await scratchTenant(c.id);
   try {
+    // Metered like any other spend. An eval run is real money on a real provider --
+    // G0 alone is every case against every arm -- and the whole point of the meter is
+    // that there is no path to a model call that the budget cannot see. The scratch
+    // tenant gets a generous cap in `scratchTenant`, so this counts the spend without
+    // stopping a legitimate run halfway.
+    const { metered } = await import('../src/metering.js');
     const results: ArmResult[] = [];
     // Sequential: arms share the scratch tenant's episode tables, and running them
     // concurrently would let one arm read another's writes.
-    for (const arm of arms) results.push(await runArm(arm, c, ctx, opts));
+    for (const arm of arms) {
+      results.push(await metered(ctx, `eval:${arm.name}`, () => runArm(arm, c, ctx, opts)));
+    }
     return { id: c.id, axis: c.axis, arms: results };
   } finally {
     await owner.query('DELETE FROM tenants WHERE id = $1', [ctx.tenantId]);

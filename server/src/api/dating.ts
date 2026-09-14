@@ -14,7 +14,7 @@ import { commit } from '../memory/facts.js';
 import { rebuildMatchProfile } from '../matching/profile.js';
 import { candidateCount, poolBreakdown } from '../matching/candidates.js';
 import { decide, runRound } from '../matching/orchestrator.js';
-import { checkBudget, record, BudgetExceeded } from '../metering.js';
+import { BudgetExceeded } from '../metering.js';
 import { log } from '../log.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
@@ -389,15 +389,23 @@ export const datingRoutes = new Hono()
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
 
-    // THE MOST EXPENSIVE BUTTON IN THE APP, and it was free.
+    // THE MOST EXPENSIVE BUTTON IN THE APP. One tap is five simulated conversations
+    // plus two briefs.
     //
-    // One tap is five simulated conversations plus two briefs. Nothing checked the
-    // budget before spending it and nothing recorded the spend afterwards, so the
-    // daily cap could not see this path at all: a bored person with an account could
-    // hold the button and bill us for it. Every other model call in the system goes
-    // through this gate; this one is the one that matters most.
+    // The check and the recording both used to live here, which meant they only
+    // covered this one path: the same round launched from scripts/round.ts -- which
+    // is how every real round so far was launched -- spent money the daily cap never
+    // saw. The meter now lives inside `runRound` itself, so the endpoint, the script
+    // and any future scheduler are counted by the same code. All that is left here is
+    // turning the refusal into an HTTP answer.
+    //
+    // It also counts real token usage per call instead of one synthesised row with
+    // zeroes in every token column, so the price table can finally be reconciled
+    // against an invoice.
     try {
-      await tenantSession(ctx, (db) => checkBudget(db, ctx.tenantId, ctx.userId));
+      const result = await runRound(ctx.userId);
+      log.info({ ...result }, 'manual round');
+      return c.json(result);
     } catch (err) {
       if (err instanceof BudgetExceeded) {
         return c.json({
@@ -407,21 +415,6 @@ export const datingRoutes = new Hono()
       }
       throw err;
     }
-
-    const result = await runRound(ctx.userId);
-
-    if (result.costUsd > 0) {
-      await tenantSession(ctx, (db) =>
-        record(db, ctx.tenantId, ctx.userId, 'rendezvous', {
-          inputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0,
-          reasoningTokens: 0, provider: 'google', modelId: 'rendezvous',
-          costUsd: result.costUsd, latencyMs: 0,
-        }),
-      );
-    }
-
-    log.info({ ...result }, 'manual round');
-    return c.json(result);
   });
 
 /**
