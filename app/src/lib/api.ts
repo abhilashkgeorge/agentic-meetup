@@ -486,3 +486,27 @@ export async function deletePhoto(token: string, photoId: string): Promise<boole
 
 export const reorderPhotos = (token: string, ids: string[]) =>
   post<{ photos: Photo[] }>('/v1/photos/order', token, { ids });
+
+/** One document somebody has to agree to, as the server defines it. */
+export interface ConsentDoc { document: string; version: string; title: string }
+
+export interface ConsentState {
+  required: ConsentDoc[];
+  accepted: { document: string; version: string; at: string }[];
+  outstanding: ConsentDoc[];
+  settled: boolean;
+}
+
+/**
+ * What this person still has to agree to.
+ *
+ * The list comes from the server rather than the app so the two cannot drift: bumping
+ * a version server-side makes everybody re-accept that one document, and a client
+ * that hardcoded the list would go on showing the old one for ever.
+ */
+export const getConsent = (token: string) => get<ConsentState>('/v1/consent', token);
+
+export const acceptConsent = (token: string, docs: ConsentDoc[]) =>
+  post<{ ok: boolean; settled: boolean }>('/v1/consent', token, {
+    accept: docs.map((d) => ({ document: d.document, version: d.version })),
+  });

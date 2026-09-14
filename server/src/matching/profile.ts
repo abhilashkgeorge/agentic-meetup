@@ -13,6 +13,10 @@
  */
 import type { PoolClient } from 'pg';
 import { MIN_AGE } from '@clone/shared';
+// Aliased: this file already has its own REQUIRED -- the five structural answers --
+// and importing a second one under the same name silently shadowed it, emptying
+// `missing` for every profile. tsc accepted it; a test caught it.
+import { REQUIRED as REQUIRED_CONSENTS } from '../api/consent.js';
 
 export interface RebuildResult {
   matchable: number;
@@ -123,6 +127,22 @@ export async function rebuildMatchProfile(
   // as failing, not as missing: `age === null` already fails the REQUIRED list above,
   // and this makes that explicit rather than incidental.
   const adult = age !== null && age >= MIN_AGE;
+
+  // CONSENT IS A POOL CONDITION, not a screen somebody can skip. A record of
+  // agreement that does not gate anything is decoration: it proves only that a
+  // dialog was rendered. An agent going out to meet strangers on behalf of somebody
+  // who never accepted the terms is the exact thing the record is supposed to be
+  // evidence about, so the two are wired together here.
+  const { rows: consented } = await c.query<{ n: string }>(
+    `SELECT count(*) AS n FROM consents
+      WHERE user_id = $1 AND (document, version) IN (${
+        REQUIRED_CONSENTS.map((_, i) => `($${i * 2 + 2}, $${i * 2 + 3})`).join(', ')
+      })`,
+    [ctx.userId, ...REQUIRED_CONSENTS.flatMap((r) => [r.document, r.version])],
+  );
+  const agreed = Number(consented[0]!.n) === REQUIRED_CONSENTS.length;
+  if (!agreed) missing.push('consent');
+
   const inPool = missing.length === 0 && adult;
 
   await c.query(

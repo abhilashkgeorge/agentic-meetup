@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   getToken, setToken as persistToken, isOnboarded, getServerUrl, setServerUrl,
 } from '../lib/storage';
-import { isLegacyToken, upgradeToken } from '../lib/api';
+import { getConsent, isLegacyToken, upgradeToken } from '../lib/api';
 import { defaultBase, getApiBase, pingServer, setApiBase } from '../lib/env';
 import { useSession } from '../store/session';
 import { startSocket } from '../lib/socket';
@@ -39,7 +39,7 @@ export default function RootLayout() {
     SourceSans3_400Regular, SourceSans3_600SemiBold, SourceSans3_700Bold,
   });
   const [checked, setChecked] = useState(false);
-  const [route, setRoute] = useState<'invite' | 'onboarding' | 'connect' | null>(null);
+  const [route, setRoute] = useState<'invite' | 'consent' | 'onboarding' | 'connect' | null>(null);
 
   // Accounts come from invite codes now. No self-signup, so a device with no
   // credential goes to the door rather than quietly minting a tenant.
@@ -102,6 +102,23 @@ export default function RootLayout() {
       }
 
       setToken(token);
+
+      // CONSENT BEFORE SETUP, and before anything else this account can do. The
+      // server refuses to put an agent in the pool without it (0039), so a person who
+      // skipped it would finish onboarding, tap "send my agent out" and be told no,
+      // with nothing on screen explaining why. Asked first, it is three short
+      // paragraphs; asked last, it is a dead end.
+      //
+      // A server that cannot be reached here is treated as "not yet asked" rather
+      // than "already agreed": the failure then shows up as this screen again next
+      // launch, instead of as a record of consent nobody gave.
+      const consent = await getConsent(token);
+      if (consent && !consent.settled) {
+        setRoute('consent');
+        setChecked(true);
+        return;
+      }
+
       setRoute((await isOnboarded()) ? null : 'onboarding');
       setChecked(true);
     })();
@@ -119,7 +136,12 @@ export default function RootLayout() {
     if (!checked || !route || sent.current) return;
     if (segments[0] === route) return;
     sent.current = true;
-    router.replace(route === 'connect' ? '/connect' : route === 'invite' ? '/invite' : '/onboarding');
+    router.replace(
+      route === 'connect' ? '/connect'
+      : route === 'invite' ? '/invite'
+      : route === 'consent' ? '/consent'
+      : '/onboarding',
+    );
   }, [checked, route, segments, router]);
 
   useEffect(() => {
@@ -152,6 +174,9 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="invite" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="connect" options={{ headerShown: false }} />
+        {/* gestureEnabled false, like the invite door: this is a gate, and a gate you
+            can swipe past is decoration. */}
+        <Stack.Screen name="consent" options={{ headerShown: false, gestureEnabled: false }} />
         {/* These draw their own header. Without this the stack puts its own bar on top
             of it, showing the route pattern -- "dm/[id]" -- above the person's name. */}
         <Stack.Screen name="dm/[id]" options={{ headerShown: false }} />

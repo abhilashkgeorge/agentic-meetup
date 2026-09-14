@@ -51,6 +51,26 @@ const fact = (ctx: { tenantId: string; userId: string }, predicate: string, obje
  * upserts over it -- the upsert does not touch this column, so a value set here
  * survives it.
  */
+/**
+ * Agree to the things a person has to agree to.
+ *
+ * Consent is a pool condition as of 0039 -- an agent does not go out to meet
+ * strangers on behalf of somebody who never accepted the terms -- so a fixture that
+ * expects to be IN the pool has to have accepted them, exactly as a person would.
+ * Written through the owner pool because the point here is the matching, not the
+ * consent endpoint, which has its own tests.
+ */
+async function consentTo(ctx: { tenantId: string; userId: string }) {
+  const { REQUIRED } = await import('../src/api/consent.js');
+  for (const r of REQUIRED) {
+    await owner.query(
+      `INSERT INTO consents (tenant_id, user_id, document, version)
+       VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+      [ctx.tenantId, ctx.userId, r.document, r.version],
+    );
+  }
+}
+
 async function optOutOfSyntheticPool(ctx: { tenantId: string; userId: string }) {
   await owner.query(
     `INSERT INTO match_profile (user_id, tenant_id, in_pool, sees_synthetic)
@@ -73,6 +93,7 @@ async function baseProfile(
   // doing its job, not a regression. Opting these fixtures out keeps the assertion
   // about the two people it constructs.
   await optOutOfSyntheticPool(ctx);
+  await consentTo(ctx);
   await fact(ctx, 'gender', o.gender);
   await fact(ctx, 'seeking_gender', o.seeking);
   await fact(ctx, 'relationship_intent', o.intent ?? 'long term');

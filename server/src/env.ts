@@ -106,6 +106,19 @@ const Env = z.object({
    * It stays available because the messaging layer is otherwise untestable by hand --
    * turning it on is how the founder walks the whole flow on a real phone.
    */
+  /**
+   * Who may read reports and hide photographs.
+   *
+   * A comma-separated list of user ids, and deliberately not a column on `app_users`:
+   * a flag in the database can be set by anything that can write to the database,
+   * whereas this requires shell access to the machine the server runs on. At one
+   * reviewer, that is the right trade. When there are several it becomes a role.
+   *
+   * Empty means nobody, and the admin routes then 404 for everyone -- which is the
+   * correct default for a server that has not been told who is in charge.
+   */
+  ADMIN_USER_IDS: z.string().default(''),
+
   SYNTHETIC_AUTO_YES: z
     .enum(['true', 'false'])
     .default('false')

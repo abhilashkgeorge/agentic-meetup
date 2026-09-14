@@ -34,6 +34,11 @@ import { log } from '../log.js';
 export const USER_TABLES = [
   'photos', 'question_answers', 'match_profile', 'preferences', 'predicate_status',
   'self_tests', 'device_sessions',
+  // Consent goes too. A record of somebody agreeing to terms is still a record ABOUT
+  // that person, and keeping it after they asked to be forgotten in order to prove
+  // they once agreed to be remembered is the wrong way round. The coverage test
+  // caught this within a minute of the table existing, which is what it is for.
+  'consents',
   'facts', 'episodes', 'memory_audit', 'fact_conflicts', 'session_extractions',
   'intent_signals', 'core_profile', 'directives', 'llm_calls', 'tenant_budget',
 ] as const;
@@ -83,7 +88,14 @@ export interface ErasureResult {
 }
 
 export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
-  const logId = await adminSession(async (c) => {
+  // THE LOG IS WRITTEN BY THE ERASER, not by the application role.
+  //
+  // `erasure_log` carries no row-level security -- it cannot, since it outlives the
+  // user it describes -- and it used to be granted to `clone_app`, which meant
+  // anything running as the application could read who had deleted their account.
+  // 0039 revokes that and hands the table to `clone_eraser`, the role that already
+  // exists to verify erasures and is BYPASSRLS by design.
+  const logId = await eraseSession(async (c) => {
     const { rows } = await c.query<{ id: string }>(
       'INSERT INTO erasure_log (tenant_id, user_id) VALUES ($1,$2) RETURNING id',
       [ctx.tenantId, ctx.userId],
@@ -151,7 +163,7 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
   });
 
   const verified = remaining.length === 0;
-  await adminSession((c) =>
+  await eraseSession((c) =>
     c.query(
       `UPDATE erasure_log SET completed_at = now(), deleted_counts = $2, verified = $3,
                               notes = $4

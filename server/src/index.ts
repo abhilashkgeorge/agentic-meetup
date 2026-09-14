@@ -19,6 +19,8 @@ import { close, pool } from './db/client.js';
 import { env } from './env.js';
 import { validateRouting } from './llm/index.js';
 import { embeddingsAvailable } from './llm/embeddings.js';
+import { adminRoutes, hasReviewer } from './api/admin.js';
+import { consentRoutes } from './api/consent.js';
 import { log } from './log.js';
 import { LIMITS, callerIp, take } from './ratelimit.js';
 import { SESSION_IDLE_MS, sweepOnce } from './memory/session.js';
@@ -49,6 +51,8 @@ app.route('/', interviewRoutes);
 app.route('/', messageRoutes);
 app.route('/', photoRoutes);
 app.route('/', meRoutes);
+app.route('/', adminRoutes);
+app.route('/', consentRoutes);
 
 // serve() builds the http.Server AND attaches Hono as its request listener, then
 // returns it. Handing it a pre-made bare server instead leaves it with no request
@@ -139,6 +143,16 @@ const consolidator = setInterval(() => {
 consolidator.unref();
 
 log.info({ port: env.PORT }, 'clone-agent server listening');
+
+// Said at boot, every boot, because the failure is silent otherwise: reports pile up,
+// nobody is configured to read them, and the first anybody hears about it is when
+// somebody asks why their complaint went nowhere.
+if (!hasReviewer()) {
+  log.warn(
+    'NOBODY CAN REVIEW REPORTS. Set ADMIN_USER_IDS to a comma-separated list of user '
+    + 'ids, or the report button writes rows that no human being will ever read.',
+  );
+}
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {

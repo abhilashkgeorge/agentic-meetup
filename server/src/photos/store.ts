@@ -46,6 +46,8 @@ export interface StoredPhoto {
   slot: number;
   width: number;
   height: number;
+  /** Taken down by a reviewer. Only ever true on the owner's own listing. */
+  hidden?: boolean;
 }
 
 export class BadImage extends Error {
@@ -140,11 +142,20 @@ export async function add(
 
 /** Somebody's own photos. */
 export async function mine(c: PoolClient, userId: string): Promise<StoredPhoto[]> {
-  const { rows } = await c.query<{ id: string; position: number; width: number; height: number }>(
-    'SELECT id, position, width, height FROM photos WHERE user_id = $1 ORDER BY position',
+  const { rows } = await c.query<{
+    id: string; position: number; width: number; height: number; hidden: boolean;
+  }>(
+    `SELECT id, position, width, height, (hidden_at IS NOT NULL) AS hidden
+       FROM photos WHERE user_id = $1 ORDER BY position`,
     [userId],
   );
-  return rows.map((r) => ({ id: r.id, slot: r.position, width: r.width, height: r.height }));
+  // The owner is TOLD when one of theirs has been taken down. Silently continuing to
+  // show somebody their own hidden photograph, while nobody else can see it, is the
+  // kind of quiet dishonesty that makes people distrust everything else on the
+  // screen -- and they cannot appeal a decision they were never shown.
+  return rows.map((r) => ({
+    id: r.id, slot: r.position, width: r.width, height: r.height, hidden: r.hidden,
+  }));
 }
 
 /**
@@ -216,4 +227,48 @@ export async function reorder(c: PoolClient, userId: string, ids: string[]): Pro
 /** Everything on disk for one person. Called by erasure; the rows go with the account. */
 export async function removeAllFiles(userId: string): Promise<void> {
   await rm(dirFor(userId), { recursive: true, force: true });
+}
+
+/**
+ * Take somebody's photographs down.
+ *
+ * A MODERATION ACTION, NOT A DELETE, and the difference is the point. The files stay
+ * on disk and the rows stay in the table: the photograph is evidence of whatever the
+ * report was about, and destroying it to resolve a complaint about it is the one
+ * thing a reviewer must not be able to do by accident. `visible_photos` (0039) stops
+ * serving it the moment `hidden_at` is set, to every viewer including the owner's
+ * existing matches.
+ *
+ * Runs on the matchmaker session because a reviewer is not the owner, and the owner's
+ * own tenant session is the only thing that can normally see these rows.
+ */
+export async function hide(userId: string, reason: string): Promise<number> {
+  const { matchmakerSession } = await import('../db/client.js');
+  return matchmakerSession(async (c) => {
+    const { rowCount } = await c.query(
+      `UPDATE photos SET hidden_at = now(), hidden_reason = $2
+        WHERE user_id = $1 AND hidden_at IS NULL`,
+      [userId, reason.slice(0, 500)],
+    );
+    return rowCount ?? 0;
+  });
+}
+
+/**
+ * Put them back.
+ *
+ * Reversibility is what makes hiding a decision somebody will take quickly, and a
+ * report that sits unactioned for a day because the reviewer was afraid of being
+ * wrong is the failure this whole path exists to avoid.
+ */
+export async function unhide(userId: string): Promise<number> {
+  const { matchmakerSession } = await import('../db/client.js');
+  return matchmakerSession(async (c) => {
+    const { rowCount } = await c.query(
+      `UPDATE photos SET hidden_at = NULL, hidden_reason = ''
+        WHERE user_id = $1 AND hidden_at IS NOT NULL`,
+      [userId],
+    );
+    return rowCount ?? 0;
+  });
 }
