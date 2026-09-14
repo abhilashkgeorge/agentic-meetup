@@ -235,14 +235,35 @@ describe('the pool counter makes over-filtering visible', () => {
     const me = await makeUser('counter');
     await baseProfile(me, { gender: 'man', seeking: 'woman', birthYear: 1994 });
 
-    const steps = await matchSession((c) => poolBreakdown(c, me.userId));
+    // ONE SNAPSHOT FOR BOTH READINGS, and the isolation level is the reason.
+    //
+    // The last assertion is that the final step of the breakdown equals the real
+    // candidate count. Those are separate queries against a table other test files
+    // are inserting into and deleting from at the same time -- vitest runs files
+    // concurrently -- so under READ COMMITTED each one sees a different world and the
+    // equality fails at random. It flaked exactly once, after this suite grew three
+    // more files that create and drop users.
+    //
+    // REPEATABLE READ makes both statements read the same snapshot, so the assertion
+    // is about the code rather than about what another file happened to be doing.
+    const { steps, count } = await matchSession(async (c) => {
+      await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+      try {
+        return {
+          steps: await poolBreakdown(c, me.userId),
+          count: await candidateCount(c, me.userId),
+        };
+      } finally {
+        await c.query('COMMIT');
+      }
+    });
+
     expect(steps[0]!.step).toBe('everyone');
     // Monotonic: a filter can only ever remove people.
     for (let i = 1; i < steps.length; i++) {
       expect(steps[i]!.remaining).toBeLessThanOrEqual(steps[i - 1]!.remaining);
       expect(steps[i]!.cost).toBeGreaterThanOrEqual(0);
     }
-    expect(await matchSession((c) => candidateCount(c, me.userId)))
-      .toBe(steps[steps.length - 1]!.remaining);
+    expect(count).toBe(steps[steps.length - 1]!.remaining);
   });
 });
