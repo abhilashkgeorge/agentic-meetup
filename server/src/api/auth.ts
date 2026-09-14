@@ -11,6 +11,7 @@
  * account is the device until there is a reason for it not to be.
  */
 import { Hono } from 'hono';
+import { LIMITS, rateLimit } from '../ratelimit.js';
 import { z } from 'zod';
 import { adminSession, provisioningSession, tenantSession, authLookup } from '../db/client.js';
 import { resolveCtx, Unauthorized, isLegacyToken } from '../auth.js';
@@ -68,7 +69,7 @@ export const authRoutes = new Hono()
    * racing on the same code cannot both win -- one gets the row, the other gets
    * "already used", and the outcome does not depend on how fast either was.
    */
-  .post('/v1/auth/redeem', async (c) => {
+  .post('/v1/auth/redeem', rateLimit('redeem', LIMITS.redeem), async (c) => {
     const body = Redeem.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'bad request' }, 400);
 
@@ -128,7 +129,7 @@ export const authRoutes = new Hono()
    * already holds a legacy token -- including the founder's, which carries all the
    * dogfooding data the eval corpus depends on.
    */
-  .post('/v1/auth/upgrade', async (c) => {
+  .post('/v1/auth/upgrade', rateLimit('auth', LIMITS.auth), async (c) => {
     const header = c.req.header('authorization');
     if (!isLegacyToken(header)) {
       return c.json({ error: 'not a legacy token' }, 400);
@@ -155,7 +156,7 @@ export const authRoutes = new Hono()
   })
 
   /** Dev only. Left in because turning it on is how the founder's own devices start. */
-  .post('/v1/auth/device', async (c) => {
+  .post('/v1/auth/device', rateLimit('signup', LIMITS.signup), async (c) => {
     if (!env.ALLOW_DEVICE_SIGNUP) {
       return c.json({ error: 'invite required', message: 'You need an invite code.' }, 403);
     }

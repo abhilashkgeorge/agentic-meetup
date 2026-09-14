@@ -20,6 +20,7 @@ import { env } from './env.js';
 import { validateRouting } from './llm/index.js';
 import { embeddingsAvailable } from './llm/embeddings.js';
 import { log } from './log.js';
+import { LIMITS, callerIp, take } from './ratelimit.js';
 import { SESSION_IDLE_MS, sweepOnce } from './memory/session.js';
 import { consolidateAll } from './memory/consolidate.js';
 
@@ -68,6 +69,17 @@ const wss = new WebSocketServer({
 
 server.on('upgrade', (req, socket, head) => {
   if (!req.url?.startsWith('/v1/chat')) {
+    socket.destroy();
+    return;
+  }
+
+  // The same counter the HTTP routes use, because an upgrade is not a Hono request
+  // and cannot run Hono middleware -- and a client stuck in a reconnect loop is the
+  // honest failure this catches, well before anybody malicious turns up.
+  const ip = callerIp(req.headers);
+  if (!take(`socket:${ip}`, LIMITS.socket).ok) {
+    log.warn({ ip }, 'socket upgrade rate limited');
+    socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
     socket.destroy();
     return;
   }
