@@ -1,0 +1,44 @@
+{
+  "name": "@clone/server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "migrate": "tsx src/db/migrate.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -b --noEmit false",
+    "seed": "tsx src/db/seed.ts",
+    "stats": "tsx src/db/stats.ts",
+    "eval": "tsx evals/run.ts",
+    "eval:structural": "tsx evals/run.ts --no-probes",
+    "corpus:status": "tsx evals/corpus/status.ts",
+    "corpus:scan": "tsx evals/corpus/scan.ts",
+    "corpus:harvest": "tsx evals/corpus/harvest.ts",
+    "seed:synthetic": "tsx src/db/seed-synthetic.ts",
+    "e2e": "tsx scripts/e2e.ts",
+    "round": "tsx scripts/round.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
+    "@clone/shared": "*",
+    "@google/genai": "^2.22.0",
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.7",
+    "openai": "^7.10.0",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1",
+    "sharp": "^0.35.4",
+    "ws": "^8.21.3",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

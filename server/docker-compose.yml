@@ -1,0 +1,15 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: clone
+      POSTGRES_PASSWORD: clone
+      POSTGRES_DB: clone
+    ports: ['5433:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U clone']
+      interval: 5s
+      retries: 10
+volumes:
+  pgdata:

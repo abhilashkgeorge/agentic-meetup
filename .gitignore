@@ -1,0 +1,57 @@
+# ── Secrets. Nothing here may ever enter history. ──────────────────────────────
+#
+# The repo had none of this and no commits, which meant the very first `git add .`
+# would have written live API keys into history permanently. A key in history is a
+# rotated key; there is no un-committing one.
+#
+# `.env.example` is the exception and is committed on purpose: it is the shape of the
+# config with no values in it.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.mobileprovision
+
+# ── Installed, not authored ───────────────────────────────────────────────────
+node_modules/
+package-lock.json.bak
+
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
+build/
+*.tsbuildinfo
+.expo/
+web-build/
+expo-env.d.ts
+
+# Native build output. `expo run:*` regenerates these, and a copy at the REPO ROOT
+# means somebody ran expo from the wrong directory -- the app lives in app/.
+/android
+/ios
+
+# ── People's data. Never in a repository. ─────────────────────────────────────
+#
+# Uploaded photos live on the server's disk and in the backups. Faces do not belong
+# in version control, and a repo that once held one holds it forever.
+/server/var/
+
+# ── Noise ─────────────────────────────────────────────────────────────────────
+.DS_Store
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.metro-health-check*
+coverage/
+
+# ── Python, for the Graphiti comparison arm ───────────────────────────────────
+#
+# `evals/arms/graphiti/.venv` alone is 1.1 GB. A virtualenv is a machine-local
+# install of somebody else's code; it is rebuilt from the lockfile, never committed.
+.venv/
+__pycache__/
+*.pyc

@@ -1,0 +1,12 @@
+-- 0014: the round carries the owner's first name.
+--
+-- The grader page needs to say "does this sound like Knox?", and a grader cannot read
+-- `facts` -- that is the entire point of the token policy in 0013. Reaching for
+-- `tenants.name` instead was wrong twice: it holds a device label ("Knox's iPhone
+-- (iOS)"), and it made a screen for strangers depend on a table it has no business
+-- knowing about.
+--
+-- So the round carries what the round needs. It is also a snapshot, which is correct:
+-- if someone changes what they go by, an already-sent round should still read the way
+-- it read when it was sent.
+ALTER TABLE rounds ADD COLUMN owner_name text NOT NULL DEFAULT 'them';

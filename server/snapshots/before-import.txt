@@ -1,0 +1,41 @@
+user: 56aae483-44b4-4ef8-869c-2f9b961a9eab
+taken: 2026-09-09 09:40:24Z
+
+=== WHAT IT BELIEVES NOW ===
+   predicate    |   value   | learned_from |  stance  | times_heard 
+----------------+-----------+--------------+----------+-------------
+ lives_in       | Bangalore | owner        | asserted |           1
+ preferred_name | Knox      | owner        | asserted |           1
+ works_at       | Dabba     | owner        | asserted |           1
+(3 rows)
+
+=== WAITING TO BE CONFIRMED (imported, not yet trusted) ===
+ predicate | value | from_this 
+-----------+-------+-----------
+(0 rows)
+
+=== NO LONGER TRUE (kept, never deleted) ===
+ predicate | value | status | stopped_being_true 
+-----------+-------+--------+--------------------
+(0 rows)
+
+=== THE SUMMARY IT CARRIES INTO EVERY REPLY ===
+  block_name  | tokens |               content               
+--------------+--------+-------------------------------------
+ identity     |      9 | Lives in Bangalore, works at Dabba.
+ open_threads |      4 | No facts given.
+ preferences  |      4 | No facts given.
+ situation    |      9 | Lives in Bangalore. Works at Dabba.
+(4 rows)
+
+=== QUESTIONS IT WANTS TO ASK YOU ===
+ kind | status | clarifying_question 
+------+--------+---------------------
+(0 rows)
+
+=== TOTALS ===
+ messages | live_facts | awaiting_confirmation | spent_usd 
+----------+------------+-----------------------+-----------
+        2 |          3 |                     0 |    0.0048
+(1 row)
+

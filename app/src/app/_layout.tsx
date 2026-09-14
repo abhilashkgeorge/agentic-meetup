@@ -1,0 +1,167 @@
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useRef, useState } from 'react';
+import {
+  getToken, setToken as persistToken, isOnboarded, getServerUrl, setServerUrl,
+} from '../lib/storage';
+import { isLegacyToken, upgradeToken } from '../lib/api';
+import { defaultBase, getApiBase, pingServer, setApiBase } from '../lib/env';
+import { useSession } from '../store/session';
+import { startSocket } from '../lib/socket';
+import {
+  SourceSans3_400Regular, SourceSans3_600SemiBold, SourceSans3_700Bold, useFonts,
+} from '@expo-google-fonts/source-sans-3';
+import * as SplashScreen from 'expo-splash-screen';
+import { usePalette, useIsDark } from '../components/ui';
+import { useTheme } from '../store/theme';
+import { ErrorBoundary } from '../components/error-boundary';
+
+/**
+ * Root stack. The tabs are one screen inside it; onboarding is another, so it can be
+ * full-screen with no tab bar. Onboarding is a route rather than a modal because it
+ * has two steps and the person may leave and come back to it.
+ */
+export default function RootLayout() {
+  const setToken = useSession((s) => s.setToken);
+  const p = usePalette();
+  const isDark = useIsDark();
+
+  // Read the stored light/dark choice before anything paints, so a person who chose
+  // light does not get a dark frame for the first few hundred milliseconds.
+  const loadTheme = useTheme((s) => s.load);
+  const themeLoaded = useTheme((s) => s.loaded);
+  useEffect(() => { void loadTheme(); }, [loadTheme]);
+  const router = useRouter();
+  const segments = useSegments();
+  // The typeface the design spec names. Held behind the splash rather than swapped in
+  // after first paint -- a font that arrives late reflows every screen at once.
+  const [fontsReady] = useFonts({
+    SourceSans3_400Regular, SourceSans3_600SemiBold, SourceSans3_700Bold,
+  });
+  const [checked, setChecked] = useState(false);
+  const [route, setRoute] = useState<'invite' | 'onboarding' | 'connect' | null>(null);
+
+  // Accounts come from invite codes now. No self-signup, so a device with no
+  // credential goes to the door rather than quietly minting a tenant.
+  useEffect(() => {
+    void (async () => {
+      // The address the person saved, if they ever had to set one. Applied before any
+      // request is made, or the first call goes to the wrong place and the app decides
+      // it is offline.
+      const saved = await getServerUrl();
+      if (saved) setApiBase(saved);
+
+      // Reachability is checked FIRST and separately from auth. Conflating them is
+      // how "the server is on a laptop that went to sleep" became "your account is
+      // broken" -- two very different problems with one useless message.
+      let reachable = await pingServer(getApiBase());
+
+      // A SAVED address that has stopped working must not be sticky.
+      //
+      // Development tunnels get a new hostname every restart, so an address typed in
+      // last week is dead this week -- and because saved beats built-in, the app kept
+      // dialling the dead one forever and made somebody retype it every time. Falling
+      // back to what the build knows costs one request and fixes the common case
+      // silently.
+      if (!reachable && saved) {
+        const built = defaultBase();
+        if (built !== getApiBase() && (await pingServer(built))) {
+          setApiBase(built);
+          await setServerUrl(built);
+          reachable = true;
+        }
+      }
+
+      if (!reachable) {
+        setRoute('connect');
+        setChecked(true);
+        return;
+      }
+
+      const existing = await getToken();
+
+      if (!existing) {
+        setRoute('invite');
+        setChecked(true);
+        return;
+      }
+
+      // A device holding the old unsigned credential trades it in silently. Without
+      // this, closing signup would strand every device that already has one --
+      // including the founder's, which carries all the dogfooding data.
+      let token = existing;
+      if (isLegacyToken(token)) {
+        const upgraded = await upgradeToken(token);
+        if (upgraded) {
+          await persistToken(upgraded);
+          token = upgraded;
+        }
+        // If the upgrade fails we keep the old token and try again next launch. The
+        // server still accepts it today; losing the account would be worse than
+        // running one more day on the weaker credential.
+      }
+
+      setToken(token);
+      setRoute((await isOnboarded()) ? null : 'onboarding');
+      setChecked(true);
+    })();
+  }, [setToken]);
+
+  // Redirect ONCE, after the check. Reading state first avoids the flash of the chat
+  // screen that a render-time redirect would produce.
+  //
+  // The `sent` ref is what makes "once" true. Without it this fires again every time
+  // the route changes, so finishing onboarding and navigating to the app immediately
+  // bounced back here -- the decision was made at launch and then enforced for ever,
+  // against a person who had since done the thing it was waiting for.
+  const sent = useRef(false);
+  useEffect(() => {
+    if (!checked || !route || sent.current) return;
+    if (segments[0] === route) return;
+    sent.current = true;
+    router.replace(route === 'connect' ? '/connect' : route === 'invite' ? '/invite' : '/onboarding');
+  }, [checked, route, segments, router]);
+
+  useEffect(() => {
+    if (fontsReady && checked) void SplashScreen.hideAsync();
+  }, [fontsReady, checked]);
+
+  // ONE socket for the whole app, opened here rather than by whichever screen happens
+  // to need it. A socket owned by a screen closes when you navigate away from it --
+  // which is exactly when a message from the other person is most likely to arrive.
+  const token = useSession((s) => s.token);
+  const sessionId = useSession((s) => s.sessionId);
+  useEffect(() => startSocket(token, sessionId), [token, sessionId]);
+
+  if (!fontsReady || !themeLoaded) return null;
+
+  return (
+    <ErrorBoundary>
+      {/* The clock and battery have to be legible on whichever ground is behind
+          them, so this follows the choice rather than the system. */}
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: p.bg },
+          headerTintColor: p.text,
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: p.bg },
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="invite" options={{ headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen name="connect" options={{ headerShown: false }} />
+        {/* These draw their own header. Without this the stack puts its own bar on top
+            of it, showing the route pattern -- "dm/[id]" -- above the person's name. */}
+        <Stack.Screen name="dm/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="photos" options={{ headerShown: false }} />
+        <Stack.Screen name="edit/[predicate]" options={{ headerShown: false }} />
+        <Stack.Screen name="match/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="you" options={{ headerShown: false }} />
+        <Stack.Screen name="preferences" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
+      </Stack>
+    </ErrorBoundary>
+  );
+}

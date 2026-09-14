@@ -1,0 +1,28 @@
+{
+  "name": "avatar",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@react-three/fiber": "^9.7.0",
+    "expo": "~57.0.20",
+    "expo-asset": "~57.0.16",
+    "expo-file-system": "~57.0.6",
+    "expo-gl": "~57.0.2",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "@types/three": "^0.185.4",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}
