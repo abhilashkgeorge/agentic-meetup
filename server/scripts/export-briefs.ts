@@ -95,9 +95,21 @@ const cards = rows.map((r, i) => ({
   headline: anonymise(r.headline),
   concern: anonymise(r.concern),
   questions: (r.questions ?? []).map(anonymise),
-  overlaps: (r.overlap_quotes ?? []).map((o) => ({
-    ...o, quoteA: anonymise(o.quoteA), quoteB: anonymise(o.quoteB),
-  })),
+  // A PAIR WHERE BOTH SIDES SAY THE SAME WORDS IS NOT AN OVERLAP.
+  //
+  // The card's premise is "here is what each of you said, in your own words". Every
+  // pair produced so far fails it: the two strings are identical, because synthetic
+  // quotes come from one template pool -- 46,346 rows carry 1,965 distinct sentences,
+  // one of them repeated 2,249 times, and 73% of random pairs share one word for
+  // word. What looks like two people agreeing is one generator writing twice.
+  //
+  // Dropped rather than shown, because anybody reading this is being asked whether
+  // the BRIEF works, and a visibly duplicated quote makes them answer a different
+  // question. Filtering on inequality rather than deleting the feature, so real
+  // overlaps appear the moment the generator produces variety.
+  overlaps: (r.overlap_quotes ?? [])
+    .map((o) => ({ ...o, quoteA: anonymise(o.quoteA), quoteB: anonymise(o.quoteB) }))
+    .filter((o) => o.quoteA.trim().toLowerCase() !== o.quoteB.trim().toLowerCase()),
   // Kept so the answers can be cut by how strongly the agents agreed. If readers say
   // yes to 5-of-5 pairs and no to 1-of-5 pairs, the count means something; if they
   // cannot tell them apart, the count is decoration.
