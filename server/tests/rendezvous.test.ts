@@ -28,6 +28,14 @@ const stub = vi.hoisted(() => ({
   at: 0,
   /** Make the next N model calls die, the way the free tier actually dies. */
   failNext: 0,
+  /**
+   * Fail by call NUMBER, so a test can choose which phase dies.
+   *
+   * `failNext` alone cannot reach the top-up: it is spent in the main loop long
+   * before the top-up starts, which is why the first version of the overshoot test
+   * passed against the broken code it was written to catch.
+   */
+  failWhen: null as null | ((call: number) => boolean),
   /** Every call the adapter was asked for, so a test can count the retries. */
   calls: 0,
 }));
@@ -37,6 +45,7 @@ vi.mock('../src/llm/index.js', () => ({
   llm: {
     complete: async (req: { outputSchema?: unknown }) => {
       stub.calls++;
+      if (stub.failWhen?.(stub.calls)) throw new Error('fetch failed: read ECONNRESET');
       if (stub.failNext > 0) {
         stub.failNext--;
         throw new Error('fetch failed: read ECONNRESET');
@@ -231,7 +240,7 @@ describe('runs that die on the wire', () => {
   it('are made up, so the denominator is what was planned', async () => {
     const { converse } = await import('../src/matching/rendezvous.js');
     stub.verdicts = [{ verdict: 'yes', learned: ['a', 'b', 'c'], concern: 'c' }];
-    stub.at = 0; stub.calls = 0;
+    stub.at = 0; stub.calls = 0; stub.failWhen = null;
     // Two whole runs worth of dead calls: withRetry burns two per lost run.
     stub.failNext = 4;
 
@@ -249,7 +258,7 @@ describe('runs that die on the wire', () => {
     // dropped call. Topping these up would be optional stopping: re-running until we
     // like the answer.
     stub.verdicts = [{ verdict: 'not_enough', learned: [], concern: 'thin' }];
-    stub.at = 0; stub.calls = 0; stub.failNext = 0;
+    stub.at = 0; stub.calls = 0; stub.failNext = 0; stub.failWhen = null;
 
     const side = { userId: 'u', tenantId: 't', dossier: 'd', voice: '' };
     const out = await converse(side, { ...side, userId: 'v' }, 3);
@@ -299,4 +308,89 @@ describe('the pass bar', () => {
       expect(passes(agreeing, counted, 5), `${agreeing}/${counted}`).toBe(true);
     }
   });
+});
+
+/**
+ * The top-up must never overshoot.
+ *
+ * A measurement run reported `1/6` -- six counted runs where five were planned. Making
+ * up a dropped run is supposed to restore the denominator, not inflate it: a bar of
+ * "a majority" means something different over six runs than over five, which is the
+ * exact failure the top-up exists to prevent.
+ */
+describe('the top-up', () => {
+  /**
+   * Three runs rather than five, and few cases: every attempt carries a 1.5s spacing
+   * delay against the free tier's rate limit, so an exhaustive sweep takes longer than
+   * the whole rest of the suite. Three is enough -- the overshoot needs one failed
+   * top-up followed by two successful ones, which fits.
+   */
+  it('does not overshoot when a made-up run ALSO dies', async () => {
+    const { converse } = await import('../src/matching/rendezvous.js');
+    const side = { userId: 'u', tenantId: 't', dossier: 'd', voice: '' };
+
+    // THE EXACT SHAPE OF THE BUG. Keying the loop on losses rather than on verdicts
+    // in hand meant a failed top-up attempt incremented the loss count itself, so the
+    // loop kept going after the denominator was already full:
+    //
+    //     main loop ends   lost 1, counted 2
+    //     first top-up fails    lost 2
+    //     then two succeed      counted 4, with 3 planned
+    //
+    // Reaching that needs a death in the TOP-UP phase, which `failNext` cannot
+    // express -- it is spent in the main loop. The first version of this test passed
+    // against the broken code because of exactly that, so it proved nothing.
+    stub.verdicts = [{ verdict: 'yes', learned: ['a', 'b', 'c'], concern: 'c' }];
+    stub.at = 0; stub.calls = 0; stub.failNext = 0;
+    // MEASURED, AND THE FIRST TWO MEASUREMENTS WERE WRONG. A healthy run costs
+    // twelve model calls -- ten messages and two assessments -- but a DYING one costs
+    // exactly one, because it throws on its first call; `withRetry` then spends one
+    // more. So a lost run is two calls, not twenty-four, and with three planned:
+    //
+    //     calls  1-2    run 0 and its retry, both dead   -> lost 1
+    //     calls  3-26   runs 1 and 2                     -> counted 2
+    //     calls 27-28   the first made-up run and retry  -> dead, and THIS is what
+    //                                                       inflated the loss count
+    //     calls 29-52   two more made-up runs            -> counted 4, with 3 planned
+    //
+    // Two earlier versions of this test guessed those offsets, never reached the
+    // top-up phase, and passed against the broken code they were written to catch.
+    stub.failWhen = (call) => call <= 2 || call === 27 || call === 28;
+
+    const out = await converse(side, { ...side, userId: 'v' }, 3);
+    stub.failWhen = null;
+
+    expect(out.results.length, 'verdicts obtained').toBeLessThanOrEqual(3);
+    expect(out.counted, 'counted runs').toBeLessThanOrEqual(3);
+  }, 180_000);
+
+  it('never counts more runs than were planned, whatever the wire does', async () => {
+    const { converse } = await import('../src/matching/rendezvous.js');
+    const side = { userId: 'u', tenantId: 't', dossier: 'd', voice: '' };
+
+    for (const dead of [0, 4, 8]) {
+      stub.verdicts = [{ verdict: 'yes', learned: ['a', 'b', 'c'], concern: 'c' }];
+      stub.at = 0; stub.calls = 0; stub.failNext = dead; stub.failWhen = null;
+
+      const out = await converse(side, { ...side, userId: 'v' }, 3);
+      // The whole point of making up a dropped run is to RESTORE the denominator, not
+      // to inflate it: "a majority" over six runs is a different bar than over five.
+      expect(out.counted, `counted with ${dead} dead calls`).toBeLessThanOrEqual(3);
+      expect(out.results.length, `verdicts with ${dead} dead calls`).toBeLessThanOrEqual(3);
+    }
+  }, 180_000);
+
+  it('does not retry a run that came back inconclusive', async () => {
+    const { converse } = await import('../src/matching/rendezvous.js');
+    const side = { userId: 'u', tenantId: 't', dossier: 'd', voice: '' };
+
+    // A thin conversation is a real verdict, not a dropped call. Retrying it would be
+    // optional stopping -- re-running until the answer changes.
+    stub.verdicts = [{ verdict: 'not_enough', learned: [], concern: 'thin' }];
+    stub.at = 0; stub.calls = 0; stub.failNext = 0; stub.failWhen = null;
+
+    const out = await converse(side, { ...side, userId: 'v' }, 3);
+    expect(out.counted).toBe(0);
+    expect(out.results).toHaveLength(3);
+  }, 180_000);
 });

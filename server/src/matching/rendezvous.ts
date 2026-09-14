@@ -372,7 +372,7 @@ export async function converse(a: Side, b: Side, runs = RUNS): Promise<Conversat
   let bothYes = 0;
   let costUsd = 0;
   let counted = 0;
-  /** Runs that produced no verdict at all because the call died. Topped up below. */
+  /** Runs whose call died outright. Diagnostic only -- see the top-up below. */
   let lost = 0;
 
   /** Returns true when the run produced a verdict, false when the call died. */
@@ -436,10 +436,26 @@ export async function converse(a: Side, b: Side, runs = RUNS): Promise<Conversat
   // conversation and retrying it would be optional stopping -- re-rolling a result we
   // did not like. Capped, because an outage must not turn one pair into an unbounded
   // bill.
+  // The condition is the number of VERDICTS IN HAND, not the number of losses.
+  //
+  // Keying it on losses overshoots, and a measurement run caught it: a failed top-up
+  // attempt increments `lost` itself, so the loop kept going after the denominator was
+  // already full --
+  //
+  //     main loop ends   lost 1, counted 4
+  //     k=0 fails        lost 2, counted 4
+  //     k=1 succeeds     lost 1, counted 5
+  //     k=2 succeeds     lost 0, counted 6   <- six runs, five planned
+  //
+  // -- which inflates the denominator instead of restoring it, and "a majority" over
+  // six runs is a different bar again. `results` holds one entry per verdict obtained,
+  // of any kind, so stopping at `runs` of them is exactly the invariant wanted: a
+  // dropped call leaves no entry and is retried, while an inconclusive run leaves one
+  // and is not, which is what keeps this from becoming optional stopping.
   const EXTRA = runs;
-  for (let k = 0; k < EXTRA && lost > 0; k++) {
+  for (let k = 0; k < EXTRA && results.length < runs; k++) {
     await new Promise((r) => setTimeout(r, 1500));
-    if (await attempt(runs + k)) lost -= 1;
+    await attempt(runs + k);
   }
 
   if (counted < runs) {
