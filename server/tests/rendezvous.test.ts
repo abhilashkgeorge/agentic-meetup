@@ -26,12 +26,21 @@ const stub = vi.hoisted(() => ({
   /** One entry per assessor call, cycled. Lets a test script exact run outcomes. */
   verdicts: [] as { verdict: string; learned: string[]; concern: string }[],
   at: 0,
+  /** Make the next N model calls die, the way the free tier actually dies. */
+  failNext: 0,
+  /** Every call the adapter was asked for, so a test can count the retries. */
+  calls: 0,
 }));
 
 vi.mock('../src/llm/index.js', () => ({
   modelFor: () => 'google:gemini-3.5-flash-lite',
   llm: {
     complete: async (req: { outputSchema?: unknown }) => {
+      stub.calls++;
+      if (stub.failNext > 0) {
+        stub.failNext--;
+        throw new Error('fetch failed: read ECONNRESET');
+      }
       const usage = {
         inputTokens: 500, cachedReadTokens: 0, cacheWriteTokens: 0, outputTokens: 60,
         reasoningTokens: 0, provider: 'google', modelId: 'flash-lite',
@@ -207,4 +216,47 @@ describe('a pair meets once, ever', () => {
     // Running the same pair again next week turns a match into a war of attrition.
     await expect(openFor(p, q)).rejects.toThrow(/rendezvous_pair/);
   });
+});
+
+/**
+ * A dropped call must not quietly raise the bar.
+ *
+ * `passes` asks for a majority, and a majority of a smaller denominator is a bigger
+ * fraction: 3 of 5 is 60%, 3 of 4 is 75%, 2 of 2 is 100%. Across 47 measured pairs and
+ * then 8 more the denominator was 1, 2, 3 or 4 and never 5 -- so every pair was judged
+ * against a threshold set by the network rather than by us, and none of them was told
+ * which one.
+ */
+describe('runs that die on the wire', () => {
+  it('are made up, so the denominator is what was planned', async () => {
+    const { converse } = await import('../src/matching/rendezvous.js');
+    stub.verdicts = [{ verdict: 'yes', learned: ['a', 'b', 'c'], concern: 'c' }];
+    stub.at = 0; stub.calls = 0;
+    // Two whole runs worth of dead calls: withRetry burns two per lost run.
+    stub.failNext = 4;
+
+    const side = { userId: 'u', tenantId: 't', dossier: 'd', voice: '' };
+    const out = await converse(side, { ...side, userId: 'v' }, 3);
+
+    // Three planned, three counted, despite the wire eating two.
+    expect(out.counted).toBe(3);
+    expect(out.bothYes).toBe(3);
+  }, 30_000);
+
+  it('never re-rolls a verdict that actually came back', async () => {
+    const { converse } = await import('../src/matching/rendezvous.js');
+    // Every run is inconclusive -- a real verdict about a thin conversation, not a
+    // dropped call. Topping these up would be optional stopping: re-running until we
+    // like the answer.
+    stub.verdicts = [{ verdict: 'not_enough', learned: [], concern: 'thin' }];
+    stub.at = 0; stub.calls = 0; stub.failNext = 0;
+
+    const side = { userId: 'u', tenantId: 't', dossier: 'd', voice: '' };
+    const out = await converse(side, { ...side, userId: 'v' }, 3);
+
+    expect(out.counted).toBe(0);
+    // Three runs only. Each run is TURNS_EACH prober calls plus two assessors; what
+    // matters is that no FOURTH run was attempted to escape the result.
+    expect(out.results).toHaveLength(3);
+  }, 30_000);
 });

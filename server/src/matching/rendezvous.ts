@@ -372,8 +372,11 @@ export async function converse(a: Side, b: Side, runs = RUNS): Promise<Conversat
   let bothYes = 0;
   let costUsd = 0;
   let counted = 0;
+  /** Runs that produced no verdict at all because the call died. Topped up below. */
+  let lost = 0;
 
-  for (let i = 0; i < runs; i++) {
+  /** Returns true when the run produced a verdict, false when the call died. */
+  const attempt = async (i: number): Promise<boolean> => {
     try {
       // ONE RETRY, and it retries a dropped CALL, never a verdict. Measured over four
       // real rendezvous, one or two runs in five died on ECONNRESET from the free
@@ -395,15 +398,52 @@ export async function converse(a: Side, b: Side, runs = RUNS): Promise<Conversat
         aVerdict: r.aVerdict, bVerdict: r.bVerdict,
         aConcern: r.aConcern, bConcern: r.bConcern, costUsd: r.costUsd,
       });
+      return true;
     } catch (err) {
       // A run that fails twice does not fail the rendezvous, and is NOT counted as a
       // no -- a broken call is an absence of evidence, not a rejection.
+      lost++;
       log.error({ err, run: i }, 'rendezvous run failed twice');
+      return false;
     }
+  };
+
+  for (let i = 0; i < runs; i++) {
+    await attempt(i);
 
     // The free tier rate-limits, and a burst of runs returns ECONNRESET for the last
     // few -- which used to look like the pair failing rather than us.
     if (i < runs - 1) await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  // ── TOP UP THE RUNS THAT NEVER HAPPENED ─────────────────────────────────────
+  //
+  // A dropped run does not just add noise; it silently RAISES THE BAR. `passes`
+  // asks for a majority, and a majority of a smaller denominator is a bigger
+  // fraction:
+  //
+  //     5 runs   3 of 5   60%      <- what the design intends
+  //     4 runs   3 of 4   75%
+  //     3 runs   2 of 3   67%
+  //     2 runs   2 of 2   100%
+  //
+  // Across 47 pairs and then 8 more, the denominator was 1, 2, 3 or 4 and NEVER 5.
+  // So every pair was judged against a threshold set by the network rather than by
+  // us, and none of them was told which one. That is not a noisy measurement, it is
+  // a different measurement each time.
+  //
+  // Only calls that DIED are retried. A `not_enough` is a real verdict about a real
+  // conversation and retrying it would be optional stopping -- re-rolling a result we
+  // did not like. Capped, because an outage must not turn one pair into an unbounded
+  // bill.
+  const EXTRA = runs;
+  for (let k = 0; k < EXTRA && lost > 0; k++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    if (await attempt(runs + k)) lost -= 1;
+  }
+
+  if (counted < runs) {
+    log.warn({ counted, planned: runs }, 'rendezvous short of its planned runs');
   }
 
   return { results, counted, bothYes, costUsd };
