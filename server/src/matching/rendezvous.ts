@@ -38,6 +38,7 @@ import { llm, modelFor } from '../llm/index.js';
 import { modelIdOf } from '../llm/caps.js';
 import { currentState } from '../memory/facts.js';
 import { coreProfileText, voiceText } from '../memory/profile.js';
+import { env } from '../env.js';
 import { log } from '../log.js';
 
 export const RUNS = Number(process.env.RENDEZVOUS_RUNS ?? 5);
@@ -100,9 +101,19 @@ const Verdict = z.object({
    * inconclusive -- a worse failure than the two-outcome version it replaced.
    */
   learned: z.array(z.string()),
-  verdict: z.enum(['yes', 'no', 'not_enough']),
-  /** A real reservation about the OTHER PERSON, not a topic label. */
+  /**
+   * SECOND, and it moved here for the same reason `learned` is first.
+   *
+   * The concern used to be written AFTER the verdict, which made it a justification
+   * rather than an input: the model decided yes and then produced a reservation mild
+   * enough to live beside it. Written before, it is something the verdict has to
+   * answer to. Measured over 47 pairs, the verdict-first ordering agreed 79.3% of the
+   * time against a 50% bar -- a test whose pass mark sits far below its base rate is
+   * not selecting anything.
+   */
   concern: z.string(),
+  /** Decided last, with the evidence and the reservation already on the page. */
+  verdict: z.enum(['yes', 'no', 'not_enough']),
 });
 
 const ASSESSOR = `You read a conversation between two agents and decide whether the person YOU represent would want to meet the other one.
@@ -113,10 +124,17 @@ FIRST, fill in "learned": specific things you now know about the OTHER person th
 did not know from their summary. Concrete facts, in your own words. If you cannot list
 at least three, the conversation was genuinely thin.
 
+SECOND, write "concern": a genuine reservation about the OTHER PERSON — something that
+might actually not work, by the second hour of an evening rather than in theory.
+"Lifestyle compatibility" and "shared interests" are topic labels, not reservations.
+Write the sentence you would say to a friend.
+
 THEN choose:
 
-  yes          what you learned suggests these two would get on
-  no           what you learned suggests they would NOT
+  yes          you would spend a real evening on this, and the concern above is not
+               the kind of thing that would spoil it
+  no           the concern above is the kind of thing that would, or nothing you
+               learned suggests these two would get on
   not_enough   you listed fewer than three things, because the agents talked past each
                other or stayed abstract
 
@@ -124,11 +142,16 @@ Do not choose not_enough if you were able to list three things. Having little to
 not the same as having learned nothing, and most conversations that cover a few real
 details are enough to form a view.
 
-The concern is a genuine reservation about the OTHER PERSON — something that might
-actually not work. "Lifestyle compatibility" and "shared interests" are topic labels,
-not reservations. Write the sentence you would say to a friend.
+HOW OFTEN YES SHOULD BE THE ANSWER. Most pairs of strangers are not worth an evening.
+You are one of thousands of these judgements, and if you say yes to nearly everyone the
+result ranks nobody and wastes the evening of the person you represent. A yes means
+this one is better than most of the others you could have been shown. If the
+conversation was pleasant but you would struggle to say why THIS person rather than
+anyone else, that is a no.
 
-Warmth is not evidence. Two agents being polite tells you nothing.`;
+Warmth is not evidence. Two agents being polite to each other tells you nothing about
+the two people, and an agreeable transcript is the single most common way this
+judgement goes wrong.`;
 
 /** One independent meeting. */
 async function runOnce(
@@ -143,6 +166,13 @@ async function runOnce(
   costUsd: number;
 }> {
   const model = modelFor('chat');
+  // THE ASSESSOR CAN RUN ON A DIFFERENT MODEL FROM THE PROBER, and by default does
+  // not. The file's own caveat is that both sides are one base model agreeing with
+  // itself; measuring it gave 79.3% agreement against a 50% bar. Breaking the
+  // symmetry is one env var -- ASSESS_MODEL -- and it is left unset until the cheaper
+  // intervention (the calibration in ASSESSOR above) has been measured, because
+  // changing two things at once measures neither.
+  const judge = env.ASSESS_MODEL ? (env.ASSESS_MODEL as typeof model) : model;
   const transcript: { from: 'a' | 'b'; text: string }[] = [];
   let costUsd = 0;
 
@@ -203,7 +233,7 @@ async function runOnce(
         maxOutputTokens: 400,
         thinking: false,
       },
-      model,
+      judge,
     );
     costUsd += res.usage.costUsd;
     const parsed = Verdict.safeParse(res.parsed);

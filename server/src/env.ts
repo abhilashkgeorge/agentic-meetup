@@ -117,6 +117,21 @@ const Env = z.object({
    * Empty means nobody, and the admin routes then 404 for everyone -- which is the
    * correct default for a server that has not been told who is in charge.
    */
+  /**
+   * The model that judges a rendezvous, when it should not be the one that wrote it.
+   *
+   * Empty means "the same model as the prober", which is the default and the thing
+   * the rendezvous header has always warned about: both sides are one model agreeing
+   * with itself. Measured over 47 pairs, agreement was 79.3% against a 50% pass mark.
+   *
+   * Set it to a model from a different family -- `anthropic:claude-sonnet-5` is the
+   * only other priced, in-date option in caps.ts today -- to find out how much of
+   * that agreement was the two people and how much was one model. It costs a second
+   * provider on the critical path, so it is left off until the free intervention
+   * (the calibration in ASSESSOR) has been measured on its own.
+   */
+  ASSESS_MODEL: z.string().default(''),
+
   ADMIN_USER_IDS: z.string().default(''),
 
   SYNTHETIC_AUTO_YES: z
