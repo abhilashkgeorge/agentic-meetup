@@ -18,6 +18,7 @@ import {
 } from '../../lib/api';
 import { usePhoto } from '../photos/photo';
 import { useSession } from '../../store/session';
+import { setupRoute } from './fields';
 import {
   Avatar, Button, Card, Chip, ChipGroup, Crease, PhotoSlot, Row, Screen, ScreenTitle,
   Skeleton, SkeletonCard, Stats, space, type, usePalette,
@@ -62,7 +63,7 @@ export default function ProfileScreen() {
   const token = useSession((s) => s.token);
   const [k, setK] = useState<Knowledge | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [pool, setPool] = useState<{ total: number; inPool: boolean } | null>(null);
+  const [pool, setPool] = useState<{ total: number; inPool: boolean; missing: string[] } | null>(null);
   const [pics, setPics] = useState<{ me: string | null; photos: Photo[] }>({ me: null, photos: [] });
   const [loading, setLoading] = useState(true);
 
@@ -74,7 +75,9 @@ export default function ProfileScreen() {
     setPics({ me: ph?.me ?? null, photos: ph?.photos ?? [] });
     setK(kk);
     setProfile(pr);
-    setPool(po ? { total: po.total, inPool: po.inPool } : null);
+    // `missing` is kept because the Finish setup button routes on it: when the
+    // missing thing is consent, the essentials flow is the wrong destination.
+    setPool(po ? { total: po.total, inPool: po.inPool, missing: po.missing } : null);
     setLoading(false);
   }, [token]);
 
@@ -193,10 +196,12 @@ export default function ProfileScreen() {
         {pool && !pool.inPool && (
           <Card label="Not out there yet">
             <Text style={[type.body, { color: p.text }]}>
-              Your agent still needs a few answers before it can talk to anyone.
+              {pool.missing.includes('consent')
+                ? 'Your agent still needs your consent before it can talk to anyone.'
+                : 'Your agent still needs a few answers before it can talk to anyone.'}
             </Text>
             <Button label="Finish setup" variant="primary"
-                    onPress={() => router.push('/onboarding/essentials')} />
+                    onPress={() => router.push(setupRoute(pool.missing))} />
           </Card>
         )}
       </View>

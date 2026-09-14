@@ -142,16 +142,25 @@ Do not choose not_enough if you were able to list three things. Having little to
 not the same as having learned nothing, and most conversations that cover a few real
 details are enough to form a view.
 
-HOW OFTEN YES SHOULD BE THE ANSWER. Most pairs of strangers are not worth an evening.
-You are one of thousands of these judgements, and if you say yes to nearly everyone the
-result ranks nobody and wastes the evening of the person you represent. A yes means
-this one is better than most of the others you could have been shown. If the
-conversation was pleasant but you would struggle to say why THIS person rather than
-anyone else, that is a no.
+WHAT MAKES IT A YES. Something specific about THIS person that would suit the person
+you represent: a compatible intent, a way of spending time that fits, something they
+said that would still matter over dinner. Name it to yourself before you answer.
+
+WHAT MAKES IT A NO. The best you can say is that the conversation went smoothly — or
+the concern you wrote above is the kind of thing that would still be a problem in
+three months.
 
 Warmth is not evidence. Two agents being polite to each other tells you nothing about
-the two people, and an agreeable transcript is the single most common way this
-judgement goes wrong.`;
+the two people, and an agreeable transcript is the most common way this judgement goes
+wrong.
+
+JUDGE THIS PAIR ON ITS OWN TERMS. You are shown one conversation and you cannot see
+the alternatives, so do not try to rank this person against people you have not met.
+An earlier version of these instructions asked exactly that -- whether this pair was
+better than most others -- and the honest answer from a single transcript is "I cannot
+tell", which came back as a no every single time. Four pairs of invented people and
+four pairs of the hand-written cohort all scored zero. A question the evidence cannot
+answer is not a high standard; it is a broken one.`;
 
 /** One independent meeting. */
 async function runOnce(

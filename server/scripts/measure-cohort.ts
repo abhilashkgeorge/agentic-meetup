@@ -81,7 +81,21 @@ const side = (r: Row) => ({
 console.log(`cohort "${COHORT}": ${pairs.length} pairs, RUNS=${RUNS}, ceiling $${CEILING.toFixed(2)}`);
 console.log(`assessor model: ${env.ASSESS_MODEL || '(same as prober)'}\n`);
 
-const results: { a: string; b: string; bothYes: number; runs: number; costUsd: number }[] = [];
+interface Measured {
+  a: string; b: string; bothYes: number; runs: number; costUsd: number;
+  /**
+   * WHY they said what they said, carried through verbatim.
+   *
+   * The first run of this script recorded only the counts, and when the rich cohort
+   * came back 0-of-4 four times running there was nothing to look at -- the single
+   * most interesting result in the project, and the reasons had been thrown away. The
+   * verdict is the measurement; the concern is the explanation, and an explanation
+   * you have to pay again to obtain is one you will not obtain.
+   */
+  verdicts: { run: number; a: string; b: string; aConcern: string; bConcern: string }[];
+}
+
+const results: Measured[] = [];
 let spent = 0;
 
 for (const [i, [a, b]] of pairs.entries()) {
@@ -95,6 +109,10 @@ for (const [i, [a, b]] of pairs.entries()) {
     results.push({
       a: a.display_name, b: b.display_name,
       bothYes: out.bothYes, runs: out.counted, costUsd: out.costUsd,
+      verdicts: out.results.map((r) => ({
+        run: r.runNo, a: r.aVerdict, b: r.bVerdict,
+        aConcern: r.aConcern, bConcern: r.bConcern,
+      })),
     });
     const bar = out.counted ? '#'.repeat(out.bothYes) + '.'.repeat(out.counted - out.bothYes) : '-';
     const passes = out.counted >= quorum(RUNS) && out.bothYes / out.counted > 0.5;
@@ -102,6 +120,10 @@ for (const [i, [a, b]] of pairs.entries()) {
       `${String(i + 1).padStart(3)} ${bar.padEnd(RUNS + 1)} ${out.bothYes}/${out.counted}`
       + `  ${passes ? 'PASS' : '    '}  $${spent.toFixed(4)}  ${a.display_name} × ${b.display_name}`,
     );
+    // One reservation per pair, on screen. A column of zeroes with no reasons beside
+    // it is a result nobody can act on.
+    const last = out.results[out.results.length - 1];
+    if (last) console.log(`      ${a.display_name}: ${last.aConcern}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.log(`${String(i + 1).padStart(3)} ERROR ${message}`);

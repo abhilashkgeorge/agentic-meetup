@@ -11,6 +11,7 @@ import { FlatList, Text, View } from 'react-native';
 import { useChat } from '../../features/chat/use-chat';
 import { useSession } from '../../store/session';
 import { getConfig, type Config } from '../../lib/api';
+import { setupRoute } from '../profile/fields';
 import {
   Bubble, Button, Card, Chip, ChipGroup, Crease, Disclosure, Field, Screen,
   Skeleton, space, type, usePalette,
@@ -165,7 +166,7 @@ export default function ChatScreen() {
                       <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {m}</Text>
                     ))}
                     <Button label="Finish setup" variant="primary"
-                            onPress={() => router.push('/onboarding/essentials')} />
+                            onPress={() => router.push(setupRoute(pool.missing))} />
                   </>
                 )}
               </Card>

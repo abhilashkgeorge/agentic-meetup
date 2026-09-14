@@ -70,3 +70,20 @@ export const FIELD_BY_KEY = new Map(FIELDS.map((f) => [f.key, f]));
 
 /** The six that gate the pool, in the order setup asks them. */
 export const ESSENTIAL_FIELDS = FIELDS.filter((f) => f.essential);
+
+/**
+ * Where "Finish setup" should actually go.
+ *
+ * THE BUG THIS FIXES, found on a real phone. The card lists what is missing -- and
+ * when the missing thing was consent it said "It still needs your consent" directly
+ * above a button that opened the birth-year question. The button did not lead to the
+ * thing the sentence named, which is the specific way a setup flow teaches somebody
+ * that it is lying to them.
+ *
+ * Consent first, because it is the one the server will not let you past and the one
+ * that is three taps rather than six questions.
+ */
+export function setupRoute(missing: readonly string[]) {
+  if (missing.includes('consent')) return '/consent' as const;
+  return '/onboarding/essentials' as const;
+}
