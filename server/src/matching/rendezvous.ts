@@ -449,11 +449,31 @@ export async function meet(
 }
 
 /**
+ * How many runs must actually have happened before a verdict means anything.
+ *
+ * THE BUG THIS FIXES, caught in a fifty-pair measurement where EVERY pair came back
+ * short. The free tier drops connections, a run that fails twice is correctly not
+ * counted as a no -- a broken call is an absence of evidence -- and `counted` is
+ * therefore often 2 or 3 where 5 were planned. Nothing then checked how many had
+ * survived, so a pair that completed two runs and agreed twice scored 2/2 and passed.
+ *
+ * That is precisely the measurement this file's own header rejects: "one -- a single
+ * yes can be politeness, and LLMs are agreeable by construction". Five runs were
+ * chosen so that 4-of-5 against 1-of-5 means something. A 1-of-1 is the thing the
+ * design was built to avoid, and network weather was quietly producing it.
+ *
+ * Three-fifths of what was planned, rounded up: 3 of 5, 2 of 3, 2 of 2. Below that
+ * there is no verdict -- not a no, which would punish a pair for our connection, but
+ * no result at all. The pair simply did not get measured.
+ */
+export const quorum = (planned: number): number => Math.max(1, Math.ceil(planned * 0.6));
+
+/**
  * Does this pair clear the bar?
  *
- * A majority, not a single yes. Two agents agreeing once is the base rate for polite
- * language models; agreeing in most independent runs is at least a repeatable
- * observation about these two dossiers.
+ * A majority of a quorum. The majority is what makes it a repeatable observation
+ * rather than one polite exchange; the quorum is what stops a dropped connection
+ * turning five planned runs into a one-run coin toss that rounds up to certainty.
  */
-export const passes = (bothYes: number, runs: number): boolean =>
-  runs > 0 && bothYes / runs > 0.5;
+export const passes = (bothYes: number, counted: number, planned = RUNS): boolean =>
+  counted >= quorum(planned) && bothYes / counted > 0.5;

@@ -54,7 +54,7 @@ vi.mock('../src/llm/index.js', () => ({
 const { pool, tenantSession, matchmakerSession, closeMatchPool } =
   await import('../src/db/client.js');
 const { env } = await import('../src/env.js');
-const { meet, passes } = await import('../src/matching/rendezvous.js');
+const { meet, passes, quorum } = await import('../src/matching/rendezvous.js');
 
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
 let a = { userId: '', tenantId: '', dossier: 'A', voice: '' };
@@ -144,7 +144,7 @@ describe('counting', () => {
     const r = await matchmakerSession((c) => meet(c, id, { ...p, dossier: 'A', voice: '' }, { ...q, dossier: 'B', voice: '' }, 3));
     expect(r.runs).toBe(3);
     expect(r.bothYes).toBe(3);
-    expect(passes(r.bothYes, r.runs)).toBe(true);
+    expect(passes(r.bothYes, r.runs, r.runs)).toBe(true);
   });
 
   it('an inconclusive run counts as neither a yes nor a no', async () => {
@@ -158,7 +158,7 @@ describe('counting', () => {
     expect(r.runs).toBe(0);
     expect(r.bothYes).toBe(0);
     // Zero out of zero is not a match. It is an absence of evidence.
-    expect(passes(r.bothYes, r.runs)).toBe(false);
+    expect(passes(r.bothYes, r.runs, r.runs)).toBe(false);
   });
 
   it('one side saying no is not a match, however keen the other was', async () => {
@@ -175,11 +175,29 @@ describe('counting', () => {
 
   it('needs a majority, so a single agreeable run is not a match', async () => {
     // Language models are agreeable by construction. One yes is the base rate.
-    expect(passes(1, 5)).toBe(false);
-    expect(passes(2, 5)).toBe(false);
-    expect(passes(3, 5)).toBe(true);
-    expect(passes(1, 1)).toBe(true);
-    expect(passes(0, 0)).toBe(false);
+    expect(passes(1, 5, 5)).toBe(false);
+    expect(passes(2, 5, 5)).toBe(false);
+    expect(passes(3, 5, 5)).toBe(true);
+    expect(passes(0, 0, 5)).toBe(false);
+
+    // A QUORUM, and this line used to assert the opposite. `passes(1, 1)` returned
+    // true: one run, both sides agreed, pair passed. Dropped connections made that
+    // the common case rather than the edge case -- in a fifty-pair measurement every
+    // single pair completed fewer runs than were planned, several only two.
+    //
+    // A single agreement is the base rate for two polite language models. It is the
+    // exact thing five runs exist to rule out, and it was passing.
+    expect(passes(1, 1, 5)).toBe(false);
+    expect(passes(2, 2, 5)).toBe(false);
+    // Three of five planned is enough to have a verdict; two of three of them is a
+    // majority of it.
+    expect(passes(2, 3, 5)).toBe(true);
+    expect(passes(1, 3, 5)).toBe(false);
+    // A short run is not a NO. It is no measurement at all, and the pair is free to
+    // be measured again -- unlike a pair that genuinely disagreed.
+    expect(quorum(5)).toBe(3);
+    expect(quorum(2)).toBe(2);
+    expect(quorum(1)).toBe(1);
   });
 });
 

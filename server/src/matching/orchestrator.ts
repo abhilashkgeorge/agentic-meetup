@@ -151,7 +151,7 @@ export async function runRound(userId: string): Promise<RoundResult> {
   const spender = { tenantId: plan.a.tenantId, userId: plan.a.userId };
   const { runs, ok, briefs, concerns } = await metered(spender, 'rendezvous', async () => {
     const runs = await converse(plan.a, plan.b);
-    const ok = passes(runs.bothYes, runs.counted);
+    const ok = passes(runs.bothYes, runs.counted, RUNS);
 
     // The concern each agent recorded about the OTHER person, carried through
     // verbatim rather than rewritten. The last one, because it was formed with the
