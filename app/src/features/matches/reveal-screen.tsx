@@ -78,6 +78,17 @@ export default function RevealScreen() {
     // Both said yes. The conversation exists NOW -- the person is taken to it rather
     // than told about it, because a match nobody opens is the failure mode of every
     // dating app there has ever been.
+    if (them?.practice) {
+      return (
+        <Screen center footer={<Button label="Back to matches" onPress={() => router.back()} />}>
+          <Text style={[type.display, { color: p.text, textAlign: 'center' }]}>Noted</Text>
+          <Text style={[type.body, { color: p.textSecondary, textAlign: 'center' }]}>
+            That was a practice profile, so there is no conversation to open. Your agent
+            keeps going out — when real people join, these become real.
+          </Text>
+        </Screen>
+      );
+    }
     if (introduced) {
       return (
         <Screen
@@ -129,13 +140,16 @@ export default function RevealScreen() {
       footer={
         <>
           <ButtonRow>
-            <Button label="Yes" variant="primary" disabled={busy}
+            <Button label={them?.practice ? 'I would say yes' : 'Yes'} variant="primary"
+                    disabled={busy}
                     onPress={() => void answer(true)} style={{ flex: 1 }} />
             <Button label="Not for me" disabled={busy}
                     onPress={() => void answer(false)} style={{ flex: 1 }} />
           </ButtonRow>
           <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
-            Either way, they are never told what you chose.
+            {them?.practice
+              ? 'Nothing happens either way. This one is practice.'
+              : 'Either way, they are never told what you chose.'}
           </Text>
         </>
       }
@@ -143,6 +157,21 @@ export default function RevealScreen() {
       <Header onBack={() => router.back()} />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
+        {/* THE FIRST THING ON THE SCREEN, above the face. A person deciding whether to
+            meet somebody is owed the fact that there is no somebody, at the moment
+            they decide and not after. */}
+        {them?.practice && (
+          <Surface depth="sunken" radius={radius.lg} style={{ padding: space.md, gap: space.xs }}>
+            <Text style={[type.label, { color: p.textSecondary }]}>PRACTICE PROFILE</Text>
+            <Text style={[type.body, { color: p.text }]}>
+              This is not a real person. The pool is invented until enough people have
+              joined, so your agent has somebody to go and meet.
+            </Text>
+            <Text style={[type.callout, { color: p.textTertiary }]}>
+              Saying yes will not start a conversation — there is nobody to answer.
+            </Text>
+          </Surface>
+        )}
         {/* Photos live HERE and nowhere else. The agent never saw them, never matched
             on them, and the app stores no preference about how anybody looks. This is
             the one moment a face is part of the decision, and the decision is the

@@ -12,6 +12,7 @@
  * coordinates rounded to the precision the person actually gave.
  */
 import type { PoolClient } from 'pg';
+import { MIN_AGE } from '@clone/shared';
 
 export interface RebuildResult {
   matchable: number;
@@ -113,7 +114,16 @@ export async function rebuildMatchProfile(
 
   // An agent that cannot answer the five questions every candidate query asks would
   // be matched with everybody or nobody. It waits outside the pool until it can.
-  const inPool = missing.length === 0;
+  //
+  // The age term is not one of the five and is not negotiable. `commit` already
+  // refuses to store a birth year below the limit, so reaching this with one means
+  // something upstream changed -- a relaxed schema, a direct write, a restored dump.
+  // The pool is the last gate before a person is shown to strangers, so it repeats
+  // the check instead of trusting that the earlier one ran. An unknown age is treated
+  // as failing, not as missing: `age === null` already fails the REQUIRED list above,
+  // and this makes that explicit rather than incidental.
+  const adult = age !== null && age >= MIN_AGE;
+  const inPool = missing.length === 0 && adult;
 
   await c.query(
     `INSERT INTO match_profile (

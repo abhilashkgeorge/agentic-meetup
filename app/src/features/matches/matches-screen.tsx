@@ -158,6 +158,16 @@ export default function MatchesScreen() {
               </Text>
               <Text style={[type.title, { color: p.text }]}>{m.headline}</Text>
 
+              {/* Said on the card, not buried in a settings screen. Before there are
+                  users the pool is invented, and a match that does not say so is a
+                  match that lies by leaving it out. */}
+              {m.practice && (
+                <Text style={[type.callout, { color: p.textSecondary }]}>
+                  Practice match — this one is not a real person. Your agent still went
+                  out and this is really what it made of them.
+                </Text>
+              )}
+
               {/* Real quotes, with real dates, from both memories. The one thing here
                   that is verifiably true rather than predicted. */}
               {m.overlaps.slice(0, 3).map((o, i) => (
@@ -178,7 +188,8 @@ export default function MatchesScreen() {
 
               {m.waitingOnYou ? (
                 <>
-                  <Button label="Show me who it is" variant="primary"
+                  <Button label={m.practice ? 'See the practice profile' : 'Show me who it is'}
+                          variant="primary"
                           onPress={() => router.push(`/match/${m.id}`)} />
                   {/* No is silent. Nobody is ever told they were passed on, so nobody
                       can compare notes about who said no to whom. */}

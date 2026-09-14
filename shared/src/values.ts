@@ -40,6 +40,53 @@ export const DIETS = ['omnivore', 'no_beef', 'no_pork', 'pescatarian', 'vegetari
 export const EDUCATION = ['school', 'some_college', 'bachelors', 'masters', 'doctorate'] as const;
 export const BODY_TYPES = ['slim', 'average', 'athletic', 'curvy', 'large'] as const;
 
+/**
+ * The one number in this file that is not a preference.
+ *
+ * Everything else here describes what somebody wants. This describes who may be in
+ * the product at all. A dating pool that cannot answer "is this person an adult" has
+ * no answer to give when it matters, and the photos it serves are served to adults.
+ *
+ * It is here, in shared, because the app and the server must agree on it exactly --
+ * an app that allows what the server rejects is a dead end with a nice animation on
+ * it, and an app that rejects what the server allows is a bug nobody can reproduce.
+ */
+export const MIN_AGE = 18;
+
+const NOW_YEAR = new Date().getUTCFullYear();
+
+/**
+ * Age from a birth year alone.
+ *
+ * Deliberately the same arithmetic the match profile uses: year minus year, no month.
+ * It is off by up to a year for anybody who has not had their birthday yet, which
+ * rounds in the person's favour for the upper bound and AGAINST them for the lower --
+ * a 17-year-old born in January reads as 18 here on the 1st of January. That is the
+ * wrong direction for a safety check, so `isAdult` requires the year gap to clear the
+ * limit outright rather than merely reach it when a month is unknown.
+ */
+export const ageFromYear = (year: number, now: Date = new Date()): number =>
+  now.getUTCFullYear() - year;
+
+/**
+ * Whether a birth year is old enough, resolving the unknown month conservatively.
+ *
+ * With a month, the answer is exact. Without one, somebody exactly on the boundary is
+ * treated as not yet there: refusing an 18-year-old for a few months is a recoverable
+ * annoyance, and admitting a 17-year-old is not.
+ */
+export function isAdult(
+  value: { year: number; month?: number | null } | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!value || !Number.isInteger(value.year)) return false;
+  const gap = now.getUTCFullYear() - value.year;
+  if (gap > MIN_AGE) return true;
+  if (gap < MIN_AGE) return false;
+  // Exactly at the limit: admit only if the birthday has demonstrably passed.
+  return typeof value.month === 'number' && value.month <= now.getUTCMonth() + 1;
+}
+
 const Enum = <T extends readonly [string, ...string[]]>(vals: T) => z.enum(vals);
 
 /** The shape stored in facts.object_value, by predicate. */
@@ -62,7 +109,11 @@ export const VALUE_SHAPES = {
   height_cm: z.number().int().min(120).max(230),
   max_distance_km: z.number().int().min(1).max(20_000),
   age_range_sought: z.object({ min: z.number().int().min(18), max: z.number().int().max(120) }),
-  birth_date: z.object({ year: z.number().int(), month: z.number().int().min(1).max(12).nullable() }),
+  birth_date: z.object({
+    // Bounded, and the lower bound is the product's only hard legal line. See MIN_AGE.
+    year: z.number().int().min(1900).max(NOW_YEAR),
+    month: z.number().int().min(1).max(12).nullable(),
+  }),
   lives_in: z.object({
     city: z.string(),
     lat: z.number().min(-90).max(90),

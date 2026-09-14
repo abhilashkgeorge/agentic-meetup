@@ -94,6 +94,23 @@ const Env = z.object({
    * account. Turn this off once every device has upgraded -- it is a hole with a
    * scheduled end, and a hole without one is just a hole.
    */
+  /**
+   * Whether an invented profile answers `yes` on behalf of its non-existent human.
+   *
+   * OFF BY DEFAULT, and that is the fix for a real bug. With it on, a real person who
+   * said yes to a practice profile was introduced to it and dropped into a chat that
+   * nobody would ever answer. Off, the pair stops at the brief: the agent still went
+   * out, the person still saw what a match looks like, and no empty conversation is
+   * created.
+   *
+   * It stays available because the messaging layer is otherwise untestable by hand --
+   * turning it on is how the founder walks the whole flow on a real phone.
+   */
+  SYNTHETIC_AUTO_YES: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
   ALLOW_LEGACY_TOKENS: z
     .enum(['true', 'false'])
     .default('true')
@@ -124,6 +141,13 @@ export const env = Env.parse(process.env);
 if (env.NODE_ENV === 'production' && env.ALLOW_DEVICE_SIGNUP) {
   throw new Error(
     'ALLOW_DEVICE_SIGNUP must be false in production. Accounts come from invite codes.',
+  );
+}
+
+if (env.NODE_ENV === 'production' && env.SYNTHETIC_AUTO_YES) {
+  throw new Error(
+    'SYNTHETIC_AUTO_YES must be false in production: it introduces real people to '
+    + 'conversations with invented ones, which nobody will ever answer.',
   );
 }
 

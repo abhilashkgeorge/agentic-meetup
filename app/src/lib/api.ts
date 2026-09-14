@@ -267,6 +267,15 @@ export interface MatchCard {
   waitingOnYou: boolean;
   /** You said yes and they have not looked yet. Never a hint about what they will say. */
   waitingOnThem?: boolean;
+  /**
+   * The other side is an invented profile, not a person.
+   *
+   * The pool is synthetic until there are users. The agents really did meet and the
+   * brief is really what they made of each other -- but there is nobody on the far
+   * side to answer, and the screen has to say so before anybody spends a feeling on
+   * it.
+   */
+  practice?: boolean;
 }
 
 export const getMatches = (token: string) => get<{ matches: MatchCard[] }>('/v1/matches', token);
@@ -375,6 +384,8 @@ export interface Reveal {
   age?: number | null;
   tags?: string[];
   livesIn?: string | null;
+  /** An invented profile. See MatchCard.practice. */
+  practice?: boolean;
 }
 
 export const getReveal = (token: string, id: string) =>

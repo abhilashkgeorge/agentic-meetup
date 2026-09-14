@@ -7,7 +7,7 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { deriveValue, findPlace } from '@clone/shared';
+import { MIN_AGE, deriveValue, findPlace, isAdult } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { commit } from '../memory/facts.js';
@@ -47,6 +47,19 @@ export const datingRoutes = new Hono()
     const body = Essential.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'bad request' }, 400);
     const { predicate, value } = body.data;
+
+    // Refused here as well as in `commit`, and the duplication is the point: the store
+    // must refuse it whatever calls it, and a person typing their year into setup
+    // deserves a sentence rather than a silently dropped fact.
+    if (predicate === 'birth_date' && value !== null && value !== '') {
+      const year = Number(Array.isArray(value) ? value[0] : value);
+      if (!isAdult({ year, month: null })) {
+        return c.json({
+          error: 'under_age',
+          message: `You need to be ${MIN_AGE} or older to use this.`,
+        }, 400);
+      }
+    }
 
     const out = await tenantSession(ctx, async (db) => {
       if (value === null || value === '') {
@@ -208,10 +221,14 @@ export const datingRoutes = new Hono()
       const { rows } = await db.query<{
         id: string; headline: string; overlap_quotes: unknown; concern: string;
         questions: unknown; human_says_yes: boolean | null; first_mover: string | null;
-        status: string; other_decided: boolean | null;
+        status: string; other_decided: boolean | null; other_is_synthetic: boolean | null;
       }>(
         `SELECT r.id, b.headline, b.overlap_quotes, b.concern, b.questions,
                 b.human_says_yes, r.first_mover, r.status,
+                -- Same shape and same reason as other_decided below: the caller's own
+                -- session cannot read the other person's match_profile, and a card
+                -- that does not say "practice" is a card that lies by omission.
+                rendezvous_other_is_synthetic(r.id, $1) AS other_is_synthetic,
                 -- Through a function, because the policy on rendezvous_briefs hides
                 -- the other person's row -- correctly: their agent's assessment of
                 -- this person is not this person's to read. The function returns one
@@ -247,6 +264,8 @@ export const datingRoutes = new Hono()
             // Never a hint about what they will say -- only that they have not looked.
             // A no is silent, so this state is also what a no looks like, for ever.
             waitingOnThem: r.human_says_yes === true || !myTurn,
+            // Said plainly, on the card, before the person spends any feeling on it.
+            practice: r.other_is_synthetic === true,
           };
         }),
     });
@@ -270,9 +289,11 @@ export const datingRoutes = new Hono()
     const seat = await tenantSession(ctx, async (db) => {
       const { rows } = await db.query<{
         first_mover: string | null; status: string; other_said_yes: boolean | null;
+        other_is_synthetic: boolean | null;
       }>(
         `SELECT r.first_mover, r.status,
-                rendezvous_other_said_yes(r.id, $2) AS other_said_yes
+                rendezvous_other_said_yes(r.id, $2) AS other_said_yes,
+                rendezvous_other_is_synthetic(r.id, $2) AS other_is_synthetic
            FROM rendezvous r WHERE r.id = $1`,
         [id, ctx.userId],
       );
@@ -307,6 +328,11 @@ export const datingRoutes = new Hono()
 
     return c.json({
       waiting: false,
+      // An invented profile, said so on the screen where the person decides. Nothing
+      // about the brief changes -- the agents really did meet and this really is what
+      // they made of each other. What changes is that there is no human on the far
+      // side, and the person is told before they answer rather than after.
+      practice: seat.other_is_synthetic === true,
       // Needed to fetch their pictures: the photo route is keyed on the owner as well
       // as the photo, so that holding an id is never by itself permission to see one.
       userId: other.user_id,

@@ -14,7 +14,8 @@
  */
 import type { PoolClient } from 'pg';
 import {
-  SINGLE_VALUED, defaultDisclosure, deriveValue, type OriginClass, type Stance,
+  MIN_AGE, SINGLE_VALUED, defaultDisclosure, deriveValue, isAdult,
+  type OriginClass, type Stance,
 } from '@clone/shared';
 
 export interface FactCandidate {
@@ -94,6 +95,27 @@ export async function commit(
     return { factId: null, outcome: 'rejected', reason: `unknown predicate '${cand.predicate}'` };
   }
   const isSingle = meta.rows[0]!.cardinality === 'single';
+
+  // THE AGE GATE, and it lives here because here is the only place every write path
+  // passes through. Typing a year into setup, editing it on the profile, an import,
+  // and the extractor reading it out of a sentence all end at this function -- so a
+  // check at any one of them is a check somebody can walk around.
+  //
+  // It refuses the fact rather than clamping or ignoring it. A stored birth year that
+  // the pool then declines to use would leave a minor with an account, a profile and
+  // photos, which is most of the harm with none of the record.
+  if (cand.predicate === 'birth_date') {
+    const value = (cand.objectValue ?? null) as { year?: number; month?: number | null } | null;
+    const year = typeof value?.year === 'number' ? value.year : Number(cand.objectText);
+    const parsed = Number.isInteger(year) ? { year, month: value?.month ?? null } : null;
+    if (!isAdult(parsed)) {
+      return {
+        factId: null,
+        outcome: 'rejected',
+        reason: `birth_date below the minimum age of ${MIN_AGE}`,
+      };
+    }
+  }
 
   // G4: stance. Hedged, hypothetical, reported and negated statements are recorded
   // but never asserted. "I might quit my job" is not a job change.

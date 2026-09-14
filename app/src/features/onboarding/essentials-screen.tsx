@@ -16,8 +16,7 @@
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
-import {
-} from '@clone/shared';
+import { MIN_AGE, isAdult } from '@clone/shared';
 import { setEssential } from '../../lib/api';
 import { useSession } from '../../store/session';
 import { ESSENTIAL_FIELDS } from '../profile/fields';
@@ -51,6 +50,7 @@ export default function EssentialsScreen() {
   const [at, setAt] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
 
   const q = QUESTIONS[at]!;
   const value = answers[q.key];
@@ -61,11 +61,26 @@ export default function EssentialsScreen() {
 
   const advance = useCallback(async (skipped: boolean) => {
     if (!token) return;
+    setNote(null);
+
+    // THE ONE ANSWER THAT CAN BE REFUSED OUTRIGHT. The server rejects an under-age
+    // birth year in three places and will do so whatever this screen sends; checking
+    // here as well is so the person reads a sentence instead of watching Next do
+    // nothing. `isAdult` is the shared rule, so the two cannot drift apart.
+    if (!skipped && q.key === 'birth_date') {
+      const year = Number(answers[q.key] ?? NaN);
+      if (!isAdult({ year, month: null })) {
+        setNote(`You need to be ${MIN_AGE} or older to use this.`);
+        return;
+      }
+    }
+
     setBusy(true);
     // A refusal is sent too. "Declined" and "never asked" must not look the same, or
     // the clone asks the same question every week for ever.
-    await setEssential(token, q.key, skipped ? null : (answers[q.key] ?? null));
+    const ok = await setEssential(token, q.key, skipped ? null : (answers[q.key] ?? null));
     setBusy(false);
+    if (!ok) { setNote('That did not save. Check your connection and try again.'); return; }
     if (at + 1 < QUESTIONS.length) setAt(at + 1);
     else router.push('/onboarding/voice');
   }, [token, q.key, answers, at]);
@@ -76,7 +91,12 @@ export default function EssentialsScreen() {
         <>
           <Button label={at + 1 === QUESTIONS.length ? 'Done' : 'Next'} variant="primary"
                   onPress={() => void advance(false)} disabled={!answered} loading={busy} />
-          <Button label="Prefer not to say" variant="ghost" onPress={() => void advance(true)} />
+          {/* Every other essential may be declined. This one may not: an agent with
+              no age cannot enter the pool anyway, and "prefer not to say" on the one
+              question with a legal floor is a way around the floor. */}
+          {q.key !== 'birth_date' && (
+            <Button label="Prefer not to say" variant="ghost" onPress={() => void advance(true)} />
+          )}
         </>
       }
     >
@@ -125,6 +145,15 @@ export default function EssentialsScreen() {
           />
         )}
       </Card>
+
+      {note && <Text style={[type.callout, { color: p.danger }]}>{note}</Text>}
+
+      {q.key === 'birth_date' && (
+        <Text style={[type.callout, { color: p.textTertiary }]}>
+          You must be {MIN_AGE} or older. Your birthday is never shown to anybody — only
+          your age, and only once you have both said yes.
+        </Text>
+      )}
 
       <Text style={[type.callout, { color: p.textTertiary }]}>
         Your agent cannot go out without these. It is not a form — nothing here is shown

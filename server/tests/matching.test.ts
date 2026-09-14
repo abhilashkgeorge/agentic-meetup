@@ -44,10 +44,35 @@ const fact = (ctx: { tenantId: string; userId: string }, predicate: string, obje
   );
 
 /** Everything the five filters need, so somebody is actually in the pool. */
+/**
+ * Keep a test fixture away from the invented pool.
+ *
+ * Written before the facts, so the row exists by the time `rebuildMatchProfile`
+ * upserts over it -- the upsert does not touch this column, so a value set here
+ * survives it.
+ */
+async function optOutOfSyntheticPool(ctx: { tenantId: string; userId: string }) {
+  await owner.query(
+    `INSERT INTO match_profile (user_id, tenant_id, in_pool, sees_synthetic)
+     VALUES ($1, $2, false, false)
+     ON CONFLICT (user_id) DO UPDATE SET sees_synthetic = false`,
+    [ctx.userId, ctx.tenantId],
+  );
+}
+
 async function baseProfile(
   ctx: { tenantId: string; userId: string },
   o: { gender: string; seeking: string; birthYear: number; intent?: string },
 ) {
+  // These tests are about how REAL people are filtered and ranked against each other.
+  //
+  // `sees_synthetic` now defaults to true, because a real person who finishes setup
+  // before the app has users must otherwise look at an empty screen. That default put
+  // the 5,000 invented profiles into every fixture's candidate set, and one of them
+  // outranked the fixture this file is actually asserting about -- which is the test
+  // doing its job, not a regression. Opting these fixtures out keeps the assertion
+  // about the two people it constructs.
+  await optOutOfSyntheticPool(ctx);
   await fact(ctx, 'gender', o.gender);
   await fact(ctx, 'seeking_gender', o.seeking);
   await fact(ctx, 'relationship_intent', o.intent ?? 'long term');

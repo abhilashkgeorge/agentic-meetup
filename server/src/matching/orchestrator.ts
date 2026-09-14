@@ -31,6 +31,7 @@
  */
 import type { PoolClient } from 'pg';
 import { matchmakerSession } from '../db/client.js';
+import { env } from '../env.js';
 import { log } from '../log.js';
 import { candidateIds } from './candidates.js';
 import { rank } from './score.js';
@@ -165,9 +166,11 @@ export async function runRound(userId: string): Promise<RoundResult> {
       return;
     }
     await saveBriefs(c, plan.rendezvousId, plan.a, plan.b, briefs, concerns);
-    // An invented person cannot open the app and tap yes. Their side is taken as a yes
-    // so a real person can see the whole flow, and it is recorded as what it is.
-    await autoDecideSynthetic(c, plan.rendezvousId);
+    // An invented person cannot open the app and tap yes -- and taking it as a yes
+    // anyway is how a real person ended up introduced to nobody, in a conversation
+    // that would never be answered. Off by default; on only when the founder is
+    // walking the messaging flow by hand. See SYNTHETIC_AUTO_YES.
+    if (env.SYNTHETIC_AUTO_YES) await autoDecideSynthetic(c, plan.rendezvousId);
   });
 
   const costUsd = runs.costUsd + briefs.costUsd;
