@@ -34,14 +34,23 @@ import { log } from '../log.js';
 export const USER_TABLES = [
   'photos', 'question_answers', 'match_profile', 'preferences', 'predicate_status',
   'self_tests', 'device_sessions',
-  // Consent goes too. A record of somebody agreeing to terms is still a record ABOUT
-  // that person, and keeping it after they asked to be forgotten in order to prove
-  // they once agreed to be remembered is the wrong way round. The coverage test
-  // caught this within a minute of the table existing, which is what it is for.
-  'consents',
   'facts', 'episodes', 'memory_audit', 'fact_conflicts', 'session_extractions',
   'intent_signals', 'core_profile', 'directives', 'llm_calls', 'tenant_budget',
 ] as const;
+
+/**
+ * Tables the APPLICATION may not delete from, and the eraser must.
+ *
+ * `consents` is append-only from `clone_app` by design (0042): a consent record the
+ * relying party can edit or remove is not evidence of anything. That rule and this
+ * erasure are both correct and they collide -- the delete loop above runs on a tenant
+ * session, which is the application, and it was refused the moment the revoke landed.
+ *
+ * So the record goes, and the eraser is what removes it. Consent goes at all because
+ * keeping proof that somebody agreed to be remembered, after they have asked to be
+ * forgotten, is the wrong way round.
+ */
+const ERASER_ONLY = ['consents'] as const;
 
 /**
  * The tables a conversation lives in, which the list above cannot describe.
@@ -78,7 +87,7 @@ const SHARED_TABLES = [
  * references `app_users` and is not here fails the build.
  */
 export const ERASED_TABLES: readonly string[] = [
-  ...USER_TABLES, ...SHARED_TABLES.map((t) => t.table),
+  ...USER_TABLES, ...ERASER_ONLY, ...SHARED_TABLES.map((t) => t.table),
 ];
 
 export interface ErasureResult {
@@ -131,6 +140,11 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
       const r = await c.query(`DELETE FROM ${table} WHERE ${where}`, [ctx.userId]);
       deleted[table] = r.rowCount ?? 0;
     }
+
+    for (const t of ERASER_ONLY) {
+      const r = await c.query(`DELETE FROM ${t} WHERE user_id = $1`, [ctx.userId]);
+      deleted[t] = r.rowCount ?? 0;
+    }
   });
 
   // VERIFY. An erasure that does not prove itself is not an erasure.
@@ -144,7 +158,7 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
   // in the system that security does not apply to.
   const remaining: string[] = [];
   await eraseSession(async (c) => {
-    for (const t of USER_TABLES) {
+    for (const t of [...USER_TABLES, ...ERASER_ONLY]) {
       const { rows } = await c.query<{ n: string }>(
         `SELECT count(*) AS n FROM ${t} WHERE user_id = $1`, [ctx.userId],
       );
