@@ -251,10 +251,25 @@ async function recordIntents(
 export async function dueSessions(limit = 20): Promise<{ ctx: TenantCtx; sessionId: string }[]> {
   const { rows } = await discoverySession((c) =>
     c.query<{ tenant_id: string; user_id: string; session_id: string }>(
+      // A REAL PERSON'S SESSION, and the EXISTS clause is the whole point.
+      //
+      // This query used to consider every session that had ever been written, which
+      // meant every fixture any test had ever left behind. With the meter finally
+      // recording extraction spend, the effect became visible: a development server
+      // sweeping once a minute was paying Gemini to extract other people's test data,
+      // 552 sessions of it, and nobody could see the bill because extraction spend
+      // was not attributed to anything until now. Ten of those 552 sessions belonged
+      // to somebody who has actually opened the app.
+      //
+      // `device_sessions` is the honest boundary: a row there means a person signed
+      // in on a device. A fixture inserts into `app_users` through the owner pool and
+      // never authenticates, so it has none -- and an account whose sessions were all
+      // revoked stops being swept, which is correct.
       `SELECT e.tenant_id, e.user_id, e.session_id
          FROM episodes e
          LEFT JOIN session_extractions x
            ON x.user_id = e.user_id AND x.session_id = e.session_id
+        WHERE EXISTS (SELECT 1 FROM device_sessions d WHERE d.user_id = e.user_id)
         GROUP BY e.tenant_id, e.user_id, e.session_id, x.last_turn_index
        HAVING MAX(e.ingested_at) < now() - ($1::int * interval '1 millisecond')
           AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)
