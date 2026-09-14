@@ -121,6 +121,66 @@ describe('tenant isolation', () => {
     expect((rows[0] as { id: string }).id).toBe(A.userId);
   });
 
+  it('every partition is locked, not just the parent table', async () => {
+    // THE BUG THIS EXISTS FOR. `facts` and `episodes` are hash-partitioned 32 ways.
+    // Migrations 0001 and 0002 enabled RLS and wrote the isolation policy on the
+    // PARENT and stopped there -- and a parent's policies apply only to rows reached
+    // THROUGH the parent. Naming a partition directly reached every tenant's rows:
+    //
+    //     as clone_app, correct context set:
+    //       SELECT count(*) FROM facts     -->   1
+    //       SELECT count(*) FROM facts_p4  --> 115
+    //
+    // Every assertion above this one is about the parent, so none of them saw it.
+    // Fixed in 0035; this is here so it cannot come back the next time somebody adds
+    // a partitioned table or restores from a dump that carries the old grants.
+    const { rows: parts } = await owner.query<{ part: string }>(
+      `SELECT c.relname AS part
+         FROM pg_inherits i
+         JOIN pg_class c ON c.oid = i.inhrelid
+        WHERE i.inhparent IN ('facts'::regclass, 'episodes'::regclass)
+        ORDER BY c.relname`,
+    );
+    expect(parts.length).toBe(64);
+
+    const reachable: string[] = [];
+    for (const { part } of parts) {
+      // A partition must be unreachable by name: either the privilege is gone or the
+      // policy filters it to nothing. Both are acceptable answers; a row is not.
+      try {
+        const { rows } = await pool.query(`SELECT count(*)::int AS n FROM ${part}`);
+        const n = (rows[0] as { n: number }).n;
+        if (n > 0) reachable.push(`${part} returned ${n} rows`);
+      } catch (err) {
+        const message = (err as { message?: string }).message ?? '';
+        if (!/permission denied/i.test(message)) throw err;
+      }
+    }
+
+    expect(
+      reachable,
+      `these partitions leak across tenants when named directly:\n${reachable.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('a partition still carries its own policy, not only a revoked grant', async () => {
+    // Belt and braces, tested separately because they fail independently. If a future
+    // migration restores the grant -- a GRANT ALL, a dump/restore -- the policy has to
+    // be what stops the read. Checked in the catalogue because the grant is currently
+    // gone, so a query cannot tell the two mechanisms apart.
+    const { rows } = await owner.query<{ part: string; rls: boolean; policies: number }>(
+      `SELECT c.relname AS part, c.relrowsecurity AS rls,
+              (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+         FROM pg_inherits i
+         JOIN pg_class c ON c.oid = i.inhrelid
+        WHERE i.inhparent IN ('facts'::regclass, 'episodes'::regclass)`,
+    );
+    const bad = rows
+      .filter((r) => !r.rls || r.policies === 0)
+      .map((r) => `${r.part}: rls=${r.rls} policies=${r.policies}`);
+    expect(bad, `partitions with no second lock:\n${bad.join('\n')}`).toEqual([]);
+  });
+
   it('tenant context does not leak to the next user of a pooled connection', async () => {
     // The exact bug this whole discipline exists to prevent: a plain `SET` would
     // persist for the life of the pooled backend and the next borrower would inherit
