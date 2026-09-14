@@ -1,0 +1,419 @@
+{
+  "runs": 5,
+  "pairs": 47,
+  "passed": 36,
+  "mean": 0.7925531914893615,
+  "histogram": {
+    "0": 3,
+    "1": 7,
+    "2": 10,
+    "3": 13,
+    "4": 14
+  },
+  "spentUsd": 1.010575,
+  "results": [
+    {
+      "userId": "000db2a5-cf59-4a5f-a5c2-9044f5476f5d",
+      "met": "501ed435-1896-4dd9-aac0-f3ffef67291b",
+      "bothYes": 3,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.022299000000000003
+    },
+    {
+      "userId": "00145f0e-fdba-4d80-9b98-2fafc0c2588d",
+      "met": "aed6bee7-621a-4330-a15e-cc00cb158f48",
+      "bothYes": 3,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.022246000000000002
+    },
+    {
+      "userId": "0014e114-0aaf-4a43-bbab-bebbf60bc757",
+      "met": "05205fc3-88a2-4d65-aec6-959cd74b9780",
+      "bothYes": 2,
+      "runs": 2,
+      "passed": true,
+      "costUsd": 0.019902
+    },
+    {
+      "userId": "0021dc16-dd61-467f-aa75-ed270ff58d1a",
+      "met": "2602ee7d-9b5d-45ec-9552-2518c2a6b594",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021713
+    },
+    {
+      "userId": "002eca89-0b15-404b-b784-712f1f28b536",
+      "met": "3759292a-009a-4aaa-9d20-bfd85caab03e",
+      "bothYes": 3,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021112000000000002
+    },
+    {
+      "userId": "00411bd2-7e27-44ef-b27c-58a566d281fa",
+      "met": "1633823e-ad08-473e-8d8b-4071148cad2a",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021839
+    },
+    {
+      "userId": "0048b7a5-1735-4171-86e5-947255289c82",
+      "met": "2f8027d7-46d4-4694-ac27-8b3fbc659de0",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021943999999999998
+    },
+    {
+      "userId": "005dbb24-3644-4f81-ab0b-42b745f714f3",
+      "met": "a256ff8c-8c03-4ad1-a2a5-0ef5cc50268d",
+      "bothYes": 3,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.022674000000000003
+    },
+    {
+      "userId": "007c2afd-ff9b-4e14-a5d0-19d1f0176fb2",
+      "met": "37962c72-28a5-4c56-9ec1-1e1570655f87",
+      "bothYes": 3,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.021088999999999997
+    },
+    {
+      "userId": "008238fb-b95e-41b2-bd91-d223b1eb1f53",
+      "met": "9cd1410a-429b-4643-a351-cef3c5e6bd40",
+      "bothYes": 3,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021086
+    },
+    {
+      "userId": "008f39cc-cd6d-4dd7-a841-06b86431bcbe",
+      "met": "f33bc3d7-b6ad-45b1-ad20-dfcb149432ae",
+      "bothYes": 0,
+      "runs": 4,
+      "passed": false,
+      "costUsd": 0.019849
+    },
+    {
+      "userId": "0090f5c2-19be-4709-8355-0e743f1c6cb5",
+      "met": "2554ed52-a84a-40a2-aab9-780e66880064",
+      "bothYes": 2,
+      "runs": 2,
+      "passed": true,
+      "costUsd": 0.023596000000000002
+    },
+    {
+      "userId": "009c39e1-ef05-47dc-8b47-2ca8351d986c",
+      "met": "aed6bee7-621a-4330-a15e-cc00cb158f48",
+      "bothYes": 2,
+      "runs": 2,
+      "passed": true,
+      "costUsd": 0.020922
+    },
+    {
+      "userId": "00bdff2f-6488-4753-a920-5b0b25157fcd",
+      "met": "3759292a-009a-4aaa-9d20-bfd85caab03e",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.022495000000000005
+    },
+    {
+      "userId": "00c35d7e-5393-41a9-af67-d03de1f46299",
+      "met": "d8e403b6-fd14-408e-b8a9-f99d248ef30b",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.023062
+    },
+    {
+      "userId": "00eb0111-6852-4d2a-aef3-1ce62fbbf565",
+      "met": "32f72f94-f922-477a-a3e6-dd4d9af1cea5",
+      "bothYes": 2,
+      "runs": 2,
+      "passed": true,
+      "costUsd": 0.021912
+    },
+    {
+      "userId": "010588d0-ed7e-42de-b450-11f5960cc7f5",
+      "met": "913aa026-4b9d-45fe-83fd-4145fb8dc4d8",
+      "bothYes": 3,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.020627
+    },
+    {
+      "userId": "010986bc-6cbb-4135-ba52-a8289340552f",
+      "met": "91237c98-ca3d-40c2-b1d8-4e9ec0eef9e2",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021754000000000003
+    },
+    {
+      "userId": "010bf5cd-cb90-421a-8ddd-290751db0af8",
+      "met": "9c9efa17-ef89-47aa-b9b9-b7fc46b86673",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.023514
+    },
+    {
+      "userId": "010f1aa7-c67d-475b-820d-a0f158a1b5a5",
+      "met": "15c66020-64f3-43e5-9ef9-ba6bf7946e7e",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021617
+    },
+    {
+      "userId": "014d8c45-d6fd-48c3-bb63-9722d34e7b68",
+      "met": "9646a3d4-de4e-425f-bb44-8c0577d2fff9",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.023044
+    },
+    {
+      "userId": "01549e3d-4fa6-46c8-9bf1-81e5a69337e5",
+      "met": "1838ac5c-35fe-4d7a-9f1e-3a8eecf5d35c",
+      "bothYes": 1,
+      "runs": 3,
+      "passed": false,
+      "costUsd": 0.018498
+    },
+    {
+      "userId": "0156401d-84c6-48ce-9aee-c161277e0b7c",
+      "met": "2554ed52-a84a-40a2-aab9-780e66880064",
+      "bothYes": 2,
+      "runs": 4,
+      "passed": false,
+      "costUsd": 0.021285999999999996
+    },
+    {
+      "userId": "015cf157-9767-46b4-8d69-91c81b1780f9",
+      "met": "f049701d-0bab-418d-97a9-8fe62bdf2adb",
+      "bothYes": 1,
+      "runs": 3,
+      "passed": false,
+      "costUsd": 0.02105
+    },
+    {
+      "userId": "016d2e6d-a87a-4f3e-8a88-18d15d1b4760",
+      "met": "3d6eb282-3082-4ef6-b012-cbe4fa677a2f",
+      "bothYes": 3,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.020394000000000002
+    },
+    {
+      "userId": "0189cae1-e1ca-4082-916b-d74d19ce815b",
+      "met": "37962c72-28a5-4c56-9ec1-1e1570655f87",
+      "bothYes": 2,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.020836
+    },
+    {
+      "userId": "018e2052-ef06-4f9a-9d22-444531ff8433",
+      "met": "04c9a79f-1f7e-43b6-85b1-fb866e356dd0",
+      "bothYes": 1,
+      "runs": 2,
+      "passed": false,
+      "costUsd": 0.020805
+    },
+    {
+      "userId": "019a8f14-88bd-48e4-889d-879023003130",
+      "met": "4dd853d0-8669-4a82-982c-97f91ada9fcc",
+      "bothYes": 3,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.021974
+    },
+    {
+      "userId": "01a880b5-7838-43c2-abc1-8bfd744c7e1e",
+      "met": "07f1a7d4-eb65-4127-8ba2-b3c0342bda4a",
+      "bothYes": 1,
+      "runs": 2,
+      "passed": false,
+      "costUsd": 0.019754
+    },
+    {
+      "userId": "01b8399b-9bfd-460f-9522-2d6ba896b2b4",
+      "met": "451c8c90-0898-4441-80a1-3001a259c3a3",
+      "bothYes": 3,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.022809000000000003
+    },
+    {
+      "userId": "01c3dcae-c6b0-490e-b387-9dbdd8c3b8b2",
+      "met": "a7b341d6-fc00-4efd-9741-0857ea274695",
+      "bothYes": 1,
+      "runs": 1,
+      "passed": true,
+      "costUsd": 0.021533000000000004
+    },
+    {
+      "userId": "01c5d3ff-2902-4b29-bdcb-d90703db3808",
+      "met": "0ca7c343-da25-4d1a-9da9-e5a3af32af66",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021168000000000003
+    },
+    {
+      "userId": "01dca8d7-1eed-455b-bffb-71e44c67f221",
+      "met": "00ef7874-0c6f-4b29-b6da-77bfffb7cb82",
+      "bothYes": 3,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.024305
+    },
+    {
+      "userId": "01dd7296-635d-4490-8692-1caa9925a232",
+      "met": "6446bdd0-6efd-4310-9333-c3d1a70f1d36",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.022725000000000002
+    },
+    {
+      "userId": "01de5d87-eb66-4317-958e-b5f6df6c6a83",
+      "met": "7f418a57-b9c9-48c6-9fa4-e46e10e66fc6",
+      "bothYes": 0,
+      "runs": 4,
+      "passed": false,
+      "costUsd": 0.021366000000000003
+    },
+    {
+      "userId": "01e75c17-716a-4f86-8ab2-b49143c0ba63",
+      "met": null,
+      "bothYes": 0,
+      "runs": 0,
+      "passed": false,
+      "costUsd": 0,
+      "skipped": "nobody fits what you have asked for"
+    },
+    {
+      "userId": "01f09438-3edb-44cf-a743-40e3206bb24d",
+      "met": null,
+      "bothYes": 0,
+      "runs": 0,
+      "passed": false,
+      "costUsd": 0,
+      "skipped": "nobody fits what you have asked for"
+    },
+    {
+      "userId": "01fe550c-36f6-4893-b1d6-75ec1bb13387",
+      "met": "15c66020-64f3-43e5-9ef9-ba6bf7946e7e",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021285000000000005
+    },
+    {
+      "userId": "0203b456-8faf-4b47-aaf2-86b228f35831",
+      "met": "2c59a3fb-712f-47a0-bfb9-6de8731adbb8",
+      "bothYes": 2,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.023413999999999997
+    },
+    {
+      "userId": "02065c2a-83dc-40eb-82b4-1f91c453cde5",
+      "met": "30536c3a-48a2-4406-8e97-192a11f342c7",
+      "bothYes": 2,
+      "runs": 4,
+      "passed": false,
+      "costUsd": 0.019984
+    },
+    {
+      "userId": "0225b854-4f01-4071-ab89-5a7a8db5360b",
+      "met": "2508cdb8-8bba-46c0-a705-8251c390d58a",
+      "bothYes": 1,
+      "runs": 3,
+      "passed": false,
+      "costUsd": 0.021271
+    },
+    {
+      "userId": "022b453e-31f4-4e81-9281-8963f2b1599e",
+      "met": "57137cec-c16c-4ce7-93a4-6c61630a99b7",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.021914000000000003
+    },
+    {
+      "userId": "023ee419-72bc-4f4a-bf44-31cd90546484",
+      "met": "b205083b-cf38-42ff-8dfe-94d99c7bcdd9",
+      "bothYes": 2,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.021792999999999996
+    },
+    {
+      "userId": "024acc51-a604-4e3b-a81c-997aa657f33c",
+      "met": "37962c72-28a5-4c56-9ec1-1e1570655f87",
+      "bothYes": 3,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.019777
+    },
+    {
+      "userId": "0250a741-4c87-4b3d-8254-af8a62050dd3",
+      "met": "0fb5747a-3e27-479e-b922-62a1165f20a7",
+      "bothYes": 3,
+      "runs": 3,
+      "passed": true,
+      "costUsd": 0.019216
+    },
+    {
+      "userId": "025312db-94e4-4737-a206-6e332cc1135a",
+      "met": "f8fc283e-aa4a-45ca-963f-aebe8d637638",
+      "bothYes": 4,
+      "runs": 4,
+      "passed": true,
+      "costUsd": 0.022489
+    },
+    {
+      "userId": "0256bd5d-4a6e-4a5c-a60c-b1e8aba5d478",
+      "met": "3dd3ea47-e760-4c0f-aca3-52ed3c6b73e3",
+      "bothYes": 1,
+      "runs": 2,
+      "passed": false,
+      "costUsd": 0.020961
+    },
+    {
+      "userId": "0261b5aa-3658-42d9-ad78-9880077ead67",
+      "met": null,
+      "bothYes": 0,
+      "runs": 0,
+      "passed": false,
+      "costUsd": 0,
+      "skipped": "nobody fits what you have asked for"
+    },
+    {
+      "userId": "026445a3-b909-498a-a0d4-f1505d8dc4e4",
+      "met": "c16151c0-6cf5-4ece-98eb-afdc84bebadb",
+      "bothYes": 2,
+      "runs": 2,
+      "passed": true,
+      "costUsd": 0.021824
+    },
+    {
+      "userId": "026611d6-4931-40a5-9076-9dc95e127ec6",
+      "met": "fe9abda1-967d-4863-9884-5638fe601656",
+      "bothYes": 0,
+      "runs": 3,
+      "passed": false,
+      "costUsd": 0.019847999999999998
+    }
+  ]
+}
