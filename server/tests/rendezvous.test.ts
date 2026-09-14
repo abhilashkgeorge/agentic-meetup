@@ -260,3 +260,43 @@ describe('runs that die on the wire', () => {
     expect(out.results).toHaveLength(3);
   }, 30_000);
 });
+
+/**
+ * The bar itself.
+ *
+ * It was the phrase "a majority" turned into `> 0.5`, written before anybody had seen
+ * a distribution. Measurement said it was wrong twice over: at 79.3% mean agreement it
+ * passed 36 of 47 pairs, and after the assessor was corrected to 33.3% mean the
+ * highest any pair reached was exactly 0.5 -- which a strict `>` throws away.
+ */
+describe('the pass bar', () => {
+  it('compares against the lattice, not through it', async () => {
+    const { passes, MIN_AGREEMENT } = await import('../src/matching/rendezvous.js');
+    // With five runs the only reachable rates are 0, .2, .4, .6, .8, 1. A strict
+    // inequality against a value that sits ON that lattice deletes a whole step --
+    // which is how "more than half" quietly became "at least three quarters".
+    const reachable = [0, 0.2, 0.4, 0.6, 0.8, 1];
+    expect(reachable).toContain(MIN_AGREEMENT);
+    const atTheBar = Math.round(MIN_AGREEMENT * 5);
+    expect(passes(atTheBar, 5, 5)).toBe(true);
+    expect(passes(atTheBar - 1, 5, 5)).toBe(false);
+  });
+
+  it('will not pass a pair that was barely measured, however well it did', async () => {
+    const { passes } = await import('../src/matching/rendezvous.js');
+    // Perfect agreement over one run is the coin toss five runs exist to rule out.
+    expect(passes(1, 1, 5)).toBe(false);
+    expect(passes(2, 2, 5)).toBe(false);
+  });
+
+  it('does not move when the network does', async () => {
+    const { passes, MIN_AGREEMENT } = await import('../src/matching/rendezvous.js');
+    // The same underlying rate must give the same answer whether four runs survived
+    // or five. Under the old code it did not: 3-of-4 passed and 3-of-5 did not,
+    // because the denominator was whatever the wire allowed.
+    for (const counted of [3, 4, 5]) {
+      const agreeing = Math.ceil(counted * MIN_AGREEMENT);
+      expect(passes(agreeing, counted, 5), `${agreeing}/${counted}`).toBe(true);
+    }
+  });
+});

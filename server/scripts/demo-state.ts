@@ -19,6 +19,7 @@ import { composeBoth, loadQuotes, saveBriefs } from '../src/matching/brief.js';
 import { buildDossier } from '../src/matching/rendezvous.js';
 import { autoDecideSynthetic } from '../src/matching/orchestrator.js';
 import * as photos from '../src/photos/store.js';
+import { metered } from '../src/metering.js';
 
 const email = process.argv[2] ?? 'abhilash@dabba.com';
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
@@ -28,17 +29,33 @@ const { rows: users } = await owner.query<{ id: string }>(
 const me = users[0];
 if (!me) { console.error(`no such user: ${email}`); process.exit(1); }
 
-/** A flat colour with an initial on it. Obviously not a photograph, on purpose. */
+/**
+ * A flat colour with an initial on it. Obviously not a photograph, on purpose.
+ *
+ * LAID OUT FOR TWO CROPS, because the same file is served as both. The conversations
+ * list shows it as a CIRCLE and the reveal shows the whole portrait, and the first
+ * version ignored that: at 900x1200 a square thumbnail keeps the middle 900x900, so
+ * the name sat exactly on the circle's bottom edge and came out as an unreadable
+ * smudge under every avatar. The light disc, centred at y=470, was also 130px above
+ * the crop's centre, so the thumbnail looked off-balance.
+ *
+ *   SAFE FOR THE THUMBNAIL   y in [150, 1050]   -- the centre square
+ *   PORTRAIT ONLY            y < 150 or > 1050  -- cropped away in the circle
+ *
+ * So the disc and the initial are centred on y=600 and nothing else goes near them;
+ * the name and the label sit below y=1080, where the circle cannot reach them and the
+ * full portrait still shows them.
+ */
 async function placeholder(name: string, seed: number): Promise<Buffer> {
   const hue = (seed * 47) % 360;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200">
     <rect width="900" height="1200" fill="hsl(${hue},42%,62%)"/>
-    <circle cx="450" cy="470" r="190" fill="hsl(${hue},42%,72%)"/>
-    <text x="450" y="545" font-family="Helvetica" font-size="220" fill="white"
+    <circle cx="450" cy="600" r="190" fill="hsl(${hue},42%,72%)"/>
+    <text x="450" y="675" font-family="Helvetica" font-size="220" fill="white"
           text-anchor="middle">${name.slice(0, 1).toUpperCase()}</text>
-    <text x="450" y="900" font-family="Helvetica" font-size="54" fill="rgba(255,255,255,0.85)"
+    <text x="450" y="1120" font-family="Helvetica" font-size="54" fill="rgba(255,255,255,0.85)"
           text-anchor="middle">${name}</text>
-    <text x="450" y="980" font-family="Helvetica" font-size="34" fill="rgba(255,255,255,0.7)"
+    <text x="450" y="1180" font-family="Helvetica" font-size="34" fill="rgba(255,255,255,0.7)"
           text-anchor="middle">test profile</text>
   </svg>`;
   return sharp(Buffer.from(svg)).jpeg({ quality: 80 }).toBuffer();
@@ -111,8 +128,14 @@ if (waiting[0]!.n > 0) {
       const qy = await loadQuotes(c, y.userId);
       const dx = await buildDossier(c, x.userId);
       const dy = await buildDossier(c, y.userId);
-      const made = await composeBoth({ ...x, quotes: qx, dossier: dx },
-                                     { ...y, quotes: qy, dossier: dy });
+      // Metered, like every other model call. The meter caught this script the first
+      // time it ran after metering moved into the router -- which is the point of
+      // making an unmetered call throw rather than quietly cost money. A development
+      // script spends exactly the same real money as the product does.
+      const made = await metered(x, 'brief', () => composeBoth(
+        { ...x, quotes: qx, dossier: dx },
+        { ...y, quotes: qy, dossier: dy },
+      ), c);
       // a_concern belongs to user_a, which is exactly the order x and y are in here.
       // That is true because recordRuns normalises it; it was not true before, and the
       // result was two people each shown their own agent's worry about themselves.

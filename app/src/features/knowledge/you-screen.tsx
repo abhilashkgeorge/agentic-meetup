@@ -13,6 +13,7 @@
  * The first and fourth are the ones nobody else can render. A store that overwrites
  * does not know a value ever differed; one that fills gaps by inference has no gaps.
  */
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import {
@@ -78,6 +79,14 @@ export default function YouScreen() {
   return (
     <>
       <Screen onRefresh={() => void load()} padded={false}>
+        {/* A BACK BUTTON, because this is not a tab. It is reached from Settings, and
+            ScreenTitle draws a heading and nothing else -- so the only way out was the
+            system gesture, and on a screen that scrolls for forty entries that is not
+            a way out anybody finds. Same bug as preferences and settings had; this one
+            was missed because it looks like a tab root and is not. */}
+        <View style={{ paddingHorizontal: space.screen }}>
+          <Header title="" onBack={() => router.back()} />
+        </View>
         <ScreenTitle title="What it knows" />
 
         <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>

@@ -139,10 +139,28 @@ export default function PhotosScreen() {
                   <Text style={{ color: p.textTertiary, fontSize: 26 }}>+</Text>
                 )}
               </Surface>
+              {/* OVERLAID, NOT STACKED. The tile has a fixed aspectRatio, so a label
+                  placed after the Surface takes its height OUT of the image -- and
+                  the first photo came out visibly shorter than the one beside it,
+                  leaving the top row misaligned for the one tile that matters most.
+                  Absolute keeps it out of the layout. */}
               {photo && i === 0 && (
-                <Text style={[type.label, { color: p.accent, textAlign: 'center', marginTop: space.xs }]}>
-                  FIRST
-                </Text>
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute', left: 0, right: 0, bottom: 0,
+                    paddingVertical: 4,
+                    // A scrim, because this sits on whatever photograph somebody
+                    // chose and the accent alone is not legible on a pale one.
+                    backgroundColor: 'rgba(0,0,0,0.45)',
+                    borderBottomLeftRadius: radius.md,
+                    borderBottomRightRadius: radius.md,
+                  }}
+                >
+                  <Text style={[type.label, { color: '#FFFFFF', textAlign: 'center' }]}>
+                    FIRST
+                  </Text>
+                </View>
               )}
             </Pressable>
           ))}

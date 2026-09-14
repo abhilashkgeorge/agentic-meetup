@@ -80,9 +80,17 @@ export default function PreferencesScreen() {
               {(pool?.steps ?? []).filter((s) => s.cost > 0).map((s) => (
                 <StatRow key={s.step} label={s.step} value={`−${s.cost}`} muted />
               ))}
+              {/* THREE REASONS THE NUMBER IS ZERO, and they need different answers.
+                  This told everybody to loosen a must-have -- while the card directly
+                  below it said "Must have · 0". Advice to undo something you have not
+                  done is worse than no advice: it implies the app has misread you. */}
               {pool?.total === 0 && (
                 <Text style={[type.callout, { color: p.warning }]}>
-                  Nobody fits. Turn a must-have into a want and it will come back.
+                  {!pool.inPool
+                    ? 'Your agent is not out there yet, so it cannot reach anybody. Finish setting it up first.'
+                    : dealbreakers.length > 0
+                      ? 'Nobody fits. Turn a must-have into a want and they will come back.'
+                      : 'Nobody fits yet — not because of anything you asked for. There are simply no other agents in range.'}
                 </Text>
               )}
             </>

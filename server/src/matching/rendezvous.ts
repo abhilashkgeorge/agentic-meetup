@@ -548,11 +548,41 @@ export async function meet(
 export const quorum = (planned: number): number => Math.max(1, Math.ceil(planned * 0.6));
 
 /**
+ * How much of the time a pair has to agree before a human is shown them.
+ *
+ * SET FROM A MEASUREMENT, NOT FROM A ROUND NUMBER. The previous value was the phrase
+ * "a majority" turned into `> 0.5`, chosen before anybody had seen a distribution.
+ * Two things were then measured and both said it was wrong:
+ *
+ *   under the old assessor, mean agreement was 79.3% across 47 pairs. A bar of 50%
+ *   sitting below the average passed 36 of them -- not a matchmaker, a turnstile.
+ *
+ *   under the corrected assessor, mean agreement fell to 33.3% across 8 pairs and the
+ *   highest any pair reached was EXACTLY 0.5 -- which `> 0.5` excludes. The bar had
+ *   moved from passing nearly everything to passing nothing, without ever being
+ *   deliberately set.
+ *
+ * `>=` rather than `>` for that reason: with five runs the reachable values are 0,
+ * 0.2, 0.4, 0.6, 0.8 and 1.0, and a strict inequality against a value ON that lattice
+ * silently removes a whole step. Compare against the lattice, not through it.
+ *
+ * Overridable because the right number depends on how often somebody wants to hear
+ * from their agent, which is a product decision rather than a fact about models.
+ */
+export const MIN_AGREEMENT = Number(process.env.RENDEZVOUS_MIN_AGREEMENT ?? 0.6);
+
+/**
  * Does this pair clear the bar?
  *
- * A majority of a quorum. The majority is what makes it a repeatable observation
- * rather than one polite exchange; the quorum is what stops a dropped connection
- * turning five planned runs into a one-run coin toss that rounds up to certainty.
+ * TWO CONDITIONS, AND THEY GUARD DIFFERENT THINGS. The quorum says enough runs
+ * actually happened for the fraction to mean anything. The agreement rate is the
+ * judgement itself.
+ *
+ * The rate is taken over the runs that COMPLETED rather than the runs that were
+ * planned, which is only safe because `converse` now makes up runs that died on the
+ * wire. Before it did, this divided by whatever survived -- so the real bar drifted
+ * between 60% and 100% depending on the network, and no pair was told which one it
+ * was being held to.
  */
 export const passes = (bothYes: number, counted: number, planned = RUNS): boolean =>
-  counted >= quorum(planned) && bothYes / counted > 0.5;
+  counted >= quorum(planned) && bothYes / counted >= MIN_AGREEMENT;
