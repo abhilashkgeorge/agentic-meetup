@@ -117,11 +117,41 @@ const cards = rows.map((r, i) => ({
   aboutSynthetic: r.about_synthetic,
 }));
 
+/**
+ * Cut the set down to something a person will actually finish.
+ *
+ * Forty-six cards is a research project; ten is five minutes. But a naive "first ten"
+ * would hand the reader a run of near-identical cards, because the pairs were measured
+ * in id order and the generator is repetitive -- so the sample is spread deliberately:
+ * every card carrying a real overlap first (there are few, and they exercise the one
+ * feature nothing else tests), then an even stride through the rest, which mixes the
+ * agreement rates and the real-versus-invented subjects instead of clustering them.
+ *
+ *   tsx scripts/export-briefs.ts --sample 10
+ */
+const sampleAt = process.argv.indexOf('--sample');
+const want = sampleAt >= 0 ? Number(process.argv[sampleAt + 1]) : cards.length;
+
+let chosen = cards;
+if (want < cards.length) {
+  const withQuotes = cards.filter((c) => c.overlaps.length > 0);
+  const rest = cards.filter((c) => c.overlaps.length === 0);
+  const room = Math.max(0, want - withQuotes.length);
+  const stride = room > 0 ? Math.max(1, Math.floor(rest.length / room)) : 1;
+  const spread = rest.filter((_, i) => i % stride === 0).slice(0, room);
+  chosen = [...withQuotes, ...spread].slice(0, want);
+}
+
+// Renumbered after sampling, so the refs a reader sends back are contiguous and the
+// answers are easy to line up by eye.
+chosen = chosen.map((c, i) => ({ ...c, ref: `brief-${String(i + 1).padStart(2, '0')}` }));
+
 process.stdout.write(JSON.stringify({
   generatedFrom: 'rendezvous_briefs',
-  count: cards.length,
-  withOverlapQuotes: cards.filter((c) => c.overlaps.length > 0).length,
-  cards,
+  available: cards.length,
+  count: chosen.length,
+  withOverlapQuotes: chosen.filter((c) => c.overlaps.length > 0).length,
+  cards: chosen,
 }, null, 2));
 
 await owner.end();
