@@ -117,7 +117,11 @@ export function attachChat(ws: WebSocket, ctx: TenantCtx): void {
     if (!take(`message:${ctx.userId}`, LIMITS.message).ok) {
       send(ws, {
         type: 'error',
-        code: 'too_many_requests',
+        // The socket's own vocabulary, which the app already understands. It carried
+        // 'too_many_requests' -- not one of the five codes ServerEvent allows, so the
+        // client's parse of this frame failed and a flooding device was told nothing
+        // at all, which is the one moment it needs to be told to stop.
+        code: 'rate_limited',
         message: 'Slow down a moment.',
         retryable: true,
       });

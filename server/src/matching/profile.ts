@@ -109,7 +109,10 @@ export async function rebuildMatchProfile(
     if (typeof v === 'string' && !(f.predicate in traits)) traits[f.predicate] = v;
   }
 
-  const missing = REQUIRED.filter((p) => {
+  // `string[]`, not the REQUIRED tuple's own element type: 'consent' goes on this
+  // list too, a few lines down, and it is not one of the five fields. Inferring the
+  // narrow type here made that push a type error that `tsc -b` was caching away.
+  const missing: string[] = REQUIRED.filter((p) => {
     if (p === 'gender') return !gender;
     if (p === 'seeking_gender') return seeking.length === 0;
     if (p === 'birth_date') return age === null;

@@ -18,6 +18,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { MIN_AGE, POOL_REQUIRED, isAdult } from '@clone/shared';
 import { setEssential } from '../../lib/api';
+import { cityFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
 import { ESSENTIAL_FIELDS } from '../profile/fields';
 import {
@@ -50,7 +51,26 @@ export default function EssentialsScreen() {
   const [at, setAt] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  /**
+   * Whatever needs saying under the card.
+   *
+   * Carries its own tone. "That did not save" is a failure and should look like one;
+   * "no problem, type it instead" is not, and printing it in the danger colour tells
+   * somebody they broke something by declining a permission, which they did not.
+   */
+  const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
+  /**
+   * The position the phone worked out, if it was asked.
+   *
+   * Held beside the text rather than instead of it, because the field stays editable:
+   * somebody can auto-fill "Bangalore" and then type "Mysore" over it. Cleared the
+   * moment the text stops matching, so an edited city never ships yesterday's
+   * coordinates.
+   */
+  const [fix, setFix] = useState<
+    { city: string; lat: number; lon: number; precisionKm: number } | null
+  >(null);
+  const [locating, setLocating] = useState(false);
 
   const q = QUESTIONS[at]!;
   const value = answers[q.key];
@@ -70,7 +90,7 @@ export default function EssentialsScreen() {
     if (!skipped && q.key === 'birth_date') {
       const year = Number(answers[q.key] ?? NaN);
       if (!isAdult({ year, month: null })) {
-        setNote(`You need to be ${MIN_AGE} or older to use this.`);
+        setNote({ text: `You need to be ${MIN_AGE} or older to use this.`, bad: true });
         return;
       }
     }
@@ -78,12 +98,43 @@ export default function EssentialsScreen() {
     setBusy(true);
     // A refusal is sent too. "Declined" and "never asked" must not look the same, or
     // the clone asks the same question every week for ever.
-    const ok = await setEssential(token, q.key, skipped ? null : (answers[q.key] ?? null));
+    const typed = String(answers[q.key] ?? '').trim();
+    // Only when the text still says what the phone found. See `fix`.
+    const place = q.key === 'lives_in' && fix && fix.city.toLowerCase() === typed.toLowerCase()
+      ? fix
+      : undefined;
+    const ok = await setEssential(
+      token, q.key, skipped ? null : (answers[q.key] ?? null), skipped ? undefined : place,
+    );
     setBusy(false);
-    if (!ok) { setNote('That did not save. Check your connection and try again.'); return; }
+    if (!ok) { setNote({ text: 'That did not save. Check your connection and try again.', bad: true }); return; }
     if (at + 1 < QUESTIONS.length) setAt(at + 1);
     else router.push('/onboarding/voice');
-  }, [token, q.key, answers, at]);
+  }, [token, q.key, answers, at, fix]);
+
+  const useMyLocation = async () => {
+    setNote(null);
+    setLocating(true);
+    const r = await cityFromDevice();
+    setLocating(false);
+
+    if (!r.ok) {
+      // Each of these is a different thing to do next, so each gets its own sentence.
+      setNote({
+        bad: r.reason === 'failed',
+        text:
+          r.reason === 'denied'
+            ? 'No problem — type your city instead. You can turn location on later in Settings.'
+            : r.reason === 'unavailable'
+              ? 'This version of the app cannot read your location yet. Type your city instead.'
+              : 'Could not work out where you are. Type your city instead.',
+      });
+      return;
+    }
+
+    setFix(r);
+    setAnswers((a) => ({ ...a, lives_in: r.city }));
+  };
 
   return (
     <Screen topInset={false}
@@ -152,9 +203,33 @@ export default function EssentialsScreen() {
             autoFocus
           />
         )}
+
+        {/* AUTO-FILL, ON A TAP, NEVER ON ARRIVAL.
+        
+            The permission dialog is raised by this button and by nothing else. A
+            location prompt that appears the moment a screen opens is the reason people
+            say no to all of them -- asked when somebody has just read "Where are you
+            now?" and reached for the keyboard, it is obviously about the thing in
+            front of them.
+        
+            The field stays editable afterwards. This fills it in; it does not take it
+            over. */}
+        {q.key === 'lives_in' && (
+          <Button
+            label={locating ? 'Finding you…' : 'Use my location'}
+            variant="secondary"
+            loading={locating}
+            disabled={locating}
+            onPress={() => void useMyLocation()}
+          />
+        )}
       </Card>
 
-      {note && <Text style={[type.callout, { color: p.danger }]}>{note}</Text>}
+      {note && (
+        <Text style={[type.callout, { color: note.bad ? p.danger : p.textSecondary }]}>
+          {note.text}
+        </Text>
+      )}
 
       {/* ONE NOTE, NOT TWO.
       

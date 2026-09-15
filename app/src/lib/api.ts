@@ -246,9 +246,21 @@ export const reviewFacts = (token: string, reject: string[]) =>
  * `null` means "prefer not to say" and is RECORDED. A declined field and a
  * never-asked field must not look the same, or the clone asks again every week.
  */
-export const setEssential = (token: string, predicate: string, value: unknown) =>
+export const setEssential = (
+  token: string,
+  predicate: string,
+  value: unknown,
+  /**
+   * A position the phone worked out, for `lives_in` only.
+   *
+   * Sent because the server can otherwise only place a city it already lists, and
+   * there are 46 of those. Already coarsened to about a kilometre by lib/location.ts
+   * before it reaches here -- the answer is a city, and a street is nobody's business.
+   */
+  place?: { city: string; lat: number; lon: number; precisionKm: number },
+) =>
   post<{ ok: boolean; inPool: boolean; missing: string[] }>(
-    '/v1/essentials', token, { predicate, value },
+    '/v1/essentials', token, { predicate, value, ...(place ? { place } : {}) },
   );
 
 export interface PoolStep { step: string; remaining: number; cost: number }

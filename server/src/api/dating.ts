@@ -30,7 +30,70 @@ const Essential = z.object({
   predicate: z.string().min(1).max(64),
   /** null means "prefer not to say", which is an ANSWER and is recorded as one. */
   value: z.unknown().nullable(),
+  /**
+   * A position the phone worked out for itself, for `lives_in` only.
+   *
+   * Without this, a city is only matchable on distance if it appears in the 46-entry
+   * table in shared/places.ts -- so somebody in Nagpur or Nottingham types their city,
+   * `findPlace` returns null, and they silently lose distance matching for ever. A
+   * device that already knows where it is should not be made to guess.
+   *
+   * Bounded to two decimal places by the CLIENT before it is sent (see
+   * lib/location.ts): the answer wanted here is a city, and a street is nobody's
+   * business. `precisionKm` records how coarse the number already is.
+   */
+  place: z
+    .object({
+      city: z.string().min(1).max(80),
+      lat: z.number().min(-90).max(90),
+      lon: z.number().min(-180).max(180),
+      precisionKm: z.number().min(0).max(500),
+    })
+    .optional(),
 });
+
+/**
+ * Where somebody said they live, as a point on the map.
+ *
+ * Exported and pure so the decision can be tested without standing up a request. It
+ * is three cases, and the order matters:
+ *
+ *   we list the city        use the table's centre, so a typed answer and an
+ *                           auto-filled one land on exactly the same point.
+ *   we do not, but the       use the phone's, already coarsened by the client to
+ *   phone found it           about a kilometre -- `precisionKm` carries how coarse.
+ *                           This is the case the feature exists for: places.ts lists
+ *                           46 cities, so before this everybody outside those 46 lost
+ *                           distance matching and was never told.
+ *   neither                  null. An unknown town still commits -- it is simply not
+ *                           matchable on distance, which is a question rather than
+ *                           an exclusion.
+ *
+ * THE TEXT IS THE AUTHORITY, NOT THE POSITION. A supplied place is ignored unless it
+ * still names the same city as the words being stored. The field stays editable after
+ * the phone fills it in, so somebody can auto-fill "Bangalore", type "Mysore" over it
+ * and commit -- and without this check they would be filed under Mysore at
+ * Bangalore's coordinates, with the display text and the map disagreeing for ever and
+ * nothing anywhere reporting it.
+ */
+export function resolveLivesIn(
+  text: string,
+  sent?: { city: string; lat: number; lon: number; precisionKm: number },
+): { city: string; lat: number; lon: number; precision_km: number } | null {
+  // The table FIRST, even when the phone supplied a position. Two people in one city
+  // must sit on one point or every distance between them is wrong by however far
+  // apart their two phones were -- so a listed city always resolves to its centre,
+  // whichever way the answer arrived.
+  const place = findPlace(text);
+  if (place) return { city: place.city, lat: place.lat, lon: place.lon, precision_km: 20 };
+
+  // Not a city we list. Now the phone is the only thing that can place them, and it
+  // is used only if it still names the city being stored.
+  if (sent && sent.city.trim().toLowerCase() === text.trim().toLowerCase()) {
+    return { city: sent.city, lat: sent.lat, lon: sent.lon, precision_km: sent.precisionKm };
+  }
+  return null;
+}
 
 export const datingRoutes = new Hono()
   /**
@@ -83,14 +146,7 @@ export const datingRoutes = new Hono()
           predicate === 'birth_date'
             ? { year: Number(text), month: null }
             : predicate === 'lives_in'
-              ? (() => {
-                  const place = findPlace(text);
-                  // An unknown town still commits. It is simply not matchable on
-                  // distance, and that is a question rather than an exclusion.
-                  return place
-                    ? { city: place.city, lat: place.lat, lon: place.lon, precision_km: 20 }
-                    : null;
-                })()
+              ? resolveLivesIn(text, body.data.place)
               : predicate === 'max_distance_km'
                 ? Number(text)
                 : (deriveValue(predicate, text) ?? undefined);

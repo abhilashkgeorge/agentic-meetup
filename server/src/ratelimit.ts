@@ -91,12 +91,13 @@ export function take(key: string, limit: Limit): { ok: boolean; retryAfterSec: n
  * anybody who reads this file -- so if this is ever exposed directly to the internet,
  * the proxy is the thing to add, not this line to remove.
  */
-export function callerIp(headers: {
-  get?: (k: string) => string | null | undefined;
-  [k: string]: unknown;
-}): string {
+// A `Headers` (what Hono hands over) or a plain object (what Node's http gives, and
+// what the tests pass). The union is spelled out because `Headers` has no index
+// signature, so the object shape alone silently rejected the real caller.
+export function callerIp(headers: Headers | Record<string, unknown>): string {
   const read = (k: string): string | undefined => {
-    if (typeof headers.get === 'function') return headers.get(k) ?? undefined;
+    const get = (headers as { get?: (k: string) => string | null | undefined }).get;
+    if (typeof get === 'function') return get.call(headers, k) ?? undefined;
     const v = (headers as Record<string, unknown>)[k];
     return typeof v === 'string' ? v : Array.isArray(v) ? String(v[0]) : undefined;
   };
