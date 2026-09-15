@@ -44,12 +44,12 @@ export default function InviteScreen() {
     // Somebody wrote something for this person. Let them read it before anything else
     // starts talking at them.
     if (r.note) setNote(r.note);
-    else router.replace('/onboarding');
+    else router.replace('/consent');
   }, [code, setToken, ticket]);
 
   if (note) {
     return (
-      <Screen center footer={<Button label="Let's go" variant="primary" onPress={() => router.replace('/onboarding')} />}>
+      <Screen center footer={<Button label="Let's go" variant="primary" onPress={() => router.replace('/consent')} />}>
         <Text style={[type.label, { color: p.textSecondary }]}>THEY LEFT YOU A NOTE</Text>
         <Text style={[type.display, { color: p.text }]}>“{note}”</Text>
       </Screen>

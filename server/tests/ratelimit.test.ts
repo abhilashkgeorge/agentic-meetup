@@ -65,17 +65,39 @@ describe('the numbers', () => {
 });
 
 describe('the caller address', () => {
-  it('takes the first hop of x-forwarded-for, not the last', () => {
-    // The last entry is whatever the nearest proxy saw; the first is the client.
+  /**
+   * THIS TEST ASSERTED THE VULNERABILITY.
+   *
+   * It said to take the first entry of `x-forwarded-for`, on the reasoning that the
+   * last is whatever the nearest proxy saw and the first is the client. That is true
+   * when a proxy you control wrote the header. When nothing strips it, the first
+   * entry is simply a string the caller typed -- so a different one per request meant
+   * a fresh rate-limit budget per request, and every per-IP limit in the system was
+   * decoration. Including the one in front of the SMS bill.
+   *
+   * The header is now read only when TRUSTED_PROXY_HOPS says how many proxies are in
+   * front, and then counted from the RIGHT. With none declared it is ignored and the
+   * socket's own peer address is used, which no caller can write.
+   */
+  it('IGNORES x-forwarded-for when no proxy is declared', () => {
     const h = new Headers({ 'x-forwarded-for': '203.0.113.9, 10.0.0.1, 10.0.0.2' });
-    expect(callerIp(h)).toBe('203.0.113.9');
+    expect(callerIp(h, '198.51.100.4')).toBe('198.51.100.4');
+  });
+
+  it('gives every forged address the same bucket rather than its own', () => {
+    // The property that matters: an attacker rotating the header must not be able to
+    // manufacture new counters. All of these collapse to one key.
+    const forged = ['1.1.1.1', '2.2.2.2', '3.3.3.3'].map((ip) =>
+      callerIp(new Headers({ 'x-forwarded-for': ip })));
+    expect(new Set(forged).size).toBe(1);
   });
 
   it('reads node-style header objects too, for the WebSocket upgrade', () => {
     // The upgrade handler is not a Hono request: it gets a plain object, and it has
     // to land on the same counter as everything else or the limit has a hole in it.
-    expect(callerIp({ 'x-real-ip': '198.51.100.4' })).toBe('198.51.100.4');
-    expect(callerIp({ 'x-forwarded-for': ['203.0.113.7'] })).toBe('203.0.113.7');
+    // It now supplies socket.remoteAddress, which is where the address comes from.
+    expect(callerIp({ 'x-real-ip': '198.51.100.4' }, '198.51.100.4')).toBe('198.51.100.4');
+    expect(callerIp({ 'x-forwarded-for': ['203.0.113.7'] }, '203.0.113.7')).toBe('203.0.113.7');
   });
 
   it('does not throw when there is no address at all', () => {

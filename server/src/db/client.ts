@@ -183,6 +183,9 @@ export async function discoverySession<T>(fn: (client: PoolClient) => Promise<T>
   _ownerPool ??= new Pool({
     connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL,
     max: 2,
+    // Background work waits politely rather than for ever. Nothing here is on a
+    // person's critical path, so failing and retrying next tick beats queueing.
+    connectionTimeoutMillis: 10_000,
   });
   const client = await _ownerPool.connect();
   try {
@@ -210,12 +213,25 @@ export async function discoverySession<T>(fn: (client: PoolClient) => Promise<T>
  * belongs to a signed-in person is read through here -- once a challenge resolves to
  * a user, the work moves to `tenantSession` under that user's own policies.
  */
+let _phonePool: Pool | undefined;
 export async function phoneSession<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  _ownerPool ??= new Pool({
+  // ITS OWN POOL, NOT THE DISCOVERY ONE.
+  //
+  // These are unauthenticated request-path queries. Sharing the two-connection
+  // discovery pool meant a flood of sign-in attempts could hold both connections and
+  // stop the background memory pipeline entirely -- a denial of service against the
+  // part of the product that is not even exposed.
+  //
+  // `connectionTimeoutMillis` matters as much as the split. Without it an acquisition
+  // queues for ever, so a flood does not fail, it accumulates: every request parks a
+  // promise and the process runs out of memory rather than shedding load. Three
+  // seconds and then an error the route turns into a 503.
+  _phonePool ??= new Pool({
     connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL,
-    max: 2,
+    max: 4,
+    connectionTimeoutMillis: 3_000,
   });
-  const client = await _ownerPool.connect();
+  const client = await _phonePool.connect();
   try {
     await client.query('BEGIN');
     const result = await fn(client);
@@ -308,5 +324,7 @@ export async function closeMatchPool(): Promise<void> {
 export async function close(): Promise<void> {
   await _ownerPool?.end();
   _ownerPool = undefined;
+  await _phonePool?.end();
+  _phonePool = undefined;
   await pool.end();
 }

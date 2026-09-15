@@ -178,6 +178,47 @@ export async function logout(token: string): Promise<boolean> {
   }
 }
 
+/**
+ * Erase the account, for good.
+ *
+ * THE BUTTON FOR THIS EXISTED AND DID NOTHING. Settings drew a "Delete everything"
+ * row, opened a confirmation alert, and the Delete button in that alert carried no
+ * handler at all -- so the most serious action in the product was a piece of set
+ * dressing, on a dating app, while the server endpoint behind it worked perfectly.
+ *
+ * The confirmation string is required by the server as well as by the alert. Two
+ * deliberate acts for something with no undo.
+ */
+export async function eraseAccount(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBase()}/v1/me?confirm=delete-everything`, {
+      method: 'DELETE',
+      headers: { ...BASE_HEADERS, Authorization: `Bearer ${token}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Everything the clone knows, as JSON.
+ *
+ * Returned as text rather than parsed: this is handed straight to the share sheet,
+ * and re-serialising somebody's export to display it would be a lot of work to end
+ * up with the same bytes.
+ */
+export async function exportAccount(token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/v1/me/export`, {
+      headers: { ...BASE_HEADERS, Authorization: `Bearer ${token}` },
+    });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface Invite { code: string; note: string; used: boolean; expires_at: string }
 
 export const getInvites = (token: string) =>

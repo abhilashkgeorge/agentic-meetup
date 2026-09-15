@@ -80,7 +80,9 @@ server.on('upgrade', (req, socket, head) => {
   // The same counter the HTTP routes use, because an upgrade is not a Hono request
   // and cannot run Hono middleware -- and a client stuck in a reconnect loop is the
   // honest failure this catches, well before anybody malicious turns up.
-  const ip = callerIp(req.headers);
+  // The peer address comes from the socket itself here, which is the one source a
+  // client cannot write. See callerIp.
+  const ip = callerIp(req.headers, socket.remoteAddress);
   if (!take(`socket:${ip}`, LIMITS.socket).ok) {
     log.warn({ ip }, 'socket upgrade rate limited');
     socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');

@@ -120,8 +120,15 @@ export default function RootLayout() {
       // A server that cannot be reached here is treated as "not yet asked" rather
       // than "already agreed": the failure then shows up as this screen again next
       // launch, instead of as a record of consent nobody gave.
+      //
+      // THE CODE DID THE OPPOSITE OF WHAT THAT PARAGRAPH SAYS. `getConsent` returns
+      // null for every failure -- offline, a 500, an expired token -- and the old
+      // condition was `consent && !consent.settled`, so null fell straight through to
+      // the app. The gate opened when the check failed. Reachability is already
+      // established a few lines above, so a null here is a genuine fault and the only
+      // safe reading of a fault is "we do not know that they agreed".
       const consent = await getConsent(token);
-      if (consent && !consent.settled) {
+      if (!consent || !consent.settled) {
         setRoute('consent');
         setChecked(true);
         return;

@@ -11,7 +11,9 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Share, Text, View } from 'react-native';
-import { createInvite, getInvites, type Invite, logout } from '../../lib/api';
+import {
+  createInvite, eraseAccount, exportAccount, getInvites, type Invite, logout,
+} from '../../lib/api';
 import { clearToken } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { useTheme } from '../../store/theme';
@@ -48,6 +50,57 @@ export default function SettingsScreen() {
     void load();
     await Share.share({ message: `Here's a code for Clone: ${r.code}` });
   }, [token, load]);
+
+  /**
+   * The two rows that did nothing.
+   *
+   * "Download everything" had an empty function for a handler and "Delete everything"
+   * opened an alert whose Delete button carried none at all -- so on a dating app,
+   * the row that says "cannot be undone. The clone and all of its memory go" was a
+   * picture of a button. Both server endpoints have worked the whole time.
+   */
+  const downloadAll = useCallback(async () => {
+    if (!token) return;
+    setBusy(true);
+    const data = await exportAccount(token);
+    setBusy(false);
+    if (!data) {
+      Alert.alert('Could not download', 'We could not reach the server. Try again.');
+      return;
+    }
+    // The share sheet, not a file write: it is the one route to "put this somewhere
+    // I choose" that works on both platforms without asking for storage permission.
+    await Share.share({ message: data });
+  }, [token]);
+
+  const deleteAll = useCallback(() => {
+    Alert.alert(
+      'Delete everything?',
+      'Your clone, every fact it holds, and every message. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => void (async () => {
+            if (!token) return;
+            setBusy(true);
+            const ok = await eraseAccount(token);
+            setBusy(false);
+            if (!ok) {
+              Alert.alert('Not deleted', 'We could not reach the server. Nothing was removed.');
+              return;
+            }
+            // The account is gone, so the token is meaningless. No logout call: there
+            // is no session left to revoke and the request would only 401.
+            await clearToken();
+            setToken(null);
+            router.replace('/phone');
+          })(),
+        },
+      ],
+    );
+  }, [token, setToken]);
 
   const signOut = useCallback(() => {
     Alert.alert('Sign out?', 'Your clone stays on the server. This device forgets it.', [
@@ -135,14 +188,10 @@ export default function SettingsScreen() {
         <Card label="Your data">
           <Row title="Download everything"
                subtitle="Every fact, every message, and where each came from"
-               onPress={() => {}} />
+               onPress={() => void downloadAll()} />
           <Row title="Delete everything" danger
                subtitle="Cannot be undone. The clone and all of its memory go."
-               onPress={() => Alert.alert(
-                 'Delete everything?',
-                 'Your clone, every fact it holds, and every message. This cannot be undone.',
-                 [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive' }],
-               )} last />
+               onPress={deleteAll} last />
         </Card>
 
         <Button label="Sign out" variant="ghost" onPress={signOut} />

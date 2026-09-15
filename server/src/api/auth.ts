@@ -27,6 +27,9 @@ import {
   maskPhone, normalisePhone,
 } from '@clone/shared';
 
+/** Parsed once. See SMS_COUNTRIES. */
+const SMS_COUNTRIES = env.SMS_COUNTRIES.split(',').map((x) => x.trim()).filter(Boolean);
+
 /**
  * Create tenant + user + first session. One tenant per person: it costs nothing and
  * it means every RLS policy in the system is doing real work rather than sorting
@@ -186,13 +189,13 @@ export const authRoutes = new Hono()
             WHERE code = $1 AND reserved_for = $2 AND used_by IS NULL`,
           [code, userId],
         ),
-      ).catch((e: unknown) => log.error({ err: e, code }, 'invite not released'));
+      ).catch((e: unknown) => log.error({ err: e, code: `${code.slice(0, 4)}…` }, 'invite not released'));
 
       // The unique index on phone_hmac fired: this number got an account between
       // verifying and redeeming. Rare, and a 500 would be a lie -- nothing is broken,
       // they simply already have an account and should sign in instead.
       if ((err as { code?: string }).code === '23505') {
-        log.warn({ code }, 'redeem lost the race for a number');
+        log.warn({ code: `${code.slice(0, 4)}…` }, 'redeem lost the race for a number');
         return c.json({
           error: 'phone_taken',
           message: 'That number already has an account. Sign in with it instead.',
@@ -207,9 +210,12 @@ export const authRoutes = new Hono()
     await adminSession((db) =>
       db.query(`UPDATE invites SET used_by = $1, used_at = now() WHERE code = $2`,
         [provisioned.userId, code]),
-    ).catch((e: unknown) => log.error({ err: e, code }, 'invite attribution not recorded'));
+    ).catch((e: unknown) => log.error({ err: e, code: `${code.slice(0, 4)}…` }, 'invite attribution not recorded'));
 
-    log.info({ userId: provisioned.userId, code }, 'invite redeemed');
+    // The CODE IS A LIVE CREDENTIAL until it is claimed, and a log line is read by
+    // everyone with dashboard access and kept as long as the retention policy says.
+    // Enough of it to match a support question, not enough to redeem.
+    log.info({ userId: provisioned.userId, code: `${code.slice(0, 4)}…` }, 'invite redeemed');
     return c.json({ token: provisioned.token, note: claimed.note });
   })
 
@@ -270,6 +276,34 @@ export const authRoutes = new Hono()
       }, 400);
     }
 
+    // A COUNTRY WE HAVE AGREED TO PAY FOR.
+    //
+    // Without this the route accepts any number on earth, which is how SMS pumping
+    // works: somebody buys premium numbers in a high-termination country, points a
+    // script at a signup form that texts codes, and takes a cut of the carrier
+    // revenue. The bill is ours. The per-number limit does not help, because they
+    // have thousands of numbers. The app's own screen already offered three
+    // countries; the server accepted all of them.
+    if (!SMS_COUNTRIES.some((cc) => e164.startsWith(cc))) {
+      log.warn({ cc: e164.slice(0, 4) }, 'sms refused: country not allowed');
+      return c.json({
+        error: 'country_not_supported',
+        message: 'We cannot text that country yet.',
+      }, 400);
+    }
+
+    // THE LAST LINE, and the only one that does not care who is asking. Per-IP is
+    // defeatable by spreading across hosts and per-number by using more numbers; a
+    // global daily count is defeatable by neither, which is exactly what a spend cap
+    // has to be.
+    if (!take('sms:global', { max: env.SMS_DAILY_CAP, windowMs: 24 * 60 * 60_000 }).ok) {
+      log.error({ cap: env.SMS_DAILY_CAP }, 'DAILY SMS CAP REACHED -- no more codes today');
+      return c.json({
+        error: 'unavailable',
+        message: 'We cannot send codes right now. Try later.',
+      }, 503);
+    }
+
     // PER NUMBER, not just per IP. The IP limit above stops one machine hammering the
     // route; this stops a botnet spending our SMS budget on one person's phone, and
     // stops that person being woken up sixty times. Keyed on the hash so the limiter's
@@ -297,7 +331,14 @@ export const authRoutes = new Hono()
       // Opportunistic sweep of everybody's dead rows, on the one route that is
       // already paying for a write. A table of expired code hashes has no job and no
       // reason to be kept, and a cron for it would be a moving part to forget.
-      await db.query(`DELETE FROM phone_challenges WHERE expires_at < now() - interval '1 day'`);
+      // BOUNDED. Unqualified, this is a full-table DELETE inside the request's own
+      // transaction: the first request after a flood pays for every row the flood
+      // wrote, holding a connection on a two-connection pool while it does. A fixed
+      // ceiling makes the cost of this line the same on every request.
+      await db.query(
+        `DELETE FROM phone_challenges WHERE ctid IN (
+           SELECT ctid FROM phone_challenges
+            WHERE expires_at < now() - interval '1 day' LIMIT 500)`);
       const { rows } = await db.query<{ id: string }>(
         `INSERT INTO phone_challenges (phone_hmac, code_hmac, expires_at, created_ip)
          VALUES ($1, 'pending', now() + ($2::int * interval '1 second'), $3)

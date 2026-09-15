@@ -19,6 +19,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { acceptConsent, getConsent, type ConsentDoc } from '../../lib/api';
+import { isOnboarded } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import {
   Animation, Button, Card, Crease, Screen, space, type, usePalette,
@@ -73,7 +74,13 @@ export default function ConsentScreen() {
     const r = await acceptConsent(token, docs);
     setBusy(false);
     if (!r) { setNote('Could not reach the server. Try again.'); return; }
-    router.replace('/');
+    // SETUP NEXT, IF IT HAS NOT BEEN DONE. This used to go straight to the app, which
+    // was fine while consent was only ever reached on a LATER launch -- the root
+    // layout had already decided setup was finished. Now that a new account is sent
+    // here the moment its invite is redeemed, that assumption is gone: agreeing would
+    // drop somebody into an empty clone, and they would only be offered setup on the
+    // next cold start.
+    router.replace((await isOnboarded()) ? '/' : '/onboarding');
   };
 
   return (

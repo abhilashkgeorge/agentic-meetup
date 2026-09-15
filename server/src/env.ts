@@ -42,7 +42,23 @@ const Env = z.object({
    * public stats page.
    */
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:8000'),
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * NO DEFAULT, AND THAT IS THE POINT.
+   *
+   * Six refusals below are written as `NODE_ENV === 'production' && <unsafe thing>`,
+   * and every one of them was dead code on a real host. This defaulted to
+   * 'development', and nothing in this repo has ever set it: `npm start` is a bare
+   * `node dist/index.js`, there is no Dockerfile, no compose service for the app, no
+   * CI step and no unit file. So a deployment got the dev signing key, unsigned
+   * legacy credentials, the SMS sender that texts nobody, and the flag that returns
+   * one-time codes in the response -- with every guard that exists to prevent exactly
+   * that silently skipped, because the host never said it was production.
+   *
+   * Required now, so an unconfigured host refuses to boot instead of booting unsafe.
+   * A missing answer is not the same as "development", and treating it as one is how
+   * a safety check becomes decoration.
+   */
+  NODE_ENV: z.enum(['development', 'test', 'production']),
 
   ANTHROPIC_API_KEY: z.string().default(''),
   OPENAI_API_KEY: z.string().default(''),
@@ -75,7 +91,19 @@ const Env = z.object({
    */
   PHOTO_DIR: z.string().default('./var/photos'),
 
-  AUTH_SECRET: z.string().min(32).default('dev-only-insecure-secret-change-me-32ch'),
+  /**
+   * The token signing key. NO DEFAULT, for the same reason as NODE_ENV.
+   *
+   * It used to fall back to a literal committed in this repository. The guard against
+   * that was `NODE_ENV === 'production' && startsWith('dev-only')`, which never ran,
+   * so the realistic outcome was a public host signing every session with a key
+   * anybody could read off GitHub. The pepper for hashed phone numbers is derived
+   * from this too, so the same string also made the "we never store your number"
+   * promise worthless.
+   *
+   * Required always. `openssl rand -base64 48` and put it in .env.
+   */
+  AUTH_SECRET: z.string().min(32),
 
   /**
    * Open self-signup. Was true for one founder on one laptop; it is false from the
@@ -183,6 +211,38 @@ const Env = z.object({
    */
   PHONE_PEPPER: z.string().min(32).optional(),
 
+  /**
+   * Countries we will pay to send a text to.
+   *
+   * WITHOUT THIS, SMS PUMPING. The attack is not hypothetical and not aimed at us:
+   * somebody buys a block of premium numbers in a country with high termination fees,
+   * points a script at any signup form that texts codes, and takes a cut of the
+   * carrier revenue on every message. The bill is ours. An allowlist is the only
+   * control that works, because the per-number limit is per NUMBER and they have
+   * thousands.
+   *
+   * Defaults to the three the app actually offers on its own screen. The screen was
+   * already limited to these; the server accepted every number on earth.
+   */
+  /**
+   * How many proxies sit in front of this server.
+   *
+   * Zero means none, so `x-forwarded-for` is ignored completely and the socket's own
+   * peer address is used. Anything above zero says how far from the RIGHT of that
+   * header the real client sits -- one per hop our own infrastructure adds. Set it to
+   * the wrong number and the limit is either useless or applied to the proxy.
+   */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(4).default(0),
+
+  SMS_COUNTRIES: z.string().default('+91,+1,+44'),
+
+  /**
+   * A hard ceiling on texts per day across everybody, as a last line under the
+   * per-IP and per-number limits. Those are both defeatable by spreading the work;
+   * this one is not, because it does not care who is asking.
+   */
+  SMS_DAILY_CAP: z.coerce.number().default(500),
+
   MSG91_AUTH_KEY: z.string().optional(),
   MSG91_TEMPLATE_ID: z.string().optional(),
   TWILIO_ACCOUNT_SID: z.string().optional(),
@@ -248,5 +308,17 @@ if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {
 
 if (env.NODE_ENV === 'production' && env.AUTH_SECRET.startsWith('dev-only')) {
   throw new Error('AUTH_SECRET must be set in production');
+}
+
+// A DERIVED PEPPER IS ONLY AS GOOD AS WHAT IT IS DERIVED FROM, and it also ties two
+// rotations together that must not be tied: AUTH_SECRET can be rotated whenever you
+// like, at the cost of everyone signing in again, while rotating the pepper detaches
+// every stored number from its owner. Derivation is a convenience for a laptop; on a
+// real host the two have to be separate strings.
+if (env.NODE_ENV === 'production' && !env.PHONE_PEPPER) {
+  throw new Error(
+    'PHONE_PEPPER must be set in production. Deriving it from AUTH_SECRET means '
+    + 'rotating the signing key silently orphans every account from its phone number.',
+  );
 }
 export type Env = z.infer<typeof Env>;

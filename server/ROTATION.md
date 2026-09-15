@@ -85,3 +85,25 @@ only on localhost today.
   commit: clean.
 - `ALLOW_DEVICE_SIGNUP=false`, so a leaked key cannot be paired with open signup.
 - Every unauthenticated route is rate limited.
+
+## 5. The signing key is still the public dev default
+
+`AUTH_SECRET` no longer has a default, so the server refuses to boot without one.
+`.env` now sets it explicitly to `dev-only-insecure-secret-change-me-32ch` — the
+string that used to be the fallback, and which is committed in this repository.
+
+**It is written out rather than changed on purpose.** Every session token on both
+handsets is signed with it, and until an account has a phone number attached there
+is no way back in through the app. Rotating it today would sign both phones out with
+no recovery path.
+
+The order that works:
+
+1. Open the app on each phone and verify a number. That attaches it to the account.
+2. Generate a real key: `openssl rand -base64 48`.
+3. Put it in `.env` as `AUTH_SECRET` and restart.
+4. Both phones sign in again by number. Nothing is lost.
+
+`PHONE_PEPPER` is already random and must NOT be rotated on the same schedule.
+Rotating the signing key costs everyone a sign-in. Rotating the pepper detaches every
+account from its number, permanently, with no way to recompute the link.
