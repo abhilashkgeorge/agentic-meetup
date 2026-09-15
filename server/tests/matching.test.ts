@@ -207,7 +207,20 @@ describe("the founder's list ranks instead of excluding", () => {
     expect(ids).toContain(ideal.userId);
     expect(ids).toContain(local.userId);
 
-    const ranked = await matchSession((c) => rank(c, me.userId, ids));
+    // RANKED OVER THE TWO THIS TEST BUILT, not over everything in the database.
+    //
+    // The assertion is about the ORDER the scorer puts two known people in. Passing it
+    // the full candidate list made it an assertion about the whole table instead, and
+    // other test files run at the same time: vitest parallelises by file, and a
+    // fixture from admin.test.ts -- in the pool, age 30, gender NULL -- qualifies as a
+    // candidate here, because `last_active_at` defaults to now() and the gender clause
+    // deliberately lets an unknown through rather than treating it as a mismatch. When
+    // one of those outranked `ideal` the test failed, and passed again the moment the
+    // other file had cleaned up.
+    //
+    // Filtering is still asserted above, with `toContain`, which does not care what
+    // else is in the list.
+    const ranked = await matchSession((c) => rank(c, me.userId, [ideal.userId, local.userId]));
     expect(ranked[0]!.userId).toBe(ideal.userId);
     expect(ranked.map((r) => r.userId)).toContain(local.userId);
   });
