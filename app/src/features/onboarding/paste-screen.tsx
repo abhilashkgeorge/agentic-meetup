@@ -50,7 +50,7 @@ export default function PasteScreen() {
 
   if (done) {
     return (
-      <Screen
+      <Screen topInset={false}
         footer={<Button label="Next" variant="primary" onPress={() => router.push('/onboarding/interview')} />}
       >
         <Text style={[type.display, { color: p.text }]}>Got it</Text>
@@ -73,7 +73,7 @@ export default function PasteScreen() {
   }
 
   return (
-    <Screen
+    <Screen topInset={false}
       footer={
         <>
           <Button label="Next" variant="primary" onPress={() => void submit()}

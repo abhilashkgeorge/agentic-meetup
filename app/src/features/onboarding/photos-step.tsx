@@ -100,7 +100,7 @@ export default function PhotosStep() {
   const has = photos.length > 0;
 
   return (
-    <Screen
+    <Screen topInset={false}
       footer={
         <>
           <Button

@@ -51,7 +51,7 @@ export default function InterviewScreen() {
 
   if (!state) {
     return (
-      <Screen center>
+      <Screen topInset={false} center>
         <ActivityIndicator color={p.accent} size="large" />
       </Screen>
     );
@@ -73,7 +73,7 @@ export default function InterviewScreen() {
 
   if (!state.question) {
     return (
-      <Screen
+      <Screen topInset={false}
         center
         footer={
           <Button
@@ -109,7 +109,7 @@ export default function InterviewScreen() {
   const ready = q.kind === 'free' ? sentence.trim().length > 2 : picked.length > 0;
 
   return (
-    <Screen
+    <Screen topInset={false}
       footer={
         <>
           <Button

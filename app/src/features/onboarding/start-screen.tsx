@@ -58,7 +58,7 @@ export default function StartScreen() {
 
   if (stage === 'thinking') {
     return (
-      <Screen center>
+      <Screen topInset={false} center>
         <View style={{ alignItems: 'center', gap: space.lg }}>
           <ActivityIndicator color={p.accent} size="large" />
           <Text style={[type.body, { color: p.textSecondary }]}>Learning that…</Text>
@@ -69,7 +69,7 @@ export default function StartScreen() {
 
   if (stage === 'judge' && item) {
     return (
-      <Screen
+      <Screen topInset={false}
         footer={
           <>
             <ButtonRow>
@@ -94,7 +94,7 @@ export default function StartScreen() {
 
   if (stage === 'done') {
     return (
-      <Screen
+      <Screen topInset={false}
         footer={
           <>
             <Button label="Start" variant="primary" onPress={() => router.push('/onboarding/interview')} />
@@ -121,7 +121,7 @@ export default function StartScreen() {
   }
 
   return (
-    <Screen
+    <Screen topInset={false}
       footer={
         <Button label="Go" variant="primary" onPress={() => void go()}
                 disabled={text.trim().length < 3} />

@@ -102,7 +102,7 @@ export default function VoiceScreen() {
 
   if (result) {
     return (
-      <Screen footer={<Button label="Now test it" variant="primary" onPress={() => router.push('/onboarding/test')} />}>
+      <Screen topInset={false} footer={<Button label="Now test it" variant="primary" onPress={() => router.push('/onboarding/test')} />}>
         <Text style={[type.display, { color: p.text }]}>That's you</Text>
         <Text style={[type.body, { color: p.textSecondary }]}>
           Read from {result.messagesUsed} of your messages.
@@ -129,7 +129,7 @@ export default function VoiceScreen() {
 
   if (chat) {
     return (
-      <Screen footer={<Button label="Wrong chat" variant="ghost" onPress={() => setChat(null)} />}>
+      <Screen topInset={false} footer={<Button label="Wrong chat" variant="ghost" onPress={() => setChat(null)} />}>
         <Animation mood="speaking" height={140} opacity={0.45} />
         <Text style={[type.display, { color: p.text }]}>Which one is you?</Text>
         {busy === 'learning' ? (
@@ -153,7 +153,7 @@ export default function VoiceScreen() {
   }
 
   return (
-    <Screen
+    <Screen topInset={false}
       footer={
         <>
           <Button label="Pick the exported file" variant="primary" onPress={() => void pickFile()} />

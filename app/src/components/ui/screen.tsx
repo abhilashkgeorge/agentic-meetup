@@ -20,6 +20,7 @@ export function Screen({
   padded = true,
   footer,
   style,
+  topInset = true,
 }: {
   children: ReactNode;
   scroll?: boolean;
@@ -30,6 +31,19 @@ export function Screen({
   /** Pinned to the bottom above the safe area. The one obvious next step. */
   footer?: ReactNode;
   style?: ViewStyle;
+  /**
+   * False when a NAVIGATOR HEADER is already above this screen.
+   *
+   * The onboarding stack draws its own header, which has already moved the content
+   * below the status bar -- so adding the safe-area inset here too counts it twice
+   * and pushes everything down by another 44 points. On a small phone with the
+   * keyboard open, those 44 points are the difference between seeing the field you
+   * are typing into and not.
+   *
+   * Enforced by a test rather than by memory: every screen under src/app/onboarding
+   * lives beneath that header and has to say so.
+   */
+  topInset?: boolean;
 }) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
@@ -76,7 +90,7 @@ export function Screen({
         //
         // A screen that does NOT scroll has nothing to slide under, so it keeps the
         // inset here -- otherwise its first line renders behind the clock.
-        paddingTop: scroll ? 0 : insets.top,
+        paddingTop: scroll || !topInset ? 0 : insets.top,
         // The keyboard is not free space either. Lifting the whole screen keeps a
         // pinned footer -- which is where the text box usually is -- above it.
         paddingBottom: keyboard,
@@ -96,7 +110,7 @@ export function Screen({
           // and passes underneath it on the way up.
           contentContainerStyle={{
             flexGrow: center ? 1 : undefined,
-            paddingTop: insets.top + space.sm,
+            paddingTop: (topInset ? insets.top : 0) + space.sm,
             // AND THE BOTTOM INSET, when nothing else is claiming it.
             //
             // The bottom inset was only ever applied inside the footer, so a screen

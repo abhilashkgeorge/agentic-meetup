@@ -86,7 +86,7 @@ export default function EssentialsScreen() {
   }, [token, q.key, answers, at]);
 
   return (
-    <Screen
+    <Screen topInset={false}
       footer={
         <>
           <Button label={at + 1 === QUESTIONS.length ? 'Done' : 'Next'} variant="primary"

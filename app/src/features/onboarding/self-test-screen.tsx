@@ -78,7 +78,7 @@ export default function SelfTestScreen() {
 
   if (item) {
     return (
-      <Screen
+      <Screen topInset={false}
         footer={
           correcting ? (
             <>
@@ -111,7 +111,7 @@ export default function SelfTestScreen() {
   }
 
   return (
-    <Screen
+    <Screen topInset={false}
       footer={
         <>
           <Button label={ready?.graded ? 'Test it again' : 'Test it'} variant="primary"

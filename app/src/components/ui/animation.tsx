@@ -16,6 +16,7 @@
  */
 import LottieView from 'lottie-react-native';
 import { View, type ViewStyle } from 'react-native';
+import { useKeyboardHeight } from '../../lib/keyboard';
 
 /** Named so a screen asks for a mood rather than remembering a filename. */
 const SOURCES = {
@@ -49,6 +50,20 @@ export function Animation({
   loop?: boolean;
   style?: ViewStyle;
 }) {
+  // DECORATION YIELDS TO THE KEYBOARD.
+  //
+  // These are 130 to 200 points of pure atmosphere sitting directly above the thing
+  // somebody has to type into. With the keyboard open on a small phone there is not
+  // enough height for both, and the loser was the input: on an iPhone XS the birth-year
+  // field ended up half underneath the Next button, which is the one element on the
+  // screen that must be reachable.
+  //
+  // Hiding it is the right trade rather than a compromise. The animation exists to
+  // make a waiting screen feel alive; a screen with the keyboard up is a screen
+  // somebody is already busy with.
+  const keyboard = useKeyboardHeight();
+  if (keyboard > 0) return null;
+
   return (
     <View
       // Not touchable: a decoration that swallows taps is a decoration that breaks the
