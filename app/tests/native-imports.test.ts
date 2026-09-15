@@ -46,6 +46,7 @@ const NATIVE = [
   'expo-speech',
   'expo-sharing',
   'expo-media-library',
+  'expo-location',
 ];
 
 function sources(dir: string): string[] {
@@ -64,8 +65,17 @@ describe('native modules', () => {
       const src = readFileSync(file, 'utf8');
       src.split('\n').forEach((line, i) => {
         // A STATIC import only: `await import(...)` inside a function is the fix, not
-        // the fault, and it does not match this.
-        const m = /^\s*import\s[^(]*?from\s+'([^']+)'/.exec(line);
+        // the fault. It cannot match, because every pattern here demands whitespace
+        // after the keyword and a dynamic import is written `import(`.
+        //
+        // THE `from` IS OPTIONAL, AND THAT WAS A HOLE. This matched only
+        // `import X from 'pkg'`, so a bare side-effect `import 'pkg'` -- which is
+        // evaluated at startup in exactly the same way and kills the app in exactly
+        // the same way -- walked straight past the guard. Found by deliberately
+        // re-breaking it: the planted import passed. A require() does the same thing
+        // and is caught for the same reason.
+        const m = /^\s*import\s+(?:[^(]*?\sfrom\s+)?'([^']+)'/.exec(line)
+          ?? /\brequire\(\s*'([^']+)'\s*\)/.exec(line);
         if (!m) return;
         if (!NATIVE.includes(m[1]!)) return;
         offenders.push(`${file.replace(SRC, 'src')}:${i + 1}  ${m[1]}`);
