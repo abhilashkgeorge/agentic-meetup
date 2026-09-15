@@ -12,7 +12,6 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { getImportPrompts, importPaste, type ImportPrompts } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
@@ -100,7 +99,12 @@ export default function PasteScreen() {
           label={copied ? 'Copied ✓' : 'Copy the question'}
           variant={copied ? 'secondary' : 'primary'}
           onPress={() => void (async () => {
-            await Clipboard.setStringAsync(prompt);
+            // Lazily loaded: see the note in components/error-boundary.tsx. Copying
+            // is a convenience and must not be able to stop the app from starting.
+            try {
+              const Clipboard = await import('expo-clipboard');
+              await Clipboard.setStringAsync(prompt);
+            } catch { /* the prompt is on screen and selectable */ }
             setCopied(true);
           })()}
         />

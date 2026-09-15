@@ -1,5 +1,4 @@
 import type { ImportPromptsResponse } from '@clone/shared';
-import { File } from 'expo-file-system';
 import { getApiBase } from './env';
 
 export type ChatGuide = ImportPromptsResponse['chatGuide'];
@@ -456,6 +455,11 @@ export async function uploadPhoto(
   token: string, uri: string,
 ): Promise<{ ok: true; photo: Photo } | { ok: false; message: string }> {
   try {
+    // LOADED HERE, NOT AT THE TOP. This module is imported by nearly every screen,
+    // so a top-level import of a native module makes a build that lacks it unable to
+    // render anything at all -- the app dies at startup over a photo upload nobody
+    // asked for yet.
+    const { File } = await import('expo-file-system');
     const bytes = await new File(uri).arrayBuffer();
 
     const res = await fetch(`${getApiBase()}/v1/photos`, {

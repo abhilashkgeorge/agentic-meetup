@@ -10,7 +10,6 @@
  * saying out loud -- so the screen says it.
  */
 import { router } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import {
@@ -54,6 +53,24 @@ export default function PhotosScreen() {
     // OS picker, on iOS it is PHPicker. Asking anyway was worse than pointless: this
     // build's manifest predates READ_MEDIA_IMAGES, so on Android 13 and up the request
     // would have been refused and blocked a flow that needs no permission at all.
+    // LOADED HERE, NOT AT THE TOP OF THE FILE. expo-router imports every route
+    // eagerly, so a top-level `import * as ImagePicker from 'expo-image-picker'`
+    // means a build missing that native module cannot render ANY screen:
+    //
+    //     Uncaught Error: Cannot find native module 'ExponentImagePicker'
+    //       at photos-screen.tsx:13
+    //
+    // The whole app died at startup because one screen it had not navigated to wanted
+    // a picker. A partial or stale native build should cost you the feature, not the
+    // product.
+    let ImagePicker;
+    try {
+      ImagePicker = await import('expo-image-picker');
+    } catch {
+      setError('Adding photos needs a newer version of the app.');
+      return;
+    }
+
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,

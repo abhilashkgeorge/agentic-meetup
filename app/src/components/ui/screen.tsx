@@ -63,11 +63,20 @@ export function Screen({
       style={{
         flex: 1,
         backgroundColor: p.bg,
-        // The status bar is not free space. Without this the first line of every
-        // screen renders behind the clock.
-        paddingTop: insets.top,
-        // And neither is the keyboard. Lifting the whole screen keeps a pinned footer
-        // -- which is where the text box usually is -- above it.
+        // THE TOP INSET BELONGS TO THE CONTENT, NOT TO THE FRAME -- when there is a
+        // scroll view. Putting it here makes the scroll viewport START below the
+        // status bar, which does two visible things on a tall inset: it leaves a band
+        // of dead space at rest, and it gives the content a hard edge to be clipped
+        // against as it scrolls, so text vanishes at that line instead of sliding
+        // under the clock the way every other app behaves. On Android the inset is
+        // about 24pt and it reads as slightly generous; on an iPhone with a Dynamic
+        // Island it is nearer 59 and it reads as broken.
+        //
+        // A screen that does NOT scroll has nothing to slide under, so it keeps the
+        // inset here -- otherwise its first line renders behind the clock.
+        paddingTop: scroll ? 0 : insets.top,
+        // The keyboard is not free space either. Lifting the whole screen keeps a
+        // pinned footer -- which is where the text box usually is -- above it.
         paddingBottom: keyboard,
       }}
     >
@@ -81,7 +90,15 @@ export function Screen({
           // underneath the keyboard. The padding was being applied correctly the whole
           // time; the children were simply ignoring it.
           style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: center ? 1 : undefined, paddingTop: space.sm }}
+          // The inset rides on the CONTENT, so the first line clears the clock at rest
+          // and passes underneath it on the way up.
+          contentContainerStyle={{
+            flexGrow: center ? 1 : undefined,
+            paddingTop: insets.top + space.sm,
+          }}
+          // Content that scrolls under the status bar should not sit under the
+          // scrollbar's idea of the top either.
+          scrollIndicatorInsets={{ top: insets.top }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           refreshControl={

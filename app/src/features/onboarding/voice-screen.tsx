@@ -11,7 +11,6 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { File } from 'expo-file-system';
 import { parseChatExport, type ParsedChat } from '@clone/shared';
 import { getImportPrompts, importChat, type ImportPrompts, type VoiceResult } from '../../lib/api';
 import { useSession } from '../../store/session';
@@ -66,6 +65,9 @@ export default function VoiceScreen() {
 
   const pickFile = useCallback(async () => {
     try {
+      // Loaded on the tap, not at import: see the note in lib/api.ts. Picking a file
+      // is one screen's feature and must not decide whether the app starts.
+      const { File } = await import('expo-file-system');
       const picked = await File.pickFileAsync({ mimeTypes: ['text/plain', 'text/*'] });
       if (picked.canceled || !picked.result) return;
       // Checked BEFORE reading: .text() pulls the whole file into one string and the

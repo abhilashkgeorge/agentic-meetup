@@ -12,8 +12,33 @@
  */
 import { Component, type ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { Button, dark, space, type } from './ui';
+
+/**
+ * Clipboard, loaded ONLY when somebody taps copy.
+ *
+ * A top-level `import * as Clipboard from 'expo-clipboard'` throws at module load if
+ * the native module is missing from the build -- and because this file is imported by
+ * the root layout, that took the whole app down before anything rendered:
+ *
+ *     Uncaught Error: Cannot find native module 'ExpoClipboard'
+ *       at error-boundary.tsx:15
+ *
+ * An error boundary is the last component in the tree that should be able to do that.
+ * Its entire job is to be the thing still standing when everything else has fallen
+ * over, so it must not hold a hard dependency on a native module that a stale or
+ * partial build might not have. Copying is a nicety; rendering the error is not.
+ */
+async function copy(text: string): Promise<boolean> {
+  try {
+    const Clipboard = await import('expo-clipboard');
+    await Clipboard.setStringAsync(text);
+    return true;
+  } catch {
+    // The details are on screen and selectable either way.
+    return false;
+  }
+}
 
 interface Props { children: ReactNode }
 interface State { error: Error | null }
@@ -54,7 +79,7 @@ export class ErrorBoundary extends Component<Props, State> {
             {detail}
           </Text>
         </ScrollView>
-        <Button label="Copy the details" variant="secondary" onPress={() => void Clipboard.setStringAsync(detail)} />
+        <Button label="Copy the details" variant="secondary" onPress={() => void copy(detail)} />
         <Button label="Try again" onPress={() => this.setState({ error: null })} />
       </View>
     );

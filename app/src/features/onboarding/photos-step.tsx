@@ -16,7 +16,6 @@
  * friends" and "caught off guard" are answerable without thinking.
  */
 import { router } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { getMyPhotos, uploadPhoto, type Photo } from '../../lib/api';
@@ -62,6 +61,20 @@ export default function PhotosStep() {
     setError(null);
     // No permission prompt: the system picker returns the one file the person chose
     // and nothing else, so there is nothing to ask for.
+    // LOADED AT THE CALL SITE, NOT AT THE TOP OF THE FILE.
+    //
+    // expo-router imports every route eagerly, so a top-level import of a native
+    // module means a build that lacks it cannot render ANY screen -- the whole app
+    // dies at startup over a feature nobody navigated to. A partial or stale native
+    // build should cost the feature, not the product.
+    let ImagePicker;
+    try {
+      ImagePicker = await import('expo-image-picker');
+    } catch {
+      setError('Adding photos needs a newer version of the app.');
+      return;
+    }
+
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
