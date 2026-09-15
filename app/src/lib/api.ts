@@ -127,7 +127,7 @@ export async function startPhone(
  */
 export type VerifiedPhone =
   | { status: 'linked' }
-  | { status: 'signed_in'; token: string }
+  | { status: 'signed_in'; token: string; onboarded: boolean }
   | { status: 'needs_invite'; ticket: string };
 
 export async function verifyPhone(

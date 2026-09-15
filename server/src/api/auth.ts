@@ -442,6 +442,16 @@ export const authRoutes = new Hono()
     if (owner) {
       const ctx = { tenantId: owner.tenant_id, userId: owner.id };
       const sessionId = newSessionId();
+      // WHETHER SETUP HAS EVER BEEN DONE, answered by the server rather than guessed
+      // by the handset. "Onboarded" lives in the new device's own keychain and a new
+      // device has an empty one, so without this a person signing in on their second
+      // phone is walked through setup again -- asked their birth year by an agent
+      // that already knows it. The account is the authority here, not the device.
+      const onboarded = await tenantSession(ctx, async (db) => {
+        const { rows } = await db.query<{ n: string }>(
+          `SELECT count(*) AS n FROM predicate_status WHERE user_id = $1`, [ctx.userId]);
+        return Number(rows[0]?.n ?? 0) > 0;
+      });
       await tenantSession(ctx, (db) =>
         db.query(
           `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at)
@@ -450,7 +460,7 @@ export const authRoutes = new Hono()
         ));
       await phoneSession((db) => spendTicket(db, challengeId));
       log.info({ userId: owner.id }, 'signed in by phone');
-      return c.json({ status: 'signed_in', token: mintToken(sessionId) });
+      return c.json({ status: 'signed_in', token: mintToken(sessionId), onboarded });
     }
 
     // CASE 3: a number nobody has. The invite screen is next, and the ticket is what

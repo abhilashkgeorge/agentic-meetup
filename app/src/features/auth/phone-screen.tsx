@@ -60,6 +60,9 @@ export default function PhoneScreen() {
         sentTo: r.sentTo,
         // Carried so the next screen can offer "wrong number?" without asking again.
         phone: e164,
+        // Carried so a resend uses the country that was actually chosen. Assuming
+        // one here is how a number from anywhere else stops working on the second tap.
+        country,
         ...(r.devCode ? { devCode: r.devCode } : {}),
       },
     });

@@ -356,3 +356,32 @@ describe('signing out', () => {
     expect(ctx.userId).toBe(userId);
   });
 });
+
+describe('coming back on a second phone', () => {
+  it('tells the new handset that setup is already done', async () => {
+    // WHY THIS MATTERS MORE THAN IT LOOKS. "Setup finished" is a flag in the device's
+    // own keychain, and a new phone has an empty one. Without the server answering
+    // this, somebody signing in on their second handset is walked through setup again
+    // on the next launch -- asked their birth year by an agent that has known it for
+    // weeks, and given the chance to overwrite it with a typo.
+    const phone = freshPhone();
+    const { userId } = await account(phone);
+    const { rows } = await owner.query<{ tenant_id: string }>(
+      'SELECT tenant_id FROM app_users WHERE id = $1', [userId]);
+    await owner.query(
+      `INSERT INTO predicate_status (tenant_id, user_id, predicate, state, updated_at)
+       VALUES ($1,$2,'gender','known', now())`, [rows[0]!.tenant_id, userId]);
+
+    const id = await challenge(phone, '777777');
+    const res = await post('/v1/auth/phone/verify', { challengeId: id, code: '777777' });
+    expect((await res.json() as { onboarded: boolean }).onboarded).toBe(true);
+  });
+
+  it('does NOT claim setup is done for an account that never finished it', async () => {
+    const phone = freshPhone();
+    await account(phone);
+    const id = await challenge(phone, '888888');
+    const res = await post('/v1/auth/phone/verify', { challengeId: id, code: '888888' });
+    expect((await res.json() as { onboarded: boolean }).onboarded).toBe(false);
+  });
+});

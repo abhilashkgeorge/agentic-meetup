@@ -20,7 +20,7 @@ import { Text, View } from 'react-native';
 import * as Device from 'expo-device';
 import { OTP_LENGTH } from '@clone/shared';
 import { startPhone, verifyPhone } from '../../lib/api';
-import { setToken as persistToken } from '../../lib/storage';
+import { setOnboarded, setToken as persistToken } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import {
   Button, Card, Field, Screen, space, type, usePalette,
@@ -32,7 +32,7 @@ const RESEND_AFTER = 30;
 export default function VerifyScreen() {
   const p = usePalette();
   const params = useLocalSearchParams<{
-    challengeId: string; sentTo: string; phone: string; devCode?: string;
+    challengeId: string; sentTo: string; phone: string; country?: string; devCode?: string;
   }>();
   const token = useSession((s) => s.token);
   const setToken = useSession((s) => s.setToken);
@@ -78,6 +78,11 @@ export default function VerifyScreen() {
       // Everything they already had, on this phone. No setup, no invite.
       await persistToken(r.token);
       setToken(r.token);
+      // THE ACCOUNT'S ANSWER, not this handset's. The "setup done" flag lives in the
+      // keychain and a new phone has an empty one, so without this the app would walk
+      // a returning person through setup again on their next launch -- asked their
+      // birth year by an agent that has known it for weeks.
+      if (r.onboarded) await setOnboarded();
       return router.replace('/');
     }
     if (r.status === 'linked') {
@@ -91,7 +96,10 @@ export default function VerifyScreen() {
   const resend = useCallback(async () => {
     setBusy(true);
     setError(null);
-    const r = await startPhone(params.phone, '+91');
+    // The country the person picked, NOT a hardcoded one. `params.phone` is already
+    // full E.164 so the default is only ever a fallback, but a wrong fallback here
+    // would silently rewrite somebody's number on the second tap.
+    const r = await startPhone(params.phone, params.country ?? '+91');
     setBusy(false);
     if (r === null) return setError('Cannot reach the server.');
     if ('error' in r) return setError(r.error);
@@ -101,7 +109,7 @@ export default function VerifyScreen() {
     setChallengeId(r.challengeId);
     setCode(r.devCode ?? '');
     setLeft(RESEND_AFTER);
-  }, [params.phone]);
+  }, [params.phone, params.country]);
 
   return (
     <Screen
