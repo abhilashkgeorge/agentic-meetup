@@ -50,6 +50,8 @@ export function Screen({
           flex: !scroll ? 1 : undefined,
           flexGrow: center ? 1 : undefined,
           justifyContent: center ? 'center' : undefined,
+          // Same rule for a screen that does not scroll and has no footer.
+          marginBottom: !scroll && !footer && keyboard === 0 ? insets.bottom : 0,
         },
         style,
       ]}
@@ -95,6 +97,24 @@ export function Screen({
           contentContainerStyle={{
             flexGrow: center ? 1 : undefined,
             paddingTop: insets.top + space.sm,
+            // AND THE BOTTOM INSET, when nothing else is claiming it.
+            //
+            // The bottom inset was only ever applied inside the footer, so a screen
+            // WITHOUT a footer got none at all and its last card ran under the home
+            // indicator -- visible on an iPhone, where that bar is 34pt and sits on
+            // top of the content, and invisible on Android's gesture nav. Settings
+            // and the profile are both long, footerless screens; both ended flush
+            // against the bar.
+            //
+            // Not added when the keyboard is up: the outer view has already lifted
+            // the whole screen by its height, and the home indicator is not there to
+            // avoid any more.
+            //
+            // On a TAB screen this is slack rather than necessity -- the tab bar sits
+            // in normal flow and already carries the inset -- but it reads as breathing
+            // room above the bar rather than as a gap, so it is not worth the
+            // complexity of detecting which kind of screen this is.
+            paddingBottom: footer || keyboard > 0 ? 0 : insets.bottom,
           }}
           // Content that scrolls under the status bar should not sit under the
           // scrollbar's idea of the top either.
