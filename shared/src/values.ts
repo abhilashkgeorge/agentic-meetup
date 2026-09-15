@@ -51,6 +51,26 @@ export const BODY_TYPES = ['slim', 'average', 'athletic', 'curvy', 'large'] as c
  * an app that allows what the server rejects is a dead end with a nice animation on
  * it, and an app that rejects what the server allows is a bug nobody can reproduce.
  */
+/**
+ * The answers an agent cannot go out without.
+ *
+ * ONE LIST, BECAUSE TWO DRIFTED. The server already had this, as a private array in
+ * `matching/profile.ts` deciding who may enter the pool. The app had its own idea of
+ * which questions mattered, and offered "Prefer not to say" on four of these five --
+ * so somebody could decline their gender, and the app would thank them and move on,
+ * and their agent would then never go out, and nothing would ever say why.
+ *
+ * A question that cannot be skipped and a question that gates the pool have to be the
+ * same list or the product lies to people. Now they are.
+ */
+export const POOL_REQUIRED = [
+  'gender',
+  'seeking_gender',
+  'birth_date',
+  'lives_in',
+  'relationship_intent',
+] as const;
+
 export const MIN_AGE = 18;
 
 const NOW_YEAR = new Date().getUTCFullYear();

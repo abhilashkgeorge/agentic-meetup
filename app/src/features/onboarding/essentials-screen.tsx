@@ -16,7 +16,7 @@
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
-import { MIN_AGE, isAdult } from '@clone/shared';
+import { MIN_AGE, POOL_REQUIRED, isAdult } from '@clone/shared';
 import { setEssential } from '../../lib/api';
 import { useSession } from '../../store/session';
 import { ESSENTIAL_FIELDS } from '../profile/fields';
@@ -91,10 +91,18 @@ export default function EssentialsScreen() {
         <>
           <Button label={at + 1 === QUESTIONS.length ? 'Done' : 'Next'} variant="primary"
                   onPress={() => void advance(false)} disabled={!answered} loading={busy} />
-          {/* Every other essential may be declined. This one may not: an agent with
-              no age cannot enter the pool anyway, and "prefer not to say" on the one
-              question with a legal floor is a way around the floor. */}
-          {q.key !== 'birth_date' && (
+          {/* OFFERED ONLY WHERE DECLINING IS ACTUALLY SURVIVABLE.
+          
+              Four of these five questions gate the pool server-side, and the app was
+              offering "Prefer not to say" on all of them but the birth year. Somebody
+              could decline their gender, be thanked and moved along, and then find
+              their agent could never go out -- with nothing anywhere connecting the
+              two. A question that cannot be skipped and a question that gates the
+              pool have to be the same list, and now they are one list.
+          
+              How far you would travel is the only genuinely optional one: no answer
+              means no distance filter, which costs nobody a match. */}
+          {!POOL_REQUIRED.includes(q.key as (typeof POOL_REQUIRED)[number]) && (
             <Button label="Prefer not to say" variant="ghost" onPress={() => void advance(true)} />
           )}
         </>
@@ -148,16 +156,21 @@ export default function EssentialsScreen() {
 
       {note && <Text style={[type.callout, { color: p.danger }]}>{note}</Text>}
 
-      {q.key === 'birth_date' && (
-        <Text style={[type.callout, { color: p.textTertiary }]}>
-          You must be {MIN_AGE} or older. Your birthday is never shown to anybody — only
-          your age, and only once you have both said yes.
-        </Text>
-      )}
-
+      {/* ONE NOTE, NOT TWO.
+      
+          The birth-year question used to carry both of these, and they overlap: one
+          promises the birthday is "never shown to anybody", the other that "nothing
+          here is shown on a profile". Saying it twice does not make it twice as
+          reassuring, and four lines of small grey text pushed the Next button off the
+          bottom of a small phone -- so the question with the most to explain was the
+          one where the explanation could not be read.
+      
+          The specific note wins where there is one: it says everything the general one
+          says, about the field actually on screen. */}
       <Text style={[type.callout, { color: p.textTertiary }]}>
-        Your agent cannot go out without these. It is not a form — nothing here is shown
-        on a profile until you say so.
+        {q.key === 'birth_date'
+          ? `You must be ${MIN_AGE} or older. Your birthday is never shown to anybody — only your age, and only once you have both said yes.`
+          : 'Your agent cannot go out without these. It is not a form — nothing here is shown on a profile until you say so.'}
       </Text>
     </Screen>
   );

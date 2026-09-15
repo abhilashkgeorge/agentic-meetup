@@ -12,7 +12,7 @@
  * coordinates rounded to the precision the person actually gave.
  */
 import type { PoolClient } from 'pg';
-import { MIN_AGE } from '@clone/shared';
+import { MIN_AGE, POOL_REQUIRED } from '@clone/shared';
 // Aliased: this file already has its own REQUIRED -- the five structural answers --
 // and importing a second one under the same name silently shadowed it, emptying
 // `missing` for every profile. tsc accepted it; a test caught it.
@@ -25,7 +25,9 @@ export interface RebuildResult {
 }
 
 /** Everything needed before an agent can go out and represent somebody. */
-const REQUIRED = ['gender', 'seeking_gender', 'birth_date', 'lives_in', 'relationship_intent'];
+// From shared, so the app cannot offer to skip something the pool insists on. It used
+// to be a private array here and the app had its own opinion; see POOL_REQUIRED.
+const REQUIRED = POOL_REQUIRED;
 
 export async function rebuildMatchProfile(
   c: PoolClient,
