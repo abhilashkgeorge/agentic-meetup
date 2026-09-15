@@ -75,6 +75,20 @@ export function PhotoSlot({
 }: {
   source?: { uri: string; headers?: Record<string, string> } | null;
   onPress: () => void;
+  /**
+   * The hero slot: sets the height of the row, and the others divide it.
+   *
+   * THE SMALL SLOTS USED TO BE SQUARE, AND THAT IS WHY THEY FELL OFF THE SCREEN.
+   * They carried `flex: 1` AND `aspectRatio: 1` inside a column whose height comes
+   * from this one. `flex: 1` sets the HEIGHT, the aspect ratio then derives the WIDTH
+   * from it, and nothing anywhere derives the width from the column they sit in --
+   * so at a 2:1 split they came out about a third wider than their own column and
+   * spilled past the card and off the right edge of the phone.
+   *
+   * The fix is to stop asking for a square. A slot that fills its share of the row
+   * takes its width from the column and its height from the flex, which is the one
+   * arrangement where neither dimension can run away.
+   */
   large?: boolean;
 }) {
   const uri = source?.uri;
@@ -83,7 +97,9 @@ export function PhotoSlot({
     <View
       style={{
         flex: large ? undefined : 1,
-        aspectRatio: large ? 3 / 4 : 1,
+        // Only the hero fixes its shape. See the note above.
+        aspectRatio: large ? 3 / 4 : undefined,
+        width: large ? undefined : '100%',
         borderRadius: radius.lg,
         backgroundColor: uri ? p.bg : p.sunken,
         boxShadow: uri ? raised(p, 4) : sunk(p, 4),
