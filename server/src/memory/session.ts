@@ -265,11 +265,17 @@ export async function dueSessions(limit = 20): Promise<{ ctx: TenantCtx; session
       // in on a device. A fixture inserts into `app_users` through the owner pool and
       // never authenticates, so it has none -- and an account whose sessions were all
       // revoked stops being swept, which is correct.
+      //
+      // THE `revoked_at` FILTER WAS MISSING and the sentence above was therefore a
+      // lie. It did not matter while nothing on earth ever wrote that column; the
+      // logout route now does, so without this a signed-out account would keep being
+      // swept and keep spending on extraction for a person who has left.
       `SELECT e.tenant_id, e.user_id, e.session_id
          FROM episodes e
          LEFT JOIN session_extractions x
            ON x.user_id = e.user_id AND x.session_id = e.session_id
-        WHERE EXISTS (SELECT 1 FROM device_sessions d WHERE d.user_id = e.user_id)
+        WHERE EXISTS (SELECT 1 FROM device_sessions d
+                       WHERE d.user_id = e.user_id AND d.revoked_at IS NULL)
         GROUP BY e.tenant_id, e.user_id, e.session_id, x.last_turn_index
        HAVING MAX(e.ingested_at) < now() - ($1::int * interval '1 millisecond')
           AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)

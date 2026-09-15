@@ -6,7 +6,7 @@
  * single sunken well with a single extruded button is this design language saying
  * one thing at a time.
  */
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
 import * as Device from 'expo-device';
@@ -17,6 +17,10 @@ import { Button, Card, Field, Screen, space, type, usePalette } from '../../comp
 
 export default function InviteScreen() {
   const p = usePalette();
+  // Proof that the number on the previous screen was verified. The server refuses to
+  // make an account without it, so arriving here without one means somebody reached
+  // this route sideways -- and the error they get says exactly that.
+  const { ticket } = useLocalSearchParams<{ ticket?: string }>();
   const setToken = useSession((s) => s.setToken);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -29,7 +33,7 @@ export default function InviteScreen() {
     setBusy(true);
     setError(null);
     const label = `${Device.deviceName ?? 'device'} (${Device.osName ?? 'unknown'})`;
-    const r = await redeemInvite(trimmed, label);
+    const r = await redeemInvite(trimmed, label, ticket);
     setBusy(false);
 
     if (r === null) return setError('Cannot reach the server. Check your connection.');
@@ -41,7 +45,7 @@ export default function InviteScreen() {
     // starts talking at them.
     if (r.note) setNote(r.note);
     else router.replace('/onboarding');
-  }, [code, setToken]);
+  }, [code, setToken, ticket]);
 
   if (note) {
     return (
@@ -68,7 +72,8 @@ export default function InviteScreen() {
       <View style={{ gap: space.sm }}>
         <Text style={[type.display, { color: p.text }]}>You need a code</Text>
         <Text style={[type.body, { color: p.textSecondary }]}>
-          Someone has to let you in. If a friend sent you eight characters, put them here.
+          Your number is confirmed. Now someone has to let you in. If a friend sent you
+          eight characters, put them here.
         </Text>
       </View>
 

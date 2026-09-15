@@ -11,7 +11,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Share, Text, View } from 'react-native';
-import { createInvite, getInvites, type Invite } from '../../lib/api';
+import { createInvite, getInvites, type Invite, logout } from '../../lib/api';
 import { clearToken } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { useTheme } from '../../store/theme';
@@ -56,13 +56,21 @@ export default function SettingsScreen() {
         text: 'Sign out',
         style: 'destructive',
         onPress: () => void (async () => {
+          // TELL THE SERVER FIRST, while the token still works.
+          //
+          // Clearing the keychain was previously the whole of "sign out", which meant
+          // the credential being thrown away stayed valid for anyone holding a copy
+          // until it expired on its own, months later. Best effort on purpose: if the
+          // network is down the device still signs out, because somebody who taps this
+          // has asked for something a dead connection must not be able to refuse.
+          if (token) await logout(token);
           await clearToken();
           setToken(null);
-          router.replace('/invite');
+          router.replace('/phone');
         })(),
       },
     ]);
-  }, [setToken]);
+  }, [setToken, token]);
 
   const themeChoice = useTheme((t) => t.choice);
   const chooseTheme = useTheme((t) => t.choose);

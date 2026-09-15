@@ -39,7 +39,7 @@ export default function RootLayout() {
     SourceSans3_400Regular, SourceSans3_600SemiBold, SourceSans3_700Bold,
   });
   const [checked, setChecked] = useState(false);
-  const [route, setRoute] = useState<'invite' | 'consent' | 'onboarding' | 'connect' | null>(null);
+  const [route, setRoute] = useState<'phone' | 'invite' | 'consent' | 'onboarding' | 'connect' | null>(null);
 
   // Accounts come from invite codes now. No self-signup, so a device with no
   // credential goes to the door rather than quietly minting a tenant.
@@ -81,7 +81,15 @@ export default function RootLayout() {
       const existing = await getToken();
 
       if (!existing) {
-        setRoute('invite');
+        // THE NUMBER, NOT THE CODE, IS THE FIRST DOOR NOW.
+        //
+        // It used to be the invite screen, which made the account the device: a lost
+        // phone was a lost clone and a second phone was a second clone. Starting here
+        // means somebody returning on new hardware types their number, gets a code
+        // and lands back in the account they already had, and never sees an invite at
+        // all. The invite is still the gate for people nobody has met -- it is simply
+        // the second screen rather than the first.
+        setRoute('phone');
         setChecked(true);
         return;
       }
@@ -138,6 +146,7 @@ export default function RootLayout() {
     sent.current = true;
     router.replace(
       route === 'connect' ? '/connect'
+      : route === 'phone' ? '/phone'
       : route === 'invite' ? '/invite'
       : route === 'consent' ? '/consent'
       : '/onboarding',
@@ -172,6 +181,11 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        {/* Both doors are gates, so neither can be swiped past. The verify screen is
+            the one exception: going back from it means "wrong number", which is a
+            thing people genuinely need to do. */}
+        <Stack.Screen name="phone" options={{ headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen name="verify" options={{ headerShown: false }} />
         <Stack.Screen name="invite" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="connect" options={{ headerShown: false }} />
         {/* gestureEnabled false, like the invite door: this is a gate, and a gate you

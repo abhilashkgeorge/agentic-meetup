@@ -65,18 +65,116 @@ export async function upgradeToken(legacy: string): Promise<string | null> {
 export async function redeemInvite(
   code: string,
   label: string,
+  /** Proof that the number was verified, from verifyPhone. The server insists. */
+  ticket?: string,
 ): Promise<{ token: string; note: string } | { error: string } | null> {
   try {
     const res = await fetch(`${getApiBase()}/v1/auth/redeem`, {
       method: 'POST',
       headers: { ...BASE_HEADERS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, label }),
+      body: JSON.stringify({ code, label, ...(ticket ? { ticket } : {}) }),
     });
     const body = (await res.json()) as { token?: string; note?: string; message?: string };
     if (!res.ok || !body.token) return { error: body.message ?? 'That code does not work.' };
     return { token: body.token, note: body.note ?? '' };
   } catch {
     return null; // offline, which is not the same as a bad code
+  }
+}
+
+/**
+ * Ask for a one-time code.
+ *
+ * `sentTo` is a mask the SERVER built, not something the app guessed, so the two can
+ * never disagree about which number was actually texted.
+ */
+export interface StartedOtp {
+  challengeId: string;
+  expiresInSec: number;
+  sentTo: string;
+  /** Present only when the operator turned SMS_DEV_ECHO on. Shown, never hidden. */
+  devCode?: string;
+  devEchoIsOn?: boolean;
+}
+
+export async function startPhone(
+  phone: string,
+  country: string,
+): Promise<StartedOtp | { error: string } | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/v1/auth/phone/start`, {
+      method: 'POST',
+      headers: { ...BASE_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, country }),
+    });
+    const body = (await res.json()) as StartedOtp & { message?: string };
+    if (!res.ok || !body.challengeId) {
+      return { error: body.message ?? 'That number did not work.' };
+    }
+    return body;
+  } catch {
+    return null; // offline, which is not the same as a bad number
+  }
+}
+
+/**
+ * Hand the code back.
+ *
+ * Three shapes out, because there are three genuinely different next steps: carry on
+ * with the account you already had, land in one you already have on another phone, or
+ * go and type an invite. Modelling them as one "success" and a flag is how a caller
+ * ends up sending a brand-new person to the wrong screen.
+ */
+export type VerifiedPhone =
+  | { status: 'linked' }
+  | { status: 'signed_in'; token: string }
+  | { status: 'needs_invite'; ticket: string };
+
+export async function verifyPhone(
+  challengeId: string,
+  code: string,
+  label: string,
+  /** Present when a signed-in device is attaching a number to the account it has. */
+  token?: string,
+): Promise<VerifiedPhone | { error: string; attemptsLeft?: number } | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/v1/auth/phone/verify`, {
+      method: 'POST',
+      headers: {
+        ...BASE_HEADERS,
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ challengeId, code, label }),
+    });
+    const body = (await res.json()) as VerifiedPhone & {
+      message?: string; attemptsLeft?: number;
+    };
+    if (!res.ok || !('status' in body)) {
+      return { error: body.message ?? 'That code did not work.', attemptsLeft: body.attemptsLeft };
+    }
+    return body;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tell the server to revoke this session before the keychain forgets the token.
+ *
+ * Best effort by design. If it fails the device still signs out locally, because a
+ * person who taps sign out on a train has asked for something the network cannot be
+ * allowed to veto -- and the token they are dropping expires on its own eventually.
+ */
+export async function logout(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBase()}/v1/auth/logout`, {
+      method: 'POST',
+      headers: { ...BASE_HEADERS, Authorization: `Bearer ${token}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 

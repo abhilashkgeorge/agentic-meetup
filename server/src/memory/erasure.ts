@@ -145,6 +145,24 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
       const r = await c.query(`DELETE FROM ${t} WHERE user_id = $1`, [ctx.userId]);
       deleted[t] = r.rowCount ?? 0;
     }
+
+    // Any half-finished sign-in for their number.
+    //
+    // Keyed on the phone hash rather than on user_id, so the coverage test -- which
+    // looks for foreign keys to app_users -- cannot see this table and would never
+    // have told us it was missed. Read the hash from the account BEFORE the account
+    // row is deleted at the end of the verify block, or there is nothing to match on.
+    //
+    // Note what this means: erasing an account frees its number for a new signup,
+    // because the hash that identified the person goes with them. That is the right
+    // way round for somebody asking to be forgotten, and it is worth knowing that
+    // erasure is therefore a way out of a ban.
+    const chall = await c.query(
+      `DELETE FROM phone_challenges
+        WHERE phone_hmac = (SELECT phone_hmac FROM app_users WHERE id = $1)`,
+      [ctx.userId],
+    );
+    deleted['phone_challenges'] = chall.rowCount ?? 0;
   });
 
   // VERIFY. An erasure that does not prove itself is not an erasure.

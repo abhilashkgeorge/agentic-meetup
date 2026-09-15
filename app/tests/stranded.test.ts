@@ -56,8 +56,13 @@ function screenSource(file: string): string {
  * `consent` is a gate: it is shown before anything is set up and the only way past it
  * is to agree, which is why its Stack entry also disables the swipe gesture. Giving it
  * a back button would mean a back button to nowhere.
+ *
+ * `phone` is the first screen in the app for anybody without a token. There is
+ * nothing behind it to go back to. Note that `verify` is deliberately NOT here: going
+ * back from the code screen means "I typed the wrong number", which is the single
+ * most common thing to get wrong on these two screens.
  */
-const GATES = new Set(['consent', 'connect', 'invite', 'onboarding/index']);
+const GATES = new Set(['consent', 'connect', 'phone', 'invite', 'onboarding/index']);
 
 /**
  * Whether the NAVIGATOR draws the header for this route, in which case it also draws

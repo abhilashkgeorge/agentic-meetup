@@ -193,6 +193,43 @@ export async function discoverySession<T>(fn: (client: PoolClient) => Promise<T>
 }
 
 /**
+ * Phone verification. The owner connection, and only for this.
+ *
+ * `phone_challenges` is revoked from `clone_app` in 0045, so the ordinary pool cannot
+ * see it at all -- which is the point: the role that serves every request should not
+ * be able to read a table of code hashes. The boundary is therefore the connection
+ * rather than a policy, because a challenge exists BEFORE there is an account and
+ * there is no tenant to compare a policy against.
+ *
+ * Unlike `discoverySession` this opens a real transaction: the verify path increments
+ * an attempt counter and consumes a ticket, and those two must not be separable by a
+ * crash or by another request arriving in between.
+ *
+ * STRICT RULE, the same shape as discovery's: hashes, counts and timestamps only.
+ * Nothing in this table is readable as a phone number or a code, and nothing that
+ * belongs to a signed-in person is read through here -- once a challenge resolves to
+ * a user, the work moves to `tenantSession` under that user's own policies.
+ */
+export async function phoneSession<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  _ownerPool ??= new Pool({
+    connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL,
+    max: 2,
+  });
+  const client = await _ownerPool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * The matchmaker. The only session that can read two people at once.
  *
  * It is NOT a bypass: `clone_matchmaker` is NOSUPERUSER NOBYPASSRLS, and its policies

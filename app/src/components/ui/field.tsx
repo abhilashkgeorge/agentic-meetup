@@ -24,6 +24,8 @@ export function Field({
   maxLength,
   keyboardType,
   autoCapitalize,
+  autoComplete,
+  textContentType,
   onSubmitEditing,
   minHeight,
   textStyle,
@@ -37,8 +39,20 @@ export function Field({
   multiline?: boolean;
   autoFocus?: boolean;
   maxLength?: number;
-  keyboardType?: 'default' | 'url' | 'number-pad' | 'email-address';
+  keyboardType?: 'default' | 'url' | 'number-pad' | 'email-address' | 'phone-pad';
   autoCapitalize?: 'none' | 'sentences' | 'characters';
+  /**
+   * What the KEYBOARD should offer to fill in, and what the OS should understand this
+   * field to be. Both are needed and they are not the same thing: `autoComplete` is
+   * Android's hint, `textContentType` is iOS's.
+   *
+   * This is what makes a texted code appear above the keyboard as a single tap rather
+   * than something to memorise, switch app, and retype. On a verification screen it
+   * is the difference between a five-second step and a thirty-second one, and it is
+   * also the only thing that stops people screenshotting the SMS.
+   */
+  autoComplete?: 'tel' | 'one-time-code' | 'off';
+  textContentType?: 'telephoneNumber' | 'oneTimeCode' | 'none';
   onSubmitEditing?: () => void;
   minHeight?: number;
   textStyle?: TextStyle;
@@ -83,6 +97,8 @@ export function Field({
           maxLength={maxLength}
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
+          autoComplete={autoComplete}
+          textContentType={textContentType}
           autoCorrect={false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}

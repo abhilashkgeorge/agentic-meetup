@@ -151,6 +151,56 @@ const Env = z.object({
   /** How many invites one person may have outstanding. Scarcity is the point. */
   INVITES_PER_USER: z.coerce.number().default(5),
 
+  /**
+   * Phone identity.
+   *
+   * SMS_PROVIDER picks the sender. 'console' writes the code to the server log and
+   * texts nobody, which is the only setting that works with no provider account and
+   * is therefore the default.
+   */
+  SMS_PROVIDER: z.enum(['console', 'msg91', 'twilio']).default('console'),
+
+  /**
+   * Return the code in the HTTP response.
+   *
+   * Turns the whole point of a one-time code off: anyone who can reach the route can
+   * read the code for any number. It exists because testing the flow on two handsets
+   * with no SMS account is otherwise miserable. Refused at boot in production, and
+   * the response says plainly that it is on.
+   */
+  SMS_DEV_ECHO: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  /**
+   * The pepper for hashed phone numbers. See src/phone.ts.
+   *
+   * Optional, and derived from AUTH_SECRET when unset so an existing deployment keeps
+   * working. Set it explicitly before there is real data: once numbers are stored,
+   * changing this detaches every account from its owner, so it must NOT be rotated on
+   * the same schedule as AUTH_SECRET.
+   */
+  PHONE_PEPPER: z.string().min(32).optional(),
+
+  MSG91_AUTH_KEY: z.string().optional(),
+  MSG91_TEMPLATE_ID: z.string().optional(),
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM: z.string().optional(),
+
+  /**
+   * Whether an account can be made without a verified number.
+   *
+   * On, redeeming an invite alone still works, which is how every account that
+   * predates this migration was made. Off is the destination: a number is the only
+   * thing standing between a removed person and a fresh account.
+   */
+  ALLOW_UNVERIFIED_SIGNUP: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
   ALLOW_UNVERIFIED_PRICING: z
     .enum(['true', 'false'])
     .default('false')
@@ -181,6 +231,19 @@ if (env.NODE_ENV === 'production' && env.SYNTHETIC_AUTO_YES) {
 
 if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {
   throw new Error('ALLOW_LEGACY_TOKENS must be false in production: the old credential is unsigned.');
+}
+
+if (env.NODE_ENV === 'production' && env.SMS_DEV_ECHO) {
+  throw new Error(
+    'SMS_DEV_ECHO must be false in production: it returns the one-time code to '
+    + 'whoever asked for it, which means anyone can sign in as any number.',
+  );
+}
+
+// A provider that texts nobody is the right default and the wrong production
+// setting: every code would sit in the log and no phone would ever ring.
+if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {
+  throw new Error('SMS_PROVIDER must be a real provider in production, not "console".');
 }
 
 if (env.NODE_ENV === 'production' && env.AUTH_SECRET.startsWith('dev-only')) {

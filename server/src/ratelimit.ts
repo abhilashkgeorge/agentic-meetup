@@ -136,6 +136,23 @@ export const LIMITS = {
   redeem: { max: 10, windowMs: 60 * 60_000 },
   /** Everything else unauthenticated. */
   auth: { max: 30, windowMs: 60 * 60_000 },
+  /**
+   * Asking for a one-time code, counted per IP.
+   *
+   * Every one of these costs real money the moment a provider is wired up, so this
+   * limit is a spend cap as much as a security control. Paired with a tighter
+   * per-NUMBER limit at the route, because one IP is a whole office and one number
+   * is one person.
+   */
+  otpSend: { max: 10, windowMs: 15 * 60_000 },
+  /** Asking for a code for ONE number. A person who did not get it tries twice. */
+  otpSendPerPhone: { max: 3, windowMs: 15 * 60_000 },
+  /**
+   * Typing a code in. Low, because six digits is a million guesses and the per-row
+   * attempt counter only stops a brute force against ONE challenge -- this is what
+   * stops somebody opening a thousand challenges and guessing once at each.
+   */
+  otpVerify: { max: 20, windowMs: 15 * 60_000 },
   /** WebSocket upgrades. A reconnect loop is the honest failure this catches. */
   socket: { max: 60, windowMs: 5 * 60_000 },
   /** Messages pushed down one socket. */

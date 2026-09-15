@@ -43,11 +43,29 @@ async function freshCode(): Promise<string> {
   return code;
 }
 
-const redeem = (code: string, ip = '198.51.100.1') =>
+/**
+ * A spent-able ticket for a number nobody has.
+ *
+ * Written straight into the table rather than driven through /phone/start, because
+ * the code is texted and never returned -- the only way a test can know it is to
+ * choose it. Everything else about the row is exactly what the route writes, and
+ * phone-auth.test.ts covers the route itself.
+ */
+async function verifiedTicket(phone = `+9199${Date.now() % 100000000}`): Promise<string> {
+  const { phoneHmac } = await import('../src/phone.js');
+  const { rows } = await owner.query<{ id: string }>(
+    `INSERT INTO phone_challenges (phone_hmac, code_hmac, expires_at, verified_at)
+     VALUES ($1, 'already-verified', now() + interval '15 minutes', now())
+     RETURNING id`,
+    [phoneHmac(phone)]);
+  return rows[0]!.id;
+}
+
+const redeem = async (code: string, ip = '198.51.100.1', ticket?: string) =>
   authRoutes.request('/v1/auth/redeem', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
-    body: JSON.stringify({ code, label: 'test device' }),
+    body: JSON.stringify({ code, label: 'test device', ticket: ticket ?? await verifiedTicket() }),
   });
 
 describe('redeeming an invite', () => {

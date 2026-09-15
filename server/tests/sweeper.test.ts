@@ -82,19 +82,62 @@ describe('dueSessions', () => {
     expect(due.map((d) => d.ctx.userId)).not.toContain(fixture);
   });
 
-  it('stops sweeping an account whose devices have all been revoked', async () => {
+  /**
+   * THIS TEST USED TO ASSERT THE OPPOSITE, and it was right to make somebody argue.
+   *
+   * Its previous note said a revoked account should still be swept, because a row
+   * existing means a human used the app and their backlog is still theirs. Meanwhile
+   * the comment in session.ts claimed the reverse, and the query itself did neither --
+   * it had no `revoked_at` clause at all. All three now say the same thing, which is
+   * the only part of this that was definitely broken before.
+   *
+   * The argument for the new behaviour: nothing wrote `revoked_at` until sign-out
+   * became a real route, so "revoked" was a hypothetical. Now it means a person
+   * deliberately left. Extraction is not lost by waiting -- it is keyed on
+   * `last_turn_index`, so the backlog is picked up in full the moment they sign in
+   * again. Paying Gemini to process the diary of somebody who walked out is the one
+   * case where doing the work early buys nothing at all.
+   */
+  it('keeps sweeping while ANY device is still signed in', async () => {
+    // The negative control for the test below: one revoked session must not be
+    // mistaken for a departure. Somebody who signs out on a tablet still has a phone.
+    const second = crypto.randomUUID();
+    await owner.query(
+      `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at)
+       VALUES ($1,$2,$3,'second device', now() + interval '30 days')`,
+      [second, tenantId, person]);
+    await owner.query(
+      `UPDATE device_sessions SET revoked_at = now()
+        WHERE user_id = $1 AND id <> $2`, [person, second]);
+    try {
+      const due = await dueSessions(500);
+      expect(due.map((d) => d.ctx.userId)).toContain(person);
+    } finally {
+      await owner.query('DELETE FROM device_sessions WHERE id = $1', [second]);
+      await owner.query(
+        'UPDATE device_sessions SET revoked_at = NULL WHERE user_id = $1', [person]);
+    }
+  });
+
+  it('stops sweeping an account whose devices have ALL been revoked', async () => {
     await owner.query(
       'UPDATE device_sessions SET revoked_at = now() WHERE user_id = $1', [person]);
     try {
-      // Deliberately still true after revocation: the row exists, so this person has
-      // used the app and their own backlog is still theirs to extract. Asserted so
-      // that if somebody later narrows the clause to live sessions only, they do it
-      // on purpose and this test tells them what changed.
       const due = await dueSessions(500);
-      expect(due.map((d) => d.ctx.userId)).toContain(person);
+      expect(due.map((d) => d.ctx.userId)).not.toContain(person);
     } finally {
       await owner.query(
         'UPDATE device_sessions SET revoked_at = NULL WHERE user_id = $1', [person]);
     }
+  });
+
+  it('picks the account back up the moment somebody signs in again', async () => {
+    // Proves the claim the test above rests on: stopping is a pause, not a loss.
+    await owner.query(
+      'UPDATE device_sessions SET revoked_at = now() WHERE user_id = $1', [person]);
+    expect((await dueSessions(500)).map((d) => d.ctx.userId)).not.toContain(person);
+    await owner.query(
+      'UPDATE device_sessions SET revoked_at = NULL WHERE user_id = $1', [person]);
+    expect((await dueSessions(500)).map((d) => d.ctx.userId)).toContain(person);
   });
 });
