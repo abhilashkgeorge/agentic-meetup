@@ -32,7 +32,7 @@ export default function InviteScreen() {
     if (!trimmed) return;
     setBusy(true);
     setError(null);
-    const label = `${Device.deviceName ?? 'device'} (${Device.osName ?? 'unknown'})`;
+    const label = `${Device.deviceName ?? 'device'} (${Device.osName ?? 'unknown'})`.slice(0, 64);
     const r = await redeemInvite(trimmed, label, ticket);
     setBusy(false);
 

@@ -58,8 +58,14 @@ export default function PhoneScreen() {
       params: {
         challengeId: r.challengeId,
         sentTo: r.sentTo,
-        // Carried so the next screen can offer "wrong number?" without asking again.
-        phone: e164,
+        // WITHOUT THE LEADING PLUS, and put back on the other side.
+        //
+        // These params are serialised into a URL. A `+` in a query string is the
+        // classic encoding of a space, so `+917624…` can arrive as ` 917624…` -- and
+        // then a resend normalises a number with no country code against the default
+        // and texts somebody else entirely. Digits only is the one form that cannot
+        // be reinterpreted on the way.
+        phone: e164.replace(/^\+/, ''),
         // Carried so a resend uses the country that was actually chosen. Assuming
         // one here is how a number from anywhere else stops working on the second tap.
         country,

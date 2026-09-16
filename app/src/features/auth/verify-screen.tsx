@@ -51,7 +51,10 @@ export default function VerifyScreen() {
     return () => clearTimeout(t);
   }, [left]);
 
-  const label = `${Device.deviceName ?? 'device'} (${Device.osName ?? 'unknown'})`;
+  // CLAMPED, because the server caps it at 64 and rejects the whole request over it.
+  // A device name is whatever its owner typed, and being told "that code did not
+  // work" because you named your phone something long is an unfindable bug.
+  const label = `${Device.deviceName ?? 'device'} (${Device.osName ?? 'unknown'})`.slice(0, 64);
 
   // GUARDS AGAINST A DOUBLE SUBMIT. The code is six characters and the field fires
   // submit the moment it is full, so a fast typist and an autofill can both land on
@@ -61,6 +64,13 @@ export default function VerifyScreen() {
 
   const submit = useCallback(async (value: string) => {
     if (value.length < OTP_LENGTH || sending.current) return;
+    // NOTHING TO VERIFY AGAINST. Without this the request goes out with an undefined
+    // id, the server rejects the shape before it ever looks at the code, and the
+    // person is told their code is wrong when their code was fine.
+    if (!challengeId) {
+      setError('Something went wrong sending the code. Go back and try again.');
+      return;
+    }
     sending.current = true;
     setBusy(true);
     setError(null);
@@ -99,7 +109,9 @@ export default function VerifyScreen() {
     // The country the person picked, NOT a hardcoded one. `params.phone` is already
     // full E.164 so the default is only ever a fallback, but a wrong fallback here
     // would silently rewrite somebody's number on the second tap.
-    const r = await startPhone(params.phone, params.country ?? '+91');
+    // The plus was stripped before this became a URL parameter. See phone-screen.
+    const r = await startPhone(`+${String(params.phone).replace(/\D/g, '')}`,
+      params.country ?? '+91');
     setBusy(false);
     if (r === null) return setError('Cannot reach the server.');
     if ('error' in r) return setError(r.error);

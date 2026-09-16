@@ -266,7 +266,13 @@ export const authRoutes = new Hono()
    */
   .post('/v1/auth/phone/start', rateLimit('otp-send', LIMITS.otpSend), async (c) => {
     const body = StartPhone.safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: 'bad request' }, 400);
+    if (!body.success) {
+      const fields = body.error.issues.map((i) => i.path.join('.') || '(body)');
+      return c.json({
+        error: 'bad_request',
+        message: `The app sent something wrong (${fields.join(', ')}).`,
+      }, 400);
+    }
 
     const e164 = normalisePhone(body.data.phone, body.data.country ?? '+91');
     if (!e164) {
@@ -383,7 +389,22 @@ export const authRoutes = new Hono()
    */
   .post('/v1/auth/phone/verify', rateLimit('otp-verify', LIMITS.otpVerify), async (c) => {
     const body = VerifyPhone.safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: 'bad request' }, 400);
+    if (!body.success) {
+      // WHICH FIELD, IN THE LOG AND IN THE REPLY.
+      //
+      // This used to answer `{ error: 'bad request' }` with no message at all, and
+      // the app falls back to "That code did not work" when a reply carries none --
+      // so a malformed request and a wrong code were indistinguishable on screen.
+      // Somebody typed a perfectly good code and was told the code was wrong.
+      //
+      // Field NAMES only. The values are a one-time code and a challenge id.
+      const fields = body.error.issues.map((i) => i.path.join('.') || '(body)');
+      log.warn({ fields }, 'phone verify: malformed request');
+      return c.json({
+        error: 'bad_request',
+        message: `The app sent something wrong (${fields.join(', ')}). Ask for a new code.`,
+      }, 400);
+    }
     const { challengeId, code } = body.data;
 
     // ONE STATEMENT DOES THE COUNTING AND THE FETCHING.
