@@ -63,6 +63,20 @@ export async function record(
   task: string,
   usage: Usage,
 ): Promise<void> {
+  // A COST WITH NOTHING BEHIND IT IS NOT A COST. The database refuses this too
+  // (0047), and it refuses it for rows nothing in this file wrote -- but failing here
+  // names the task and the model, where the constraint violation names only a table.
+  // The old per-call-site metering produced 1,441 such rows and nothing noticed for
+  // six days, because a number in a spend column reads as authoritative.
+  const tokens = usage.inputTokens + usage.outputTokens
+    + usage.cachedReadTokens + usage.cacheWriteTokens;
+  if (usage.costUsd > 0 && tokens === 0) {
+    throw new Error(
+      `refusing to book $${usage.costUsd} for ${task} on ${usage.provider}:${usage.modelId} `
+      + 'with no tokens: a call that used nothing did not happen',
+    );
+  }
+
   await c.query(
     `INSERT INTO llm_calls (tenant_id, user_id, task, provider, model,
        input_tokens, cached_read_tokens, cache_write_tokens, output_tokens,

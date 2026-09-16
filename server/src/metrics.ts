@@ -43,7 +43,12 @@ export async function usage7d(c: PoolClient): Promise<Usage7d> {
              COALESCE(SUM(cached_read_tokens), 0)                         AS cached,
              COALESCE(SUM(input_tokens + cached_read_tokens), 0)          AS total_in
         FROM llm_calls
-       WHERE at > now() - interval '7 days'
+       -- MEASURED SPEND ONLY. The estimated flag marks rows whose cost was computed rather
+       -- than reported by a provider -- the old per-call-site metering wrote 1,441 of
+       -- them, carrying $4.25 with no tokens behind it. Summing those alongside real
+       -- usage produced a figure that looked like money and could not be reconciled
+       -- against an invoice, which is the one thing this number is for. See 0047.
+       WHERE at > now() - interval '7 days' AND NOT estimated
     )
     SELECT
       (SELECT COUNT(DISTINCT user_id) FROM sess)                          AS active_users,
