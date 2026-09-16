@@ -12,7 +12,7 @@
  * coordinates rounded to the precision the person actually gave.
  */
 import type { PoolClient } from 'pg';
-import { MIN_AGE, POOL_REQUIRED } from '@clone/shared';
+import { MIN_AGE, POOL_REQUIRED, canFilterOn } from '@clone/shared';
 // Aliased: this file already has its own REQUIRED -- the five structural answers --
 // and importing a second one under the same name silently shadowed it, emptying
 // `missing` for every profile. tsc accepted it; a test caught it.
@@ -211,6 +211,13 @@ export async function touchActive(c: PoolClient, userId: string): Promise<void> 
  * strength that a fact has no use for. Collapsing them means every matching query has
  * to guess which rows describe the user and which describe an imagined partner.
  */
+/** Thrown for a dealbreaker on a predicate the candidate query cannot test. */
+export class PreferenceCannotFilter extends Error {
+  constructor(public readonly predicate: string) {
+    super(`a dealbreaker on '${predicate}' cannot exclude anybody`);
+  }
+}
+
 export async function setPreference(
   c: PoolClient,
   ctx: { tenantId: string; userId: string },
@@ -222,6 +229,14 @@ export async function setPreference(
     sourceQuote?: string;
   },
 ): Promise<void> {
+  // A DEALBREAKER THAT CANNOT EXCLUDE ANYBODY IS REFUSED, not stored. The candidate
+  // query tests dealbreakers against the other person's traits, and a predicate that
+  // never reaches traits -- no value shape, or routed to its own column -- passed for
+  // everyone, silently, for ever. The person believed they had drawn a line. Nothing
+  // had. Saying so at the moment they draw it is the only honest response.
+  if (pref.strength === 'dealbreaker' && !canFilterOn(pref.predicate)) {
+    throw new PreferenceCannotFilter(pref.predicate);
+  }
   await c.query(
     `INSERT INTO preferences (tenant_id, user_id, predicate, operator, value, strength, source_quote)
      VALUES ($1,$2,$3,$4,$5,$6,$7)

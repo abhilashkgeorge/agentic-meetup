@@ -280,6 +280,21 @@ export function satisfies(
  * through the ordinary preference path, where the person has chosen the value from a
  * list themselves rather than a model inferring it from a sentence.
  */
+/**
+ * Whether a dealbreaker on this predicate can exclude anybody.
+ *
+ * A dealbreaker is applied by testing the other person's `traits`, and a predicate
+ * reaches `traits` only if it has a value shape (so a fact on it gets an object_value)
+ * AND the profile builder does not route it somewhere else. Four are routed to their
+ * own columns -- birth year, home, age range, distance -- and every predicate without
+ * a shape never acquires an object_value at all. A dealbreaker stored on any of those
+ * excluded nobody, silently, for ever. Refusing to store it is the honest answer.
+ */
+const ROUTED_ELSEWHERE = new Set(['birth_date', 'lives_in', 'age_range_sought', 'max_distance_km']);
+export function canFilterOn(predicate: string): boolean {
+  return predicate in VALUE_SHAPES && !ROUTED_ELSEWHERE.has(predicate);
+}
+
 export const MATCHABLE_PREDICATES: readonly { name: string; values: readonly string[] }[] = [
   { name: 'smoking', values: FREQUENCY },
   { name: 'drinking', values: FREQUENCY },

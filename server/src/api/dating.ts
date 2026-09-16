@@ -7,7 +7,7 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { MIN_AGE, deriveValue, findPlace, isAdult } from '@clone/shared';
+import { MIN_AGE, deriveValue, findPlace, isAdult, canFilterOn } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { commit } from '../memory/facts.js';
@@ -254,6 +254,23 @@ export const datingRoutes = new Hono()
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'bad request' }, 400);
 
+    // Promoting a rule to a dealbreaker is drawing a line. If the line cannot be
+    // enforced -- the predicate never reaches the traits the candidate query tests --
+    // say so now rather than let the person believe a filter exists. See canFilterOn.
+    if (body.data.strength === 'dealbreaker') {
+      const pred = await tenantSession(ctx, async (db) => {
+        const { rows } = await db.query<{ predicate: string }>(
+          'SELECT predicate FROM preferences WHERE id = $1 AND user_id = $2',
+          [body.data.id, ctx.userId]);
+        return rows[0]?.predicate ?? null;
+      });
+      if (pred && !canFilterOn(pred)) {
+        return c.json({
+          error: 'cannot_filter',
+          message: 'That one cannot rule anybody out. It can only move people up or down.',
+        }, 400);
+      }
+    }
     await tenantSession(ctx, (db) =>
       db.query(`UPDATE preferences SET strength = $3 WHERE id = $1 AND user_id = $2`,
         [body.data.id, ctx.userId, body.data.strength]),

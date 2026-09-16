@@ -1,0 +1,14 @@
+-- 0052: the matcher roles can see whether a preference was retired.
+--
+-- 0021 granted clone_match six columns of `preferences` and left `retired_at` out,
+-- relying on the role's RLS policy (USING retired_at IS NULL) to hide retired rows.
+-- 0028 gave clone_matchmaker a policy of USING (true). So the SAME candidate query
+-- excluded people on retired dealbreakers when it ran as the matchmaker -- the role
+-- that actually sends the agent out -- and did not when it ran as the matcher, which
+-- is the role that shows the pool count. The count and the round disagreed about who
+-- was excluded, and no query could say `retired_at IS NULL` to make them agree,
+-- because one of the two roles could not read the column.
+--
+-- One column, both roles. The policy on clone_match stays; the clause the query adds
+-- (candidates.ts, score.ts) is what makes the two roles compute the same set.
+GRANT SELECT (retired_at) ON preferences TO clone_match, clone_matchmaker;

@@ -67,14 +67,17 @@ export const CLAUSES: Record<string, string> = {
    AND (a.intent = '{}' OR b.intent = '{}' OR a.intent && b.intent)`,
 
   // The only place a personal rule excludes anybody. Both directions.
+  // `retired_at IS NULL` is spelled out. clone_match's policy already hides retired
+  // rows; clone_matchmaker's does not (0028), so without this the pool count and the
+  // round that actually sends the agent out disagreed about who was excluded.
   dealbreakers: `
    AND NOT EXISTS (
      SELECT p.id FROM preferences p
-      WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker'
+      WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL
         AND NOT match_pref_satisfied(p.operator, p.value, b.traits -> p.predicate))
    AND NOT EXISTS (
      SELECT p.id FROM preferences p
-      WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker'
+      WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL
         AND NOT match_pref_satisfied(p.operator, p.value, a.traits -> p.predicate))`,
 
   active: `

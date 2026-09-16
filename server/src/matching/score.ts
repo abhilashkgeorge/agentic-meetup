@@ -42,7 +42,6 @@ interface Row {
   user_id: string;
   traits: Record<string, unknown>;
   attribute_tags: string[];
-  value_sim: number | null;
 }
 
 /**
@@ -67,45 +66,62 @@ function ochiai(a: readonly string[], b: readonly string[]): number {
  * help nor hurt, and they are counted out of `common` so a profile that answered three
  * questions cannot outrank one that answered thirty.
  */
-export async function scoreOneWay(
+/** One person's live, non-dealbreaker rules. Loaded once, applied to many. */
+export async function loadPreferences(
   c: PoolClient,
-  meUserId: string,
-  them: Row,
-): Promise<{ score: number; met: string[]; missed: string[]; common: number }> {
-  const { rows: prefs } = await c.query<{
+  userId: string,
+): Promise<{ predicate: string; operator: string; value: unknown; strength: string }[]> {
+  const { rows } = await c.query<{
     predicate: string; operator: string; value: unknown; strength: string;
   }>(
-    // `retired_at` is deliberately not readable by the matching role; the policy on
-    // the table already filters retired rows, so the query must not name the column.
+    // `retired_at IS NULL` is spelled out even though clone_match's policy already
+    // hides retired rows, because clone_matchmaker's does not (0028) and the two
+    // roles must compute the same score. 0052 makes the column readable to both.
     `SELECT predicate, operator, value, strength FROM preferences
-      WHERE user_id = $1 AND strength <> 'dealbreaker'`,
-    [meUserId],
+      WHERE user_id = $1 AND strength <> 'dealbreaker' AND retired_at IS NULL`,
+    [userId],
   );
+  return rows;
+}
+
+export async function scoreOneWay(
+  c: PoolClient,
+  prefs: { predicate: string; operator: string; value: unknown; strength: string }[],
+  them: Row,
+): Promise<{ score: number; met: string[]; missed: string[]; common: number }> {
+  // Unknown is not a miss. It is a question worth asking, later.
+  const testable = prefs.filter((p) => {
+    const actual = them.traits[p.predicate];
+    return actual !== undefined && actual !== null;
+  });
+  if (!testable.length) return { score: 0, met: [], missed: [], common: 0 };
+
+  // ONE QUERY FOR ALL OF THEM. This used to be one round trip per preference per
+  // candidate per direction -- up to 2 × 500 × prefs statements inside a single read
+  // transaction, which is the difference between a round that starts in a second
+  // and one that holds a pooled connection for the length of a coffee.
+  const { rows } = await c.query<{ i: number; ok: boolean }>(
+    `SELECT i, match_pref_satisfied(op, wanted, actual) AS ok
+       FROM unnest($1::int[], $2::text[], $3::jsonb[], $4::jsonb[]) AS t(i, op, wanted, actual)`,
+    [
+      testable.map((_, i) => i),
+      testable.map((p) => p.operator),
+      testable.map((p) => JSON.stringify(p.value)),
+      testable.map((p) => JSON.stringify(them.traits[p.predicate])),
+    ],
+  );
+  const okAt = new Map(rows.map((r) => [r.i, r.ok]));
 
   let earned = 0;
   let available = 0;
   const met: string[] = [];
   const missed: string[] = [];
-
-  for (const p of prefs) {
-    const actual = them.traits[p.predicate];
-    // Unknown is not a miss. It is a question worth asking, later.
-    if (actual === undefined || actual === null) continue;
-
+  testable.forEach((p, i) => {
     const weight = STRENGTH_WEIGHT[p.strength] ?? 1;
     available += weight;
-
-    const { rows } = await c.query<{ ok: boolean }>(
-      `SELECT match_pref_satisfied($1, $2::jsonb, $3::jsonb) AS ok`,
-      [p.operator, JSON.stringify(p.value), JSON.stringify(actual)],
-    );
-    if (rows[0]?.ok) {
-      earned += weight;
-      met.push(p.predicate);
-    } else {
-      missed.push(p.predicate);
-    }
-  }
+    if (okAt.get(i)) { earned += weight; met.push(p.predicate); }
+    else missed.push(p.predicate);
+  });
 
   const preferenceScore = available > 0 ? earned / available : 0;
   return { score: preferenceScore, met, missed, common: met.length + missed.length };
@@ -138,39 +154,38 @@ export async function rank(
   if (!candidateIds.length) return [];
 
   const { rows: mine } = await c.query<Row>(
-    `SELECT user_id, traits, attribute_tags, NULL::float AS value_sim
-       FROM match_profile WHERE user_id = $1`, [userId],
+    `SELECT user_id, traits, attribute_tags FROM match_profile WHERE user_id = $1`, [userId],
   );
   const me = mine[0];
   if (!me) return [];
+  const myPrefs = await loadPreferences(c, userId);
 
-  // One query for everybody, including the value-vector similarity, which pgvector
-  // computes far faster than anything this process could.
+  // NO VALUE-VECTOR TERM. The column it read, match_profile.value_vec, was never
+  // written by anything -- not the profile builder, not the synthetic seeder -- so
+  // the term was a constant zero that quietly took a fifth of every score. The two
+  // remaining weights are the old ones renormalised (0.55 and 0.25 over 0.80), so
+  // the ordering among candidates is exactly what it was, and the number is honest.
+  // Embedding the public facts is a later experiment with its own measurement.
   const { rows: others } = await c.query<Row>(
-    `SELECT b.user_id, b.traits, b.attribute_tags,
-            CASE WHEN a.value_vec IS NULL OR b.value_vec IS NULL THEN NULL
-                 ELSE 1 - (a.value_vec <=> b.value_vec) END AS value_sim
-       FROM match_profile b
-       LEFT JOIN match_profile a ON a.user_id = $1
-      WHERE b.user_id = ANY($2::uuid[])`,
-    [userId, candidateIds],
+    `SELECT user_id, traits, attribute_tags FROM match_profile WHERE user_id = ANY($1::uuid[])`,
+    [candidateIds],
   );
 
   const out: Scored[] = [];
   for (const them of others) {
-    const forward = await scoreOneWay(c, userId, them);
-    const backward = await scoreOneWay(c, them.user_id, {
-      user_id: userId, traits: me.traits, attribute_tags: me.attribute_tags, value_sim: null,
+    const forward = await scoreOneWay(c, myPrefs, them);
+    const theirPrefs = await loadPreferences(c, them.user_id);
+    const backward = await scoreOneWay(c, theirPrefs, {
+      user_id: userId, traits: me.traits, attribute_tags: me.attribute_tags,
     });
 
     // What they have in common, independent of what either asked for. This is what
     // catches the pair who never thought to state a preference for the thing they
     // actually share.
     const overlap = ochiai(me.attribute_tags, them.attribute_tags);
-    const values = them.value_sim ?? 0;
 
-    const forwardTotal = 0.55 * forward.score + 0.25 * overlap + 0.20 * values;
-    const backwardTotal = 0.55 * backward.score + 0.25 * overlap + 0.20 * values;
+    const forwardTotal = 0.6875 * forward.score + 0.3125 * overlap;
+    const backwardTotal = 0.6875 * backward.score + 0.3125 * overlap;
 
     const common = Math.min(forward.common, backward.common);
     const mutual = Math.sqrt(Math.max(forwardTotal, 0) * Math.max(backwardTotal, 0));
