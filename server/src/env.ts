@@ -256,6 +256,19 @@ const Env = z.object({
    * predates this migration was made. Off is the destination: a number is the only
    * thing standing between a removed person and a fresh account.
    */
+  /**
+   * Honour invites marked `reusable`, which are never spent.
+   *
+   * A code that makes unlimited accounts and never expires is a backdoor, and this
+   * is the switch that makes one possible. Off by default and refused at boot in
+   * production, so a reusable row restored from a dump behaves as an ordinary
+   * single-use invite on a real host.
+   */
+  ALLOW_REUSABLE_INVITES: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
   ALLOW_UNVERIFIED_SIGNUP: z
     .enum(['true', 'false'])
     .default('false')
@@ -291,6 +304,13 @@ if (env.NODE_ENV === 'production' && env.SYNTHETIC_AUTO_YES) {
 
 if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {
   throw new Error('ALLOW_LEGACY_TOKENS must be false in production: the old credential is unsigned.');
+}
+
+if (env.NODE_ENV === 'production' && env.ALLOW_REUSABLE_INVITES) {
+  throw new Error(
+    'ALLOW_REUSABLE_INVITES must be false in production: a reusable invite is a code '
+    + 'that creates unlimited accounts and never expires.',
+  );
 }
 
 if (env.NODE_ENV === 'production' && env.SMS_DEV_ECHO) {

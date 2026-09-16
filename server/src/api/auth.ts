@@ -163,13 +163,31 @@ export const authRoutes = new Hono()
     // key: at this instant it names an account that has not been created yet.
     const userId = crypto.randomUUID();
     const claimed = await adminSession(async (db) => {
+      // A REUSABLE CODE IS NOT CLAIMED, because claiming it is what spends it. Read
+      // rather than updated, and only while the flag is on -- so the same row on a
+      // real host falls through to the conditional UPDATE below and is spent once
+      // like any other invite. See 0046.
+      if (env.ALLOW_REUSABLE_INVITES) {
+        const { rows } = await db.query<{ note: string }>(
+          `SELECT note FROM invites
+            WHERE code = $1 AND reusable AND expires_at > now()`,
+          [code],
+        );
+        if (rows[0]) return { note: rows[0].note, reusable: true as const };
+      }
+
+      // `AND NOT reusable` makes a reusable row DEAD rather than single-use when the
+      // flag is off. That is deliberate and it is the stronger answer: a development
+      // artefact restored into a real database should do nothing at all, not hand out
+      // one free account before it stops.
       const { rows } = await db.query<{ note: string }>(
         `UPDATE invites SET reserved_for = $2, reserved_at = now()
           WHERE code = $1 AND reserved_for IS NULL AND expires_at > now()
+            AND NOT reusable
         RETURNING note`,
         [code, userId],
       );
-      return rows[0];
+      return rows[0] ? { note: rows[0].note, reusable: false as const } : undefined;
     });
 
     if (!claimed) {
@@ -183,13 +201,16 @@ export const authRoutes = new Hono()
       provisioned = await provision(body.data.label ?? 'device', userId, phone ?? undefined);
     } catch (err) {
       // Release it. A failed provision must not silently eat somebody's only invite.
-      await adminSession((db) =>
-        db.query(
-          `UPDATE invites SET reserved_for = NULL, reserved_at = NULL
-            WHERE code = $1 AND reserved_for = $2 AND used_by IS NULL`,
-          [code, userId],
-        ),
-      ).catch((e: unknown) => log.error({ err: e, code: `${code.slice(0, 4)}…` }, 'invite not released'));
+      // Nothing to release for a reusable code: it was never claimed.
+      if (!claimed.reusable) {
+        await adminSession((db) =>
+          db.query(
+            `UPDATE invites SET reserved_for = NULL, reserved_at = NULL
+              WHERE code = $1 AND reserved_for = $2 AND used_by IS NULL`,
+            [code, userId],
+          ),
+        ).catch((e: unknown) => log.error({ err: e, code: `${code.slice(0, 4)}…` }, 'invite not released'));
+      }
 
       // The unique index on phone_hmac fired: this number got an account between
       // verifying and redeeming. Rare, and a 500 would be a lie -- nothing is broken,
@@ -207,10 +228,17 @@ export const authRoutes = new Hono()
     // Now the account exists, so the real reference can be written. Best-effort: the
     // person is already in, and failing their signup to record an audit column would
     // be the wrong trade.
-    await adminSession((db) =>
-      db.query(`UPDATE invites SET used_by = $1, used_at = now() WHERE code = $2`,
-        [provisioned.userId, code]),
-    ).catch((e: unknown) => log.error({ err: e, code: `${code.slice(0, 4)}…` }, 'invite attribution not recorded'));
+    // A reusable code has no single user to attribute it to, and writing one would
+    // make the next redemption look like a code that had already been used.
+    if (!claimed.reusable) {
+      await adminSession((db) =>
+        db.query(`UPDATE invites SET used_by = $1, used_at = now() WHERE code = $2`,
+          [provisioned.userId, code]),
+      ).catch((e: unknown) => log.error({ err: e, code: `${code.slice(0, 4)}…` }, 'invite attribution not recorded'));
+    } else {
+      // Loud on purpose. This line in a log that is not a laptop is the alarm.
+      log.warn({ userId: provisioned.userId }, 'REUSABLE invite redeemed (dev only)');
+    }
 
     // The CODE IS A LIVE CREDENTIAL until it is claimed, and a log line is read by
     // everyone with dashboard access and kept as long as the retention policy says.
