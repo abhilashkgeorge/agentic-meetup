@@ -656,9 +656,11 @@ export const inviteRoutes = new Hono()
       if (err instanceof Unauthorized) return c.json({ error: 'unauthorized' }, 401);
       throw err;
     }
-    // Read through the owner pool: `invites` carries no RLS because a code must be
-    // claimable by someone who is not yet anybody. The WHERE clause is the boundary,
-    // and it is the only place this table is read by creator.
+    // Read with no tenant context -- adminSession is clone_app without one, not the
+    // owner pool. `invites` carries no RLS because a code must be claimable by
+    // someone who is not yet anybody. The WHERE clause is the boundary, and it is
+    // the only place this table is read by creator. The app role can read, mint
+    // and claim; it cannot delete (0053).
     const rows = await adminSession(async (db) => {
       const r = await db.query(
         `SELECT code, note, created_at, expires_at, (reserved_for IS NOT NULL) AS used

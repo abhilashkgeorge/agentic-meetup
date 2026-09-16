@@ -35,7 +35,7 @@ export const USER_TABLES = [
   'photos', 'question_answers', 'match_profile', 'preferences', 'predicate_status',
   'self_tests', 'device_sessions', 'rounds',
   'facts', 'episodes', 'memory_audit', 'fact_conflicts', 'session_extractions',
-  'intent_signals', 'core_profile', 'directives', 'llm_calls', 'tenant_budget',
+  'intent_signals', 'core_profile', 'llm_calls', 'tenant_budget',
 ] as const;
 
 /**
@@ -231,8 +231,6 @@ export async function exportUser(c: PoolClient, userId: string): Promise<Record<
          FROM episodes WHERE user_id = $1 ORDER BY session_id, turn_index`),
     coreProfile: await q(
       'SELECT block_name, content, rebuilt_at FROM core_profile WHERE user_id = $1'),
-    directives: await q(
-      'SELECT text, valid_from, valid_to, active FROM directives WHERE user_id = $1'),
     conflicts: await q(
       `SELECT kind, clarifying_question, status, detected_at, resolved_at, resolution
          FROM fact_conflicts WHERE user_id = $1 ORDER BY detected_at`),

@@ -60,7 +60,7 @@ async function freshUser() {
 
 beforeAll(async () => { ctx = await freshUser(); });
 beforeEach(async () => {
-  for (const t of ['facts', 'core_profile', 'memory_audit', 'fact_conflicts', 'directives']) {
+  for (const t of ['facts', 'core_profile', 'memory_audit', 'fact_conflicts']) {
     await owner.query(`DELETE FROM ${t} WHERE user_id = $1`, [ctx.userId]);
   }
 });

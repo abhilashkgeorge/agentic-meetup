@@ -183,7 +183,7 @@ export async function voiceText(c: PoolClient, userId: string): Promise<string> 
   return rows[0]?.content?.trim() ?? '';
 }
 
-/** The block inlined on every turn, plus any standing directives. */
+/** The block inlined on every turn. */
 export async function coreProfileText(c: PoolClient, userId: string): Promise<string> {
   const { rows } = await c.query<{ block_name: string; content: string }>(
     `SELECT block_name, content FROM core_profile
@@ -191,14 +191,6 @@ export async function coreProfileText(c: PoolClient, userId: string): Promise<st
       ORDER BY array_position(ARRAY['identity','situation','preferences','open_threads'], block_name)`,
     [userId],
   );
-  const { rows: dirs } = await c.query<{ text: string }>(
-    'SELECT text FROM directives WHERE user_id = $1 AND active ORDER BY valid_from',
-    [userId],
-  );
 
-  const profile = rows.filter((r) => r.content.trim()).map((r) => r.content.trim()).join('\n\n');
-  const directives = dirs.length
-    ? `\n\nThings they have asked you to do:\n${dirs.map((d) => `- ${d.text}`).join('\n')}`
-    : '';
-  return profile ? profile + directives : '';
+  return rows.filter((r) => r.content.trim()).map((r) => r.content.trim()).join('\n\n');
 }
