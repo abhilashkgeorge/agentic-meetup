@@ -161,8 +161,16 @@ export const adminRoutes = new Hono()
       // Out of the pool immediately. Not a delete: erasure is the person's own right
       // to exercise, and a reviewer removing somebody's account outright would
       // destroy the evidence the report is about.
+      //
+      // `moderation_hidden`, not `in_pool`. in_pool is recomputed on every rebuild
+      // from the person's own answers, so setting it here lasted exactly until the
+      // moderated person next opened the app. The hidden flag is a separate column
+      // that a trigger folds into in_pool on every write (0048), so nothing the
+      // application computes can lift it.
       await matchmakerSession((db) =>
-        db.query('UPDATE match_profile SET in_pool = false WHERE user_id = $1', [target]));
+        db.query(
+          'UPDATE match_profile SET moderation_hidden = true, in_pool = false WHERE user_id = $1',
+          [target]));
     }
 
     await matchmakerSession((db) =>

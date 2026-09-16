@@ -7,10 +7,14 @@
  * between that and a fraction of a cent is entirely how much of the work lives in an
  * index rather than in a prompt.
  *
- * FIVE FILTERS, and nothing else may exclude anybody. Each is a case where a mismatch
+ * SEVEN FILTERS, and nothing else may exclude anybody. Each is a case where a mismatch
  * wastes an evening for both people rather than merely disappointing one. Everything
  * else is a preference that adds points -- because filters multiply down and reach
  * zero, while points add up and never do.
+ *
+ * The seventh, blocks, lives in BASE rather than in CLAUSES because it is not a
+ * preference anybody chose to have costed in the pool breakdown. It is the one
+ * exclusion that must hold whichever clauses are switched on.
  */
 import type { PoolClient } from 'pg';
 
@@ -19,10 +23,18 @@ const BASE = `
  WHERE a.user_id = $1
    AND b.user_id <> a.user_id
    AND a.in_pool AND b.in_pool
-   -- Real people never see invented ones. The single exception is a test account that
-   -- has explicitly opted in, which is a column somebody had to set by hand rather
-   -- than a flag that could be true by accident.
+   -- Real people see invented ones only while sees_synthetic is on. Migration 0037
+   -- made that the DEFAULT for real accounts, so a new person practises against the
+   -- invented pool until there are enough real people to switch it off. An invented
+   -- profile never sees a real one: the second disjunct requires b to be the invented
+   -- side.
    AND (a.is_synthetic = b.is_synthetic OR (a.sees_synthetic AND b.is_synthetic))
+   -- A BLOCK IS FINAL, AND IT IS CHECKED HERE, before either agent is sent anywhere.
+   -- It used to be checked only once two people would have talked as humans, which
+   -- meant somebody could be paired, again, with the person they had blocked -- and
+   -- the block did nothing until the reveal. The function is SECURITY DEFINER, so
+   -- this role learns one bit and never reads the blocks table.
+   AND NOT block_exists(a.user_id, b.user_id)
 `;
 
 /**
@@ -79,8 +91,16 @@ export async function candidateIds(
   userId: string,
   limit = 500,
 ): Promise<string[]> {
+  // ORDERED. Without this the planner handed back whichever 500 rows it liked, and in
+  // a pool of five thousand invented profiles the five real people were reachable
+  // only by luck. Real before invented, because a real person is the point; most
+  // recently active first, because a profile that was here yesterday is likelier to
+  // answer than one that was here in June. The partial index in 0048 lets the planner
+  // walk this order for the LIMIT rather than sort the pool.
   const { rows } = await c.query<{ user_id: string }>(
-    `${build(ALL_CLAUSES)} LIMIT $2`, [userId, limit],
+    `${build(ALL_CLAUSES)}
+     ORDER BY b.is_synthetic ASC, b.last_active_at DESC
+     LIMIT $2`, [userId, limit],
   );
   return rows.map((r) => r.user_id);
 }

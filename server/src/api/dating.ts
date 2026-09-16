@@ -11,7 +11,7 @@ import { MIN_AGE, deriveValue, findPlace, isAdult } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { commit } from '../memory/facts.js';
-import { rebuildMatchProfile } from '../matching/profile.js';
+import { rebuildMatchProfile, touchActive } from '../matching/profile.js';
 import { candidateCount, poolBreakdown } from '../matching/candidates.js';
 import { decide, runRound } from '../matching/orchestrator.js';
 import { BudgetExceeded } from '../metering.js';
@@ -270,6 +270,8 @@ export const datingRoutes = new Hono()
   .get('/v1/matches', async (c) => {
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
+    // Looking at your matches is being here. See touchActive.
+    await tenantSession(ctx, (db) => touchActive(db, ctx.userId));
 
     // Own brief only, and the policy enforces it -- the other side's brief is the
     // other agent's private assessment of this person, and is never readable here.
@@ -444,6 +446,7 @@ export const datingRoutes = new Hono()
   .post('/v1/matches/run', async (c) => {
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
+    await tenantSession(ctx, (db) => touchActive(db, ctx.userId));
 
     // THE MOST EXPENSIVE BUTTON IN THE APP. One tap is five simulated conversations
     // plus two briefs.

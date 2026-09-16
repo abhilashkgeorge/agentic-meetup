@@ -42,7 +42,12 @@ export async function rebuildMatchProfile(
     `SELECT f.predicate, f.object_text, f.object_value
        FROM facts f JOIN predicates p ON p.name = f.predicate
       WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL
-        AND p.matchable`,
+        -- full_name is deliberately NOT matchable -- nobody is filtered on a name --
+        -- but it is the one unmatchable predicate this function needs, for the
+        -- display name. Without this clause the \`case 'full_name'\` below was dead
+        -- code: 5,008 of 5,013 pooled profiles had a name and every one of them was
+        -- invented, while every real human rendered as "Someone".
+        AND (p.matchable OR p.name = 'full_name')`,
     [ctx.userId],
   );
 
@@ -72,7 +77,10 @@ export async function rebuildMatchProfile(
         // matching role, so a person who has not decided whether to meet you cannot
         // be looked up before they do.
         displayName = String(v).trim().split(/\s+/)[0] ?? null;
-        break;
+        // `continue`, not `break`: the line after the switch back-fills every string
+        // value into traits, and a name must never become something a preference can
+        // be tested against or a tag two people are compared on.
+        continue;
       case 'seeking_gender':
         seeking.push(String(v));
         break;
@@ -167,6 +175,11 @@ export async function rebuildMatchProfile(
        -- Never overwrite a name with nothing. A rebuild that ran before the person
        -- told us their name would otherwise blank it on every later pass.
        display_name = coalesce(EXCLUDED.display_name, match_profile.display_name),
+       -- A rebuild only ever happens because the person is here, so it is a heartbeat.
+       -- This column was previously written once at insert and never again, which
+       -- silently dropped every profile out of everyone else's pool sixty days after
+       -- signup while its owner went on using the app.
+       last_active_at = now(),
        rebuilt_at = now()`,
     [
       ctx.userId, ctx.tenantId, age, gender, seeking, ageMin, ageMax,
@@ -175,6 +188,19 @@ export async function rebuildMatchProfile(
   );
 
   return { matchable: Object.keys(traits).length, missing, inPool };
+}
+
+/**
+ * "They were here." The cheapest write in the system, and the one the activity
+ * filter depends on.
+ *
+ * Called from the two routes a person hits when they are actually looking -- the
+ * matches list and the send-my-agent-out button -- so the sixty-day window measures
+ * looking, not signing up. Every rebuild stamps it too; this is for the paths that do
+ * not rebuild. Runs as the owner under RLS, so it can touch exactly one row.
+ */
+export async function touchActive(c: PoolClient, userId: string): Promise<void> {
+  await c.query('UPDATE match_profile SET last_active_at = now() WHERE user_id = $1', [userId]);
 }
 
 /**
