@@ -37,7 +37,6 @@ import { z } from 'zod';
 import { llm, modelFor } from '../llm/index.js';
 import { modelIdOf } from '../llm/caps.js';
 import { currentState } from '../memory/facts.js';
-import { coreProfileText, voiceText } from '../memory/profile.js';
 import { env } from '../env.js';
 import { log } from '../log.js';
 
@@ -59,6 +58,12 @@ interface Side {
   /** What this agent may say about its human. Public-disclosure facts only. */
   dossier: string;
   voice: string;
+  /**
+   * What the OTHER agent is told about this person before the first word: the public
+   * tags and nothing more. See `say`. Optional so callers that never hand a side to
+   * the other agent (tests, scripts) need not build it.
+   */
+  tags?: string[];
 }
 
 /**
@@ -120,9 +125,9 @@ const ASSESSOR = `You read a conversation between two agents and decide whether 
 
 You did not write these messages. Judge them as evidence, not as your own work.
 
-FIRST, fill in "learned": specific things you now know about the OTHER person that you
-did not know from their summary. Concrete facts, in your own words. If you cannot list
-at least three, the conversation was genuinely thin.
+FIRST, fill in "learned": specific things you now know about the OTHER person that were
+not in what was already public about them. Concrete facts, in your own words. If you
+cannot list at least three, the conversation was genuinely thin.
 
 SECOND, write "concern": a genuine reservation about the OTHER PERSON — something that
 might actually not work, by the second hour of an evening rather than in theory.
@@ -196,7 +201,14 @@ async function runOnce(
         messages: [
           { role: 'user', content: `About the person you represent:\n${me.dossier}` },
           ...(me.voice ? [{ role: 'user' as const, content: `How they write:\n${me.voice}` }] : []),
-          { role: 'user', content: `About the other person, as their agent has described them:\n${them.dossier}` },
+          // THE PUBLIC TAGS, NOT THE DOSSIER. Both agents used to be handed the other
+          // person's entire file before turn one, so the "conversation" was a probe on
+          // top of full disclosure and could learn nothing the file stage did not
+          // already know. Given only what is public -- the same handful of tags a
+          // stranger could see -- the agent has to ask, and what it learns by asking
+          // is the one thing a file-versus-file score cannot measure. This is the
+          // change that makes the conversation worth running at all.
+          { role: 'user', content: `What is public about the other person:\n${describe(them)}` },
           {
             role: 'user',
             content: history
@@ -233,6 +245,11 @@ async function runOnce(
         instructions: ASSESSOR,
         messages: [
           { role: 'user', content: `The person you represent:\n${me.dossier}` },
+          // Exactly what the prober was given about the other person, so "learned"
+          // means learned -- things the conversation surfaced beyond what was public.
+          // The old prompt asked for things "not known from their summary" and no
+          // summary was ever passed in.
+          { role: 'user', content: `What was already public about the other person:\n${describe(from === 'a' ? b : a)}` },
           { role: 'user', content: `The conversation:\n${seen}` },
         ],
         tenantId: me.tenantId,
@@ -299,8 +316,74 @@ export async function buildDossier(c: PoolClient, userId: string): Promise<strin
     .filter((f) => ok.has(f.predicate))
     .map((f) => `- ${f.predicate.replace(/_/g, ' ')}: ${f.objectText}`);
 
-  const profile = await coreProfileText(c, userId);
-  return [profile, lines.join('\n')].filter(Boolean).join('\n\n');
+  // NO PROSE BLOCK. This used to prepend coreProfileText, the rendered identity /
+  // situation / preferences paragraphs -- and those are rendered from
+  // promotableFacts, which has no disclosure clause, by a prompt that explicitly asks
+  // for allergies and diet. So the itemised half of the dossier was public-only by
+  // construction and the prose half was not. The header of this function promises a
+  // structural exclusion; the lines below are the only part that kept it.
+  return lines.join('\n');
+}
+
+/**
+ * The other person, as a stranger would see them: their public tags, nothing else.
+ *
+ * Built from match_profile.attribute_tags, filtered to predicates this person has
+ * marked public, so `religion_importance:high` cannot reach the other agent through
+ * the tags even though the ranker is allowed to use it. An invented profile has no
+ * facts and no disclosure rows, so its tags are taken as-is.
+ */
+export async function publicTags(c: PoolClient, userId: string): Promise<string[]> {
+  const { rows } = await c.query<{ attribute_tags: string[]; is_synthetic: boolean }>(
+    'SELECT attribute_tags, is_synthetic FROM match_profile WHERE user_id = $1', [userId]);
+  const row = rows[0];
+  if (!row) return [];
+  if (row.is_synthetic) return row.attribute_tags;
+  const { rows: allowed } = await c.query<{ predicate: string }>(
+    `SELECT DISTINCT predicate FROM facts
+      WHERE user_id = $1 AND status = 'active' AND valid_to IS NULL AND disclosure = 'public'`,
+    [userId]);
+  const ok = new Set(allowed.map((r) => r.predicate));
+  return row.attribute_tags.filter((t) => ok.has(t.split(':')[0] ?? ''));
+}
+
+/** One line per public tag, or a plain statement that there is nothing. */
+function describe(side: Side): string {
+  const tags = side.tags ?? [];
+  if (!tags.length) return '(nothing is public about them yet)';
+  return tags.map((t) => `- ${t.replace(':', ': ').replace(/_/g, ' ')}`).join('\n');
+}
+
+/**
+ * Which of the run's concerns to show the human.
+ *
+ * The last one used to be shown, on the reasoning that it was formed with the most
+ * of the conversation behind it. But five runs are five independent conversations,
+ * not one long one, and the last is no better informed than the first. The concern
+ * worth showing is the one the runs kept coming back to. Free text never repeats
+ * exactly, so "kept coming back to" is measured by shared content words: each
+ * concern is scored by how many of the others it overlaps with by at least half, and
+ * the most-overlapped wins. Ties go to the later run.
+ */
+export function pickConcern(concerns: string[]): string {
+  const said = concerns.map((c) => c.trim()).filter(Boolean);
+  if (!said.length) return '';
+  const words = (t: string) => new Set(
+    t.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 3));
+  const sets = said.map(words);
+  let best = said.length - 1;
+  let bestScore = -1;
+  for (let i = 0; i < said.length; i++) {
+    let score = 0;
+    for (let j = 0; j < said.length; j++) {
+      if (i === j) continue;
+      const shared = [...sets[i]!].filter((w) => sets[j]!.has(w)).length;
+      const smaller = Math.min(sets[i]!.size, sets[j]!.size) || 1;
+      if (shared / smaller >= 0.5) score++;
+    }
+    if (score >= bestScore) { bestScore = score; best = i; }
+  }
+  return said[best]!;
 }
 
 export interface RendezvousResult {

@@ -40,7 +40,7 @@ import { metered } from '../metering.js';
 import { log } from '../log.js';
 import { candidateIds } from './candidates.js';
 import { llmFileScore, rank } from './score.js';
-import { buildDossier, converse, passes, recordRuns, RUNS } from './rendezvous.js';
+import { buildDossier, converse, passes, pickConcern, publicTags, recordRuns, RUNS } from './rendezvous.js';
 import { composeBoth, loadQuotes, saveBriefs, type Quote } from './brief.js';
 import { voiceText } from '../memory/profile.js';
 
@@ -107,6 +107,7 @@ export async function runRound(userId: string): Promise<RoundResult> {
     const dossierA = await buildDossier(c, a.userId);
     const voiceA = await voiceText(c, a.userId);
     const quotesA = await loadQuotes(c, a.userId);
+    const tagsA = await publicTags(c, a.userId);
 
     // THE TOP K, EACH CLAIMED INSIDE THIS TRANSACTION, so two rounds started at once
     // cannot both decide to run the same pair. A candidate whose claim fails was
@@ -114,7 +115,7 @@ export async function runRound(userId: string): Promise<RoundResult> {
     const pairs: Array<{
       rendezvousId: string;
       rankScore: number;
-      b: { userId: string; tenantId: string; dossier: string; voice: string; quotes: Quote[] };
+      b: { userId: string; tenantId: string; dossier: string; voice: string; quotes: Quote[]; tags: string[] };
     }> = [];
     for (const cand of ranked) {
       if (pairs.length >= CANDIDATES_PER_ROUND) break;
@@ -142,9 +143,10 @@ export async function runRound(userId: string): Promise<RoundResult> {
       const dossierB = await buildDossier(c, b.userId);
       const voiceB = await voiceText(c, b.userId);
       const quotesB = await loadQuotes(c, b.userId);
+      const tagsB = await publicTags(c, b.userId);
       pairs.push({
         rendezvousId: created[0].id, rankScore: cand.score,
-        b: { ...b, dossier: dossierB, voice: voiceB, quotes: quotesB },
+        b: { ...b, dossier: dossierB, voice: voiceB, quotes: quotesB, tags: tagsB },
       });
     }
     if (!pairs.length) return { stop: 'already met' } as const;
@@ -152,7 +154,7 @@ export async function runRound(userId: string): Promise<RoundResult> {
     return {
       stop: null,
       considered: ranked.length,
-      a: { ...a, dossier: dossierA, voice: voiceA, quotes: quotesA },
+      a: { ...a, dossier: dossierA, voice: voiceA, quotes: quotesA, tags: tagsA },
       pairs,
     } as const;
   });
@@ -194,14 +196,17 @@ export async function runRound(userId: string): Promise<RoundResult> {
       const ok = passes(runs.bothYes, runs.counted, RUNS);
 
       // The concern each agent recorded about the OTHER person, carried through
-      // verbatim rather than rewritten. The last one, because it was formed with the
-      // most of the conversation behind it.
+      // verbatim rather than rewritten. The one the runs kept coming back to, not the
+      // last: five runs are five independent conversations, and the last is no better
+      // informed than the first. See pickConcern.
       //
       // Keyed to the SIDES OF THIS CONVERSATION, which is what `runs.results` holds --
       // `recordRuns` normalises to the table's own order when it writes, and these
       // never go near the table.
-      const last = runs.results[runs.results.length - 1];
-      const concerns = { a: last?.aConcern ?? '', b: last?.bConcern ?? '' };
+      const concerns = {
+        a: pickConcern(runs.results.map((r) => r.aConcern)),
+        b: pickConcern(runs.results.map((r) => r.bConcern)),
+      };
 
       // A BRIEF FOR EVERY PAIR, whatever the verdict. The agreement rate now ORDERS
       // what the person sees; it used to gate it, and a pair the agents were unsure
