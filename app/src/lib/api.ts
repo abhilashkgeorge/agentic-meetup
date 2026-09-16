@@ -166,6 +166,15 @@ export async function verifyPhone(
  * person who taps sign out on a train has asked for something the network cannot be
  * allowed to veto -- and the token they are dropping expires on its own eventually.
  */
+/**
+ * Whether this account can be recovered at all.
+ *
+ * An account with no number attached is reachable only from the one device holding
+ * its token. Lose that and it is gone, and rotating the signing key takes it too.
+ */
+export const phoneLinked = (token: string) =>
+  get<{ linked: boolean }>('/v1/auth/phone', token);
+
 export async function logout(token: string): Promise<boolean> {
   try {
     const res = await fetch(`${getApiBase()}/v1/auth/logout`, {

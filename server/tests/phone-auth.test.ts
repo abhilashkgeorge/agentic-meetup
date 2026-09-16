@@ -385,3 +385,37 @@ describe('coming back on a second phone', () => {
     expect((await res.json() as { onboarded: boolean }).onboarded).toBe(false);
   });
 });
+
+describe('an account made before phone sign-in existed', () => {
+  it('can be asked whether it is recoverable at all', async () => {
+    // WHY THIS ROUTE EXISTS. Phone sign-in only ever appears to a device with NO
+    // token, so every account that predates it could never attach a number -- and an
+    // account with no number is reachable from exactly one handset, for ever. The
+    // oldest accounts hold the most, so they were the ones left in the trap the
+    // feature was built to remove.
+    const { token } = await account();
+    const res = await authRoutes.request('/v1/auth/phone', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json() as { linked: boolean }).linked).toBe(false);
+  });
+
+  it('reports itself recoverable once a number is attached', async () => {
+    const phone = freshPhone();
+    const { token } = await account();
+    const id = await challenge(phone, '999999');
+    await post('/v1/auth/phone/verify',
+      { challengeId: id, code: '999999' }, { Authorization: `Bearer ${token}` });
+
+    const res = await authRoutes.request('/v1/auth/phone', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect((await res.json() as { linked: boolean }).linked).toBe(true);
+  });
+
+  it('refuses to answer without a credential', async () => {
+    const res = await authRoutes.request('/v1/auth/phone');
+    expect(res.status).toBe(401);
+  });
+});

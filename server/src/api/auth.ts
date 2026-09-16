@@ -531,6 +531,36 @@ export const authRoutes = new Hono()
   })
 
   /**
+   * Does this account have a number attached, and is it therefore recoverable?
+   *
+   * WHY THIS EXISTS. Phone sign-in only appears to a device with no token, so every
+   * account that predates it -- including the one holding all the dogfooding data --
+   * had no way to attach a number at all. Those accounts stay permanently
+   * unrecoverable, and rotating the signing key would strand them for good, which is
+   * exactly the trap the feature was built to remove.
+   *
+   * Returns the fact and nothing else. Not the number, not a masked version of it:
+   * the server cannot read it back, and a screen that wants to show one can show the
+   * digits the person just typed.
+   */
+  .get('/v1/auth/phone', async (c) => {
+    let ctx;
+    try {
+      ctx = await resolveCtx(c.req.header('authorization'));
+    } catch (err) {
+      if (err instanceof Unauthorized) return c.json({ error: 'unauthorized' }, 401);
+      throw err;
+    }
+    const linked = await tenantSession(ctx, async (db) => {
+      const { rows } = await db.query<{ n: string }>(
+        `SELECT count(*) AS n FROM app_users
+          WHERE id = $1 AND phone_hmac IS NOT NULL`, [ctx.userId]);
+      return Number(rows[0]?.n ?? 0) > 0;
+    });
+    return c.json({ linked });
+  })
+
+  /**
    * Sign out, properly.
    *
    * There was no route for this at all. The app cleared its keychain and called it

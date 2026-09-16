@@ -96,8 +96,11 @@ export default function VerifyScreen() {
       return router.replace('/');
     }
     if (r.status === 'linked') {
-      // Already signed in; the number is now attached. Straight back to the app.
-      return router.replace('/');
+      // Already signed in, and the number is now attached. Back to Settings rather
+      // than to the app: this was reached from there deliberately, by somebody making
+      // their account recoverable, and dropping them somewhere else makes it unclear
+      // whether it worked.
+      return router.replace('/settings');
     }
     // New number. The invite is the next door, and the ticket is what opens it.
     router.replace({ pathname: '/invite', params: { ticket: r.ticket } });

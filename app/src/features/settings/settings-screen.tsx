@@ -12,7 +12,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Share, Text, View } from 'react-native';
 import {
-  createInvite, eraseAccount, exportAccount, getInvites, type Invite, logout,
+  createInvite, eraseAccount, exportAccount, getInvites, type Invite, logout, phoneLinked,
 } from '../../lib/api';
 import { clearToken } from '../../lib/storage';
 import { useSession } from '../../store/session';
@@ -59,6 +59,21 @@ export default function SettingsScreen() {
    * the row that says "cannot be undone. The clone and all of its memory go" was a
    * picture of a button. Both server endpoints have worked the whole time.
    */
+  /**
+   * Whether this account has a number on it.
+   *
+   * Asked because phone sign-in only ever appears to a device with NO token, so an
+   * account made before it existed can never attach one -- and an account with no
+   * number is reachable from exactly one handset for ever. That is the trap the
+   * whole feature was built to remove, and without this row the oldest accounts,
+   * which hold the most, are the ones still in it.
+   */
+  const [linked, setLinked] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    void phoneLinked(token).then((r) => setLinked(r?.linked ?? null));
+  }, [token]);
+
   const downloadAll = useCallback(async () => {
     if (!token) return;
     setBusy(true);
@@ -177,6 +192,20 @@ export default function SettingsScreen() {
           <Row title="Test it again" subtitle="See if it still sounds like you"
                onPress={() => router.push('/onboarding/test')} last />
         </Card>
+
+        {/* ONLY WHILE THERE IS NOTHING ATTACHED. A row offering to add a number to an
+            account that has one is a row inviting somebody to change their number,
+            which is a different and more dangerous action than this is. */}
+        {linked === false && (
+          <Card label="Account recovery">
+            <Row
+              title="Add your phone number"
+              subtitle="Without it this clone lives on this phone only. Lose it and it is gone."
+              onPress={() => router.push('/phone')}
+              last
+            />
+          </Card>
+        )}
 
         <Card label="Connection">
           <Row title="Server" value={getApiBase().replace(/^https?:\/\//, '')}
