@@ -435,9 +435,26 @@ export interface MatchCard {
    * it.
    */
   practice?: boolean;
+  /**
+   * How the agents got on: the share of conversations that ended in a mutual yes.
+   * Rendered as WORDS, never as a percentage -- a number here reads as compatibility,
+   * and pre-date self-report predicts attraction badly enough that it would be a lie
+   * with a decimal point. null when no conversation was conclusive.
+   */
+  agreement: number | null;
 }
 
-export const getMatches = (token: string) => get<{ matches: MatchCard[] }>('/v1/matches', token);
+/** How the last round went, or is going. See matching/rounds.ts on the server. */
+export interface RoundState {
+  id: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  skipped: string | null;
+  met: number;
+  error: string | null;
+}
+
+export const getMatches = (token: string) =>
+  get<{ matches: MatchCard[]; round: RoundState | null }>('/v1/matches', token);
 
 export interface Preference {
   id: string;
@@ -565,8 +582,13 @@ export interface RoundResult {
 }
 
 /** Sends the agent out once. Minutes, not seconds -- it is five conversations. */
+/**
+ * Ask for a round. Answers at once with a queued round; the matches list carries its
+ * state from then on. It used to await the whole thing -- several minutes of model
+ * calls inside one request -- and show the eventual timeout as a rejection.
+ */
 export const runRound = (token: string) =>
-  post<RoundResult>('/v1/matches/run', token, {});
+  post<{ roundId: string; status: RoundState['status'] }>('/v1/matches/run', token, {});
 
 // ── photos ──────────────────────────────────────────────────────────────────
 //

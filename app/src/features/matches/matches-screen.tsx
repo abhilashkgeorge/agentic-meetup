@@ -14,10 +14,10 @@
  * about somebody you have not met.
  */
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import {
-  decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep,
+  decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep, type RoundState,
 } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
@@ -29,35 +29,65 @@ export default function MatchesScreen() {
   const p = usePalette();
   const token = useSession((s) => s.token);
   const [matches, setMatches] = useState<MatchCard[]>([]);
-  const [sending, setSending] = useState(false);
+  const [round, setRound] = useState<RoundState | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  // The round the person last asked for, so a "done" that was already on screen when
+  // they arrived is not re-announced as news.
+  const announced = useRef<string | null>(null);
   const [pool, setPool] = useState<{ total: number; steps: PoolStep[]; inPool: boolean; missing: string[] } | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
     const [m, po] = await Promise.all([getMatches(token), getPool(token)]);
     setMatches(m?.matches ?? []);
+    setRound(m?.round ?? null);
     setPool(po);
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
 
-  /** Sends the agent out once. Minutes, not seconds: it is five conversations. */
+  // WHILE A ROUND IS OUT, ASK AGAIN. The round runs on the server with no request
+  // waiting on it, so the only way to learn it finished is to look. Every eight
+  // seconds is often enough for a thing that takes minutes, and it stops the moment
+  // there is nothing to wait for.
+  const active = round?.status === 'queued' || round?.status === 'running';
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => void load(), 8_000);
+    return () => clearInterval(t);
+  }, [active, load]);
+
+  // Say how it went, once, when a round the person asked for comes back.
+  useEffect(() => {
+    if (!round || active || announced.current !== round.id) return;
+    announced.current = null;
+    setSaid(
+      round.error === 'budget_exceeded'
+        ? 'Your agent has been out enough for today. Try again tomorrow.'
+        : round.error
+          ? 'Something went wrong while your agent was out. Try again.'
+          : round.skipped
+            ? round.skipped
+            : round.met === 0
+              ? 'It found nobody new to meet.'
+              : round.met === 1
+                ? 'Your agent met one person. Their card is below.'
+                : `Your agent met ${round.met} people. The one it liked most is first.`,
+    );
+  }, [round, active]);
+
+  /**
+   * Asks for a round. Answers at once; the round itself is minutes of conversations
+   * on the server, and the poll above brings the result back.
+   */
   const go = useCallback(async () => {
-    if (!token || sending) return;
-    setSending(true);
+    if (!token || active) return;
     setSaid(null);
     const r = await runRound(token);
-    setSending(false);
-    setSaid(
-      r?.skipped
-        ? r.skipped
-        : r?.passed
-          ? 'Your agent found someone.'
-          : 'It met someone and did not think it was worth it. Nobody was told.',
-    );
+    if (!r) { setSaid('Cannot reach the server.'); return; }
+    announced.current = r.roundId;
     await load();
-  }, [token, sending, load]);
+  }, [token, active, load]);
 
   /** A no is silent and final. The card goes and the other person is never told. */
   const pass = useCallback(
@@ -123,9 +153,10 @@ export default function MatchesScreen() {
             button that works today beats a scheduler that is not wired up. */}
         {pool?.inPool && (
           <Button
-            label={sending ? 'Your agent is out…' : 'Send my agent out'}
+            label={active ? 'Your agent is out…' : 'Send my agent out'}
             variant="primary"
-            disabled={sending}
+            disabled={active}
+            loading={active}
             onPress={() => void go()}
           />
         )}
@@ -144,17 +175,33 @@ export default function MatchesScreen() {
             // before nobody believes anything else on the screen.
             body={
               pool?.inPool
-                ? 'Send it out when you are ready. It meets one person at a time, and comes back with what it made of them.'
+                ? 'Send it out when you are ready. It meets a few people, and comes back with what it made of each of them.'
                 : 'Your agent cannot go out yet — finish the bits above first.'
             }
           />
         ) : (
-          matches.map((m) => (
+          // ONE AT A TIME. The list is ordered by how the agents got on, so the first
+          // card the person can act on is the best one the round produced. Saying
+          // not-for-me removes it and the next is already here -- the shape Hinge
+          // ships as "Most Compatible", and the founder's own proposal. Cards already
+          // answered and waiting on the other side sit underneath, quietly.
+          [...matches.filter((m) => m.waitingOnYou).slice(0, 1),
+           ...matches.filter((m) => !m.waitingOnYou)].map((m) => (
             <Surface key={m.id} radius={radius.lg} style={{ padding: space.screen, gap: space.md }}>
               <Text style={[type.label, { color: p.textSecondary }]}>
                 {m.waitingOnYou ? 'WAITING ON YOU'
                   : m.waitingOnThem ? 'WAITING ON THEM'
                   : 'BOTH AGENTS SAID YES'}
+              </Text>
+              {/* HOW THE AGENTS GOT ON, IN WORDS. Never a number: a percentage here is
+                  read as compatibility, and nothing measured before two people meet
+                  predicts that. What can be said honestly is how often five
+                  conversations ended with both agents wanting a sixth. */}
+              <Text style={[type.callout, { color: p.textSecondary }]}>
+                {m.agreement === null ? 'Your agents could not tell.'
+                  : m.agreement >= 0.6 ? 'Your agents got on.'
+                  : m.agreement >= 0.2 ? 'Your agents were not sure.'
+                  : 'Your agents did not really click. You might see it differently.'}
               </Text>
               <Text style={[type.title, { color: p.text }]}>{m.headline}</Text>
 

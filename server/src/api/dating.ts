@@ -14,6 +14,7 @@ import { commit } from '../memory/facts.js';
 import { rebuildMatchProfile, touchActive } from '../matching/profile.js';
 import { candidateCount, poolBreakdown } from '../matching/candidates.js';
 import { decide, runRound } from '../matching/orchestrator.js';
+import { enqueueRound, latestRound } from '../matching/rounds.js';
 import { BudgetExceeded } from '../metering.js';
 import { log } from '../log.js';
 
@@ -280,9 +281,10 @@ export const datingRoutes = new Hono()
         id: string; headline: string; overlap_quotes: unknown; concern: string;
         questions: unknown; human_says_yes: boolean | null; first_mover: string | null;
         status: string; other_decided: boolean | null; other_is_synthetic: boolean | null;
+        agreement: number | null;
       }>(
         `SELECT r.id, b.headline, b.overlap_quotes, b.concern, b.questions,
-                b.human_says_yes, r.first_mover, r.status,
+                b.human_says_yes, r.first_mover, r.status, r.agreement,
                 -- Same shape and same reason as other_decided below: the caller's own
                 -- session cannot read the other person's match_profile, and a card
                 -- that does not say "practice" is a card that lies by omission.
@@ -296,13 +298,29 @@ export const datingRoutes = new Hono()
            JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $1
           WHERE (r.user_a = $1 OR r.user_b = $1)
             AND r.status <> 'lapsed'
-          ORDER BY r.decided_at DESC NULLS LAST`,
+          -- THE QUEUE. What the conversations thought first, what the ranker thought
+          -- second, newest last. A person sees the head of this and says yes or
+          -- not-for-me; a no lapses the row and the next one is already here. The
+          -- agreement rate ORDERS the list -- it used to gate it, and a pair the
+          -- agents were unsure about was thrown away with nothing shown.
+          ORDER BY r.agreement DESC NULLS LAST, r.rank_score DESC NULLS LAST,
+                   r.decided_at DESC NULLS LAST`,
         [ctx.userId],
       );
       return rows;
     });
+    const round = await tenantSession(ctx, (db) => latestRound(db, ctx.userId));
 
     return c.json({
+      // How the last round went, or is going. The app polls this while a round is
+      // queued or running and shows "your agent is out" -- truthfully, because the
+      // row is what makes it true.
+      round: round ? {
+        id: round.id, status: round.status,
+        skipped: round.result?.skipped ?? null,
+        met: round.result?.metAll.length ?? 0,
+        error: round.error,
+      } : null,
       matches: rows
         // A card this person has already answered is gone. Answered yes and waiting is
         // shown as waiting; answered no is shown as nothing, ever again.
@@ -324,6 +342,11 @@ export const datingRoutes = new Hono()
             waitingOnThem: r.human_says_yes === true || !myTurn,
             // Said plainly, on the card, before the person spends any feeling on it.
             practice: r.other_is_synthetic === true,
+            // How the agents got on, as a fraction of conversations that ended in a
+            // mutual yes. The app turns this into words, never a percentage: a number
+            // here would be read as compatibility, and pre-date self-report predicts
+            // attraction badly enough that it would be a lie with a decimal point.
+            agreement: r.agreement,
           };
         }),
     });
@@ -448,32 +471,14 @@ export const datingRoutes = new Hono()
     if (!ctx) return c.json({ error: res }, 401);
     await tenantSession(ctx, (db) => touchActive(db, ctx.userId));
 
-    // THE MOST EXPENSIVE BUTTON IN THE APP. One tap is five simulated conversations
-    // plus two briefs.
-    //
-    // The check and the recording both used to live here, which meant they only
-    // covered this one path: the same round launched from scripts/round.ts -- which
-    // is how every real round so far was launched -- spent money the daily cap never
-    // saw. The meter now lives inside `runRound` itself, so the endpoint, the script
-    // and any future scheduler are counted by the same code. All that is left here is
-    // turning the refusal into an HTTP answer.
-    //
-    // It also counts real token usage per call instead of one synthesised row with
-    // zeroes in every token column, so the price table can finally be reconciled
-    // against an invoice.
-    try {
-      const result = await runRound(ctx.userId);
-      log.info({ ...result }, 'manual round');
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof BudgetExceeded) {
-        return c.json({
-          error: 'budget_exceeded',
-          message: 'Your agent has been out enough for today. Try again tomorrow.',
-        }, 429);
-      }
-      throw err;
-    }
+    // ASKED FOR, NOT RUN. The round is several minutes of model calls and used to run
+    // inside this request, so the phone held a socket open for as long as five
+    // conversations take and showed the eventual timeout as a rejection. Now this
+    // writes one row and answers at once; the worker in matching/rounds.ts does the
+    // rest, and the matches list says how it is going. Tapping twice returns the
+    // round already in flight rather than starting another.
+    const round = await enqueueRound(ctx);
+    return c.json({ roundId: round.id, status: round.status }, 202);
   });
 
 /**

@@ -271,14 +271,23 @@ export async function saveBriefs(
   for (const [side, made, concern] of [
     [a, briefs.forA, concerns.a], [b, briefs.forB, concerns.b],
   ] as const) {
-    if (!made) continue;
+    // A ROW FOR EVERY PAIR, even when there was nothing to write a brief from. The
+    // row is what makes the card exist: without it the person sees nothing, and the
+    // agents' concern -- which is real whether or not anybody has quotable sentences
+    // -- is thrown away with it. Two people who both tapped through setup and never
+    // said anything quotable still met, and still deserve to be told so.
+    const content = made ?? {
+      headline: 'Your agent met someone',
+      overlaps: [],
+      questions: [],
+    };
     await c.query(
       `INSERT INTO rendezvous_briefs
          (rendezvous_id, for_user, headline, overlap_quotes, concern, questions)
        VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (rendezvous_id, for_user) DO NOTHING`,
-      [rendezvousId, side.userId, made.headline, JSON.stringify(made.overlaps),
-       concern, JSON.stringify(made.questions)],
+      [rendezvousId, side.userId, content.headline, JSON.stringify(content.overlaps),
+       concern, JSON.stringify(content.questions)],
     );
     written++;
   }

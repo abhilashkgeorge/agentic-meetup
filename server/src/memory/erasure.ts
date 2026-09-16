@@ -33,7 +33,7 @@ import { log } from '../log.js';
  */
 export const USER_TABLES = [
   'photos', 'question_answers', 'match_profile', 'preferences', 'predicate_status',
-  'self_tests', 'device_sessions',
+  'self_tests', 'device_sessions', 'rounds',
   'facts', 'episodes', 'memory_audit', 'fact_conflicts', 'session_extractions',
   'intent_signals', 'core_profile', 'directives', 'llm_calls', 'tenant_budget',
 ] as const;

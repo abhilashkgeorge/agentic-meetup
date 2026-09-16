@@ -12,11 +12,15 @@
  * public (migration 0028). The agent going out cannot say more than that, because the
  * database will not show it more than that.
  *
- * ONE PAIR AT A TIME, AND NOT MANY. Five simulated conversations cost real money and
- * a few minutes; running the top twenty candidates nightly for every user is how this
- * becomes unaffordable before it becomes useful. Ditto ships one match a week per
- * person and reports 20% of them turn into real dates -- scarcity is a feature here
- * before it is a cost control.
+ * A FEW AT A TIME, AND NOT MANY. It used to be exactly one: the top-ranked candidate,
+ * then five conversations, then -- if fewer than three of five agreed -- nothing at
+ * all. Five of the seven real rounds ever run ended in nothing, and the nineteen other
+ * people the ranker had scored were thrown away each time. Now the top K are met, EVERY
+ * one gets a brief, and the agreement rate orders the list the person sees rather than
+ * gating it. K is small on purpose: running the top twenty nightly for every user is
+ * how this becomes unaffordable before it becomes useful. Ditto ships one match a week
+ * per person and reports 20% turn into dates -- scarcity is a feature before it is a
+ * cost control, and three is the smallest number that gives a person a next one.
  *
  * THREE PHASES, AND NO TRANSACTION AROUND THE MIDDLE ONE. The first version wrapped
  * the whole round in one `matchmakerSession`, which meant a database transaction stayed
@@ -37,15 +41,22 @@ import { log } from '../log.js';
 import { candidateIds } from './candidates.js';
 import { rank } from './score.js';
 import { buildDossier, converse, passes, recordRuns, RUNS } from './rendezvous.js';
-import { composeBoth, loadQuotes, saveBriefs } from './brief.js';
+import { composeBoth, loadQuotes, saveBriefs, type Quote } from './brief.js';
 import { voiceText } from '../memory/profile.js';
+
+/** How many people one round meets. Each is five conversations, so keep this small. */
+export const CANDIDATES_PER_ROUND = Number(process.env.ROUND_CANDIDATES ?? 3);
 
 export interface RoundResult {
   userId: string;
   considered: number;
+  /** The first person met, kept for callers that still think in ones. */
   met: string | null;
+  /** Everyone met this round, in ranked order. Each now has a brief waiting. */
+  metAll: string[];
   bothYes: number;
   runs: number;
+  /** Whether ANY pair cleared the old bar. Informational: nothing gates on it now. */
   passed: boolean;
   costUsd: number;
   /** Why nothing happened, when nothing happened. */
@@ -60,7 +71,8 @@ export interface RoundResult {
  */
 export async function runRound(userId: string): Promise<RoundResult> {
   const empty = (skipped: string): RoundResult => ({
-    userId, considered: 0, met: null, bothYes: 0, runs: 0, passed: false, costUsd: 0, skipped,
+    userId, considered: 0, met: null, metAll: [], bothYes: 0, runs: 0, passed: false,
+    costUsd: 0, skipped,
   });
 
   // ── read ────────────────────────────────────────────────────────────────────
@@ -88,50 +100,60 @@ export async function runRound(userId: string): Promise<RoundResult> {
     if (!fresh.length) return { stop: 'your agent has already met everyone who fits' } as const;
 
     const ranked = await rank(c, userId, fresh, 20);
-    const top = ranked[0];
-    if (!top) return { stop: 'nobody to rank' } as const;
-
-    const { rows: themRows } = await c.query<{ tenant_id: string }>(
-      'SELECT tenant_id FROM match_profile WHERE user_id = $1', [top.userId],
-    );
-    const them = themRows[0];
-    if (!them) return { stop: 'candidate vanished' } as const;
+    if (!ranked.length) return { stop: 'nobody to rank' } as const;
 
     const a = { userId, tenantId: me.tenant_id };
-    const b = { userId: top.userId, tenantId: them.tenant_id };
-    // The pair key is ordered, because the unique index is. Whichever way the two ids
-    // arrive, one row.
-    const [lo, hi] = a.userId < b.userId ? [a, b] : [b, a];
-
-    // Claimed HERE, inside the read transaction, so two rounds started at once cannot
-    // both decide to run the same pair.
-    const { rows: created } = await c.query<{ id: string }>(
-      `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (user_a, user_b) DO NOTHING
-       RETURNING id`,
-      [lo.userId, hi.userId, lo.tenantId, hi.tenantId, RUNS],
-    );
-    if (!created[0]) return { stop: 'already met' } as const;
-
-    // Sequential, NOT Promise.all. These share one pooled client, and node-postgres
-    // warns that issuing a second query while the first is in flight is deprecated
-    // and going away -- it currently serialises them for us, which is exactly the
-    // kind of thing that works until it does not.
+    // Loaded once. The same person's dossier goes into every conversation this round.
     const dossierA = await buildDossier(c, a.userId);
-    const dossierB = await buildDossier(c, b.userId);
     const voiceA = await voiceText(c, a.userId);
-    const voiceB = await voiceText(c, b.userId);
     const quotesA = await loadQuotes(c, a.userId);
-    const quotesB = await loadQuotes(c, b.userId);
+
+    // THE TOP K, EACH CLAIMED INSIDE THIS TRANSACTION, so two rounds started at once
+    // cannot both decide to run the same pair. A candidate whose claim fails was
+    // taken by a concurrent round and is simply skipped; the next in rank fills in.
+    const pairs: Array<{
+      rendezvousId: string;
+      rankScore: number;
+      b: { userId: string; tenantId: string; dossier: string; voice: string; quotes: Quote[] };
+    }> = [];
+    for (const cand of ranked) {
+      if (pairs.length >= CANDIDATES_PER_ROUND) break;
+      const { rows: themRows } = await c.query<{ tenant_id: string }>(
+        'SELECT tenant_id FROM match_profile WHERE user_id = $1', [cand.userId],
+      );
+      const them = themRows[0];
+      if (!them) continue;
+      const b = { userId: cand.userId, tenantId: them.tenant_id };
+      // The pair key is ordered, because the unique index is.
+      const [lo, hi] = a.userId < b.userId ? [a, b] : [b, a];
+      const { rows: created } = await c.query<{ id: string }>(
+        `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, rank_score)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (user_a, user_b) DO NOTHING
+         RETURNING id`,
+        [lo.userId, hi.userId, lo.tenantId, hi.tenantId, RUNS, cand.score],
+      );
+      if (!created[0]) continue;
+
+      // Sequential, NOT Promise.all. These share one pooled client, and node-postgres
+      // warns that issuing a second query while the first is in flight is deprecated
+      // and going away -- it currently serialises them for us, which is exactly the
+      // kind of thing that works until it does not.
+      const dossierB = await buildDossier(c, b.userId);
+      const voiceB = await voiceText(c, b.userId);
+      const quotesB = await loadQuotes(c, b.userId);
+      pairs.push({
+        rendezvousId: created[0].id, rankScore: cand.score,
+        b: { ...b, dossier: dossierB, voice: voiceB, quotes: quotesB },
+      });
+    }
+    if (!pairs.length) return { stop: 'already met' } as const;
 
     return {
       stop: null,
-      rendezvousId: created[0].id,
       considered: ranked.length,
-      lo, hi,
       a: { ...a, dossier: dossierA, voice: voiceA, quotes: quotesA },
-      b: { ...b, dossier: dossierB, voice: voiceB, quotes: quotesB },
+      pairs,
     } as const;
   });
 
@@ -139,64 +161,81 @@ export async function runRound(userId: string): Promise<RoundResult> {
 
   // ── model. No transaction open, and metered. ───────────────────────────────
   //
-  // ONE METER ROUND THE WHOLE ROUND. Five simulated conversations plus two briefs is
-  // the most expensive thing a tap can do in this product, and until now the only
+  // ONE METER ROUND THE WHOLE ROUND. Fifteen simulated conversations plus six briefs
+  // is the most expensive thing a tap can do in this product, and until now the only
   // path that recorded any of it was the HTTP endpoint -- so the seven real rounds,
   // which were all launched from scripts/round.ts, spent money the daily cap never
   // saw. Opening the meter here rather than at the endpoint means the script, the
-  // endpoint and any future scheduler are all counted by the same code.
+  // endpoint and the worker are all counted by the same code.
   //
   // No `db` argument: this phase deliberately holds no transaction, which is the
   // entire reason the orchestrator is split into three phases.
+  //
+  // SEQUENTIAL, one pair after another. Parallel would be faster and would hit the
+  // free tier's rate limit three times as hard; see the pauses in converse().
   const spender = { tenantId: plan.a.tenantId, userId: plan.a.userId };
-  const { runs, ok, briefs, concerns } = await metered(spender, 'rendezvous', async () => {
-    const runs = await converse(plan.a, plan.b);
-    const ok = passes(runs.bothYes, runs.counted, RUNS);
+  const outcomes = await metered(spender, 'rendezvous', async () => {
+    const out: Array<{
+      pair: (typeof plan.pairs)[number];
+      runs: Awaited<ReturnType<typeof converse>>;
+      ok: boolean;
+      briefs: Awaited<ReturnType<typeof composeBoth>>;
+      concerns: { a: string; b: string };
+    }> = [];
+    for (const pair of plan.pairs) {
+      const runs = await converse(plan.a, pair.b);
+      const ok = passes(runs.bothYes, runs.counted, RUNS);
 
-    // The concern each agent recorded about the OTHER person, carried through
-    // verbatim rather than rewritten. The last one, because it was formed with the
-    // most of the conversation behind it.
-    //
-    // Keyed to the SIDES OF THIS CONVERSATION, which is what `runs.results` holds --
-    // `recordRuns` normalises to the table's own order when it writes, and these
-    // never go near the table.
-    const last = runs.results[runs.results.length - 1];
-    const concerns = { a: last?.aConcern ?? '', b: last?.bConcern ?? '' };
+      // The concern each agent recorded about the OTHER person, carried through
+      // verbatim rather than rewritten. The last one, because it was formed with the
+      // most of the conversation behind it.
+      //
+      // Keyed to the SIDES OF THIS CONVERSATION, which is what `runs.results` holds --
+      // `recordRuns` normalises to the table's own order when it writes, and these
+      // never go near the table.
+      const last = runs.results[runs.results.length - 1];
+      const concerns = { a: last?.aConcern ?? '', b: last?.bConcern ?? '' };
 
-    // The dossiers go in too: a person who tapped through onboarding has no quotable
-    // sentence anywhere, and a brief built only from quotes would be no brief at all.
-    const briefs = ok
-      ? await composeBoth(plan.a, plan.b)
-      : { forA: null, forB: null, costUsd: 0 };
-
-    return { runs, ok, briefs, concerns };
+      // A BRIEF FOR EVERY PAIR, whatever the verdict. The agreement rate now ORDERS
+      // what the person sees; it used to gate it, and a pair the agents were unsure
+      // about was thrown away with nothing shown. The person is the judge; the agents
+      // write the brief and say how sure they were.
+      const briefs = await composeBoth(plan.a, pair.b);
+      out.push({ pair, runs, ok, briefs, concerns });
+    }
+    return out;
   });
 
   // ── write ───────────────────────────────────────────────────────────────────
   await matchmakerSession(async (c) => {
-    await recordRuns(c, plan.rendezvousId, runs, plan.a.userId);
-    if (!ok) {
-      // A no is SILENT and FINAL. Nobody is told they were passed on, and the pair is
-      // never run again.
-      await c.query(`UPDATE rendezvous SET status = 'lapsed' WHERE id = $1`, [plan.rendezvousId]);
-      return;
+    for (const o of outcomes) {
+      await recordRuns(c, o.pair.rendezvousId, o.runs, plan.a.userId);
+      // What the conversation thought. NULL when nothing was conclusive, so the list
+      // orders it last rather than as a zero that reads as "they said no".
+      const agreement = o.runs.counted > 0 ? o.runs.bothYes / o.runs.counted : null;
+      await c.query('UPDATE rendezvous SET agreement = $2 WHERE id = $1',
+        [o.pair.rendezvousId, agreement]);
+      await saveBriefs(c, o.pair.rendezvousId, plan.a, o.pair.b, o.briefs, o.concerns);
+      // An invented person cannot open the app and tap yes -- and taking it as a yes
+      // anyway is how a real person ended up introduced to nobody, in a conversation
+      // that would never be answered. Off by default; on only when the founder is
+      // walking the messaging flow by hand. See SYNTHETIC_AUTO_YES.
+      if (env.SYNTHETIC_AUTO_YES) await autoDecideSynthetic(c, o.pair.rendezvousId);
     }
-    await saveBriefs(c, plan.rendezvousId, plan.a, plan.b, briefs, concerns);
-    // An invented person cannot open the app and tap yes -- and taking it as a yes
-    // anyway is how a real person ended up introduced to nobody, in a conversation
-    // that would never be answered. Off by default; on only when the founder is
-    // walking the messaging flow by hand. See SYNTHETIC_AUTO_YES.
-    if (env.SYNTHETIC_AUTO_YES) await autoDecideSynthetic(c, plan.rendezvousId);
   });
 
-  const costUsd = runs.costUsd + briefs.costUsd;
+  const costUsd = outcomes.reduce((n, o) => n + o.runs.costUsd + o.briefs.costUsd, 0);
+  const bothYes = outcomes.reduce((n, o) => n + o.runs.bothYes, 0);
+  const runs = outcomes.reduce((n, o) => n + o.runs.counted, 0);
+  const passed = outcomes.some((o) => o.ok);
+  const metAll = outcomes.map((o) => o.pair.b.userId);
   log.info(
-    { userId, rendezvousId: plan.rendezvousId, runs: runs.counted, bothYes: runs.bothYes, passed: ok },
+    { userId, met: metAll.length, runs, bothYes, passed, costUsd },
     'round complete',
   );
   return {
-    userId, considered: plan.considered, met: plan.b.userId,
-    bothYes: runs.bothYes, runs: runs.counted, passed: ok, costUsd,
+    userId, considered: plan.considered, met: metAll[0] ?? null, metAll,
+    bothYes, runs, passed, costUsd,
   };
 }
 

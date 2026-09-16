@@ -11,6 +11,7 @@ import { selfTestRoutes } from './api/selftest.js';
 import { tellRoutes } from './api/tell.js';
 import { statsRoutes } from './api/stats.js';
 import { datingRoutes } from './api/dating.js';
+import { roundWorkerTick } from './matching/rounds.js';
 import { interviewRoutes } from './api/interview.js';
 import { messageRoutes } from './api/messages.js';
 import { photoRoutes } from './api/photos.js';
@@ -124,6 +125,14 @@ const sweeper = setInterval(() => {
   void sweepOnce().catch((err: unknown) => log.error({ err }, 'sweep failed'));
 }, Math.min(SESSION_IDLE_MS, 60_000));
 sweeper.unref();
+
+// Rounds. A tap on "send my agent out" writes a row; this drains them one at a time
+// with no HTTP request waiting. In-process for the same reason as the sweeper above,
+// and it becomes a separate worker at the same moment. See matching/rounds.ts.
+const rounds = setInterval(() => {
+  void roundWorkerTick().catch((err: unknown) => log.error({ err }, 'round worker failed'));
+}, 5_000);
+rounds.unref();
 
 
 if (!embeddingsAvailable()) {
