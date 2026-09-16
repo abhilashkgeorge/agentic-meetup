@@ -39,7 +39,7 @@ import { env } from '../env.js';
 import { metered } from '../metering.js';
 import { log } from '../log.js';
 import { candidateIds } from './candidates.js';
-import { rank } from './score.js';
+import { llmFileScore, rank } from './score.js';
 import { buildDossier, converse, passes, recordRuns, RUNS } from './rendezvous.js';
 import { composeBoth, loadQuotes, saveBriefs, type Quote } from './brief.js';
 import { voiceText } from '../memory/profile.js';
@@ -181,8 +181,15 @@ export async function runRound(userId: string): Promise<RoundResult> {
       ok: boolean;
       briefs: Awaited<ReturnType<typeof composeBoth>>;
       concerns: { a: string; b: string };
+      fileScore: number | null;
+      fileCost: number;
     }> = [];
     for (const pair of plan.pairs) {
+      // THE THIRD SCORER, taken before the conversation so it cannot be influenced
+      // by it. One call, both files, no talking. Recorded on the pair and never
+      // shown; it exists to be compared against the other two once humans have
+      // spoken. See score.ts llmFileScore and scripts/compare-scorers.ts.
+      const file = await llmFileScore(plan.a, pair.b);
       const runs = await converse(plan.a, pair.b);
       const ok = passes(runs.bothYes, runs.counted, RUNS);
 
@@ -201,7 +208,7 @@ export async function runRound(userId: string): Promise<RoundResult> {
       // about was thrown away with nothing shown. The person is the judge; the agents
       // write the brief and say how sure they were.
       const briefs = await composeBoth(plan.a, pair.b);
-      out.push({ pair, runs, ok, briefs, concerns });
+      out.push({ pair, runs, ok, briefs, concerns, fileScore: file.score, fileCost: file.costUsd });
     }
     return out;
   });
@@ -213,8 +220,8 @@ export async function runRound(userId: string): Promise<RoundResult> {
       // What the conversation thought. NULL when nothing was conclusive, so the list
       // orders it last rather than as a zero that reads as "they said no".
       const agreement = o.runs.counted > 0 ? o.runs.bothYes / o.runs.counted : null;
-      await c.query('UPDATE rendezvous SET agreement = $2 WHERE id = $1',
-        [o.pair.rendezvousId, agreement]);
+      await c.query('UPDATE rendezvous SET agreement = $2, llm_file_score = $3 WHERE id = $1',
+        [o.pair.rendezvousId, agreement, o.fileScore]);
       await saveBriefs(c, o.pair.rendezvousId, plan.a, o.pair.b, o.briefs, o.concerns);
       // An invented person cannot open the app and tap yes -- and taking it as a yes
       // anyway is how a real person ended up introduced to nobody, in a conversation
@@ -224,7 +231,7 @@ export async function runRound(userId: string): Promise<RoundResult> {
     }
   });
 
-  const costUsd = outcomes.reduce((n, o) => n + o.runs.costUsd + o.briefs.costUsd, 0);
+  const costUsd = outcomes.reduce((n, o) => n + o.runs.costUsd + o.briefs.costUsd + o.fileCost, 0);
   const bothYes = outcomes.reduce((n, o) => n + o.runs.bothYes, 0);
   const runs = outcomes.reduce((n, o) => n + o.runs.counted, 0);
   const passed = outcomes.some((o) => o.ok);
@@ -297,7 +304,7 @@ export async function decide(
     // this single statement is the difference between two people who cannot write to
     // each other and two people who can.
     const { rows } = await c.query<{ id: string }>(
-      `UPDATE rendezvous r SET status = 'introduced'
+      `UPDATE rendezvous r SET status = 'introduced', introduced_at = now()
         WHERE r.id = $1
           AND r.status <> 'introduced'
           AND (SELECT count(*) FROM rendezvous_briefs b

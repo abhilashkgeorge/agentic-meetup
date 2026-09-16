@@ -17,6 +17,8 @@
  * extra steps.
  */
 import type { PoolClient } from 'pg';
+import { z } from 'zod';
+import { llm, modelFor } from '../llm/index.js';
 
 /** How much a stated preference counts when it is met. */
 const STRENGTH_WEIGHT: Record<string, number> = {
@@ -186,3 +188,67 @@ export async function rank(
 
   return out.sort((x, y) => y.score - x.score).slice(0, limit);
 }
+
+/**
+ * The founder's proposal, in its strongest form: one model reads both files and says
+ * how likely a second evening is. No conversation. About a tenth of a cent.
+ *
+ * WHY IT IS HERE AT ALL. The literature predicts this cannot see pair chemistry --
+ * nothing measured before two people interact does -- but it may well match the
+ * hand-weighted score above on everything else, at a fraction of the cost of five
+ * simulated conversations. That is an empirical question, and the only way to
+ * answer it is to record this number on every pair alongside the other two and
+ * compare all three against what the humans then said. See scripts/compare-scorers.ts.
+ *
+ * NEVER SHOWN TO A PERSON. It is stored for measurement. Showing it would turn a
+ * guess into a self-fulfilling one: OkCupid measured that people told they were a
+ * good match behaved as if they were, whatever the number had been.
+ *
+ * Concern before score, for the same reason the assessor writes its concern before
+ * its verdict: written first, it is an input to the number rather than a
+ * justification of it.
+ */
+export const FileVerdict = z.object({
+  concern: z.string(),
+  /** 0 = would not want a second evening; 1 = certainly would. */
+  score: z.number().min(0).max(1),
+});
+
+export async function llmFileScore(
+  a: { userId: string; tenantId: string; dossier: string },
+  b: { dossier: string },
+): Promise<{ score: number | null; concern: string; costUsd: number }> {
+  if (!a.dossier.trim() && !b.dossier.trim()) return { score: null, concern: '', costUsd: 0 };
+  const res = await llm.complete(
+    {
+      task: 'resolve',
+      instructions: FILE_SCORER,
+      messages: [
+        { role: 'user', content: `Person A:\n${a.dossier || '(nothing known)'}` },
+        { role: 'user', content: `Person B:\n${b.dossier || '(nothing known)'}` },
+      ],
+      tenantId: a.tenantId,
+      userId: a.userId,
+      outputSchema: FileVerdict,
+      outputSchemaName: 'file_verdict',
+      maxOutputTokens: 300,
+      thinking: false,
+    },
+    modelFor('resolve'),
+  );
+  const parsed = FileVerdict.safeParse(res.parsed);
+  return parsed.success
+    ? { score: parsed.data.score, concern: parsed.data.concern, costUsd: res.usage.costUsd }
+    : { score: null, concern: '', costUsd: res.usage.costUsd };
+}
+
+const FILE_SCORER = `You are given what two people have each said about themselves. You have not
+seen them talk. Judge, from the files alone, how likely it is that after one evening
+together each would want a second.
+
+FIRST write one genuine concern -- the thing most likely to make one of them not want
+a second evening. A sentence you would say to a friend, not a topic label.
+
+THEN give a number from 0 to 1. 0 means you would bet against a second evening; 1
+means you would bet on it. Use the whole range. Do not be kind: a file that lists
+many interests is not evidence of anything except a long file.`;

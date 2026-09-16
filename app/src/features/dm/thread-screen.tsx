@@ -20,7 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardPad } from '../../lib/keyboard';
-import { blockUser, getMessages, reportUser } from '../../lib/api';
+import { blockUser, getMessages, matchMet, reportMet, reportUser } from '../../lib/api';
 import { PhotoAvatar } from '../photos/photo';
 import { readDm, sendDm, sendTyping } from '../../lib/socket';
 import { useSession } from '../../store/session';
@@ -186,6 +186,21 @@ export default function ThreadScreen() {
   // feed it the messages in reverse.
   const data = [...messages].reverse();
 
+  // "DID YOU TWO MEET?" Three days after both said yes, once, one tap. Hinge calls it
+  // "We Met" and it is the only label in the whole product that is a fact rather than
+  // a guess -- every scorer is eventually judged against it. Asked here because this
+  // is the screen the two of them are actually in.
+  const [askMet, setAskMet] = useState(false);
+  useEffect(() => {
+    if (!token || !id) return;
+    void matchMet(token, String(id)).then((r) => setAskMet(Boolean(r?.askDue)));
+  }, [token, id]);
+  const answerMet = useCallback(async (yes: boolean) => {
+    if (!token || !id) return;
+    setAskMet(false);
+    await reportMet(token, String(id), yes);
+  }, [token, id]);
+
   return (
     <View
       style={{
@@ -218,6 +233,22 @@ export default function ThreadScreen() {
         <Text style={[type.label, { color: p.textTertiary, textAlign: 'center', paddingBottom: space.xs }]}>
           Offline — anything you send waits here and goes when you are back
         </Text>
+      )}
+
+      {askMet && (
+        <View style={{ paddingHorizontal: space.screen, paddingBottom: space.sm, gap: space.xs }}>
+          <Text style={[type.callout, { color: p.textSecondary, textAlign: 'center' }]}>
+            Did you two meet up? They are not told what you say.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <View style={{ flex: 1 }}>
+              <Button label="Yes" variant="secondary" onPress={() => void answerMet(true)} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button label="Not yet" variant="ghost" onPress={() => void answerMet(false)} />
+            </View>
+          </View>
+        </View>
       )}
 
       <FlatList

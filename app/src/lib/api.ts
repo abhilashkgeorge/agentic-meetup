@@ -568,6 +568,17 @@ export const getReveal = (token: string, id: string) =>
   get<Reveal>(`/v1/matches/${id}`, token);
 
 /** A no is silent in both directions, and final. */
+/**
+ * "Did you two actually meet?" Asked once, three days after both said yes. The only
+ * outcome label that means anything: a yes on a card is a guess, a date is a fact.
+ * Never shown to the other person.
+ */
+export const matchMet = (token: string, id: string) =>
+  get<{ askDue: boolean; met: boolean | null }>(`/v1/matches/${id}/met`, token);
+
+export const reportMet = (token: string, id: string, yes: boolean) =>
+  post<{ ok: boolean }>(`/v1/matches/${id}/met`, token, { yes });
+
 export const decideMatch = (token: string, id: string, yes: boolean) =>
   post<{ ok: boolean; introduced: boolean }>(`/v1/matches/${id}/decide`, token, { yes });
 

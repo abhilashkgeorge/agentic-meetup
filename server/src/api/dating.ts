@@ -96,6 +96,9 @@ export function resolveLivesIn(
   return null;
 }
 
+/** Long enough for a date to have happened; short enough to still be remembered. */
+const MET_ASK_AFTER_MS = 3 * 24 * 60 * 60_000;
+
 export const datingRoutes = new Hono()
   /**
    * One structural answer, or a recorded refusal.
@@ -456,6 +459,60 @@ export const datingRoutes = new Hono()
 
     const { introduced } = await decide(ctx.userId, id, body.data.yes);
     return c.json({ ok: true, introduced });
+  })
+
+  /**
+   * "Did you two actually meet?" Hinge calls it "We Met", and it is the only outcome
+   * label that means anything: a yes on a card is a guess, a date is a fact.
+   *
+   * GET says whether to ask -- three days after both said yes, once, and only if
+   * this person has not already answered. POST records the answer for THIS side;
+   * the other person answers for themselves. Never shown to the other side.
+   */
+  .get('/v1/matches/:id/met', async (c) => {
+    const { ctx, res } = await ctxOr401(c);
+    if (!ctx) return c.json({ error: res }, 401);
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
+
+    const row = await tenantSession(ctx, async (db) => {
+      const { rows } = await db.query<{
+        introduced_at: string | null; met: boolean | null;
+      }>(
+        `SELECT r.introduced_at, b.met
+           FROM rendezvous r
+           JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $2
+          WHERE r.id = $1`,
+        [id, ctx.userId],
+      );
+      return rows[0] ?? null;
+    });
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    const introduced = row.introduced_at ? new Date(row.introduced_at).getTime() : null;
+    const askDue = introduced !== null
+      && row.met === null
+      && Date.now() - introduced >= MET_ASK_AFTER_MS;
+    return c.json({ askDue, met: row.met });
+  })
+
+  .post('/v1/matches/:id/met', async (c) => {
+    const { ctx, res } = await ctxOr401(c);
+    if (!ctx) return c.json({ error: res }, 401);
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
+    const body = z.object({ yes: z.boolean() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: 'bad request' }, 400);
+
+    // Own brief only, under RLS. An answer is final: the first one stands.
+    const { rowCount } = await tenantSession(ctx, (db) =>
+      db.query(
+        `UPDATE rendezvous_briefs SET met = $3, met_answered_at = now()
+          WHERE rendezvous_id = $1 AND for_user = $2 AND met IS NULL`,
+        [id, ctx.userId, body.data.yes],
+      ));
+    if (!rowCount) return c.json({ error: 'not found or already answered' }, 404);
+    return c.json({ ok: true });
   })
 
   /**
