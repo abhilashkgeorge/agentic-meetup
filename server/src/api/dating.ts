@@ -196,9 +196,31 @@ export const datingRoutes = new Hono()
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
 
-    const state = await tenantSession(ctx, (db) => rebuildMatchProfile(db, ctx));
+    const { state, askDistance } = await tenantSession(ctx, async (db) => {
+      const s = await rebuildMatchProfile(db, ctx);
+      // Distance is the one optional essential and is settable only in the setup
+      // wizard, so the server -- not a client heuristic -- decides whether it is still
+      // worth asking: offer it until the person has either answered or DECLINED it.
+      // This reads predicate_status because a "prefer not to say" leaves no fact, so a
+      // fact-only check would ask again forever and re-open the exact "declined must
+      // not look like never-asked" hole the whole flow exists to close.
+      const { rows } = await db.query(
+        `SELECT 1 FROM predicate_status
+          WHERE user_id = $1 AND predicate = 'max_distance_km' AND state IN ('known', 'declined')`,
+        [ctx.userId],
+      );
+      return { state: s, askDistance: rows.length === 0 };
+    });
     if (!state.inPool) {
-      return c.json({ total: 0, steps: [], inPool: false, missing: friendly(state.missing) });
+      // `missing` is the friendly sentences the cards print, and stays REQUIRED-only so
+      // an optional field never shows up as "still needs". `need` is the raw predicate
+      // keys the setup wizard asks -- the required ones, plus distance while it is still
+      // worth offering -- so the wizard asks ONLY what is left instead of all six.
+      const need = askDistance ? [...state.missing, 'max_distance_km'] : state.missing;
+      return c.json({
+        total: 0, steps: [], inPool: false,
+        missing: friendly(state.missing), need,
+      });
     }
 
     // Across tenants, through the role that can read almost nothing else.
@@ -207,7 +229,7 @@ export const datingRoutes = new Hono()
       await poolBreakdown(db, ctx.userId),
     ]);
 
-    return c.json({ total, steps, inPool: true, missing: [] });
+    return c.json({ total, steps, inPool: true, missing: [], need: [] });
   })
 
   /**

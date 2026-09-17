@@ -63,7 +63,7 @@ export default function ProfileScreen() {
   const token = useSession((s) => s.token);
   const [k, setK] = useState<Knowledge | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [pool, setPool] = useState<{ total: number; inPool: boolean; missing: string[] } | null>(null);
+  const [pool, setPool] = useState<{ total: number; inPool: boolean; missing: string[]; need: string[] } | null>(null);
   const [pics, setPics] = useState<{ me: string | null; photos: Photo[] }>({ me: null, photos: [] });
   const [loading, setLoading] = useState(true);
 
@@ -77,7 +77,7 @@ export default function ProfileScreen() {
     setProfile(pr);
     // `missing` is kept because the Finish setup button routes on it: when the
     // missing thing is consent, the essentials flow is the wrong destination.
-    setPool(po ? { total: po.total, inPool: po.inPool, missing: po.missing } : null);
+    setPool(po ? { total: po.total, inPool: po.inPool, missing: po.missing, need: po.need } : null);
     setLoading(false);
   }, [token]);
 
@@ -198,12 +198,12 @@ export default function ProfileScreen() {
         {pool && !pool.inPool && (
           <Card label="Not out there yet">
             <Text style={[type.body, { color: p.text }]}>
-              {pool.missing.includes('consent')
+              {pool.need.includes('consent')
                 ? 'Your agent still needs your consent before it can talk to anyone.'
                 : 'Your agent still needs a few answers before it can talk to anyone.'}
             </Text>
             <Button label="Finish setup" variant="primary"
-                    onPress={() => router.push(setupRoute(pool.missing))} />
+                    onPress={() => router.push({ pathname: setupRoute(pool.need), params: { finish: '1' } })} />
           </Card>
         )}
       </View>

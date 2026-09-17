@@ -37,7 +37,7 @@ export default function ChatScreen() {
   const [draft, setDraft] = useState('');
   const [config, setConfig] = useState<Config | null>(null);
   const [k, setK] = useState<Knowledge | null>(null);
-  const [pool, setPool] = useState<{ total: number; inPool: boolean; missing: string[] } | null>(null);
+  const [pool, setPool] = useState<{ total: number; inPool: boolean; missing: string[]; need: string[] } | null>(null);
   const token = useSession((s) => s.token);
   const list = useRef<FlatList>(null);
 
@@ -50,7 +50,7 @@ export default function ChatScreen() {
       // what happens next -- rather than being a void with a text box at the bottom.
       const [kk, po] = await Promise.all([getKnowledge(token), getPool(token)]);
       setK(kk);
-      setPool(po ? { total: po.total, inPool: po.inPool, missing: po.missing } : null);
+      setPool(po ? { total: po.total, inPool: po.inPool, missing: po.missing, need: po.need } : null);
     })();
   }, [token, bubbles.length]);
 
@@ -197,7 +197,7 @@ export default function ChatScreen() {
                       <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {missingLabel(m)}</Text>
                     ))}
                     <Button label="Finish setup" variant="primary"
-                            onPress={() => router.push(setupRoute(pool.missing))} />
+                            onPress={() => router.push({ pathname: setupRoute(pool.need), params: { finish: '1' } })} />
                   </>
                 )}
               </Card>

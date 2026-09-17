@@ -14,6 +14,7 @@
  * about somebody you have not met.
  */
 import { router } from 'expo-router';
+import { setupRoute } from '../profile/fields';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import {
@@ -34,7 +35,7 @@ export default function MatchesScreen() {
   // The round the person last asked for, so a "done" that was already on screen when
   // they arrived is not re-announced as news.
   const announced = useRef<string | null>(null);
-  const [pool, setPool] = useState<{ total: number; steps: PoolStep[]; inPool: boolean; missing: string[] } | null>(null);
+  const [pool, setPool] = useState<{ total: number; steps: PoolStep[]; inPool: boolean; missing: string[]; need: string[] } | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -115,7 +116,7 @@ export default function MatchesScreen() {
               <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {m}</Text>
             ))}
             <Button label="Finish setting it up" variant="primary"
-                    onPress={() => router.push('/onboarding/essentials')} />
+                    onPress={() => router.push({ pathname: setupRoute(pool.need), params: { finish: '1' } })} />
           </Card>
         )}
 

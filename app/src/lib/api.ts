@@ -413,9 +413,16 @@ export const setEssential = (
 
 export interface PoolStep { step: string; remaining: number; cost: number }
 
-/** What each filter costs. Makes over-filtering visible instead of silent. */
+/**
+ * What each filter costs. Makes over-filtering visible instead of silent.
+ *
+ * `missing` is the friendly sentences the cards print; `need` is the raw predicate
+ * keys, so the setup wizard can ask only what is still missing.
+ */
 export const getPool = (token: string) =>
-  get<{ total: number; steps: PoolStep[]; inPool: boolean; missing: string[] }>('/v1/pool', token);
+  get<{ total: number; steps: PoolStep[]; inPool: boolean; missing: string[]; need: string[] }>(
+    '/v1/pool', token,
+  );
 
 export interface MatchCard {
   id: string;

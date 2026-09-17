@@ -13,11 +13,11 @@
  * Every question has a "prefer not to say", and choosing it is a RECORDED ANSWER, not
  * a gap. Otherwise the question queue asks again forever.
  */
-import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { MIN_AGE, POOL_REQUIRED, isAdult } from '@clone/shared';
-import { setEssential } from '../../lib/api';
+import { getPool, setEssential } from '../../lib/api';
 import { cityFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
 import { ESSENTIAL_FIELDS } from '../profile/fields';
@@ -36,21 +36,72 @@ interface Question {
   options?: { value: string; label: string }[];
 }
 
-/**
- * The six, from the shared list.
- *
- * It used to be declared here, which is why Height and Diet could be shown on the
- * profile and set by nothing: this file was the only writer in the app, and anything
- * absent from it was unreachable.
- */
-const QUESTIONS: Question[] = ESSENTIAL_FIELDS;
-
 export default function EssentialsScreen() {
   const p = usePalette();
   const token = useSession((s) => s.token);
   const [at, setAt] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [busy, setBusy] = useState(false);
+  /**
+   * WHERE THIS SCREEN GOES WHEN IT IS DONE, which depends on how it was reached.
+   *
+   * First-time setup arrives from the interview (no param) and flows forward into the
+   * rest of onboarding -- voice, then photos. But "Finish setup" from the chat home,
+   * the matches tab or the profile arrives with finish=1, and those people are already
+   * set up; dropping them into the voice-import step would re-run the whole onboarding
+   * tail to fix one field. They go back where they came from instead.
+   */
+  const { finish } = useLocalSearchParams<{ finish?: string }>();
+  const fromFinish = finish === '1';
+  const routeOnward = () => {
+    // A "Finish setup" visitor goes back where they came from; if there is nothing to
+    // go back to (a cold start on this route), the matches tab, never the onboarding
+    // tail. Only genuine first-time setup flows forward into voice.
+    if (fromFinish) {
+      if (router.canGoBack()) router.back();
+      else router.replace('/(tabs)/matches');
+      return;
+    }
+    router.push('/onboarding/voice');
+  };
+  /**
+   * ONLY WHAT IS STILL MISSING, not all six every time.
+   *
+   * This screen used to ask the whole list on every visit -- so the interview would
+   * collect gender, seeking and intent, and then this screen asked for them AGAIN, and
+   * "Finish setup" re-ran all six to fix the one thing that was actually missing. The
+   * pool now reports exactly what to ask in `need` (the raw predicate keys: the missing
+   * required fields, plus distance while it is still worth offering), so the wizard is
+   * just a filter over that. `need` absent -- offline, or a server too old to send it
+   * -- falls back to the full list rather than skipping setup entirely.
+   */
+  const [questions, setQuestions] = useState<Question[] | null>(null);
+  useEffect(() => {
+    // No token should not be reachable behind the auth gate, but returning here without
+    // setting `questions` would leave the loading spinner up for ever, so fall through
+    // to the full list rather than hang.
+    if (!token) { setQuestions(ESSENTIAL_FIELDS); return; }
+    let live = true;
+    void (async () => {
+      const pool = await getPool(token);
+      if (!live) return;
+      const need = pool && Array.isArray(pool.need) ? pool.need : null;
+      if (!need) { setQuestions(ESSENTIAL_FIELDS); return; }
+      // Consent is a pool requirement but not a field this screen can ask. Send them to
+      // the one screen that can, instead of filtering it away and calling setup done.
+      if (need.includes('consent')) { router.replace('/consent'); return; }
+      const filtered = ESSENTIAL_FIELDS.filter((f) => need.includes(f.key));
+      // Nothing this screen can ask -- the agent has what it needs. Go on rather than
+      // show an empty wizard: back to the caller for a "Finish setup", forward for setup.
+      if (filtered.length === 0) { routeOnward(); return; }
+      setQuestions(filtered);
+    })();
+    return () => { live = false; };
+  }, [token]);
+
+  // While loading, and for the hook wiring below, fall back to the full list. The
+  // loading screen is returned before any of it is rendered.
+  const list = questions ?? ESSENTIAL_FIELDS;
   /**
    * Whatever needs saying under the card.
    *
@@ -72,7 +123,7 @@ export default function EssentialsScreen() {
   >(null);
   const [locating, setLocating] = useState(false);
 
-  const q = QUESTIONS[at]!;
+  const q = list[at]!;
   const value = answers[q.key];
   const answered = useMemo(
     () => (Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== ''),
@@ -108,9 +159,9 @@ export default function EssentialsScreen() {
     );
     setBusy(false);
     if (!ok) { setNote({ text: 'That did not save. Check your connection and try again.', bad: true }); return; }
-    if (at + 1 < QUESTIONS.length) setAt(at + 1);
-    else router.push('/onboarding/voice');
-  }, [token, q.key, answers, at, fix]);
+    if (at + 1 < list.length) setAt(at + 1);
+    else routeOnward();
+  }, [token, q.key, answers, at, fix, list.length]);
 
   const useMyLocation = async () => {
     setNote(null);
@@ -136,11 +187,19 @@ export default function EssentialsScreen() {
     setAnswers((a) => ({ ...a, lives_in: r.city }));
   };
 
+  if (!questions) {
+    return (
+      <Screen center>
+        <ActivityIndicator color={p.textTertiary} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen topInset={false}
       footer={
         <>
-          <Button label={at + 1 === QUESTIONS.length ? 'Done' : 'Next'} variant="primary"
+          <Button label={at + 1 === list.length ? 'Done' : 'Next'} variant="primary"
                   onPress={() => void advance(false)} disabled={!answered} loading={busy} />
           {/* OFFERED ONLY WHERE DECLINING IS ACTUALLY SURVIVABLE.
           
@@ -159,7 +218,7 @@ export default function EssentialsScreen() {
         </>
       }
     >
-      <StepsLeft left={QUESTIONS.length - at} total={QUESTIONS.length} />
+      <StepsLeft left={list.length - at} total={list.length} />
 
       <View style={{ gap: space.sm }}>
         <Animation mood="connecting" height={130} opacity={0.4} />
@@ -196,6 +255,7 @@ export default function EssentialsScreen() {
 
         {(q.kind === 'number' || q.kind === 'text') && (
           <Field
+            key={q.key}
             value={value === undefined || value === null ? '' : String(value)}
             onChangeText={(t) => setAnswers((a) => ({ ...a, [q.key]: t }))}
             placeholder={q.kind === 'number' ? '1994' : 'Bangalore'}
