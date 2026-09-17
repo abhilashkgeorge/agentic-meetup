@@ -21,6 +21,7 @@ import {
   type Knowledge, type HistoryEntry,
 } from '../../lib/api';
 import { useSession } from '../../store/session';
+import { label } from '../profile/fields';
 import {
   Button, ButtonRow, Card, Crease, Empty, Field, Header, Screen, ScreenTitle,
   Surface, HIT, radius, space, type, usePalette,
@@ -148,7 +149,7 @@ export default function YouScreen() {
                         color: off ? p.textTertiary : p.text,
                         textDecorationLine: off ? 'line-through' : 'none',
                       }]}>
-                        {r.value}
+                        {label(r.value)}
                       </Text>
                     </Pressable>
                   </View>
@@ -202,7 +203,7 @@ export default function YouScreen() {
                   style={{ minHeight: HIT, justifyContent: 'center' }}
                 >
                   <Text style={[type.label, { color: p.textTertiary }]}>{f.label.toUpperCase()}</Text>
-                  <Text style={[type.body, { color: p.text }]}>{f.value}</Text>
+                  <Text style={[type.body, { color: p.text }]}>{label(f.value)}</Text>
                   <Text style={[type.callout, { color: p.textTertiary }]}>{f.because}</Text>
                 </Pressable>
               </View>

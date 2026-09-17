@@ -20,6 +20,7 @@ import {
   answerQuestion, getNextQuestion, type InterviewState,
 } from '../../lib/api';
 import { useSession } from '../../store/session';
+import { missingLabel } from '../profile/fields';
 import {
   Animation, Button, Card, Chip, ChipGroup, Field, Screen, space, type, usePalette,
 } from '../../components/ui';
@@ -97,7 +98,7 @@ export default function InterviewScreen() {
             </Text>
           ) : (
             state.missing.map((m) => (
-              <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {m}</Text>
+              <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {missingLabel(m)}</Text>
             ))
           )}
         </Card>

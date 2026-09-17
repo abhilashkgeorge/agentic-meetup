@@ -124,8 +124,10 @@ export async function commit(
   // Is this already what we believe? Then it is corroboration, not a change.
   // Without this, restating a fact would churn the lineage and inflate the
   // supersession history with self-supersessions.
-  const existing = await c.query<{ id: string; object_text: string; corroboration_count: number }>(
-    `SELECT id, object_text, corroboration_count FROM facts
+  const existing = await c.query<{
+    id: string; object_text: string; object_value: unknown; corroboration_count: number;
+  }>(
+    `SELECT id, object_text, object_value, corroboration_count FROM facts
       WHERE user_id = $1 AND predicate = $2 AND status = 'active' AND valid_to IS NULL
       ORDER BY recorded_at DESC`,
     [ctx.userId, cand.predicate],
@@ -135,13 +137,30 @@ export async function commit(
     (r) => r.object_text.trim().toLowerCase() === cand.objectText.trim().toLowerCase(),
   );
   if (same) {
+    // Restating the same words is corroboration -- UNLESS it arrives carrying a
+    // structured value the stored row is missing or disagrees on. A city typed into
+    // setup ("Bangalore" -> coordinates) restates a word the extractor already saved
+    // from a sentence with no value attached; treating that as mere corroboration is
+    // how somebody enters their city, sees it on their profile, and still has an agent
+    // that "does not know where they are" -- the first, value-less mention winning for
+    // ever. Fill it in. Never the other way: a value-less restatement does not wipe a
+    // value that is already there.
+    const newVal = cand.objectValue ?? null;
+    const fills =
+      newVal !== null &&
+      JSON.stringify(same.object_value ?? null) !== JSON.stringify(newVal);
     await c.query(
       `UPDATE facts SET corroboration_count = corroboration_count + 1,
-                        source_episode_ids = source_episode_ids || $3::uuid[]
+                        source_episode_ids = source_episode_ids || $3::uuid[]${
+                          fills ? ',\n                        object_value = $4::jsonb' : ''
+                        }
         WHERE id = $1 AND user_id = $2`,
-      [same.id, ctx.userId, cand.sourceEpisodeIds],
+      fills
+        ? [same.id, ctx.userId, cand.sourceEpisodeIds, JSON.stringify(newVal)]
+        : [same.id, ctx.userId, cand.sourceEpisodeIds],
     );
-    await audit(c, ctx, same.id, 'corroborate', null, { count: same.corroboration_count + 1 }, cand);
+    await audit(c, ctx, same.id, 'corroborate', null,
+      { count: same.corroboration_count + 1, ...(fills ? { filledValue: true } : {}) }, cand);
     return { factId: same.id, outcome: 'corroborated' };
   }
 

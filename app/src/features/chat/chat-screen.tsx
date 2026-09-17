@@ -11,7 +11,7 @@ import { FlatList, Pressable, Text, View } from 'react-native';
 import { useChat } from '../../features/chat/use-chat';
 import { useSession } from '../../store/session';
 import { getConfig, type Config } from '../../lib/api';
-import { setupRoute } from '../profile/fields';
+import { label, setupRoute, missingLabel } from '../profile/fields';
 import {
   Bubble, Button, Card, Chip, ChipGroup, Crease, Disclosure, Field, Screen,
   Skeleton, space, type, usePalette,
@@ -155,7 +155,7 @@ export default function ChatScreen() {
                       <Text style={[type.label, { color: p.textTertiary }]}>
                         {f.label.toUpperCase()}
                       </Text>
-                      <Text style={[type.body, { color: p.text }]}>{f.value}</Text>
+                      <Text style={[type.body, { color: p.text }]}>{label(f.value)}</Text>
                     </View>
                   ))}
                   {k.knows.length > 4 && (
@@ -194,7 +194,7 @@ export default function ChatScreen() {
                 ) : (
                   <>
                     {pool.missing.slice(0, 3).map((m) => (
-                      <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {m}</Text>
+                      <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {missingLabel(m)}</Text>
                     ))}
                     <Button label="Finish setup" variant="primary"
                             onPress={() => router.push(setupRoute(pool.missing))} />

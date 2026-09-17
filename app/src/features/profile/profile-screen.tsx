@@ -18,7 +18,7 @@ import {
 } from '../../lib/api';
 import { usePhoto } from '../photos/photo';
 import { useSession } from '../../store/session';
-import { setupRoute } from './fields';
+import { label, setupRoute } from './fields';
 import {
   Avatar, Button, Card, Chip, ChipGroup, Crease, PhotoSlot, Row, Screen, ScreenTitle,
   Skeleton, SkeletonCard, Stats, space, type, usePalette,
@@ -165,11 +165,13 @@ export default function ProfileScreen() {
                    onPress={() => router.push('/edit/birth_date')} />
               <Row title="Lives in" value={city ?? 'Not set'}
                    onPress={() => router.push('/edit/lives_in')} />
-              <Row title="Here for" value={valueOf(k, 'relationship_intent') ?? 'Not set'}
+              <Row title="Here for"
+                   value={(() => { const v = valueOf(k, 'relationship_intent'); return v ? label(v) : 'Not set'; })()}
                    onPress={() => router.push('/edit/relationship_intent')} />
               <Row title="Height" value={valueOf(k, 'height_cm') ?? 'Not set'}
                    onPress={() => router.push('/edit/height_cm')} />
-              <Row title="Diet" value={valueOf(k, 'diet') ?? 'Not set'} last
+              <Row title="Diet"
+                   value={(() => { const v = valueOf(k, 'diet'); return v ? label(v) : 'Not set'; })()} last
                    onPress={() => router.push('/edit/diet')} />
             </>
           )}

@@ -68,6 +68,29 @@ export const FIELDS: Field[] = [
 
 export const FIELD_BY_KEY = new Map(FIELDS.map((f) => [f.key, f]));
 
+/**
+ * A human noun for a MISSING item, for the "still needs" lists on the chat home and
+ * the end of the interview. Those lists were printing the raw predicate keys --
+ * `birth_date`, `lives_in` -- straight onto the screen, which is the internal column
+ * name leaking into the one place the product promises plain words. `consent` is here
+ * too because the pool reports it alongside the fields but it is not one of them.
+ */
+const MISSING_NOUN: Record<string, string> = {
+  consent: 'Your agreement to the basics',
+  birth_date: 'Your birth year',
+  gender: 'Your gender',
+  seeking_gender: 'Who you want to meet',
+  relationship_intent: "What you're after",
+  lives_in: 'Where you live',
+  max_distance_km: 'How far you would travel',
+};
+
+export const missingLabel = (key: string): string =>
+  MISSING_NOUN[key]
+  ?? FIELD_BY_KEY.get(key)?.rowLabel
+  ?? FIELD_BY_KEY.get(key)?.title
+  ?? key.replace(/_/g, ' ');
+
 /** The six that gate the pool, in the order setup asks them. */
 export const ESSENTIAL_FIELDS = FIELDS.filter((f) => f.essential);
 
