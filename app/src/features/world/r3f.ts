@@ -16,17 +16,26 @@ export interface WorldRenderer {
 }
 
 let cached: WorldRenderer | null | undefined;
+/** Why the last load failed, for the bench and the Settings row. Null when it worked. */
+export let rendererError: string | null = null;
 
 export async function loadWorldRenderer(): Promise<WorldRenderer | null> {
   if (cached !== undefined) return cached;
+  let stage = 'expo-gl';
   try {
     // Order matters: the GL view is what the fiber renderer stands on, so if this one
     // throws there is no point evaluating the rest.
     await import('expo-gl');
+    stage = '@react-three/fiber/native';
     await import('@react-three/fiber/native');
+    stage = 'canvas';
     const mod = await import('./canvas');
     cached = { WorldCanvas: mod.WorldCanvas };
-  } catch {
+    rendererError = null;
+  } catch (err) {
+    rendererError = `${stage}: ${err instanceof Error ? err.message : String(err)}`;
+    // Loud in the dev log, never on a user's screen except the bench.
+    console.warn(`[world] renderer unavailable at ${rendererError}`);
     cached = null;
   }
   return cached;

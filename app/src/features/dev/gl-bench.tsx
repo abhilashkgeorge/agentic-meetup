@@ -14,14 +14,16 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
-import { loadWorldRenderer, type WorldRenderer } from '../world/r3f';
+import { loadWorldRenderer, rendererError, type WorldRenderer } from '../world/r3f';
 import { WorldSim } from '../world/sim';
 import type { WorldStats } from '../world/canvas';
 import {
   Card, Chip, ChipGroup, Header, Screen, StatRow, space, type, usePalette,
 } from '../../components/ui';
 
-const SIZES = [24, 48, 96] as const;
+// 64 is the canvas's instance-slot cap (SLOTS in ../world/canvas.tsx); a bigger
+// number here would measure 64 and say something larger.
+const SIZES = [24, 48, 64] as const;
 
 function verdict(s: WorldStats | null): { label: string; note: string; tone: 'ok' | 'warn' | 'bad' | 'none' } {
   if (!s || s.elapsed < 3) return { label: 'Measuring…', note: 'Give it a minute, unplugged.', tone: 'none' };
@@ -69,9 +71,12 @@ export default function GlBenchScreen() {
           <Text style={[type.callout, { color: p.textTertiary, padding: space.screen }]}>Loading the renderer…</Text>
         )}
         {renderer === null && (
-          <Text style={[type.body, { color: p.danger, padding: space.screen }]}>
-            The 3D renderer could not load on this build. The town will use the plain Home.
-          </Text>
+          <View style={{ padding: space.screen, gap: space.sm }}>
+            <Text style={[type.body, { color: p.danger }]}>
+              The 3D renderer could not load on this build. The town will use the plain Home.
+            </Text>
+            <Text style={[type.callout, { color: p.textTertiary }]} selectable>{rendererError ?? ''}</Text>
+          </View>
         )}
         {renderer && (
           <renderer.WorldCanvas
