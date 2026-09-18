@@ -34,9 +34,11 @@ export async function loadWorldRenderer(): Promise<WorldRenderer | null> {
     rendererError = null;
   } catch (err) {
     rendererError = `${stage}: ${err instanceof Error ? err.message : String(err)}`;
-    // Loud in the dev log, never on a user's screen except the bench.
+    // Loud in the dev log, never on a user's screen except the bench. NOT cached: a
+    // failure can be a bundle still being served, and the next screen to ask should
+    // be allowed to find the renderer there after all. Only success is remembered.
     console.warn(`[world] renderer unavailable at ${rendererError}`);
-    cached = null;
+    return null;
   }
   return cached;
 }

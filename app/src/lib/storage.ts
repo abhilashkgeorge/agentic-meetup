@@ -93,3 +93,28 @@ export async function getTheme(): Promise<'system' | 'light' | 'dark' | null> {
 export async function setTheme(choice: 'system' | 'light' | 'dark'): Promise<void> {
   await SecureStore.setItemAsync(THEME_KEY, choice).catch(() => {});
 }
+
+/**
+ * The 3D fuse.
+ *
+ * A GL context that takes the process down leaves no error to catch -- the app is
+ * simply gone. So the town writes `trying` here before it mounts the renderer and
+ * clears it after the first frame; a leftover `trying` on the next launch means the
+ * last attempt never drew, and Home falls back to the plain screen until the person
+ * asks for 3D again from Settings.
+ */
+const GL_FUSE_KEY = 'clone.gl';
+
+export async function getGlFuse(): Promise<'trying' | 'off' | null> {
+  try {
+    const v = await SecureStore.getItemAsync(GL_FUSE_KEY);
+    return v === 'trying' || v === 'off' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setGlFuse(state: 'trying' | 'off' | null): Promise<void> {
+  if (state === null) await SecureStore.deleteItemAsync(GL_FUSE_KEY).catch(() => {});
+  else await SecureStore.setItemAsync(GL_FUSE_KEY, state).catch(() => {});
+}

@@ -37,6 +37,10 @@ export interface SimAgent {
 
 /** Plaza radius in scene units. The renderer's ground is a little bigger. */
 export const PLAZA = 8;
+/** The fountain's footprint. Nobody is placed inside it. */
+const FOUNTAIN = 2.2;
+/** Where YOUR agent stands when it is not out: front of the fountain, nearest the camera. */
+export const HOME: readonly [number, number] = [0, PLAZA * 0.55];
 const WALK = 1.6;
 const HURRY = 2.2;
 const ARRIVE = 0.15;
@@ -86,7 +90,7 @@ export class WorldSim {
     for (const { ref, kind, seed } of list) {
       const have = this.byRef.get(ref);
       if (have) { have.kind = kind; continue; }
-      const [x, z] = this.spot();
+      const [x, z] = kind === 'you' ? HOME : this.spot();
       this.byRef.set(ref, {
         ref, kind, seed, x, z, tx: x, tz: z,
         facing: this.rnd() * Math.PI * 2,
@@ -102,19 +106,23 @@ export class WorldSim {
     if (i >= 0) this.order.splice(i, 1);
   }
 
-  /** Two agents walk to a spot between them and start talking (dots). */
+  /**
+   * `a` walks over to `b`, who stays where they are, and they talk (dots).
+   *
+   * The visitor moves and the visited stands still -- which is what the product says
+   * happens ("your agent walks over"), and which also stops the whole square drifting
+   * into the fountain: the first cut met at the midpoint of two random walkers, and
+   * the midpoint of a square is its middle.
+   */
   meet(a: string, b: string): void {
     const A = this.byRef.get(a);
     const B = this.byRef.get(b);
     if (!A || !B) return;
-    const mx = (A.x + B.x) / 2;
-    const mz = (A.z + B.z) / 2;
-    const dx = B.x - A.x;
-    const dz = B.z - A.z;
+    const dx = A.x - B.x;
+    const dz = A.z - B.z;
     const len = Math.hypot(dx, dz) || 1;
-    // Stand a little apart, facing each other.
-    A.tx = mx - (dx / len) * (TOGETHER / 2); A.tz = mz - (dz / len) * (TOGETHER / 2);
-    B.tx = mx + (dx / len) * (TOGETHER / 2); B.tz = mz + (dz / len) * (TOGETHER / 2);
+    A.tx = B.x + (dx / len) * TOGETHER; A.tz = B.z + (dz / len) * TOGETHER;
+    B.tx = B.x; B.tz = B.z;
     for (const p of [A, B]) {
       p.state = 'approaching'; p.bubble = null; p.ring = false;
     }
@@ -139,6 +147,18 @@ export class WorldSim {
     }
   }
 
+  /** The roster stopped saying they were talking, with no verdict: just stand down. */
+  settle(ref: string): void {
+    const a = this.byRef.get(ref);
+    if (!a) return;
+    const partner = a.partner ? this.byRef.get(a.partner) : undefined;
+    for (const p of [a, partner]) {
+      if (!p) continue;
+      p.partner = null; p.bubble = null;
+      [p.tx, p.tz] = p.kind === 'you' ? HOME : this.spot(); p.state = 'walking';
+    }
+  }
+
   /** Not for me: they walk to the edge of the square and are gone. */
   pass(ref: string): void {
     const a = this.byRef.get(ref);
@@ -157,6 +177,9 @@ export class WorldSim {
   private stepOne(a: SimAgent, dt: number): void {
     switch (a.state) {
       case 'idle':
+        // Your own agent stays put between outings, so it is always where you left it
+        // and always the same one to tap. Everybody else drifts about.
+        if (a.kind === 'you') break;
         a.wait -= dt;
         if (a.wait <= 0) { [a.tx, a.tz] = this.spot(); a.state = 'walking'; }
         break;
@@ -179,7 +202,7 @@ export class WorldSim {
         a.wait -= dt;
         if (a.wait <= 0) {
           a.bubble = null; a.partner = null;
-          [a.tx, a.tz] = this.spot(); a.state = 'leaving';
+          [a.tx, a.tz] = a.kind === 'you' ? HOME : this.spot(); a.state = 'leaving';
         }
         break;
       case 'leaving':
@@ -210,9 +233,10 @@ export class WorldSim {
     return false;
   }
 
+  /** A place to stand: inside the square, and never in the fountain. */
   private spot(): [number, number] {
     const ang = this.rnd() * Math.PI * 2;
-    const r = Math.sqrt(this.rnd()) * (PLAZA - 0.8);
+    const r = FOUNTAIN + Math.sqrt(this.rnd()) * (PLAZA - 0.8 - FOUNTAIN);
     return [Math.cos(ang) * r, Math.sin(ang) * r];
   }
 

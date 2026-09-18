@@ -1,22 +1,20 @@
 /**
- * Talking to your own clone.
+ * The plain Home: your clone's chat with the status cards behind it.
  *
- * Instagram's DM screen, essentially: a thin top bar, messages filling everything,
- * and a composer pinned to the bottom. Nothing else on the screen, because there is
- * nothing else to do here.
+ * This is what Home was before the town, and what it still is on a phone where the 3D
+ * renderer cannot load or has crashed once (see features/world/world-screen.tsx). The
+ * conversation itself lives in CloneChat; this file is the cards.
  */
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
-import { useChat } from '../../features/chat/use-chat';
+import { useEffect, useState } from 'react';
+import { Text, View } from 'react-native';
+import { CloneChat } from './clone-chat';
 import { useSession } from '../../store/session';
-import { getConfig, type Config } from '../../lib/api';
+import { getConfig, getKnowledge, getPool, type Config, type Knowledge } from '../../lib/api';
 import { label, setupRoute, missingLabel } from '../profile/fields';
 import {
-  Bubble, Button, Card, Chip, ChipGroup, Crease, Disclosure, Field, Screen,
-  Skeleton, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Screen, Skeleton, space, type, usePalette,
 } from '../../components/ui';
-import { getKnowledge, getPool, type Knowledge } from '../../lib/api';
 
 /** One tap instead of a blank box. */
 const STARTERS = [
@@ -30,16 +28,10 @@ const STARTERS = [
 export default function ChatScreen() {
   const p = usePalette();
   const bubbles = useSession((s) => s.bubbles);
-  const newSession = useSession((s) => s.newSession);
-  const question = useSession((s) => s.question);
-  const connected = useSession((s) => s.connected);
-  const { send } = useChat();
-  const [draft, setDraft] = useState('');
+  const token = useSession((s) => s.token);
   const [config, setConfig] = useState<Config | null>(null);
   const [k, setK] = useState<Knowledge | null>(null);
   const [pool, setPool] = useState<{ total: number; inPool: boolean; missing: string[]; need: string[] } | null>(null);
-  const token = useSession((s) => s.token);
-  const list = useRef<FlatList>(null);
 
   useEffect(() => {
     void (async () => {
@@ -54,88 +46,12 @@ export default function ChatScreen() {
     })();
   }, [token, bubbles.length]);
 
-  const submit = useCallback(() => {
-    const text = draft.trim();
-    if (!text) return;
-    send(text);
-    setDraft('');
-  }, [draft, send]);
-
   return (
-    <Screen
-      scroll={false}
-      padded={false}
-      footer={
-        <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-end' }}>
-          <View style={{ flex: 1 }}>
-            <Field
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Say something"
-              multiline
-              minHeight={24}
-              onSubmitEditing={submit}
-            />
-          </View>
-          <Button label="Send" variant="primary" onPress={submit} disabled={!draft.trim()}
-                  style={{ paddingHorizontal: space.lg }} />
-        </View>
-      }
-    >
-      {/* A WAY OUT OF THE CONVERSATION, once there is one to leave.
-          
-          This is a tab, so it has no back button and nothing to navigate to -- and the
-          moment somebody said anything, the cards underneath (what it knows, who it can
-          reach, the prompts to tell it something) were replaced by the transcript for
-          good. There was no gesture, button or tab that brought them back. Reported by
-          a person using it, and invisible to the stranded-screen test, which exempts
-          tab roots precisely because they normally cannot trap you.
-          
-          `newSession` is the existing verb for this: it clears the transcript and mints
-          a new session id, which is also what tells the server this conversation ended
-          and its facts can be extracted. Nothing is lost by tapping it. */}
-      <View
-        style={{
-          flexDirection: 'row', alignItems: 'center',
-          paddingHorizontal: space.screen, gap: space.sm,
-        }}
-      >
-        <View style={{ flex: 1 }}>
-          <Disclosure
-            text={config?.disclosure.perSession ?? 'This is an AI, not a person.'}
-          />
-        </View>
-        {bubbles.length > 0 && (
-          <Pressable
-            onPress={() => newSession()}
-            accessibilityRole="button"
-            accessibilityLabel="End this conversation and go back"
-            hitSlop={12}
-            style={{ paddingVertical: space.xs }}
-          >
-            <Text style={[type.callout, { color: p.accent }]}>Done</Text>
-          </Pressable>
-        )}
-      </View>
-
-      {!connected && (
-        <View style={{ paddingHorizontal: space.screen }}>
-          <Text style={[type.callout, { color: p.warning, textAlign: 'center' }]}>
-            Reconnecting…
-          </Text>
-        </View>
-      )}
-
-      <FlatList
-        ref={list}
-        data={bubbles}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: space.screen, paddingTop: space.sm, flexGrow: 1 }}
-        keyExtractor={(b) => `${b.role}-${b.turnId}`}
-        onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={{ flex: 1, justifyContent: 'center', gap: space.lg }}>
+    <Screen scroll={false} padded={false}>
+      <CloneChat
+        disclosure={config?.disclosure.perSession ?? 'This is an AI, not a person.'}
+        renderEmpty={({ setDraft }) => (
+          <>
             {/* Where the person actually stands, before they have said anything. */}
             <Card label={k ? `It knows ${k.knows.length} things about you` : 'Getting ready'}>
               {!k ? (
@@ -152,16 +68,12 @@ export default function ChatScreen() {
                   {k.knows.slice(0, 4).map((f, i) => (
                     <View key={f.id}>
                       {i > 0 && <Crease />}
-                      <Text style={[type.label, { color: p.textTertiary }]}>
-                        {f.label.toUpperCase()}
-                      </Text>
+                      <Text style={[type.label, { color: p.textTertiary }]}>{f.label.toUpperCase()}</Text>
                       <Text style={[type.body, { color: p.text }]}>{label(f.value)}</Text>
                     </View>
                   ))}
                   {k.knows.length > 4 && (
-                    <Text style={[type.callout, { color: p.textTertiary }]}>
-                      and {k.knows.length - 4} more
-                    </Text>
+                    <Text style={[type.callout, { color: p.textTertiary }]}>and {k.knows.length - 4} more</Text>
                   )}
                 </>
               )}
@@ -170,9 +82,7 @@ export default function ChatScreen() {
             {/* The refusals. The half of this product nobody else can print. */}
             {k && k.wontGuess.length > 0 && (
               <Card label="It won't guess">
-                <Text style={[type.callout, { color: p.textSecondary }]}>
-                  It could have made these up. It didn't.
-                </Text>
+                <Text style={[type.callout, { color: p.textSecondary }]}>It could have made these up. It didn't.</Text>
                 {k.wontGuess.slice(0, 3).map((g, i) => (
                   <View key={g.id}>
                     {i > 0 && <Crease />}
@@ -187,9 +97,7 @@ export default function ChatScreen() {
                 {pool.inPool ? (
                   <>
                     <Text style={[type.display, { color: p.text }]}>{pool.total}</Text>
-                    <Text style={[type.callout, { color: p.textSecondary }]}>
-                      people it can reach right now
-                    </Text>
+                    <Text style={[type.callout, { color: p.textSecondary }]}>people it can reach right now</Text>
                   </>
                 ) : (
                   <>
@@ -211,21 +119,9 @@ export default function ChatScreen() {
                 ))}
               </ChipGroup>
             </Card>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Bubble text={item.text} mine={item.role === 'user'} pending={item.pending} />
+          </>
         )}
       />
-
-      {/* The clone's own question, when it has one. One at a time, never a list. */}
-      {question && (
-        <View style={{ paddingHorizontal: space.screen, paddingBottom: space.sm }}>
-          <Card label="It wants to know">
-            <Text style={[type.body, { color: p.text }]}>{question.text}</Text>
-          </Card>
-        </View>
-      )}
     </Screen>
   );
 }

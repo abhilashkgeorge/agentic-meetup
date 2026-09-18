@@ -57,8 +57,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon glyph="◍" focused={focused} label="CLONE" />,
-          tabBarAccessibilityLabel: 'Chat with your clone',
+          tabBarIcon: ({ focused }) => <TabIcon glyph="◉" focused={focused} label="TOWN" />,
+          tabBarAccessibilityLabel: 'The town: watch your agent, tap it to talk',
         }}
       />
       <Tabs.Screen

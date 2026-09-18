@@ -59,6 +59,8 @@ export interface WorldCanvasProps {
   active?: boolean;
   onStats?: (s: WorldStats) => void;
   onTapAgent?: (ref: string) => void;
+  /** Called once, on the first drawn frame. The fuse in storage is cleared on it. */
+  onFirstFrame?: () => void;
 }
 
 const SLOTS = 64;
@@ -80,7 +82,7 @@ export function WorldCanvas(props: WorldCanvasProps) {
   );
 }
 
-function Town({ sim, colors, cap30, onStats, onTapAgent }: WorldCanvasProps) {
+function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCanvasProps) {
   const { gl, scene, invalidate } = useThree();
 
   useEffect(() => {
@@ -155,8 +157,10 @@ function Town({ sim, colors, cap30, onStats, onTapAgent }: WorldCanvasProps) {
   const late = useRef<number[]>([]);
   const elapsed = useRef(0);
   const lastReport = useRef(0);
+  const drawn = useRef(false);
 
   useFrame((_, dt) => {
+    if (!drawn.current) { drawn.current = true; onFirstFrame?.(); }
     const clamped = Math.min(dt, 0.1);
     elapsed.current += clamped;
     const t = elapsed.current;

@@ -424,6 +424,33 @@ export const getPool = (token: string) =>
     '/v1/pool', token,
   );
 
+/**
+ * The town's roster. What GET /v1/world may say about other people, which is very
+ * little on purpose: a stranger is a ref, a kind, a seed and one practice bit. A name
+ * arrives only for a met person the reveal would already name.
+ */
+export type AgreementWords = 'got_on' | 'unsure' | 'did_not_click' | 'could_not_tell';
+export interface WorldAgent {
+  ref: string;
+  kind: 'stranger' | 'practice' | 'met';
+  practice: boolean;
+  seed: number;
+  state: 'idle' | 'talking' | 'briefed' | 'waiting' | 'introduced' | 'passed';
+  rendezvousId?: string;
+  name?: string;
+  agreement?: AgreementWords;
+  yourTurn?: boolean;
+}
+export interface World {
+  square: { city: string | null };
+  me: { inPool: boolean; knows: number; missing: string[]; need: string[] };
+  pool: { total: number };
+  round: RoundState | null;
+  targetsLeftToday: number;
+  agents: WorldAgent[];
+}
+export const getWorld = (token: string) => get<World>('/v1/world', token);
+
 export interface MatchCard {
   id: string;
   headline: string;
