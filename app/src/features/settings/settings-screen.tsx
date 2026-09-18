@@ -9,8 +9,9 @@
  * which is the same failure as the confirm buttons that called router.push('/').
  */
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Share, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Pressable, Share, Text, View } from 'react-native';
+import Constants from 'expo-constants';
 import {
   createInvite, eraseAccount, exportAccount, getInvites, type Invite, logout, phoneLinked,
 } from '../../lib/api';
@@ -26,6 +27,14 @@ import {
 
 export default function SettingsScreen() {
   const p = usePalette();
+  const taps = useRef<{ n: number; at: number }>({ n: 0, at: 0 });
+  const tapVersion = () => {
+    const now = Date.now();
+    const t = taps.current;
+    t.n = now - t.at < 1500 ? t.n + 1 : 1;
+    t.at = now;
+    if (t.n >= 5) { t.n = 0; router.push('/dev/gl'); }
+  };
   const token = useSession((s) => s.token);
   const setToken = useSession((s) => s.setToken);
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -228,6 +237,13 @@ export default function SettingsScreen() {
         <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
           Nobody else has ever seen what your clone knows about you.
         </Text>
+        {/* Five taps on the version opens the hidden 3D frame-rate check. A developer
+            door that is not a menu item, because it is not for anybody else. */}
+        <Pressable onPress={tapVersion} accessibilityLabel="Version">
+          <Text style={[type.label, { color: p.textTertiary, textAlign: 'center' }]}>
+            CLONE {Constants.expoConfig?.version ?? ''}
+          </Text>
+        </Pressable>
       </View>
     </Screen>
   );

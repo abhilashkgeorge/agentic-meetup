@@ -23,7 +23,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const SRC = join(import.meta.dirname, '..', 'src');
 
@@ -47,7 +47,20 @@ const NATIVE = [
   'expo-sharing',
   'expo-media-library',
   'expo-location',
+  // The 3D renderer. The GL view and the fiber renderer on top of it are native shims
+  // like the rest; a static import on the Home tab root would be exactly the eager
+  // startup this file exists to prevent.
+  'expo-gl',
+  '@react-three/fiber',
+  '@react-three/fiber/native',
 ];
+
+/**
+ * Files that MAY import the packages above at the top, because nothing imports them
+ * statically in turn: they are reached only through a dynamic `import()` behind a try
+ * (features/world/r3f.ts). The second test below is what keeps that true.
+ */
+const LAZY_ONLY = ['features/world/canvas.tsx'];
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -62,6 +75,7 @@ describe('native modules', () => {
     const offenders: string[] = [];
 
     for (const file of sources(SRC)) {
+      if (LAZY_ONLY.some((l) => file.endsWith(l))) continue;
       const src = readFileSync(file, 'utf8');
       src.split('\n').forEach((line, i) => {
         // A STATIC import only: `await import(...)` inside a function is the fix, not
@@ -88,6 +102,29 @@ describe('native modules', () => {
       + 'render ANY screen. Load them inside the function that uses them:\n'
       + '  const Mod = await import(\'…\');\n'
       + `and handle the throw.\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('are behind a dynamic import: nothing imports the lazy-only files statically', () => {
+    const offenders: string[] = [];
+    for (const file of sources(SRC)) {
+      if (LAZY_ONLY.some((l) => file.endsWith(l))) continue;
+      const src = readFileSync(file, 'utf8');
+      src.split('\n').forEach((line, i) => {
+        // Type-only imports are erased and evaluate nothing; r3f.ts uses one.
+        if (/^\s*import\s+type\b/.test(line)) return;
+        const m = /^\s*import\s+(?:[^(]*?\sfrom\s+)?'(\.[^']+)'/.exec(line);
+        if (!m) return;
+        const target = join(dirname(file), m[1]!).replace(/\.tsx?$/, '');
+        if (LAZY_ONLY.some((l) => target.endsWith(l.replace(/\.tsx?$/, '')))) {
+          offenders.push(`${file.replace(SRC, 'src')}:${i + 1}  ${m[1]}`);
+        }
+      });
+    }
+    expect(
+      offenders,
+      'these pull the 3D renderer in at startup. Go through loadWorldRenderer() in '
+      + `features/world/r3f.ts instead:\n${offenders.join('\n')}`,
     ).toEqual([]);
   });
 });

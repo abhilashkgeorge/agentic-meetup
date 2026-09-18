@@ -189,7 +189,7 @@ export default function EssentialsScreen() {
 
   if (!questions) {
     return (
-      <Screen center>
+      <Screen center topInset={false}>
         <ActivityIndicator color={p.textTertiary} />
       </Screen>
     );
