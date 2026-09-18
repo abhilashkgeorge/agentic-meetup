@@ -24,6 +24,13 @@ import { useSession } from '../../store/session';
 import { setupRoute } from '../profile/fields';
 import { Screen, usePalette } from '../../components/ui';
 import { AgentSheet } from './agent-sheet';
+
+/** What the server says when it will not send the agent, in the person's words. */
+const REFUSED: Record<string, string> = {
+  budget_exceeded: 'Your agent has been out enough for today.',
+  daily_targets: 'That is all the visits for today. Try again tomorrow.',
+  not_here: 'That person has moved on.',
+};
 import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
@@ -148,11 +155,17 @@ export default function WorldScreen() {
     );
   }, [world, active, announce, setAnnounce]);
 
-  const sendOut = useCallback(async () => {
+  /**
+   * Send the agent out -- to whoever the ranking picks, or, with a ref, to the one
+   * person tapped in the square ("send my agent over"). A refusal has a reason the
+   * person needs to read, so it is said where the round's result would be.
+   */
+  const sendOut = useCallback(async (target?: string) => {
     if (!token || active) return;
     setSaid(null);
-    const r = await runRound(token);
+    const r = await runRound(token, target);
     if (!r) { setSaid('Cannot reach the server.'); return; }
+    if ('error' in r) { setSaid(REFUSED[r.error] ?? 'Could not send your agent out. Try again.'); return; }
     setAnnounce(r.roundId);
     await load(token);
   }, [token, active, load, setAnnounce]);
@@ -189,7 +202,11 @@ export default function WorldScreen() {
                             onTapAgent={onTap} onFirstFrame={firstFrame} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()}
            onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })} />
-      {selectedAgent && <AgentSheet agent={selectedAgent} onClose={() => setSelected(null)} />}
+      {selectedAgent && (
+        <AgentSheet agent={selectedAgent} onClose={() => setSelected(null)}
+                    visits={{ left: world?.targetsLeftToday ?? 0, busy: active }}
+                    onSendOver={(ref) => { setSelected(null); void sendOut(ref); }} />
+      )}
       {chatOpen && <CloneSheet onClose={() => setChatOpen(false)} />}
     </View>
   );

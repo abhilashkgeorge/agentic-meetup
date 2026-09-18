@@ -89,8 +89,8 @@ describe('a round that fails', () => {
     const them = await person('them', { intent: [tag] });
 
     stub.down = true;
-    await enqueueRound(me);
-    expect(await runOneQueuedRound()).toBe(true);
+    const first = await enqueueRound(me);
+    expect(await runOneQueuedRound(first.id)).toBe(true);
     const failed = await tenantSession(me, (c) => latestRound(c, me.userId));
     expect(failed?.status).toBe('failed');
     expect(failed?.error).toBe('model down');
@@ -99,8 +99,8 @@ describe('a round that fails', () => {
 
     // And the same person is still there to be met.
     stub.down = false;
-    await enqueueRound(me);
-    expect(await runOneQueuedRound()).toBe(true);
+    const again = await enqueueRound(me);
+    expect(await runOneQueuedRound(again.id)).toBe(true);
     const done = await tenantSession(me, (c) => latestRound(c, me.userId));
     expect(done?.status).toBe('done');
     expect(done?.result?.metAll).toEqual([them.userId]);
@@ -116,8 +116,8 @@ describe('a round that fails', () => {
     // Fail on the second pair's first call, once the first pair's write has landed.
     stub.fileCalls = 0; stub.downAtFileCall = 2;
     try {
-      await enqueueRound(me);
-      expect(await runOneQueuedRound()).toBe(true);
+      const q = await enqueueRound(me);
+      expect(await runOneQueuedRound(q.id)).toBe(true);
     } finally { stub.down = false; stub.downAtFileCall = 0; }
 
     const rows = await owner.query<{ status: string; other: string }>(

@@ -38,7 +38,7 @@ import { matchmakerSession } from '../db/client.js';
 import { env } from '../env.js';
 import { metered } from '../metering.js';
 import { log } from '../log.js';
-import { candidateIds } from './candidates.js';
+import { candidateIds, isCandidate } from './candidates.js';
 import { llmFileScore, rank } from './score.js';
 import { buildDossier, converse, passes, pickConcern, publicTags, recordRuns, RUNS } from './rendezvous.js';
 import { composeBoth, loadQuotes, saveBriefs, type Quote } from './brief.js';
@@ -63,6 +63,8 @@ export interface RoundResult {
   costUsd: number;
   /** Why nothing happened, when nothing happened. */
   skipped?: string;
+  /** The one person this round was sent to, when it was sent to one. */
+  target?: string;
 }
 
 /**
@@ -74,13 +76,21 @@ export interface RoundResult {
 export interface RoundOptions {
   /** The round row this run belongs to, for the events; null from a script. */
   roundId?: string;
+  /**
+   * Meet this one person and nobody else -- "send my agent over" from the square.
+   * Checked against the full candidate rules (blocks included) here, not only at
+   * the endpoint: the tap and the run are minutes apart and either side may have
+   * changed their mind in between.
+   */
+  target?: string;
 }
 
 export async function runRound(userId: string, opts: RoundOptions = {}): Promise<RoundResult> {
   const roundId = opts.roundId ?? null;
+  const target = opts.target ?? null;
   const empty = (skipped: string): RoundResult => ({
     userId, considered: 0, met: null, metAll: [], bothYes: 0, runs: 0, passed: false,
-    costUsd: 0, skipped,
+    costUsd: 0, skipped, ...(target ? { target } : {}),
   });
 
   // ── read ────────────────────────────────────────────────────────────────────
@@ -92,8 +102,18 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     if (!me) return { stop: 'no profile' } as const;
     if (!me.in_pool) return { stop: 'agent is not ready to go out yet' } as const;
 
-    const ids = await candidateIds(c, userId, 500);
-    if (!ids.length) return { stop: 'nobody fits what you have asked for' } as const;
+    let ids: string[];
+    if (target) {
+      // Exact, not "within the first 500": the same clauses as the open round, so a
+      // person the filters or a block would keep apart cannot be reached by tapping.
+      if (!(await isCandidate(c, userId, target))) {
+        return { stop: 'they are not someone your agent can meet' } as const;
+      }
+      ids = [target];
+    } else {
+      ids = await candidateIds(c, userId, 500);
+      if (!ids.length) return { stop: 'nobody fits what you have asked for' } as const;
+    }
 
     // A pair meets ONCE, ever. Running the same two people again next week turns a
     // match into a war of attrition, and the second run measures the same two
@@ -105,9 +125,11 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     );
     const met = new Set(already.map((r) => r.other));
     const fresh = ids.filter((id) => !met.has(id));
-    if (!fresh.length) return { stop: 'your agent has already met everyone who fits' } as const;
+    if (!fresh.length) {
+      return { stop: target ? 'your agent has already met them' : 'your agent has already met everyone who fits' } as const;
+    }
 
-    const ranked = await rank(c, userId, fresh, 20);
+    const ranked = await rank(c, userId, fresh, target ? 1 : 20);
     if (!ranked.length) return { stop: 'nobody to rank' } as const;
 
     const a = { userId, tenantId: me.tenant_id };
@@ -125,8 +147,9 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       rankScore: number;
       b: { userId: string; tenantId: string; synthetic: boolean; dossier: string; voice: string; quotes: Quote[]; tags: string[] };
     }> = [];
+    const k = target ? 1 : CANDIDATES_PER_ROUND;
     for (const cand of ranked) {
-      if (pairs.length >= CANDIDATES_PER_ROUND) break;
+      if (pairs.length >= k) break;
       const { rows: themRows } = await c.query<{ tenant_id: string; is_synthetic: boolean }>(
         'SELECT tenant_id, is_synthetic FROM match_profile WHERE user_id = $1', [cand.userId],
       );
@@ -286,7 +309,7 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
   );
   return {
     userId, considered: plan.considered, met: metAll[0] ?? null, metAll,
-    bothYes, runs, passed, costUsd,
+    bothYes, runs, passed, costUsd, ...(target ? { target } : {}),
   };
 }
 

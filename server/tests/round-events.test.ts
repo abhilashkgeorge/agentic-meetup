@@ -101,7 +101,7 @@ describe('a round, as the town hears it', () => {
     const round = await enqueueRound(me);
     expect(frames).toEqual([{ type: 'round.queued', roundId: round.id }]);
 
-    expect(await runOneQueuedRound()).toBe(true);
+    expect(await runOneQueuedRound(round.id)).toBe(true);
 
     const types = frames.map((f) => f.type);
     expect(types).toEqual(['round.queued', 'round.met', 'round.talking', 'round.decided', 'round.done']);

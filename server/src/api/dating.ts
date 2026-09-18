@@ -14,8 +14,9 @@ import { commit } from '../memory/facts.js';
 import { rebuildMatchProfile, touchActive } from '../matching/profile.js';
 import { candidateCount, poolBreakdown } from '../matching/candidates.js';
 import { decide, runRound } from '../matching/orchestrator.js';
-import { enqueueRound, latestRound } from '../matching/rounds.js';
-import { BudgetExceeded } from '../metering.js';
+import { DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
+import { resolveAgentRef } from '../matching/world.js';
+import { BudgetExceeded, checkBudget } from '../metering.js';
 import { log } from '../log.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
@@ -567,14 +568,44 @@ export const datingRoutes = new Hono()
     if (!ctx) return c.json({ error: res }, 401);
     await tenantSession(ctx, (db) => touchActive(db, ctx.userId));
 
+    // A TARGET is "send my agent over" from the square: one person, by the
+    // per-viewer ref the roster gave out, and a real conversation with them (~$0.02).
+    // The ref resolves only among people the candidate rules already allow, so a
+    // block or a filter answers "not here" exactly as it would to a scan of the
+    // square. No body at all is the plain "send my agent out".
+    const body = z.object({ target: z.string().regex(/^[0-9a-f]{32}$/).optional() })
+      .safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: 'bad request' }, 400);
+    let targetUserId: string | undefined;
+    if (body.data.target) {
+      // The day's budget, checked before a row is written. The worker would refuse
+      // anyway -- but as a failed round, with a claim to release and nothing on the
+      // screen to say why. Here it is an answer to the tap.
+      try {
+        await tenantSession(ctx, (db) => checkBudget(db, ctx.tenantId, ctx.userId));
+      } catch (err) {
+        if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
+        throw err;
+      }
+      const ref = body.data.target;
+      const id = await matchSession((db) => resolveAgentRef(db, ctx.userId, ref));
+      if (!id) return c.json({ error: 'not_here' }, 404);
+      targetUserId = id;
+    }
+
     // ASKED FOR, NOT RUN. The round is several minutes of model calls and used to run
     // inside this request, so the phone held a socket open for as long as five
     // conversations take and showed the eventual timeout as a rejection. Now this
     // writes one row and answers at once; the worker in matching/rounds.ts does the
     // rest, and the matches list says how it is going. Tapping twice returns the
     // round already in flight rather than starting another.
-    const round = await enqueueRound(ctx);
-    return c.json({ roundId: round.id, status: round.status }, 202);
+    try {
+      const round = await enqueueRound(ctx, targetUserId ? { targetUserId } : {});
+      return c.json({ roundId: round.id, status: round.status }, 202);
+    } catch (err) {
+      if (err instanceof DailyTargetsExceeded) return c.json({ error: 'daily_targets', limit: err.limit }, 429);
+      throw err;
+    }
   });
 
 /**

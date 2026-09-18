@@ -632,8 +632,30 @@ export interface RoundResult {
  * state from then on. It used to await the whole thing -- several minutes of model
  * calls inside one request -- and show the eventual timeout as a rejection.
  */
-export const runRound = (token: string) =>
-  post<{ roundId: string; status: RoundState['status'] }>('/v1/matches/run', token, {});
+export async function runRound(
+  token: string,
+  /**
+   * One person's ref from the square: "send my agent over". Without it, the agent
+   * goes out to whoever the ranking picks.
+   */
+  target?: string,
+): Promise<{ roundId: string; status: RoundState['status'] } | { error: string } | null> {
+  // Not `post`: a refusal here has a reason the person needs to read -- five visits
+  // a day, the day's budget, "that person has moved on" -- and `post` folds every
+  // non-2xx into null, which reads as offline.
+  try {
+    const res = await fetch(`${getApiBase()}/v1/matches/run`, {
+      method: 'POST',
+      headers: { ...BASE_HEADERS, 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(target ? { target } : {}),
+    });
+    const body = (await res.json().catch(() => ({}))) as { roundId?: string; status?: RoundState['status']; error?: string };
+    if (!res.ok || !body.roundId || !body.status) return { error: body.error ?? `http_${res.status}` };
+    return { roundId: body.roundId, status: body.status };
+  } catch {
+    return null;
+  }
+}
 
 // ── photos ──────────────────────────────────────────────────────────────────
 //

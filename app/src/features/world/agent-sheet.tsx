@@ -21,7 +21,13 @@ const WORDS: Record<NonNullable<WorldAgent['agreement']>, string> = {
   could_not_tell: 'Your agents could not tell.',
 };
 
-export function AgentSheet({ agent, onClose }: { agent: WorldAgent; onClose: () => void }) {
+export function AgentSheet({ agent, onClose, visits, onSendOver }: {
+  agent: WorldAgent;
+  onClose: () => void;
+  /** How many "send my agent over" taps are left today, and whether the agent is out. */
+  visits: { left: number; busy: boolean };
+  onSendOver: (ref: string) => void;
+}) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const met = agent.kind === 'met';
@@ -49,6 +55,25 @@ export function AgentSheet({ agent, onClose }: { agent: WorldAgent; onClose: () 
           <Text style={[type.title, { color: p.text }]}>{title}</Text>
           <Text style={[type.body, { color: p.textSecondary }]}>{line}</Text>
 
+          {/* SEND MY AGENT OVER. A real conversation between the two agents, the same
+              as one stop of an open round, so it is rationed the same way the server
+              rations it: five a day, none while the agent is already out. The
+              button says why when it cannot. */}
+          {!met && (
+            <>
+              <Button
+                label={visits.busy ? 'Your agent is out…' : visits.left > 0 ? 'Send my agent over' : 'No visits left today'}
+                variant="primary"
+                disabled={visits.busy || visits.left <= 0}
+                onPress={() => onSendOver(agent.ref)}
+              />
+              <Text style={[type.callout, { color: p.textTertiary }]}>
+                {visits.left > 0
+                  ? `Your agent walks over and talks to theirs. ${visits.left} ${visits.left === 1 ? 'visit' : 'visits'} left today.`
+                  : 'Visits come back tomorrow. Your agent can still go out on its own.'}
+              </Text>
+            </>
+          )}
           {met && agent.rendezvousId && agent.state === 'introduced' && (
             <Button label="Message" variant="primary"
                     onPress={() => { onClose(); router.push(`/dm/${agent.rendezvousId}`); }} />

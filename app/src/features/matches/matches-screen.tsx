@@ -86,6 +86,12 @@ export default function MatchesScreen() {
     setSaid(null);
     const r = await runRound(token);
     if (!r) { setSaid('Cannot reach the server.'); return; }
+    if ('error' in r) {
+      setSaid(r.error === 'budget_exceeded'
+        ? 'Your agent has been out enough for today. Try again tomorrow.'
+        : 'Could not send your agent out. Try again.');
+      return;
+    }
     announced.current = r.roundId;
     await load();
   }, [token, active, load]);

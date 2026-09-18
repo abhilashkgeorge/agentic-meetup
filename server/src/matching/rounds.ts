@@ -24,7 +24,7 @@
  */
 import { matchmakerSession, tenantSession } from '../db/client.js';
 import { BudgetExceeded } from '../metering.js';
-import { notify } from './world.js';
+import { TARGETED_PER_DAY, notify } from './world.js';
 import { log } from '../log.js';
 import { runRound, type RoundResult } from './orchestrator.js';
 
@@ -37,6 +37,19 @@ export interface RoundRow {
   error: string | null;
 }
 
+/** Asked for one visit more than the day allows (world.ts TARGETED_PER_DAY). */
+export class DailyTargetsExceeded extends Error {
+  constructor(readonly limit: number) {
+    super(`daily targets exceeded: ${limit}`);
+    this.name = 'DailyTargetsExceeded';
+  }
+}
+
+export interface EnqueueOptions {
+  /** Meet this one person and nobody else: "send my agent over" from the square. */
+  targetUserId?: string;
+}
+
 /**
  * Ask for a round. Returns the round already in flight if there is one, because the
  * unique index refuses a second and the person did not do anything wrong by tapping
@@ -44,13 +57,25 @@ export interface RoundRow {
  */
 export async function enqueueRound(
   ctx: { tenantId: string; userId: string },
+  opts: EnqueueOptions = {},
 ): Promise<RoundRow> {
   return tenantSession(ctx, async (c) => {
+    if (opts.targetUserId) {
+      // A count in the database, not the in-memory limiter: a spend control has to
+      // survive a restart, and five visits a day is a spend control (~$0.02 each).
+      const { rows: n } = await c.query<{ n: string }>(
+        `SELECT count(*) AS n FROM rounds
+          WHERE user_id = $1 AND target_user_id IS NOT NULL
+            AND requested_at > now() - interval '24 hours'`,
+        [ctx.userId],
+      );
+      if (Number(n[0]?.n ?? 0) >= TARGETED_PER_DAY) throw new DailyTargetsExceeded(TARGETED_PER_DAY);
+    }
     const { rows } = await c.query<{ id: string; status: RoundRow['status']; requested_at: string }>(
-      `INSERT INTO rounds (user_id, tenant_id) VALUES ($1, $2)
+      `INSERT INTO rounds (user_id, tenant_id, target_user_id) VALUES ($1, $2, $3)
        ON CONFLICT (user_id) WHERE status IN ('queued', 'running') DO NOTHING
        RETURNING id, status, requested_at`,
-      [ctx.userId, ctx.tenantId],
+      [ctx.userId, ctx.tenantId, opts.targetUserId ?? null],
     );
     if (rows[0]) {
       notify(ctx.userId, { type: 'round.queued', roundId: rows[0].id });
@@ -94,13 +119,23 @@ export async function latestRound(
  * orchestrator's whole design); the result is a second short transaction. A crash
  * between claim and result leaves a row 'running' for ever -- see `reapStale`.
  */
-export async function runOneQueuedRound(): Promise<boolean> {
+export async function runOneQueuedRound(
+  /**
+   * Claim this round and no other. The worker never passes it -- it takes whatever
+   * is oldest -- but a test that enqueued a round has to be the one that runs it:
+   * several suites share one queue, and "the oldest queued round" is somebody
+   * else's whenever they run at the same time.
+   */
+  only?: string,
+): Promise<boolean> {
   const claimed = await matchmakerSession(async (c) => {
-    const { rows } = await c.query<{ id: string; user_id: string }>(
+    const { rows } = await c.query<{ id: string; user_id: string; target_user_id: string | null }>(
       `UPDATE rounds SET status = 'running', started_at = now()
-        WHERE id = (SELECT id FROM rounds WHERE status = 'queued'
+        WHERE id = (SELECT id FROM rounds
+                     WHERE status = 'queued' AND ($1::uuid IS NULL OR id = $1)
                      ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-      RETURNING id, user_id`,
+      RETURNING id, user_id, target_user_id`,
+      [only ?? null],
     );
     return rows[0] ?? null;
   });
@@ -109,7 +144,9 @@ export async function runOneQueuedRound(): Promise<boolean> {
   let result: RoundResult | null = null;
   let error: string | null = null;
   try {
-    result = await runRound(claimed.user_id, { roundId: claimed.id });
+    result = await runRound(claimed.user_id, {
+      roundId: claimed.id, ...(claimed.target_user_id ? { target: claimed.target_user_id } : {}),
+    });
   } catch (err) {
     // The budget cap is an outcome the person should be told about in plain words,
     // not a failure. Everything else is a failure and is logged as one.
