@@ -61,6 +61,8 @@ export class WorldSim {
   private readonly byRef = new Map<string, SimAgent>();
   /** Insertion order, kept stable so an instance slot means the same agent all frame. */
   private readonly order: string[] = [];
+  /** Visits a visitor has been asked to make while already on one, in order. */
+  private readonly visits = new Map<string, string[]>();
   /** Bench only: agents start and finish conversations on their own. */
   private autoplay = false;
   private autoClock = 0;
@@ -102,6 +104,7 @@ export class WorldSim {
 
   remove(ref: string): void {
     if (!this.byRef.delete(ref)) return;
+    this.visits.delete(ref);
     const i = this.order.indexOf(ref);
     if (i >= 0) this.order.splice(i, 1);
   }
@@ -113,11 +116,28 @@ export class WorldSim {
    * happens ("your agent walks over"), and which also stops the whole square drifting
    * into the fountain: the first cut met at the midpoint of two random walkers, and
    * the midpoint of a square is its middle.
+   *
+   * ONE AT A TIME. A round tells the town about all three people the moment it has
+   * chosen them, and then talks to them in turn; the first cut took all three cues
+   * at once, so your agent set off for the last one named and the other two stood
+   * about "approaching" nobody. A visitor already on a visit queues the rest and
+   * calls on them in order, each after the verdict on the one before.
    */
   meet(a: string, b: string): void {
     const A = this.byRef.get(a);
     const B = this.byRef.get(b);
     if (!A || !B) return;
+    if (A.partner === b) return;
+    if (A.state === 'approaching' || A.state === 'talking' || A.state === 'verdict') {
+      const q = this.visits.get(a) ?? [];
+      if (!q.includes(b)) q.push(b);
+      this.visits.set(a, q);
+      return;
+    }
+    this.startVisit(A, B);
+  }
+
+  private startVisit(A: SimAgent, B: SimAgent): void {
     const dx = A.x - B.x;
     const dz = A.z - B.z;
     const len = Math.hypot(dx, dz) || 1;
@@ -126,7 +146,17 @@ export class WorldSim {
     for (const p of [A, B]) {
       p.state = 'approaching'; p.bubble = null; p.ring = false;
     }
-    A.partner = b; B.partner = a;
+    A.partner = B.ref; B.partner = A.ref;
+  }
+
+  /** The next queued visit for `a`, started; false when there is nobody left to see. */
+  private nextVisit(a: SimAgent): boolean {
+    const q = this.visits.get(a.ref);
+    while (q && q.length) {
+      const B = this.byRef.get(q.shift()!);
+      if (B) { this.startVisit(a, B); return true; }
+    }
+    return false;
   }
 
   /** How the conversation went, shown over this agent for a few seconds. */
@@ -155,8 +185,19 @@ export class WorldSim {
     for (const p of [a, partner]) {
       if (!p) continue;
       p.partner = null; p.bubble = null;
+      if (this.nextVisit(p)) continue;
       [p.tx, p.tz] = p.kind === 'you' ? HOME : this.spot(); p.state = 'walking';
     }
+  }
+
+  /**
+   * The round is over, however it ended: nobody else is to be visited. The queue is
+   * dropped and whoever `ref` was with is left to wander. A round that failed used
+   * to leave your agent standing in a conversation for ever, dots and all.
+   */
+  recall(ref: string): void {
+    this.visits.delete(ref);
+    this.settle(ref);
   }
 
   /** Not for me: they walk to the edge of the square and are gone. */
@@ -187,9 +228,10 @@ export class WorldSim {
         if (this.moveToward(a, WALK, dt)) { a.state = 'idle'; a.wait = 4 + this.rnd() * 5; }
         break;
       case 'approaching': {
-        const arrived = this.moveToward(a, HURRY, dt);
         const p = a.partner ? this.byRef.get(a.partner) : undefined;
-        if (arrived && p && Math.hypot(p.x - a.x, p.z - a.z) <= TOGETHER + ARRIVE) {
+        if (!p) { this.lost(a); break; }
+        const arrived = this.moveToward(a, HURRY, dt);
+        if (arrived && Math.hypot(p.x - a.x, p.z - a.z) <= TOGETHER + ARRIVE) {
           a.state = 'talking'; a.bubble = 'dots';
           a.facing = Math.atan2(p.x - a.x, p.z - a.z);
         }
@@ -197,11 +239,13 @@ export class WorldSim {
       }
       case 'talking':
         // Held until verdict() is called; the bench's autoplay does that itself.
+        if (a.partner && !this.byRef.get(a.partner)) this.lost(a);
         break;
       case 'verdict':
         a.wait -= dt;
         if (a.wait <= 0) {
           a.bubble = null; a.partner = null;
+          if (this.nextVisit(a)) break;
           [a.tx, a.tz] = a.kind === 'you' ? HOME : this.spot(); a.state = 'leaving';
         }
         break;
@@ -218,6 +262,16 @@ export class WorldSim {
       case 'gone':
         break;
     }
+  }
+
+  /**
+   * The person `a` was with has left the square (the roster stopped listing them).
+   * Nobody is stranded walking towards, or talking to, an empty spot.
+   */
+  private lost(a: SimAgent): void {
+    a.partner = null; a.bubble = null;
+    if (this.nextVisit(a)) return;
+    [a.tx, a.tz] = a.kind === 'you' ? HOME : this.spot(); a.state = 'walking';
   }
 
   /** Returns true on arrival. */
@@ -250,6 +304,7 @@ export class WorldSim {
    */
   populateBench(n: number): void {
     for (const ref of [...this.order]) this.remove(ref);
+    this.visits.clear();
     const list: { ref: string; kind: AgentKind; seed: number }[] = [
       { ref: 'you', kind: 'you', seed: 7 },
     ];

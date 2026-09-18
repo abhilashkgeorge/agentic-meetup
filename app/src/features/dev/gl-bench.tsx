@@ -41,7 +41,6 @@ export default function GlBenchScreen() {
   const p = usePalette();
   const [renderer, setRenderer] = useState<WorldRenderer | null | undefined>(undefined);
   const [size, setSize] = useState<(typeof SIZES)[number]>(48);
-  const [dpr, setDpr] = useState<1 | 1.5>(1);
   const [cap30, setCap30] = useState(false);
   const [stats, setStats] = useState<WorldStats | null>(null);
 
@@ -80,10 +79,9 @@ export default function GlBenchScreen() {
         )}
         {renderer && (
           <renderer.WorldCanvas
-            key={`${size}-${dpr}-${cap30 ? 30 : 60}`}
+            key={`${size}-${cap30 ? 30 : 60}`}
             sim={sim}
             colors={colors}
-            dpr={dpr}
             cap30={cap30}
             onStats={onStats}
           />
@@ -113,8 +111,6 @@ export default function GlBenchScreen() {
 
         <Card label="Cost knobs">
           <ChipGroup>
-            <Chip label="dpr 1" selected={dpr === 1} onPress={() => { setStats(null); setDpr(1); }} />
-            <Chip label="dpr 1.5" selected={dpr === 1.5} onPress={() => { setStats(null); setDpr(1.5); }} />
             <Chip label="30 fps cap" selected={cap30} onPress={() => { setStats(null); setCap30((x) => !x); }} />
           </ChipGroup>
           <Text style={[type.callout, { color: p.textTertiary }]}>

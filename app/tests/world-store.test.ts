@@ -4,7 +4,7 @@
  * again on the next poll.
  */
 import { describe, expect, it } from 'vitest';
-import { YOU, eventTransitions, fromRoster, planTransitions, stateAfter } from '../src/features/world/bridge';
+import { YOU, departed, eventTransitions, fromRoster, metSpec, planTransitions, seedOf, stateAfter } from '../src/features/world/bridge';
 import type { World, WorldAgent } from '../src/lib/api';
 
 const agent = (ref: string, state: WorldAgent['state'], kind: WorldAgent['kind'] = 'stranger'): WorldAgent =>
@@ -57,11 +57,23 @@ describe('eventTransitions', () => {
       .toEqual([{ op: 'introduced', ref: 'a' }]);
   });
 
+  it('knows whose round it was: theirs means they walked over to me', () => {
+    expect(eventTransitions({ type: 'round.met', roundId: null, rendezvousId: 'z', agent: 'a', practice: false }))
+      .toEqual([{ op: 'meet', ref: 'a', theyCame: true }]);
+    // Mine carries no flag at all, so the plain shape above stays the plain shape.
+    expect(eventTransitions({ type: 'round.met', roundId: 'r', rendezvousId: 'z', agent: 'a', practice: false })[0])
+      .not.toHaveProperty('theyCame');
+  });
+
   it('draws nothing for the events that only mean "look again"', () => {
     expect(eventTransitions({ type: 'round.queued', roundId: 'r' })).toEqual([]);
     expect(eventTransitions({ type: 'round.talking', roundId: 'r', rendezvousId: 'z', agent: 'a' })).toEqual([]);
-    expect(eventTransitions({ type: 'round.done', roundId: 'r', met: 3, skipped: null, error: null })).toEqual([]);
     expect(eventTransitions({ type: 'match.turn', rendezvousId: 'z', agent: 'a' })).toEqual([]);
+  });
+
+  it('brings the agent home when the round is over, however it ended', () => {
+    expect(eventTransitions({ type: 'round.done', roundId: 'r', met: 3, skipped: null, error: null })).toEqual([{ op: 'recall' }]);
+    expect(eventTransitions({ type: 'round.done', roundId: 'r', met: 0, skipped: null, error: 'budget_exceeded' })).toEqual([{ op: 'recall' }]);
   });
 
   it('records what the roster will say, so the next poll does not replay the motion', () => {
@@ -70,5 +82,21 @@ describe('eventTransitions', () => {
     expect(planTransitions(new Map([['a', stateAfter({ op: 'meet', ref: 'a' })]]), [
       { ref: 'a', kind: 'met', practice: false, seed: 1, state: 'talking' },
     ])).toEqual([]);
+  });
+});
+
+describe('metSpec', () => {
+  it('makes the agent the roster would have made, so the next poll finds it in place', () => {
+    const ref = 'a3f2c19e0000ffff0000ffff0000ffff';
+    expect(metSpec(ref)).toEqual({ ref, kind: 'met', seed: parseInt('a3f2c19e', 16) });
+    expect(seedOf(ref)).toBe(0xa3f2c19e);
+  });
+});
+
+describe('departed', () => {
+  it('names whoever the roster stopped listing, and nobody else', () => {
+    const before = new Map<string, WorldAgent['state']>([['a', 'idle'], ['b', 'talking'], ['c', 'idle']]);
+    expect(departed(before, [agent('a', 'idle'), agent('c', 'idle')])).toEqual(['b']);
+    expect(departed(new Map(), [agent('a', 'idle')])).toEqual([]);
   });
 });

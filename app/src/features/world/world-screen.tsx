@@ -28,7 +28,7 @@ import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { WorldSim } from './sim';
-import { YOU, fromRoster, planTransitions, roundActive, stateAfter, useWorld } from './store';
+import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
 
 /** One town per app run. It outlives this screen so a tab switch does not reshuffle everybody. */
 const sim = new WorldSim(20260918);
@@ -95,6 +95,7 @@ export default function WorldScreen() {
   useEffect(() => {
     if (!world) return;
     sim.upsert(fromRoster(world));
+    for (const ref of departed(applied.current, world.agents)) sim.remove(ref);
     for (const t of planTransitions(applied.current, world.agents)) {
       if (t.op === 'meet') sim.meet(YOU, t.ref);
       else if (t.op === 'introduced') sim.introduced(YOU, t.ref);
@@ -109,7 +110,14 @@ export default function WorldScreen() {
   useEffect(() => {
     if (!live.length) return;
     for (const t of live) {
-      if (t.op === 'meet') sim.meet(YOU, t.ref);
+      if (t.op === 'recall') { sim.recall(YOU); continue; }
+      if (t.op === 'meet') {
+        // Somebody the round chose who was not in the square's sample: put them in
+        // it first, or there is nobody to walk over to.
+        if (!sim.get(t.ref)) sim.upsert([metSpec(t.ref)]);
+        if (t.theyCame) sim.meet(t.ref, YOU);
+        else sim.meet(YOU, t.ref);
+      }
       else if (t.op === 'verdict') { sim.verdict(YOU, t.words); sim.verdict(t.ref, t.words); }
       else if (t.op === 'introduced') sim.introduced(YOU, t.ref);
       else if (t.op === 'pass') sim.pass(t.ref);
@@ -177,7 +185,7 @@ export default function WorldScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
-      <renderer.WorldCanvas sim={sim} colors={colors} dpr={1.5} active={focused}
+      <renderer.WorldCanvas sim={sim} colors={colors} active={focused}
                             onTapAgent={onTap} onFirstFrame={firstFrame} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()}
            onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })} />

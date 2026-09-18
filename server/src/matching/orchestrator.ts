@@ -199,6 +199,8 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
   // SEQUENTIAL, one pair after another. Parallel would be faster and would hit the
   // free tier's rate limit three times as hard; see the pauses in converse().
   const spender = { tenantId: plan.a.tenantId, userId: plan.a.userId };
+  // Pairs whose write has landed. Anything else is still a bare claim if this throws.
+  const written = new Set<string>();
   const outcomes = await metered(spender, 'rendezvous', async () => {
     const out: Array<{
       pair: (typeof plan.pairs)[number];
@@ -252,6 +254,7 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       // what was paid for, and the town's event and the roster's poll can never
       // disagree about a pair: the event is sent only once the row says the same.
       await matchmakerSession((c) => writePair(c, plan.a, o));
+      written.add(pair.rendezvousId);
       const agreement = o.runs.counted > 0 ? o.runs.bothYes / o.runs.counted : null;
       const words = agreementWords(agreement);
       notify(userId, { type: 'round.decided', roundId, rendezvousId: pair.rendezvousId,
@@ -260,6 +263,16 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
                               agent: agentRef(pair.b.userId, userId), agreement: words });
     }
     return out;
+  }).catch(async (err: unknown) => {
+    // THE CLAIMS THIS ROUND NEVER USED GO BACK. The read phase claimed one row per
+    // pair before any model call, so that two rounds could not run the same pair at
+    // once; a round that then dies -- the day's cap, the model down -- used to leave
+    // those rows 'running' for ever, and "a pair meets once" then counted them: three
+    // people this agent never spoke to, never to be met. What was paid for stays
+    // (the pairs in `written`); a claim with nothing behind it is released.
+    const unused = plan.pairs.map((p) => p.rendezvousId).filter((id) => !written.has(id));
+    if (unused.length) await matchmakerSession((c) => releaseClaims(c, unused));
+    throw err;
   });
 
   const costUsd = outcomes.reduce((n, o) => n + o.runs.costUsd + o.briefs.costUsd + o.fileCost, 0);
@@ -275,6 +288,23 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     userId, considered: plan.considered, met: metAll[0] ?? null, metAll,
     bothYes, runs, passed, costUsd,
   };
+}
+
+/**
+ * Delete the given rendezvous rows IF they are still bare claims: running, with no
+ * transcript and no brief. The policy (0055) says the same thing, so a row that has
+ * become a conversation in the meantime is simply left alone, whatever is passed.
+ */
+export async function releaseClaims(c: PoolClient, ids: readonly string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const { rowCount } = await c.query(
+    `DELETE FROM rendezvous r
+      WHERE r.id = ANY($1::uuid[]) AND r.status = 'running'
+        AND NOT EXISTS (SELECT 1 FROM rendezvous_runs x WHERE x.rendezvous_id = r.id)
+        AND NOT EXISTS (SELECT 1 FROM rendezvous_briefs b WHERE b.rendezvous_id = r.id)`,
+    [ids],
+  );
+  return rowCount ?? 0;
 }
 
 /** One pair's record: runs, scores, briefs, and the invented side's yes if allowed. */

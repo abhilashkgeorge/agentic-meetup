@@ -96,6 +96,15 @@ export const worldRoutes = new Hono()
       // Own seats: the matches query, plus rows this person lapsed in the last day so
       // the square can show them walking off once. The other person's row and the
       // other person's brief are never read; two one-bit functions stand in for them.
+      //
+      // A LEFT join on the brief, where the matches query has an inner one. A pair
+      // whose agents are talking right now has no brief yet -- the brief is what the
+      // conversation produces -- and with the inner join the square could not draw
+      // the one thing it exists to draw: it said "0 met so far" for the whole round
+      // and the agent never left home. The person may read their own rendezvous row
+      // whatever its state (rendezvous_mine, 0022); running rows are bounded to the
+      // half hour reapStale gives a round, so a row orphaned by a restart does not
+      // stand there talking for ever.
       const { rows: seats } = await db.query<{
         id: string; other_id: string; status: string; first_mover: string | null;
         human_says_yes: boolean | null; agreement: number | null;
@@ -107,9 +116,10 @@ export const worldRoutes = new Hono()
                 rendezvous_other_said_yes(r.id, $1)     AS other_said_yes,
                 rendezvous_other_is_synthetic(r.id, $1) AS other_is_synthetic
            FROM rendezvous r
-           JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $1
+           LEFT JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $1
           WHERE (r.user_a = $1 OR r.user_b = $1)
             AND (r.status <> 'lapsed' OR b.decided_at > now() - interval '1 day')
+            AND (r.status <> 'running' OR r.created_at > now() - interval '30 minutes')
           ORDER BY r.created_at DESC`, [me]);
       return { state, round, knows, city: city[0]?.object_text ?? null,
                targetedToday: Number(targeted[0]?.n ?? 0), seats };
@@ -141,8 +151,10 @@ export const worldRoutes = new Hono()
       : { total: 0, ids: [] as string[], synthetic: new Set<string>() };
 
     // Names: only for seats the reveal rule already opens. Same test as
-    // GET /v1/matches/:id -- first mover, or the other side has said yes.
-    const entitled = own.seats.filter((s) => s.first_mover === me || s.other_said_yes === true);
+    // GET /v1/matches/:id -- first mover, or the other side has said yes. Never while
+    // the agents are still talking: nothing has been decided, so nothing is revealed.
+    const entitled = own.seats.filter((s) =>
+      s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true));
     const names = new Map<string, string>();
     if (entitled.length) {
       await matchmakerSession(async (db) => {
@@ -160,7 +172,7 @@ export const worldRoutes = new Hono()
         status: s.status, humanSaysYes: s.human_says_yes,
         firstMover: s.first_mover, otherSaidYes: s.other_said_yes,
       }, me);
-      const myTurn = s.first_mover === me || s.other_said_yes === true;
+      const myTurn = s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true);
       const name = names.get(s.other_id);
       agents.push({
         ref, kind: 'met', practice: s.other_is_synthetic === true, seed: seedOf(ref), state,

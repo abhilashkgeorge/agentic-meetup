@@ -8,8 +8,8 @@ import { getWorld, type World } from '../../lib/api';
 
 import { eventTransitions, type TownEvent, type Transition } from './bridge';
 
-export { YOU, fromRoster, planTransitions, roundActive, stateAfter } from './bridge';
-export type { AgentSpec, Transition, TownEvent } from './bridge';
+export { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter } from './bridge';
+export type { AgentSpec, Motion, Transition, TownEvent } from './bridge';
 
 interface WorldStore {
   world: World | null;

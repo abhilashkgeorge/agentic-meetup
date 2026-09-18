@@ -141,13 +141,29 @@ export async function runOneQueuedRound(): Promise<boolean> {
  * active slot for ever.
  */
 export async function reapStale(olderThanMs = 30 * 60_000): Promise<number> {
-  const { rowCount } = await matchmakerSession((c) =>
-    c.query(
+  return matchmakerSession(async (c) => {
+    const { rows } = await c.query<{ id: string; user_id: string }>(
       `UPDATE rounds SET status = 'failed', finished_at = now(), error = 'orphaned by restart'
-        WHERE status = 'running' AND started_at < now() - ($1::int * interval '1 millisecond')`,
+        WHERE status = 'running' AND started_at < now() - ($1::int * interval '1 millisecond')
+        RETURNING id, user_id`,
       [olderThanMs],
-    ));
-  return rowCount ?? 0;
+    );
+    // The process that claimed this round's pairs is gone, so nobody will release
+    // them (see releaseClaims). Any claim of this person's as old as the round is
+    // one of them: a running row with no transcript and no brief after half an hour
+    // is not a conversation somebody else is having with them right now.
+    for (const r of rows) {
+      await c.query(
+        `DELETE FROM rendezvous r
+          WHERE (r.user_a = $1 OR r.user_b = $1) AND r.status = 'running'
+            AND r.created_at < now() - ($2::int * interval '1 millisecond')
+            AND NOT EXISTS (SELECT 1 FROM rendezvous_runs x WHERE x.rendezvous_id = r.id)
+            AND NOT EXISTS (SELECT 1 FROM rendezvous_briefs b WHERE b.rendezvous_id = r.id)`,
+        [r.user_id, olderThanMs],
+      );
+    }
+    return rows.length;
+  });
 }
 
 /** One tick of the worker. Safe to call on a timer; does at most one round per tick. */

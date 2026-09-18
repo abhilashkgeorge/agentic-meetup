@@ -59,4 +59,65 @@ describe('the town', () => {
     run(s, 20);
     expect(s.get('a')!.state).toBe('gone');
   });
+
+  it('visits three people one at a time, in the order it was told', () => {
+    const s = town();
+    s.upsert([{ ref: 'c', kind: 'met', seed: 3 }]);
+    s.meet('you', 'a'); s.meet('you', 'b'); s.meet('you', 'c');
+    const you = s.get('you')!;
+    expect(you.partner).toBe('a');
+    // b and c wait their turn: nobody is left "approaching" nobody.
+    expect(s.get('b')!.state).not.toBe('approaching');
+    expect(s.get('c')!.state).not.toBe('approaching');
+    run(s, 15);
+    expect(you.state).toBe('talking');
+    expect(dist(s, 'you', 'a')).toBeLessThan(1.2);
+    // The verdict on a, then straight on to b -- not home.
+    s.verdict('you', 'got_on'); s.verdict('a', 'got_on');
+    run(s, 4);
+    expect(you.partner).toBe('b');
+    expect(s.get('b')!.partner).toBe('you');
+    run(s, 15);
+    expect(you.state).toBe('talking');
+    expect(dist(s, 'you', 'b')).toBeLessThan(1.2);
+    // The roster stopped saying b was talking: same thing, on to c.
+    s.settle('b');
+    expect(you.partner).toBe('c');
+    run(s, 15);
+    expect(dist(s, 'you', 'c')).toBeLessThan(1.2);
+    // Last one done: home.
+    s.verdict('you', 'did_not_click'); s.verdict('c', 'did_not_click');
+    run(s, 20);
+    expect(Math.hypot(you.x - HOME[0], you.z - HOME[1])).toBeLessThan(0.2);
+    expect(you.state).toBe('idle');
+  });
+
+  it('comes home on a recall, visits queued or not, and leaves the other to wander', () => {
+    const s = town();
+    s.meet('you', 'a'); s.meet('you', 'b');
+    run(s, 15);
+    expect(s.get('you')!.state).toBe('talking');
+    s.recall('you');
+    const you = s.get('you')!;
+    expect(you.partner).toBeNull();
+    expect(you.bubble).toBeNull();
+    run(s, 20);
+    expect(Math.hypot(you.x - HOME[0], you.z - HOME[1])).toBeLessThan(0.2);
+    expect(you.state).toBe('idle');
+    // b was never visited, and a is not stuck talking to nobody.
+    expect(s.get('b')!.partner).toBeNull();
+    expect(s.get('a')!.state).not.toBe('talking');
+  });
+
+  it('does not strand your agent when the person it was walking to leaves the square', () => {
+    const s = town();
+    s.meet('you', 'a');
+    run(s, 1);
+    expect(s.get('you')!.state).toBe('approaching');
+    s.remove('a');
+    run(s, 25);
+    const you = s.get('you')!;
+    expect(you.partner).toBeNull();
+    expect(Math.hypot(you.x - HOME[0], you.z - HOME[1])).toBeLessThan(0.2);
+  });
 });

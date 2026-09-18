@@ -27,6 +27,9 @@ export function Hud({
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const active = roundActive(world);
+  // The round's own count lands only when it is over; while it runs, the people it
+  // is still to talk to are the seats the roster shows talking.
+  const talking = world?.agents.filter((a) => a.kind === 'met' && a.state === 'talking').length ?? 0;
   const title = world?.square.city ? `${world.square.city} square` : 'The square';
 
   const status = !world
@@ -34,7 +37,9 @@ export function Hud({
     : active
       ? world.round?.status === 'queued'
         ? 'Your agent is heading out…'
-        : `Your agent is out — ${world.round?.met ?? 0} met so far`
+        : talking > 0
+          ? `Your agent is out — meeting ${talking} ${talking === 1 ? 'person' : 'people'}`
+          : 'Your agent is out…'
       : !world.me.inPool
         ? (world.me.missing[0] ? missingLabel(world.me.missing[0]) : 'A few things missing')
         : said ?? `It knows ${world.me.knows} things about you`;

@@ -52,7 +52,6 @@ export interface WorldCanvasProps {
   sim: WorldSim;
   colors: WorldColors;
   /** Device pixel ratio cap. 1 on a struggling phone, 1.5 otherwise. */
-  dpr?: number;
   /** Render at 30 Hz on demand instead of every vsync. */
   cap30?: boolean;
   /** False when the tab is not on screen: the loop stops and the GPU rests. */
@@ -68,13 +67,14 @@ const DOTS_PER = 3;
 const BARS_PER = 2;
 
 export function WorldCanvas(props: WorldCanvasProps) {
-  const { dpr = 1, cap30 = false, active = true } = props;
+  const { cap30 = false, active = true } = props;
   return (
     <Canvas
       orthographic
       camera={{ position: [12, 12, 12], zoom: 24, near: 0.1, far: 100 }}
+      // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
+      // else, and the native Canvas type says so by leaving it out.
       gl={{ antialias: false }}
-      dpr={dpr}
       frameloop={!active ? 'never' : cap30 ? 'demand' : 'always'}
     >
       <Town {...props} />

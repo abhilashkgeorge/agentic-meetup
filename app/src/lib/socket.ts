@@ -114,6 +114,10 @@ function connect(): void {
       case 'round.done':
       case 'match.turn':
       case 'match.introduced':
+        // Dev builds say so in logcat (ReactNativeJS), so a demo on a phone can show
+        // whether the cue arrived at all -- the difference between "the socket was
+        // down" and "the town drew nothing", which look the same on screen.
+        if (__DEV__) console.log(`[town] ${ev.type}`);
         useWorld.getState().apply(ev);
         break;
 

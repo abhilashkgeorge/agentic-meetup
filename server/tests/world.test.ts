@@ -96,8 +96,8 @@ const fetchWorld = async (token: string) => {
 // One scene, built once: the assertions read it from several angles.
 const tag = `wd-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 let me: P, other: P, stranger: P, practice: P, blocked: P, wrongGender: P;
-let iMoveFirst: P, theyMoveFirstUndecided: P, theyMoveFirstSaidYes: P, iSaidNo: P;
-let seatMine: string, seatTheirs: string, seatOpen: string;
+let iMoveFirst: P, theyMoveFirstUndecided: P, theyMoveFirstSaidYes: P, iSaidNo: P, talkingNow: P;
+let seatMine: string, seatTheirs: string, seatOpen: string, seatLive: string;
 
 beforeAll(async () => {
   me = await person('Me', { gender: 'man', seeking_gender: ['woman'], intent: [tag] });
@@ -116,6 +116,14 @@ beforeAll(async () => {
   seatTheirs = await seat(me, theyMoveFirstUndecided, { firstMover: theyMoveFirstUndecided });
   seatOpen = await seat(me, theyMoveFirstSaidYes, { firstMover: theyMoveFirstSaidYes, bYes: true });
   await seat(me, iSaidNo, { firstMover: me, aYes: false, status: 'lapsed' });
+  // Kavya: the agents are talking RIGHT NOW. A running row has no brief on either
+  // side and no first mover yet -- exactly the shape the round leaves while it runs.
+  talkingNow = await person('Kavya', { intent: [tag] });
+  const [lo, hi] = me.userId < talkingNow.userId ? [me, talkingNow] : [talkingNow, me];
+  seatLive = (await owner.query<{ id: string }>(
+    `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, status)
+     VALUES ($1,$2,$3,$4,5,'running') RETURNING id`,
+    [lo.userId, hi.userId, lo.tenantId, hi.tenantId])).rows[0]!.id;
 });
 
 describe('strangers in the square', () => {
@@ -193,6 +201,25 @@ describe('people this person has met', () => {
     const w = await fetchWorld(me.token);
     const refs = w.agents.map((a) => a.ref);
     expect(new Set(refs).size).toBe(refs.length);
+  });
+
+  /**
+   * The one the square exists to draw. A pair mid-conversation has no brief yet, so
+   * the inner join the matches screen uses hides it -- and the town then showed "0
+   * met so far" for a whole round while the agent stood at home. Negative control:
+   * put the inner join back -> Kavya is missing and this fails on the first line.
+   */
+  it('include the pair whose agents are talking right now, with nothing decided', async () => {
+    const w = await fetchWorld(me.token);
+    const live = w.agents.find((a) => a.rendezvousId === seatLive);
+    expect(live, 'a running pair is in the square').toBeDefined();
+    expect(live!.kind).toBe('met');
+    expect(live!.state).toBe('talking');
+    expect(live!.name, 'nothing is revealed while they talk').toBeUndefined();
+    expect(live!.yourTurn).toBe(false);
+    expect(live!.agreement).toBe('could_not_tell');
+    // And Kavya is not ALSO standing about as a stranger.
+    expect(w.agents.filter((a) => a.ref === live!.ref)).toHaveLength(1);
   });
 });
 
