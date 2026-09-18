@@ -132,3 +132,18 @@ export type ServerEvent = z.infer<typeof ServerEvent>;
 
 /** Server -> client heartbeat cadence. Client reconnects after 2 missed. */
 export const HEARTBEAT_MS = 15_000;
+
+/**
+ * How the agents got on, in words.
+ *
+ * ONE threshold, shared by the matches list and the town, so the card and the bubble
+ * over an agent's head can never disagree. Never a percentage: pre-date self-report
+ * predicts attraction badly enough that a number here would be a lie with a decimal
+ * point. `null` is "the conversations could not tell" -- nothing conclusive ran.
+ */
+export type AgreementWords = 'got_on' | 'unsure' | 'did_not_click' | 'could_not_tell';
+export const agreementWords = (agreement: number | null | undefined): AgreementWords =>
+  agreement === null || agreement === undefined ? 'could_not_tell'
+  : agreement >= 0.6 ? 'got_on'
+  : agreement >= 0.2 ? 'unsure'
+  : 'did_not_click';

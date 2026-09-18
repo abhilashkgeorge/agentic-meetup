@@ -108,6 +108,19 @@ export async function candidateIds(
   return rows.map((r) => r.user_id);
 }
 
+/**
+ * Could this person's agent meet that one? The whole clause set, exactly -- not "is
+ * that id within the first 500 of the ordered list", which would refuse a valid
+ * target on a big pool. Blocks are in BASE, so a blocked pair is refused here,
+ * before anything is spent.
+ */
+export async function isCandidate(c: PoolClient, userId: string, otherId: string): Promise<boolean> {
+  const { rows } = await c.query(
+    `SELECT 1 FROM (${build(ALL_CLAUSES)} AND b.user_id = $2) q LIMIT 1`, [userId, otherId],
+  );
+  return rows.length > 0;
+}
+
 export async function candidateCount(c: PoolClient, userId: string): Promise<number> {
   const { rows } = await c.query<{ n: string }>(
     `SELECT count(*) AS n FROM (${build(ALL_CLAUSES)}) q`, [userId],

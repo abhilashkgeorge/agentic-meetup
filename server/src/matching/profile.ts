@@ -102,9 +102,15 @@ export async function rebuildMatchProfile(
         break;
       }
       case 'lives_in': {
-        const l = v as { lat?: number; lon?: number };
+        const l = v as { city?: string; lat?: number; lon?: number };
         lat = l.lat ?? null;
         lon = l.lon ?? null;
+        // The city NAME as well as the point. The reveal prints traits.lives_in and
+        // this branch used to keep only the coordinates, so "lives in" was blank for
+        // every real person while the invented ones carried a city. Text from the
+        // resolved place when there is one, else what the person typed.
+        const city = l.city ?? (typeof f.object_text === 'string' ? f.object_text : null);
+        if (city) traits.lives_in = city;
         break;
       }
       default:

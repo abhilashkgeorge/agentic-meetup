@@ -172,6 +172,9 @@ export function makeProfile(r: () => number, tenantId: string): SyntheticProfile
     if (key === 'gender' || key === 'relationship_intent') continue; // structural
     if (r() < 0.2) delete traits[key];
   }
+  // After the holes, so it is never one of them: the reveal's "lives in" line reads
+  // this, and a person deciding whether to meet somebody is owed the city.
+  traits.lives_in = city;
 
   const base = {
     userId: randomUUID(),
