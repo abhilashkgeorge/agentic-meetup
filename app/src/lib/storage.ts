@@ -118,3 +118,22 @@ export async function setGlFuse(state: 'trying' | 'off' | null): Promise<void> {
   if (state === null) await SecureStore.deleteItemAsync(GL_FUSE_KEY).catch(() => {});
   else await SecureStore.setItemAsync(GL_FUSE_KEY, state).catch(() => {});
 }
+
+/**
+ * "Easier on the battery": draw the town at 30 frames a second instead of the
+ * phone's full rate. A preference, not a fuse -- nothing sets it but the person.
+ */
+const FPS30_KEY = 'clone.fps30';
+
+export async function getFps30(): Promise<boolean> {
+  try {
+    return (await SecureStore.getItemAsync(FPS30_KEY)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function setFps30(on: boolean): Promise<void> {
+  if (on) await SecureStore.setItemAsync(FPS30_KEY, '1').catch(() => {});
+  else await SecureStore.deleteItemAsync(FPS30_KEY).catch(() => {});
+}

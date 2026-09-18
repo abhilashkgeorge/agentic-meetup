@@ -21,6 +21,8 @@ export interface SimAgent {
   kind: AgentKind;
   /** Drives colour variation and the bob phase, so no two walk in step. */
   seed: number;
+  /** Drawn see-through: a practice profile, whatever else it is. */
+  ghost: boolean;
   x: number;
   z: number;
   tx: number;
@@ -88,13 +90,16 @@ export class WorldSim {
    * Add agents that are new; leave the ones already here where they stand. A roster
    * refresh must not teleport the whole town.
    */
-  upsert(list: ReadonlyArray<{ ref: string; kind: AgentKind; seed: number }>): void {
-    for (const { ref, kind, seed } of list) {
+  upsert(list: ReadonlyArray<{ ref: string; kind: AgentKind; seed: number; ghost?: boolean }>): void {
+    for (const { ref, kind, seed, ghost } of list) {
       const have = this.byRef.get(ref);
-      if (have) { have.kind = kind; continue; }
+      // A practice profile stays a ghost after it is met: "not a real person" is
+      // about who they are, not about whether the agents have talked.
+      const seeThrough = ghost ?? kind === 'practice';
+      if (have) { have.kind = kind; have.ghost = seeThrough; continue; }
       const [x, z] = kind === 'you' ? HOME : this.spot();
       this.byRef.set(ref, {
-        ref, kind, seed, x, z, tx: x, tz: z,
+        ref, kind, seed, ghost: seeThrough, x, z, tx: x, tz: z,
         facing: this.rnd() * Math.PI * 2,
         state: 'idle', wait: 1 + this.rnd() * 4, partner: null, bubble: null, ring: false,
       });

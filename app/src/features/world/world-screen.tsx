@@ -16,10 +16,10 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 import ChatScreen from '../chat/chat-screen';
 import { runRound, type WorldAgent } from '../../lib/api';
-import { getGlFuse, setGlFuse } from '../../lib/storage';
+import { getFps30, getGlFuse, setGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { setupRoute } from '../profile/fields';
 import { Screen, usePalette } from '../../components/ui';
@@ -33,6 +33,7 @@ const REFUSED: Record<string, string> = {
 };
 import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
+import { PeopleSheet } from './people-sheet';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { WorldSim } from './sim';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
@@ -59,8 +60,9 @@ export default function WorldScreen() {
   // tabs before the first frame did not crash, and a crash is exactly the case where
   // cleanup never runs. Without that, a quick tab switch on launch -- or a Metro
   // fast-refresh in development, which is how this was found -- left `trying` behind
-  // and the next launch fell back for ever. A leftover `trying` now costs one launch
-  // and resets; `off` is the person's own choice, from Settings.
+  // and the next launch fell back for ever. A leftover `trying` means the last
+  // attempt took the app down: the town goes `off`, and Settings says so and offers
+  // to try again. `off` is otherwise the person's own choice, from the same row.
   const [renderer, setRenderer] = useState<WorldRenderer | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
@@ -68,7 +70,7 @@ export default function WorldScreen() {
       const fuse = await getGlFuse();
       if (fuse === 'off') { if (live) setRenderer(null); return; }
       if (fuse === 'trying') {
-        await setGlFuse(null);
+        await setGlFuse('off');
         if (live) setRenderer(null);
         return;
       }
@@ -82,10 +84,31 @@ export default function WorldScreen() {
   }, []);
   const firstFrame = useCallback(() => { void setGlFuse(null); }, []);
 
+  // "Easier on the battery", from Settings: read on every focus so a change there
+  // is seen on the way back, without a store for one boolean.
+  const [cap30, setCap30] = useState(false);
+
+  // BACKGROUND AND BACK. expo-gl on Android can lose its context while the app is
+  // in the background, and a lost context draws nothing, for ever, with no error.
+  // Coming back to the foreground remounts the canvas (the key), which makes a new
+  // context; the sim is a module singleton, so everybody is where they were. While
+  // the app is not in front the frame loop is off -- see `active` below.
+  const [epoch, setEpoch] = useState(0);
+  const [inFront, setInFront] = useState(AppState.currentState !== 'background');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      const front = st === 'active';
+      setInFront(front);
+      if (front) setEpoch((e) => e + 1);
+    });
+    return () => sub.remove();
+  }, []);
+
   // The roster: on focus, then on a clock whose speed depends on whether a round is out.
   const [focused, setFocused] = useState(false);
   useFocusEffect(useCallback(() => {
     setFocused(true);
+    void getFps30().then(setCap30);
     if (token) void load(token);
     return () => setFocused(false);
   }, [token, load]));
@@ -121,7 +144,7 @@ export default function WorldScreen() {
       if (t.op === 'meet') {
         // Somebody the round chose who was not in the square's sample: put them in
         // it first, or there is nobody to walk over to.
-        if (!sim.get(t.ref)) sim.upsert([metSpec(t.ref)]);
+        if (!sim.get(t.ref)) sim.upsert([metSpec(t.ref, t.practice)]);
         if (t.theyCame) sim.meet(t.ref, YOU);
         else sim.meet(YOU, t.ref);
       }
@@ -172,6 +195,7 @@ export default function WorldScreen() {
 
   const [selected, setSelected] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const onTap = useCallback((ref: string) => {
     if (ref === YOU) setChatOpen(true);
     else setSelected(ref);
@@ -198,10 +222,14 @@ export default function WorldScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
-      <renderer.WorldCanvas sim={sim} colors={colors} active={focused}
+      <renderer.WorldCanvas key={epoch} sim={sim} colors={colors} active={focused && inFront} cap30={cap30}
                             onTapAgent={onTap} onFirstFrame={firstFrame} />
-      <Hud world={world} said={said} onSendOut={() => void sendOut()}
+      <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
            onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })} />
+      {peopleOpen && world && (
+        <PeopleSheet agents={world.agents} onClose={() => setPeopleOpen(false)}
+                     onPick={(ref) => { setPeopleOpen(false); onTap(ref); }} />
+      )}
       {selectedAgent && (
         <AgentSheet agent={selectedAgent} onClose={() => setSelected(null)}
                     visits={{ left: world?.targetsLeftToday ?? 0, busy: active }}

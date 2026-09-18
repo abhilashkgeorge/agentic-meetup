@@ -120,4 +120,17 @@ describe('the town', () => {
     expect(you.partner).toBeNull();
     expect(Math.hypot(you.x - HOME[0], you.z - HOME[1])).toBeLessThan(0.2);
   });
+
+  it('keeps a practice profile see-through once it has been met', () => {
+    const s = town();
+    s.upsert([{ ref: 'g', kind: 'practice', seed: 9 }]);
+    expect(s.get('g')!.ghost).toBe(true);
+    // The roster now lists them as met, and says they are still not a real person.
+    s.upsert([{ ref: 'g', kind: 'met', seed: 9, ghost: true }]);
+    expect(s.get('g')!.kind).toBe('met');
+    expect(s.get('g')!.ghost).toBe(true);
+    // Without the flag, the kind decides -- and 'met' is a real person.
+    s.upsert([{ ref: 'h', kind: 'met', seed: 10 }]);
+    expect(s.get('h')!.ghost).toBe(false);
+  });
 });

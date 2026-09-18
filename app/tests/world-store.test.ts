@@ -20,6 +20,7 @@ describe('fromRoster', () => {
     const specs = fromRoster(world([agent('a', 'idle'), agent('b', 'briefed', 'met'), agent('c', 'idle', 'practice')]));
     expect(specs.map((s) => s.ref)).toEqual([YOU, 'a', 'b', 'c']);
     expect(specs.map((s) => s.kind)).toEqual(['you', 'stranger', 'met', 'practice']);
+    expect(specs.map((s) => s.ghost)).toEqual([false, false, false, true]);
   });
 });
 
@@ -57,6 +58,11 @@ describe('eventTransitions', () => {
       .toEqual([{ op: 'introduced', ref: 'a' }]);
   });
 
+  it('carries "practice" so a ghost the square has to make is drawn as one', () => {
+    expect(eventTransitions({ type: 'round.met', roundId: 'r', rendezvousId: 'z', agent: 'a', practice: true }))
+      .toEqual([{ op: 'meet', ref: 'a', practice: true }]);
+  });
+
   it('knows whose round it was: theirs means they walked over to me', () => {
     expect(eventTransitions({ type: 'round.met', roundId: null, rendezvousId: 'z', agent: 'a', practice: false }))
       .toEqual([{ op: 'meet', ref: 'a', theyCame: true }]);
@@ -88,7 +94,8 @@ describe('eventTransitions', () => {
 describe('metSpec', () => {
   it('makes the agent the roster would have made, so the next poll finds it in place', () => {
     const ref = 'a3f2c19e0000ffff0000ffff0000ffff';
-    expect(metSpec(ref)).toEqual({ ref, kind: 'met', seed: parseInt('a3f2c19e', 16) });
+    expect(metSpec(ref)).toEqual({ ref, kind: 'met', seed: parseInt('a3f2c19e', 16), ghost: false });
+    expect(metSpec(ref, true).ghost, 'a practice profile is a ghost even once met').toBe(true);
     expect(seedOf(ref)).toBe(0xa3f2c19e);
   });
 });

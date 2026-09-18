@@ -12,7 +12,7 @@
 import type { AgreementWords, World, WorldAgent } from '../../lib/api';
 import type { AgentKind } from './sim';
 
-export interface AgentSpec { ref: string; kind: AgentKind; seed: number }
+export interface AgentSpec { ref: string; kind: AgentKind; seed: number; ghost: boolean }
 
 export const YOU = 'you';
 
@@ -27,19 +27,23 @@ export const seedOf = (ref: string): number => parseInt(ref.slice(0, 8), 16);
  * can walk over to them -- the first cut told the sim to meet a ref it did not hold,
  * which is a no-op, so the agent stayed at home for the whole round.
  */
-export const metSpec = (ref: string): AgentSpec => ({ ref, kind: 'met', seed: seedOf(ref) });
+export const metSpec = (ref: string, practice = false): AgentSpec =>
+  ({ ref, kind: 'met', seed: seedOf(ref), ghost: practice });
 
 /** Everybody the sim should hold, you first. */
 export function fromRoster(world: World): AgentSpec[] {
   return [
-    { ref: YOU, kind: 'you', seed: 7 },
-    ...world.agents.map((a) => ({ ref: a.ref, kind: a.kind, seed: a.seed })),
+    { ref: YOU, kind: 'you', seed: 7, ghost: false },
+    ...world.agents.map((a) => ({ ref: a.ref, kind: a.kind, seed: a.seed, ghost: a.practice })),
   ];
 }
 
 export type Transition =
-  /** `theyCame`: their agent walked over to yours (a round somebody else sent out). */
-  | { op: 'meet'; ref: string; theyCame?: boolean }
+  /**
+   * `theyCame`: their agent walked over to yours (a round somebody else sent out).
+   * `practice`: not a real person, so drawn as a ghost if the square has to make them.
+   */
+  | { op: 'meet'; ref: string; theyCame?: boolean; practice?: boolean }
   | { op: 'verdict'; ref: string; words: AgreementWords }
   | { op: 'introduced'; ref: string }
   | { op: 'pass'; ref: string }
@@ -67,7 +71,11 @@ export type TownEvent =
 export function eventTransitions(ev: TownEvent): Transition[] {
   switch (ev.type) {
     // A null roundId means it is somebody else's round: they came to me.
-    case 'round.met': return [{ op: 'meet', ref: ev.agent, ...(ev.roundId === null ? { theyCame: true } : {}) }];
+    case 'round.met': return [{
+      op: 'meet', ref: ev.agent,
+      ...(ev.roundId === null ? { theyCame: true } : {}),
+      ...(ev.practice ? { practice: true } : {}),
+    }];
     case 'round.decided': return [{ op: 'verdict', ref: ev.agent, words: ev.agreement }];
     case 'match.introduced': return [{ op: 'introduced', ref: ev.agent }];
     // Whatever it says -- met three, met nobody, the day's cap -- nobody else is

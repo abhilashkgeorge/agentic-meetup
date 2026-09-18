@@ -71,7 +71,9 @@ export function WorldCanvas(props: WorldCanvasProps) {
   return (
     <Canvas
       orthographic
-      camera={{ position: [12, 12, 12], zoom: 24, near: 0.1, far: 100 }}
+      // Zoom 30, up from 24: at 24 the square filled the middle third of a phone
+      // and an agent was thirty pixels tall, which is why tapping one took aim.
+      camera={{ position: [12, 12, 12], zoom: 30, near: 0.1, far: 100 }}
       // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
       // else, and the native Canvas type says so by leaving it out.
       gl={{ antialias: false }}
@@ -184,7 +186,7 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCa
       refAt.current[i] = a.ref;
       const moving = a.state === 'walking' || a.state === 'approaching' || a.state === 'leaving';
       const bob = Math.sin(t * (moving ? 9 : 2) + a.seed) * (moving ? 0.06 : 0.03);
-      const ghost = a.kind === 'practice';
+      const ghost = a.ghost;
       const bodyMesh = ghost ? ghostBodies : bodies;
       const headMesh = ghost ? ghostHeads : heads;
       const other = ghost ? bodies : ghostBodies;
@@ -205,7 +207,7 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCa
       const tint =
         a.kind === 'you' ? palette.you
         : a.kind === 'met' ? palette.met
-        : a.kind === 'practice' ? palette.practice
+        : a.ghost ? palette.practice
         : palette.stranger;
       bodyMesh.setColorAt(i, tint);
       headMesh.setColorAt(i, tint);

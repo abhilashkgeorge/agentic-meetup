@@ -16,11 +16,14 @@ export function Hud({
   world,
   onSendOut,
   onFinishSetup,
+  onPeople,
   said,
 }: {
   world: World | null;
   onSendOut: () => void;
   onFinishSetup: () => void;
+  /** The same people as a list: for thumbs, and for screen readers. */
+  onPeople: () => void;
   /** How the last round went, said once. */
   said: string | null;
 }) {
@@ -55,6 +58,7 @@ export function Hud({
             <ChipGroup>
               <Chip label={`${world.pool.total.toLocaleString()} people nearby`} selected={false} onPress={() => {}} disabled />
               <Chip label={`${world.targetsLeftToday} visits left today`} selected={false} onPress={() => {}} disabled />
+              <Chip label="Who's here" selected={false} onPress={onPeople} />
             </ChipGroup>
           )}
         </Card>

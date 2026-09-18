@@ -15,7 +15,7 @@ import Constants from 'expo-constants';
 import {
   createInvite, eraseAccount, exportAccount, getInvites, type Invite, logout, phoneLinked,
 } from '../../lib/api';
-import { clearToken } from '../../lib/storage';
+import { clearToken, getFps30, getGlFuse, setFps30, setGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { useTheme } from '../../store/theme';
 import { getApiBase } from '../../lib/env';
@@ -40,6 +40,12 @@ export default function SettingsScreen() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [remaining, setRemaining] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [town, setTown] = useState<'trying' | 'off' | null>(null);
+  const [fps30, setFps30State] = useState(false);
+  useEffect(() => {
+    void getGlFuse().then(setTown);
+    void getFps30().then(setFps30State);
+  }, []);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -193,6 +199,22 @@ export default function SettingsScreen() {
               ? 'Follows your phone, including when it changes at sunset.'
               : 'Stays this way whatever your phone does.'}
           </Text>
+        </Card>
+
+        {/* The town: on or off, and how hard it works the phone. "Off" is also where a
+            phone lands when 3D took the app down last time (the fuse in storage), so
+            the row says so and the same tap turns it back on. */}
+        <Card label="The town">
+          <Row title="3D town on Home"
+               subtitle={town === 'off' ? 'Off — or 3D failed to start on this phone. Tap to try again.' : 'Your agent and the people it could meet.'}
+               value={town === 'off' ? 'Off' : 'On'}
+               onPress={() => void (async () => {
+                 const next = town === 'off' ? null : 'off';
+                 await setGlFuse(next); setTown(next);
+               })()} />
+          <Row title="Easier on the battery" subtitle="Draws the town at 30 frames a second."
+               value={fps30 ? 'On' : 'Off'}
+               onPress={() => void (async () => { await setFps30(!fps30); setFps30State(!fps30); })()} last />
         </Card>
 
         <Card label="Your clone">
