@@ -43,6 +43,8 @@ import { llmFileScore, rank } from './score.js';
 import { buildDossier, converse, passes, pickConcern, publicTags, recordRuns, RUNS } from './rendezvous.js';
 import { composeBoth, loadQuotes, saveBriefs, type Quote } from './brief.js';
 import { voiceText } from '../memory/profile.js';
+import { agreementWords } from '@clone/shared';
+import { agentRef, notify } from './world.js';
 
 /** How many people one round meets. Each is five conversations, so keep this small. */
 export const CANDIDATES_PER_ROUND = Number(process.env.ROUND_CANDIDATES ?? 3);
@@ -69,7 +71,13 @@ export interface RoundResult {
  * Returns a result rather than throwing when there is nobody to meet: an empty pool is
  * an ordinary state, not an error, and the caller shows it to the person as one.
  */
-export async function runRound(userId: string): Promise<RoundResult> {
+export interface RoundOptions {
+  /** The round row this run belongs to, for the events; null from a script. */
+  roundId?: string;
+}
+
+export async function runRound(userId: string, opts: RoundOptions = {}): Promise<RoundResult> {
+  const roundId = opts.roundId ?? null;
   const empty = (skipped: string): RoundResult => ({
     userId, considered: 0, met: null, metAll: [], bothYes: 0, runs: 0, passed: false,
     costUsd: 0, skipped,
@@ -115,16 +123,16 @@ export async function runRound(userId: string): Promise<RoundResult> {
     const pairs: Array<{
       rendezvousId: string;
       rankScore: number;
-      b: { userId: string; tenantId: string; dossier: string; voice: string; quotes: Quote[]; tags: string[] };
+      b: { userId: string; tenantId: string; synthetic: boolean; dossier: string; voice: string; quotes: Quote[]; tags: string[] };
     }> = [];
     for (const cand of ranked) {
       if (pairs.length >= CANDIDATES_PER_ROUND) break;
-      const { rows: themRows } = await c.query<{ tenant_id: string }>(
-        'SELECT tenant_id FROM match_profile WHERE user_id = $1', [cand.userId],
+      const { rows: themRows } = await c.query<{ tenant_id: string; is_synthetic: boolean }>(
+        'SELECT tenant_id, is_synthetic FROM match_profile WHERE user_id = $1', [cand.userId],
       );
       const them = themRows[0];
       if (!them) continue;
-      const b = { userId: cand.userId, tenantId: them.tenant_id };
+      const b = { userId: cand.userId, tenantId: them.tenant_id, synthetic: them.is_synthetic };
       // The pair key is ordered, because the unique index is.
       const [lo, hi] = a.userId < b.userId ? [a, b] : [b, a];
       const { rows: created } = await c.query<{ id: string }>(
@@ -161,6 +169,21 @@ export async function runRound(userId: string): Promise<RoundResult> {
 
   if (plan.stop) return empty(plan.stop);
 
+  // THE TOWN HEARS IT FIRST. Every pair is claimed by now, so both sides can be told
+  // "somebody is walking over" before a single model call -- each with their own
+  // per-viewer ref for the other, never an id. The visited side gets no roundId: it
+  // is not their round. An invented person has no socket and pushTo is a no-op.
+  for (const pair of plan.pairs) {
+    notify(userId, {
+      type: 'round.met', roundId, rendezvousId: pair.rendezvousId,
+      agent: agentRef(userId, pair.b.userId), practice: pair.b.synthetic,
+    });
+    notify(pair.b.userId, {
+      type: 'round.met', roundId: null, rendezvousId: pair.rendezvousId,
+      agent: agentRef(pair.b.userId, userId), practice: false,
+    });
+  }
+
   // ── model. No transaction open, and metered. ───────────────────────────────
   //
   // ONE METER ROUND THE WHOLE ROUND. Fifteen simulated conversations plus six briefs
@@ -187,6 +210,11 @@ export async function runRound(userId: string): Promise<RoundResult> {
       fileCost: number;
     }> = [];
     for (const pair of plan.pairs) {
+      notify(userId, { type: 'round.talking', roundId, rendezvousId: pair.rendezvousId,
+                       agent: agentRef(userId, pair.b.userId) });
+      notify(pair.b.userId, { type: 'round.talking', roundId: null, rendezvousId: pair.rendezvousId,
+                              agent: agentRef(pair.b.userId, userId) });
+
       // THE THIRD SCORER, taken before the conversation so it cannot be influenced
       // by it. One call, both files, no talking. Recorded on the pair and never
       // shown; it exists to be compared against the other two once humans have
@@ -213,27 +241,25 @@ export async function runRound(userId: string): Promise<RoundResult> {
       // about was thrown away with nothing shown. The person is the judge; the agents
       // write the brief and say how sure they were.
       const briefs = await composeBoth(plan.a, pair.b);
-      out.push({ pair, runs, ok, briefs, concerns, fileScore: file.score, fileCost: file.costUsd });
+      const o = { pair, runs, ok, briefs, concerns, fileScore: file.score, fileCost: file.costUsd };
+      out.push(o);
+
+      // ── write, PER PAIR, in its own short transaction ───────────────────────
+      // The rule is "no transaction open across a model call", and this keeps it:
+      // the write opens after this pair's calls and closes before the next pair's.
+      // What it buys is that the first person met is on the record -- runs, score,
+      // brief -- before the second conversation starts, so a crash mid-round keeps
+      // what was paid for, and the town's event and the roster's poll can never
+      // disagree about a pair: the event is sent only once the row says the same.
+      await matchmakerSession((c) => writePair(c, plan.a, o));
+      const agreement = o.runs.counted > 0 ? o.runs.bothYes / o.runs.counted : null;
+      const words = agreementWords(agreement);
+      notify(userId, { type: 'round.decided', roundId, rendezvousId: pair.rendezvousId,
+                       agent: agentRef(userId, pair.b.userId), agreement: words });
+      notify(pair.b.userId, { type: 'round.decided', roundId: null, rendezvousId: pair.rendezvousId,
+                              agent: agentRef(pair.b.userId, userId), agreement: words });
     }
     return out;
-  });
-
-  // ── write ───────────────────────────────────────────────────────────────────
-  await matchmakerSession(async (c) => {
-    for (const o of outcomes) {
-      await recordRuns(c, o.pair.rendezvousId, o.runs, plan.a.userId);
-      // What the conversation thought. NULL when nothing was conclusive, so the list
-      // orders it last rather than as a zero that reads as "they said no".
-      const agreement = o.runs.counted > 0 ? o.runs.bothYes / o.runs.counted : null;
-      await c.query('UPDATE rendezvous SET agreement = $2, llm_file_score = $3 WHERE id = $1',
-        [o.pair.rendezvousId, agreement, o.fileScore]);
-      await saveBriefs(c, o.pair.rendezvousId, plan.a, o.pair.b, o.briefs, o.concerns);
-      // An invented person cannot open the app and tap yes -- and taking it as a yes
-      // anyway is how a real person ended up introduced to nobody, in a conversation
-      // that would never be answered. Off by default; on only when the founder is
-      // walking the messaging flow by hand. See SYNTHETIC_AUTO_YES.
-      if (env.SYNTHETIC_AUTO_YES) await autoDecideSynthetic(c, o.pair.rendezvousId);
-    }
   });
 
   const costUsd = outcomes.reduce((n, o) => n + o.runs.costUsd + o.briefs.costUsd + o.fileCost, 0);
@@ -249,6 +275,32 @@ export async function runRound(userId: string): Promise<RoundResult> {
     userId, considered: plan.considered, met: metAll[0] ?? null, metAll,
     bothYes, runs, passed, costUsd,
   };
+}
+
+/** One pair's record: runs, scores, briefs, and the invented side's yes if allowed. */
+async function writePair(
+  c: PoolClient,
+  a: { userId: string; tenantId: string; dossier: string; voice: string; quotes: Quote[]; tags: string[] },
+  o: {
+    pair: { rendezvousId: string; b: { userId: string; tenantId: string; dossier: string; voice: string; quotes: Quote[]; tags: string[] } };
+    runs: Awaited<ReturnType<typeof converse>>;
+    briefs: Awaited<ReturnType<typeof composeBoth>>;
+    concerns: { a: string; b: string };
+    fileScore: number | null;
+  },
+): Promise<void> {
+  await recordRuns(c, o.pair.rendezvousId, o.runs, a.userId);
+  // What the conversation thought. NULL when nothing was conclusive, so the list
+  // orders it last rather than as a zero that reads as "they said no".
+  const agreement = o.runs.counted > 0 ? o.runs.bothYes / o.runs.counted : null;
+  await c.query('UPDATE rendezvous SET agreement = $2, llm_file_score = $3 WHERE id = $1',
+    [o.pair.rendezvousId, agreement, o.fileScore]);
+  await saveBriefs(c, o.pair.rendezvousId, a, o.pair.b, o.briefs, o.concerns);
+  // An invented person cannot open the app and tap yes -- and taking it as a yes
+  // anyway is how a real person ended up introduced to nobody, in a conversation
+  // that would never be answered. Off by default; on only when the founder is
+  // walking the messaging flow by hand. See SYNTHETIC_AUTO_YES.
+  if (env.SYNTHETIC_AUTO_YES) await autoDecideSynthetic(c, o.pair.rendezvousId);
 }
 
 /**
@@ -302,8 +354,14 @@ export async function decide(
         `UPDATE rendezvous SET status = 'lapsed' WHERE id = $1 AND status <> 'introduced'`,
         [rendezvousId],
       );
+      // NOTHING is sent to anybody. The town on the other phone keeps showing
+      // "waiting", which is what "has not looked yet" also looks like.
       return { introduced: false };
     }
+
+    const { rows: seat } = await c.query<{ user_a: string; user_b: string; first_mover: string | null }>(
+      'SELECT user_a, user_b, first_mover FROM rendezvous WHERE id = $1', [rendezvousId]);
+    const other = seat[0] ? (seat[0].user_a === userId ? seat[0].user_b : seat[0].user_a) : null;
 
     // Both, and exactly both. The status flip is what the messaging policy checks, so
     // this single statement is the difference between two people who cannot write to
@@ -318,7 +376,18 @@ export async function decide(
       [rendezvousId],
     );
 
-    if (rows.length) log.info({ rendezvousId }, 'introduced');
+    if (rows.length) {
+      log.info({ rendezvousId }, 'introduced');
+      if (other) {
+        notify(userId, { type: 'match.introduced', rendezvousId, agent: agentRef(userId, other) });
+        notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });
+      }
+    } else if (other && seat[0]?.first_mover === userId) {
+      // The first mover said yes: it is the other person's turn to look. This is the
+      // one moment a yes is visible to the other side -- as it must be, since their
+      // reveal opens on it -- and it says nothing they could not already see there.
+      notify(other, { type: 'match.turn', rendezvousId, agent: agentRef(other, userId) });
+    }
     return { introduced: rows.length > 0 };
   });
 }

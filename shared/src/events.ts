@@ -84,6 +84,10 @@ const DmMessage = z.object({
   readAt: z.string().nullable(),
 });
 
+/** A per-viewer handle for somebody in the square. 32 hex; never a user id. */
+const AgentRef = z.string().regex(/^[0-9a-f]{32}$/);
+const Agreement = z.enum(['got_on', 'unsure', 'did_not_click', 'could_not_tell']);
+
 export const ServerEvent = z.discriminatedUnion('type', [
   /** A message, echoed to the sender and pushed to the recipient. */
   z.object({ type: z.literal('dm.message'), message: DmMessage }),
@@ -114,6 +118,34 @@ export const ServerEvent = z.discriminatedUnion('type', [
     conflictId: z.uuid(),
     question: z.string(),
   }),
+  // ── the town ──────────────────────────────────────────────────────────
+  // What the square is allowed to draw, and nothing more: refs, never ids; how the
+  // agents got on in words, never a number; no names, no text anybody wrote. Every
+  // event here also reaches the app by the next poll of /v1/world -- the socket is
+  // the animation cue, the roster is the truth.
+  z.object({ type: z.literal('round.queued'), roundId: z.uuid() }),
+  /** Your agent is walking over to somebody. `roundId` is null on the visited side. */
+  z.object({
+    type: z.literal('round.met'), roundId: z.uuid().nullable(), rendezvousId: z.uuid(),
+    agent: AgentRef, practice: z.boolean(),
+  }),
+  z.object({
+    type: z.literal('round.talking'), roundId: z.uuid().nullable(), rendezvousId: z.uuid(),
+    agent: AgentRef,
+  }),
+  z.object({
+    type: z.literal('round.decided'), roundId: z.uuid().nullable(), rendezvousId: z.uuid(),
+    agent: AgentRef, agreement: Agreement,
+  }),
+  z.object({
+    type: z.literal('round.done'), roundId: z.uuid(), met: z.number(),
+    skipped: z.string().nullable(), error: z.string().nullable(),
+  }),
+  /** Sent to the second mover, and only once the first has said YES. Never on a no. */
+  z.object({ type: z.literal('match.turn'), rendezvousId: z.uuid(), agent: AgentRef }),
+  /** Both said yes. Sent to both. */
+  z.object({ type: z.literal('match.introduced'), rendezvousId: z.uuid(), agent: AgentRef }),
+
   z.object({ type: z.literal('heartbeat') }),
   z.object({
     type: z.literal('error'),

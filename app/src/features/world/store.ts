@@ -6,8 +6,10 @@
 import { create } from 'zustand';
 import { getWorld, type World } from '../../lib/api';
 
-export { YOU, fromRoster, planTransitions, roundActive } from './bridge';
-export type { AgentSpec, Transition } from './bridge';
+import { eventTransitions, type TownEvent, type Transition } from './bridge';
+
+export { YOU, fromRoster, planTransitions, roundActive, stateAfter } from './bridge';
+export type { AgentSpec, Transition, TownEvent } from './bridge';
 
 interface WorldStore {
   world: World | null;
@@ -15,16 +17,26 @@ interface WorldStore {
   loading: boolean;
   /** Set by "Send my agent out", so the round's finish can be announced once. */
   announce: string | null;
+  /** Motion the socket asked for, waiting for the screen to hand it to the sim. */
+  live: Transition[];
+  /** Bumped by every town event; the screen refetches the roster shortly after. */
+  nudge: number;
   setWorld: (w: World | null) => void;
   setAnnounce: (id: string | null) => void;
   load: (token: string) => Promise<World | null>;
+  apply: (ev: TownEvent) => void;
+  drained: () => void;
 }
 
 export const useWorld = create<WorldStore>((set) => ({
   world: null,
   loading: false,
   announce: null,
+  live: [],
+  nudge: 0,
   setWorld: (world) => set({ world }),
+  apply: (ev) => set((s) => ({ live: [...s.live, ...eventTransitions(ev)], nudge: Date.now() })),
+  drained: () => set({ live: [] }),
   setAnnounce: (announce) => set({ announce }),
   load: async (token) => {
     set({ loading: true });

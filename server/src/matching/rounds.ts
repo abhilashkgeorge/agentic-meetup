@@ -24,6 +24,7 @@
  */
 import { matchmakerSession, tenantSession } from '../db/client.js';
 import { BudgetExceeded } from '../metering.js';
+import { notify } from './world.js';
 import { log } from '../log.js';
 import { runRound, type RoundResult } from './orchestrator.js';
 
@@ -52,6 +53,7 @@ export async function enqueueRound(
       [ctx.userId, ctx.tenantId],
     );
     if (rows[0]) {
+      notify(ctx.userId, { type: 'round.queued', roundId: rows[0].id });
       return {
         id: rows[0].id, status: rows[0].status, requestedAt: rows[0].requested_at,
         finishedAt: null, result: null, error: null,
@@ -107,7 +109,7 @@ export async function runOneQueuedRound(): Promise<boolean> {
   let result: RoundResult | null = null;
   let error: string | null = null;
   try {
-    result = await runRound(claimed.user_id);
+    result = await runRound(claimed.user_id, { roundId: claimed.id });
   } catch (err) {
     // The budget cap is an outcome the person should be told about in plain words,
     // not a failure. Everything else is a failure and is logged as one.
@@ -125,6 +127,11 @@ export async function runOneQueuedRound(): Promise<boolean> {
         WHERE id = $1`,
       [claimed.id, error ? 'failed' : 'done', result ? JSON.stringify(result) : null, error],
     ));
+  // After the write, so a poll and the event can never disagree about whether it is over.
+  notify(claimed.user_id, {
+    type: 'round.done', roundId: claimed.id,
+    met: result?.metAll.length ?? 0, skipped: result?.skipped ?? null, error,
+  });
   return true;
 }
 

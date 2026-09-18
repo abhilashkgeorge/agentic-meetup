@@ -4,7 +4,7 @@
  * again on the next poll.
  */
 import { describe, expect, it } from 'vitest';
-import { YOU, fromRoster, planTransitions } from '../src/features/world/bridge';
+import { YOU, eventTransitions, fromRoster, planTransitions, stateAfter } from '../src/features/world/bridge';
 import type { World, WorldAgent } from '../src/lib/api';
 
 const agent = (ref: string, state: WorldAgent['state'], kind: WorldAgent['kind'] = 'stranger'): WorldAgent =>
@@ -44,5 +44,31 @@ describe('planTransitions', () => {
 
   it('says nothing about people standing around', () => {
     expect(planTransitions(new Map(), [agent('a', 'idle'), agent('b', 'waiting', 'met')])).toEqual([]);
+  });
+});
+
+describe('eventTransitions', () => {
+  it('turns a live event into the one motion it means', () => {
+    expect(eventTransitions({ type: 'round.met', roundId: 'r', rendezvousId: 'z', agent: 'a', practice: false }))
+      .toEqual([{ op: 'meet', ref: 'a' }]);
+    expect(eventTransitions({ type: 'round.decided', roundId: 'r', rendezvousId: 'z', agent: 'a', agreement: 'unsure' }))
+      .toEqual([{ op: 'verdict', ref: 'a', words: 'unsure' }]);
+    expect(eventTransitions({ type: 'match.introduced', rendezvousId: 'z', agent: 'a' }))
+      .toEqual([{ op: 'introduced', ref: 'a' }]);
+  });
+
+  it('draws nothing for the events that only mean "look again"', () => {
+    expect(eventTransitions({ type: 'round.queued', roundId: 'r' })).toEqual([]);
+    expect(eventTransitions({ type: 'round.talking', roundId: 'r', rendezvousId: 'z', agent: 'a' })).toEqual([]);
+    expect(eventTransitions({ type: 'round.done', roundId: 'r', met: 3, skipped: null, error: null })).toEqual([]);
+    expect(eventTransitions({ type: 'match.turn', rendezvousId: 'z', agent: 'a' })).toEqual([]);
+  });
+
+  it('records what the roster will say, so the next poll does not replay the motion', () => {
+    expect(stateAfter({ op: 'meet', ref: 'a' })).toBe('talking');
+    expect(stateAfter({ op: 'verdict', ref: 'a', words: 'got_on' })).toBe('briefed');
+    expect(planTransitions(new Map([['a', stateAfter({ op: 'meet', ref: 'a' })]]), [
+      { ref: 'a', kind: 'met', practice: false, seed: 1, state: 'talking' },
+    ])).toEqual([]);
   });
 });

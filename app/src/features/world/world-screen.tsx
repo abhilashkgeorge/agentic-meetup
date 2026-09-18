@@ -28,7 +28,7 @@ import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { WorldSim } from './sim';
-import { YOU, fromRoster, planTransitions, roundActive, useWorld } from './store';
+import { YOU, fromRoster, planTransitions, roundActive, stateAfter, useWorld } from './store';
 
 /** One town per app run. It outlives this screen so a tab switch does not reshuffle everybody. */
 const sim = new WorldSim(20260918);
@@ -40,6 +40,9 @@ export default function WorldScreen() {
   const load = useWorld((s) => s.load);
   const announce = useWorld((s) => s.announce);
   const setAnnounce = useWorld((s) => s.setAnnounce);
+  const live = useWorld((s) => s.live);
+  const drained = useWorld((s) => s.drained);
+  const nudge = useWorld((s) => s.nudge);
 
   // undefined: still deciding. null: the plain Home. Otherwise: the town.
   //
@@ -100,6 +103,26 @@ export default function WorldScreen() {
     }
     applied.current = new Map(world.agents.map((a) => [a.ref, a.state]));
   }, [world]);
+
+  // Socket -> sim, at once. Each is recorded as applied so the roster that follows
+  // two seconds later does not replay it.
+  useEffect(() => {
+    if (!live.length) return;
+    for (const t of live) {
+      if (t.op === 'meet') sim.meet(YOU, t.ref);
+      else if (t.op === 'verdict') { sim.verdict(YOU, t.words); sim.verdict(t.ref, t.words); }
+      else if (t.op === 'introduced') sim.introduced(YOU, t.ref);
+      else if (t.op === 'pass') sim.pass(t.ref);
+      else sim.settle(t.ref);
+      applied.current.set(t.ref, stateAfter(t));
+    }
+    drained();
+  }, [live, drained]);
+  useEffect(() => {
+    if (!nudge || !token) return;
+    const t = setTimeout(() => void load(token), 2_000);
+    return () => clearTimeout(t);
+  }, [nudge, token, load]);
 
   // Say how the round went, once, when the one this person asked for comes back.
   const [said, setSaid] = useState<string | null>(null);

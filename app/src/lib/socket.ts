@@ -15,6 +15,7 @@ import { HEARTBEAT_MS, ServerEvent, type ClientMessage } from '@clone/shared';
 import { getWsBase } from './env';
 import { useSession } from '../store/session';
 import { useDm } from '../store/dm';
+import { useWorld } from '../features/world/store';
 
 /** Two missed heartbeats and we assume the socket is dead, whatever it claims. */
 const DEAD_AFTER_MS = HEARTBEAT_MS * 2 + 5_000;
@@ -103,6 +104,17 @@ function connect(): void {
         // on the message itself rather than as an alert: an alert about a blocked
         // conversation is a notification that somebody blocked you.
         d.failed(ev.messageId);
+        break;
+
+      // ── the town ──────────────────────────────────────────────────────
+      case 'round.queued':
+      case 'round.met':
+      case 'round.talking':
+      case 'round.decided':
+      case 'round.done':
+      case 'match.turn':
+      case 'match.introduced':
+        useWorld.getState().apply(ev);
         break;
 
       case 'heartbeat':

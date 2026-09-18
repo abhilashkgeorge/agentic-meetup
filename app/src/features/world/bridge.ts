@@ -9,7 +9,7 @@
  * only what CHANGED -- so a poll every eight seconds does not restart a walk-over
  * that is already under way.
  */
-import type { World, WorldAgent } from '../../lib/api';
+import type { AgreementWords, World, WorldAgent } from '../../lib/api';
 import type { AgentKind } from './sim';
 
 export interface AgentSpec { ref: string; kind: AgentKind; seed: number }
@@ -26,9 +26,40 @@ export function fromRoster(world: World): AgentSpec[] {
 
 export type Transition =
   | { op: 'meet'; ref: string }
+  | { op: 'verdict'; ref: string; words: AgreementWords }
   | { op: 'introduced'; ref: string }
   | { op: 'pass'; ref: string }
   | { op: 'settle'; ref: string };
+
+/**
+ * A live event from the socket, as motion. The socket is the cue and the roster is
+ * the truth: every event also nudges a refetch, and the transition it returns is
+ * recorded as already applied so the refetch does not replay it.
+ */
+export type TownEvent =
+  | { type: 'round.queued'; roundId: string }
+  | { type: 'round.met'; roundId: string | null; rendezvousId: string; agent: string; practice: boolean }
+  | { type: 'round.talking'; roundId: string | null; rendezvousId: string; agent: string }
+  | { type: 'round.decided'; roundId: string | null; rendezvousId: string; agent: string; agreement: AgreementWords }
+  | { type: 'round.done'; roundId: string; met: number; skipped: string | null; error: string | null }
+  | { type: 'match.turn'; rendezvousId: string; agent: string }
+  | { type: 'match.introduced'; rendezvousId: string; agent: string };
+
+export function eventTransitions(ev: TownEvent): Transition[] {
+  switch (ev.type) {
+    case 'round.met': return [{ op: 'meet', ref: ev.agent }];
+    case 'round.decided': return [{ op: 'verdict', ref: ev.agent, words: ev.agreement }];
+    case 'match.introduced': return [{ op: 'introduced', ref: ev.agent }];
+    default: return [];
+  }
+}
+
+/** What the sim was told, as the roster would have said it -- so the next poll agrees. */
+export const stateAfter = (t: Transition): WorldAgent['state'] =>
+  t.op === 'meet' ? 'talking'
+  : t.op === 'introduced' ? 'introduced'
+  : t.op === 'pass' ? 'passed'
+  : 'briefed';
 
 /**
  * What to tell the sim, given what it was told before.
