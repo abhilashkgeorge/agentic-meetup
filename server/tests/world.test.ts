@@ -23,6 +23,8 @@ import { pool, closeMatchPool } from '../src/db/client.js';
 import { env } from '../src/env.js';
 import { worldRoutes } from '../src/api/world.js';
 import { mintToken, newSessionId } from '../src/tokens.js';
+import { LOOK_PARTS, lookFor } from '@clone/shared';
+import { lookSeed } from '../src/looks/store.js';
 
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
 const made: string[] = [];
@@ -89,7 +91,9 @@ const fetchWorld = async (token: string) => {
     square: { city: string | null }; me: { inPool: boolean; knows: number };
     pool: { total: number }; targetsLeftToday: number;
     agents: { ref: string; kind: string; practice: boolean; seed: number; state: string;
+              look: Record<string, number>;
               name?: string; rendezvousId?: string; agreement?: string; yourTurn?: boolean }[];
+    me: { inPool: boolean; knows: number; look: Record<string, number> };
   }>;
 };
 
@@ -220,6 +224,35 @@ describe('people this person has met', () => {
     expect(live!.agreement).toBe('could_not_tell');
     // And Kavya is not ALSO standing about as a stranger.
     expect(w.agents.filter((a) => a.ref === live!.ref)).toHaveLength(1);
+  });
+});
+
+describe('characters in the square', () => {
+  it('everybody has one, exactly eight numbers, and nothing else rides along', async () => {
+    const w = await fetchWorld(me.token);
+    expect(w.agents.length).toBeGreaterThan(0);
+    for (const a of w.agents) {
+      expect(Object.keys(a.look).sort()).toEqual([...LOOK_PARTS].sort());
+      for (const v of Object.values(a.look)) expect(Number.isInteger(v)).toBe(true);
+    }
+    expect(Object.keys(w.me.look).sort()).toEqual([...LOOK_PARTS].sort());
+    // The one thing a look may never carry: anything from the row it stands for.
+    expect(JSON.stringify(w.agents)).not.toMatch(/display_name|user_id|attribute_tags|"age"/);
+  });
+
+  it('gives a practice profile the whole catalog from its seed, and never a stored row', async () => {
+    const w = await fetchWorld(me.token);
+    const ghost = w.agents.find((a) => a.kind === 'practice')!;
+    expect(ghost.look).toEqual(lookFor(lookSeed(practice.userId)));
+  });
+
+  it('is the same character to two viewers whose refs for that person differ', async () => {
+    const mine = await fetchWorld(me.token);
+    const theirs = await fetchWorld(other.token);
+    const a = mine.agents.find((x) => x.kind === 'practice')!;
+    const b = theirs.agents.find((x) => x.kind === 'practice')!;
+    expect(a.ref).not.toBe(b.ref);
+    expect(a.look).toEqual(b.look);
   });
 });
 

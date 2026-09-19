@@ -20,8 +20,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardPad } from '../../lib/keyboard';
-import { blockUser, getMessages, matchMet, reportMet, reportUser } from '../../lib/api';
-import { PhotoAvatar } from '../photos/photo';
+import { blockUser, getMessages, matchMet, reportMet, reportUser, type Look } from '../../lib/api';
+import { PersonAvatar } from '../look/person-avatar';
 import { readDm, sendDm, sendTyping } from '../../lib/socket';
 import { useSession } from '../../store/session';
 import { useDm, type Dm } from '../../store/dm';
@@ -80,9 +80,9 @@ export default function ThreadScreen() {
   const setMe = useDm((s) => s.setMe);
   // The thread can be opened straight from the reveal, before the inbox has ever
   // loaded, so who this is comes back with the messages rather than from the list.
-  const [who, setWho] = useState<{ id: string | null; name: string; photoId: string | null } | null>(null);
+  const [who, setWho] = useState<{ id: string | null; name: string; photoId: string | null; look?: Look | null } | null>(null);
   const conversation = listed
-    ?? (who ? { id: rendezvousId, otherId: who.id ?? '', name: who.name, photoId: who.photoId } : null);
+    ?? (who ? { id: rendezvousId, otherId: who.id ?? '', name: who.name, photoId: who.photoId, look: who.look } : null);
   const setThread = useDm((s) => s.setThread);
   const prepend = useDm((s) => s.prepend);
   const clearUnread = useDm((s) => s.clearUnread);
@@ -102,7 +102,7 @@ export default function ThreadScreen() {
       if (!token) return;
       const page = await getMessages(token, rendezvousId);
       if (page?.me) setMe(page.me);
-      if (page) setWho({ id: page.otherId, name: page.name, photoId: page.photoId });
+      if (page) setWho({ id: page.otherId, name: page.name, photoId: page.photoId, look: page.look });
       setThread(
         rendezvousId,
         (page?.messages ?? []).map((m) => ({
@@ -217,9 +217,10 @@ export default function ThreadScreen() {
         onBack={() => router.back()}
         title={conversation?.name ?? 'Chat'}
         avatar={
-          <PhotoAvatar
+          <PersonAvatar
             userId={conversation?.otherId}
             photoId={conversation?.photoId}
+          look={conversation?.look}
             name={conversation?.name ?? 'Someone'}
             size={32}
           />
@@ -260,9 +261,10 @@ export default function ThreadScreen() {
         contentContainerStyle={{ padding: space.screen, paddingBottom: space.lg }}
         ListEmptyComponent={
           <View style={{ paddingVertical: space.xxl, alignItems: 'center', gap: space.sm }}>
-            <PhotoAvatar
+            <PersonAvatar
               userId={conversation?.otherId}
               photoId={conversation?.photoId}
+            look={conversation?.look}
               name={conversation?.name ?? 'Someone'}
               size={96}
             />

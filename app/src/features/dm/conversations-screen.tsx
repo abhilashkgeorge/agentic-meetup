@@ -12,7 +12,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
 import { getConversations, getMatches } from '../../lib/api';
-import { PhotoAvatar } from '../photos/photo';
+import { PersonAvatar } from '../look/person-avatar';
 import { ago } from '../../lib/ago';
 import { useSession } from '../../store/session';
 import { useDm } from '../../store/dm';
@@ -72,9 +72,10 @@ export default function ConversationsScreen() {
                 {i > 0 && <Crease />}
                 <Row
                   left={
-                    <PhotoAvatar
+                    <PersonAvatar
                       userId={c.otherId}
                       photoId={c.photoId}
+                      look={c.look}
                       name={c.name || 'Someone'}
                       ring={c.unread > 0}
                     />

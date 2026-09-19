@@ -3,7 +3,7 @@
  *
  * The 3D Home shows a small square with two dozen agents walking around. Almost all
  * of them are strangers, and a stranger in the square is exactly as anonymous as a
- * stranger in a real one: a shape, a colour, whether they are a practice profile.
+ * stranger in a real one: the character they built (a catalog of small integers, shared/look.ts), whether they are a practice profile.
  * Not a name, not an age, not a tag, not an id, not where they are.
  *
  * REFS, NOT IDS. Each agent is addressed by a per-viewer HMAC of the viewer and the

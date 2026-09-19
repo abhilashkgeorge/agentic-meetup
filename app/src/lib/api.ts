@@ -460,6 +460,8 @@ export interface WorldAgent {
   kind: 'stranger' | 'practice' | 'met';
   practice: boolean;
   seed: number;
+  /** Their character: how the square draws them. The same to every viewer. */
+  look: Look;
   state: 'idle' | 'talking' | 'briefed' | 'waiting' | 'introduced' | 'passed';
   rendezvousId?: string;
   name?: string;
@@ -468,7 +470,7 @@ export interface WorldAgent {
 }
 export interface World {
   square: { city: string | null };
-  me: { inPool: boolean; knows: number; missing: string[]; need: string[] };
+  me: { inPool: boolean; knows: number; missing: string[]; need: string[]; look: Look };
   pool: { total: number };
   round: RoundState | null;
   targetsLeftToday: number;
@@ -501,6 +503,8 @@ export interface MatchCard {
    * with a decimal point. null when no conversation was conclusive.
    */
   agreement: number | null;
+  /** Their character, shown on the card until the reveal shows a photo. */
+  look?: Look;
 }
 
 /** How the last round went, or is going. See matching/rounds.ts on the server. */
@@ -573,6 +577,7 @@ export interface ConversationRow {
   name: string;
   /** Their first photo, when you are allowed it. Null is a perfectly normal answer. */
   photoId: string | null;
+  look?: Look;
   lastMessage: string | null;
   lastAt: string | null;
   lastFromMe: boolean;
@@ -596,7 +601,7 @@ export interface HistoryMessage {
 /** Oldest-first. `before` is a sequence number, not a timestamp. */
 export const getMessages = (token: string, id: string, before?: string) =>
   get<{
-    me: string; otherId: string | null; name: string; photoId: string | null;
+    me: string; otherId: string | null; name: string; photoId: string | null; look?: Look | null;
     messages: HistoryMessage[]; hasMore: boolean;
   }>(`/v1/conversations/${id}/messages${before ? `?before=${before}` : ''}`, token);
 
@@ -621,6 +626,7 @@ export interface Reveal {
   livesIn?: string | null;
   /** An invented profile. See MatchCard.practice. */
   practice?: boolean;
+  look?: Look;
 }
 
 export const getReveal = (token: string, id: string) =>

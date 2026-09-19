@@ -23,6 +23,7 @@ import {
   Button, ButtonRow, Card, Chip, ChipGroup, Crease, Header, Screen, Skeleton, Surface,
   radius, space, type, usePalette,
 } from '../../components/ui';
+import { CharacterAvatar } from '../look/character-avatar';
 
 /** A photo fills the screen, less the margins on both sides. */
 const CARD_W = Dimensions.get('window').width - space.screen * 2;
@@ -199,10 +200,12 @@ export default function RevealScreen() {
         ) : (
           <Surface depth="sunken" radius={radius.xl}
                    style={{ height: 300, alignItems: 'center', justifyContent: 'center', gap: space.sm }}>
+            {them?.look && <CharacterAvatar look={them.look} size={150} />}
             <Text style={[type.body, { color: p.textSecondary }]}>No photos yet</Text>
             <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center', paddingHorizontal: space.xl }]}>
-              They have not added any. You can still say yes — you would be deciding on
-              what they said rather than how they look.
+              {them?.look
+                ? 'This is how they show up in the square. You can still say yes — you would be deciding on what they said rather than how they look.'
+                : 'They have not added any. You can still say yes — you would be deciding on what they said rather than how they look.'}
             </Text>
           </Surface>
         )}

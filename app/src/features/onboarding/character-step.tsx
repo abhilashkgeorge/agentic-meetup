@@ -12,6 +12,7 @@ import { Text, View } from 'react-native';
 import { useSession } from '../../store/session';
 import { Screen, StepsLeft, space, type, usePalette } from '../../components/ui';
 import { CharacterBuilder } from '../look/builder';
+import { Preview } from '../look/preview';
 import { useLook } from '../look/store';
 
 export default function CharacterStep() {
@@ -30,7 +31,7 @@ export default function CharacterStep() {
           This is you in the square, and what people see of you until you have both said yes. Photos come next.
         </Text>
       </View>
-      <CharacterBuilder onSaved={next} onSkip={next} />
+      <CharacterBuilder preview={<Preview />} onSaved={next} onSkip={next} />
     </Screen>
   );
 }

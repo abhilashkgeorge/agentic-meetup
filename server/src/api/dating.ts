@@ -7,7 +7,7 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { MIN_AGE, deriveValue, findPlace, isAdult, canFilterOn } from '@clone/shared';
+import { MIN_AGE, deriveValue, findPlace, isAdult, canFilterOn, type Look } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { commit } from '../memory/facts.js';
@@ -16,6 +16,7 @@ import { candidateCount, poolBreakdown } from '../matching/candidates.js';
 import { decide, runRound } from '../matching/orchestrator.js';
 import { DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
 import { resolveAgentRef } from '../matching/world.js';
+import { lookOf, looksFor } from '../looks/store.js';
 import { BudgetExceeded, checkBudget } from '../metering.js';
 import { log } from '../log.js';
 
@@ -324,10 +325,11 @@ export const datingRoutes = new Hono()
         id: string; headline: string; overlap_quotes: unknown; concern: string;
         questions: unknown; human_says_yes: boolean | null; first_mover: string | null;
         status: string; other_decided: boolean | null; other_is_synthetic: boolean | null;
-        agreement: number | null;
+        agreement: number | null; other_id: string;
       }>(
         `SELECT r.id, b.headline, b.overlap_quotes, b.concern, b.questions,
                 b.human_says_yes, r.first_mover, r.status, r.agreement,
+                CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END AS other_id,
                 -- Same shape and same reason as other_decided below: the caller's own
                 -- session cannot read the other person's match_profile, and a card
                 -- that does not say "practice" is a card that lies by omission.
@@ -353,6 +355,11 @@ export const datingRoutes = new Hono()
       return rows;
     });
     const round = await tenantSession(ctx, (db) => latestRound(db, ctx.userId));
+    // Their characters: what the card shows before the reveal shows a photo.
+    const looks = rows.length
+      ? await matchmakerSession((db) => looksFor(db, rows.map((r) => r.other_id),
+          new Set(rows.filter((r) => r.other_is_synthetic === true).map((r) => r.other_id))))
+      : new Map<string, Look>();
 
     return c.json({
       // How the last round went, or is going. The app polls this while a round is
@@ -385,6 +392,7 @@ export const datingRoutes = new Hono()
             waitingOnThem: r.human_says_yes === true || !myTurn,
             // Said plainly, on the card, before the person spends any feeling on it.
             practice: r.other_is_synthetic === true,
+            look: looks.get(r.other_id),
             // How the agents got on, as a fraction of conversations that ended in a
             // mutual yes. The app turns this into words, never a percentage: a number
             // here would be read as compatibility, and pre-date self-report predicts
@@ -437,7 +445,9 @@ export const datingRoutes = new Hono()
           WHERE r.id = $1`,
         [id, ctx.userId],
       );
-      return rows[0] ?? null;
+      const row = rows[0];
+      if (!row) return null;
+      return { ...row, look: await lookOf(db, row.user_id, seat.other_is_synthetic === true) };
     });
     if (!other) return c.json({ error: 'not found' }, 404);
 
@@ -470,6 +480,7 @@ export const datingRoutes = new Hono()
         .filter(Boolean)
         .slice(0, 8),
       livesIn: typeof other.traits.lives_in === 'string' ? other.traits.lives_in : null,
+      look: other.look,
     });
   })
 

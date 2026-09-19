@@ -9,10 +9,11 @@
  * only what CHANGED -- so a poll every eight seconds does not restart a walk-over
  * that is already under way.
  */
+import { lookFor, type Look } from '@clone/shared';
 import type { AgreementWords, World, WorldAgent } from '../../lib/api';
 import type { AgentKind } from './sim';
 
-export interface AgentSpec { ref: string; kind: AgentKind; seed: number; ghost: boolean }
+export interface AgentSpec { ref: string; kind: AgentKind; seed: number; ghost: boolean; look: Look }
 
 export const YOU = 'you';
 
@@ -28,13 +29,14 @@ export const seedOf = (ref: string): number => parseInt(ref.slice(0, 8), 16);
  * which is a no-op, so the agent stayed at home for the whole round.
  */
 export const metSpec = (ref: string, practice = false): AgentSpec =>
-  ({ ref, kind: 'met', seed: seedOf(ref), ghost: practice });
+  // A seeded look stands in until the roster, two seconds later, says which one it is.
+  ({ ref, kind: 'met', seed: seedOf(ref), ghost: practice, look: lookFor(seedOf(ref)) });
 
 /** Everybody the sim should hold, you first. */
 export function fromRoster(world: World): AgentSpec[] {
   return [
-    { ref: YOU, kind: 'you', seed: 7, ghost: false },
-    ...world.agents.map((a) => ({ ref: a.ref, kind: a.kind, seed: a.seed, ghost: a.practice })),
+    { ref: YOU, kind: 'you', seed: 7, ghost: false, look: world.me.look },
+    ...world.agents.map((a) => ({ ref: a.ref, kind: a.kind, seed: a.seed, ghost: a.practice, look: a.look })),
   ];
 }
 

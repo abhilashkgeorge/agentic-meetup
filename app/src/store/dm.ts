@@ -1,3 +1,4 @@
+import type { Look } from '@clone/shared';
 /**
  * Conversations with people, on the phone.
  *
@@ -39,6 +40,7 @@ export interface Conversation {
   otherId: string;
   name: string;
   photoId?: string | null;
+  look?: Look | null;
   lastMessage: string | null;
   lastAt: string | null;
   lastFromMe: boolean;

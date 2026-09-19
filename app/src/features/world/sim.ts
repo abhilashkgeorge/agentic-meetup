@@ -10,6 +10,8 @@
  * Seeded, like AliveRig in features/avatar/animation.ts: a run is reproducible, so a
  * test can assert where somebody ends up. Nothing here imports three.
  */
+import { lookFor, type Look } from '@clone/shared';
+
 export type AgentKind = 'you' | 'stranger' | 'practice' | 'met';
 export type AgentState =
   | 'idle' | 'walking' | 'approaching' | 'talking' | 'verdict' | 'leaving' | 'introduced' | 'gone';
@@ -23,6 +25,8 @@ export interface SimAgent {
   seed: number;
   /** Drawn see-through: a practice profile, whatever else it is. */
   ghost: boolean;
+  /** How they are drawn: the character they built, or a seeded one. */
+  look: Look;
   x: number;
   z: number;
   tx: number;
@@ -90,16 +94,17 @@ export class WorldSim {
    * Add agents that are new; leave the ones already here where they stand. A roster
    * refresh must not teleport the whole town.
    */
-  upsert(list: ReadonlyArray<{ ref: string; kind: AgentKind; seed: number; ghost?: boolean }>): void {
-    for (const { ref, kind, seed, ghost } of list) {
+  upsert(list: ReadonlyArray<{ ref: string; kind: AgentKind; seed: number; ghost?: boolean; look?: Look }>): void {
+    for (const { ref, kind, seed, ghost, look } of list) {
       const have = this.byRef.get(ref);
       // A practice profile stays a ghost after it is met: "not a real person" is
       // about who they are, not about whether the agents have talked.
       const seeThrough = ghost ?? kind === 'practice';
-      if (have) { have.kind = kind; have.ghost = seeThrough; continue; }
+      // A refresh may bring a new character (they built one): swap it, do not move them.
+      if (have) { have.kind = kind; have.ghost = seeThrough; if (look) have.look = look; continue; }
       const [x, z] = kind === 'you' ? HOME : this.spot();
       this.byRef.set(ref, {
-        ref, kind, seed, ghost: seeThrough, x, z, tx: x, tz: z,
+        ref, kind, seed, ghost: seeThrough, look: look ?? lookFor(seed), x, z, tx: x, tz: z,
         facing: this.rnd() * Math.PI * 2,
         state: 'idle', wait: 1 + this.rnd() * 4, partner: null, bubble: null, ring: false,
       });
@@ -310,14 +315,16 @@ export class WorldSim {
   populateBench(n: number): void {
     for (const ref of [...this.order]) this.remove(ref);
     this.visits.clear();
-    const list: { ref: string; kind: AgentKind; seed: number }[] = [
-      { ref: 'you', kind: 'you', seed: 7 },
+    const list: { ref: string; kind: AgentKind; seed: number; look: Look }[] = [
+      { ref: 'you', kind: 'you', seed: 7, look: lookFor(7) },
     ];
     for (let i = 1; i < n; i++) {
+      const seed = Math.floor(this.rnd() * 1e9);
       list.push({
         ref: `b${i}`,
         kind: i % 4 === 0 ? 'practice' : i % 9 === 0 ? 'met' : 'stranger',
-        seed: Math.floor(this.rnd() * 1e9),
+        seed,
+        look: lookFor(seed),
       });
     }
     this.upsert(list);

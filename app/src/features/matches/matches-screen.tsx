@@ -25,6 +25,7 @@ import {
   Button, Card, Crease, Empty, Screen, ScreenTitle, StatRow, Surface,
   radius, space, type, usePalette,
 } from '../../components/ui';
+import { CharacterAvatar } from '../look/character-avatar';
 
 export default function MatchesScreen() {
   const p = usePalette();
@@ -195,6 +196,8 @@ export default function MatchesScreen() {
           [...matches.filter((m) => m.waitingOnYou).slice(0, 1),
            ...matches.filter((m) => !m.waitingOnYou)].map((m) => (
             <Surface key={m.id} radius={radius.lg} style={{ padding: space.screen, gap: space.md }}>
+              {/* Their character: who this is before the reveal shows a photo. */}
+              {m.look && <CharacterAvatar look={m.look} size={40} />}
               <Text style={[type.label, { color: p.textSecondary }]}>
                 {m.waitingOnYou ? 'WAITING ON YOU'
                   : m.waitingOnThem ? 'WAITING ON THEM'

@@ -15,6 +15,13 @@
  * Nothing here calls a model. Nothing here returns a coordinate, an age, a tag, an id,
  * or a word anybody wrote. A stranger in the square is a shape and a colour and the
  * one bit the practice label requires -- strictly less than a round result reveals.
+ *
+ * Since 0056 the shape and colours are the character the person built (or the one
+ * their seed gives them), the same to every viewer -- a character that changes per
+ * viewer is not a character. That is the one deliberate cross-viewer constant here:
+ * eight small integers from a public catalog (shared/look.ts), plus the practice bit.
+ * Refs stay per-viewer; a look cannot be joined to a person by anybody who does not
+ * already know them.
  */
 import { Hono } from 'hono';
 import { agreementWords, type AgreementWords } from '@clone/shared';
@@ -25,6 +32,8 @@ import { candidateCount, candidateIds } from '../matching/candidates.js';
 import { rebuildMatchProfile, touchActive } from '../matching/profile.js';
 import { rank } from '../matching/score.js';
 import { latestRound } from '../matching/rounds.js';
+import { looksFor } from '../looks/store.js';
+import type { Look } from '@clone/shared';
 import {
   STRANGERS_IN_SQUARE, TARGETED_PER_DAY, agentRef, seatState, type SeatState,
 } from '../matching/world.js';
@@ -42,7 +51,9 @@ export interface WorldAgent {
   ref: string;
   kind: 'stranger' | 'practice' | 'met';
   practice: boolean;
-  /** For the renderer: colour, gait, bob phase. Derived from the ref, never from the person. */
+  /** The character they built, or the one their seed gives them. The same to every viewer. */
+  look: Look;
+  /** For the renderer: gait and bob phase. Derived from the ref, never from the person. */
   seed: number;
   state: 'idle' | SeatState;
   rendezvousId?: string;
@@ -146,9 +157,10 @@ export const worldRoutes = new Hono()
               'SELECT user_id, is_synthetic FROM match_profile WHERE user_id = ANY($1::uuid[])', [ids]);
             for (const r of rows) if (r.is_synthetic) synthetic.add(r.user_id);
           }
-          return { total, ids: ids.filter((id) => !metIds.has(id)), synthetic };
+          const shown = ids.filter((id) => !metIds.has(id));
+          return { total, ids: shown, synthetic, looks: await looksFor(db, shown, synthetic) };
         })
-      : { total: 0, ids: [] as string[], synthetic: new Set<string>() };
+      : { total: 0, ids: [] as string[], synthetic: new Set<string>(), looks: new Map<string, Look>() };
 
     // Names: only for seats the reveal rule already opens. Same test as
     // GET /v1/matches/:id -- first mover, or the other side has said yes. Never while
@@ -156,14 +168,17 @@ export const worldRoutes = new Hono()
     const entitled = own.seats.filter((s) =>
       s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true));
     const names = new Map<string, string>();
-    if (entitled.length) {
-      await matchmakerSession(async (db) => {
+    // Characters for the people met and for me, in the same read as the names.
+    const seatLooks = await matchmakerSession(async (db) => {
+      if (entitled.length) {
         const { rows } = await db.query<{ user_id: string; display_name: string | null }>(
           'SELECT user_id, display_name FROM match_profile WHERE user_id = ANY($1::uuid[])',
           [entitled.map((s) => s.other_id)]);
         for (const r of rows) if (r.display_name) names.set(r.user_id, r.display_name);
-      });
-    }
+      }
+      return looksFor(db, [me, ...own.seats.map((s) => s.other_id)],
+        new Set(own.seats.filter((s) => s.other_is_synthetic === true).map((s) => s.other_id)));
+    });
 
     const agents: WorldAgent[] = [];
     for (const s of own.seats) {
@@ -176,6 +191,7 @@ export const worldRoutes = new Hono()
       const name = names.get(s.other_id);
       agents.push({
         ref, kind: 'met', practice: s.other_is_synthetic === true, seed: seedOf(ref), state,
+        look: seatLooks.get(s.other_id)!,
         rendezvousId: s.id,
         ...(name ? { name } : {}),
         agreement: agreementWords(s.agreement),
@@ -185,7 +201,8 @@ export const worldRoutes = new Hono()
     for (const id of strangers.ids) {
       const ref = agentRef(me, id);
       const practice = strangers.synthetic.has(id);
-      agents.push({ ref, kind: practice ? 'practice' : 'stranger', practice, seed: seedOf(ref), state: 'idle' });
+      agents.push({ ref, kind: practice ? 'practice' : 'stranger', practice, seed: seedOf(ref), state: 'idle',
+                    look: strangers.looks.get(id)! });
     }
 
     return c.json({
@@ -193,6 +210,7 @@ export const worldRoutes = new Hono()
       me: {
         inPool: own.state.inPool, knows: own.knows,
         missing: own.state.missing, need: own.state.missing,
+        look: seatLooks.get(me)!,
       },
       pool: { total: strangers.total },
       round: own.round ? {

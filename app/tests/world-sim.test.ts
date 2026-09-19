@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { HOME, WorldSim } from '../src/features/world/sim';
+import { lookFor } from '@clone/shared';
 
 const town = () => {
   const s = new WorldSim(42);
@@ -132,5 +133,16 @@ describe('the town', () => {
     // Without the flag, the kind decides -- and 'met' is a real person.
     s.upsert([{ ref: 'h', kind: 'met', seed: 10 }]);
     expect(s.get('h')!.ghost).toBe(false);
+  });
+
+  it('wears the character it is given, and changes it on a refresh without moving', () => {
+    const s = town();
+    // Nothing given: a seeded character, stable.
+    expect(s.get('a')!.look).toEqual(lookFor(1));
+    run(s, 3);
+    const before = { x: s.get('a')!.x, z: s.get('a')!.z };
+    s.upsert([{ ref: 'a', kind: 'stranger', seed: 1, look: { ...lookFor(1), hair: 6 } }]);
+    expect(s.get('a')!.look.hair).toBe(6);
+    expect([s.get('a')!.x, s.get('a')!.z]).toEqual([before.x, before.z]);
   });
 });

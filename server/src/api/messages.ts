@@ -9,6 +9,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchmakerSession, tenantSession } from '../db/client.js';
+import { lookOf, looksFor } from '../looks/store.js';
+import type { Look } from '@clone/shared';
 import * as messages from '../messaging/store.js';
 import { log } from '../log.js';
 
@@ -79,13 +81,16 @@ export const messageRoutes = new Hono()
     // another tenant's profile row -- and can see nothing about them but this. An id
     // is not a person, and a conversation list of uuids is not a conversation list.
     const names = new Map<string, string>();
+    let looks = new Map<string, Look>();
     if (rows.length) {
-      await matchmakerSession(async (db) => {
-        const { rows: who } = await db.query<{ user_id: string; display_name: string | null }>(
-          'SELECT user_id, display_name FROM match_profile WHERE user_id = ANY($1::uuid[])',
+      looks = await matchmakerSession(async (db) => {
+        const { rows: who } = await db.query<{ user_id: string; display_name: string | null; is_synthetic: boolean }>(
+          'SELECT user_id, display_name, is_synthetic FROM match_profile WHERE user_id = ANY($1::uuid[])',
           [rows.map((r) => r.other_id)],
         );
         for (const w of who) if (w.display_name) names.set(w.user_id, w.display_name);
+        // Their character: the face of the row until there is a photo to show.
+        return looksFor(db, rows.map((r) => r.other_id), new Set(who.filter((w) => w.is_synthetic).map((w) => w.user_id)));
       });
     }
 
@@ -111,6 +116,7 @@ export const messageRoutes = new Hono()
         otherId: r.other_id,
         name: names.get(r.other_id) ?? 'Someone',
         photoId: faces.get(r.other_id) ?? null,
+        look: looks.get(r.other_id),
         lastMessage: r.last_text,
         lastAt: r.last_at ? r.last_at.toISOString() : null,
         lastFromMe: r.last_sender === ctx.userId,
@@ -138,7 +144,7 @@ export const messageRoutes = new Hono()
     // directly from the reveal ("say hello"), before the inbox has ever been loaded --
     // and a conversation screen that does not know whose it is cannot show a name or
     // offer a block.
-    const { other, name, photoId } = await (async () => {
+    const { other, name, photoId, look } = await (async () => {
       const pair = await tenantSession(ctx, async (db) => {
         const { rows } = await db.query<{ other: string }>(
           `SELECT CASE WHEN user_a = $2 THEN user_b ELSE user_a END AS other
@@ -147,18 +153,18 @@ export const messageRoutes = new Hono()
         );
         return rows[0]?.other ?? null;
       });
-      if (!pair) return { other: null, name: null, photoId: null };
-      const named = await matchmakerSession(async (db) => {
-        const { rows } = await db.query<{ display_name: string | null }>(
-          'SELECT display_name FROM match_profile WHERE user_id = $1', [pair]);
-        return rows[0]?.display_name ?? null;
+      if (!pair) return { other: null, name: null, photoId: null, look: null };
+      const { named, look } = await matchmakerSession(async (db) => {
+        const { rows } = await db.query<{ display_name: string | null; is_synthetic: boolean }>(
+          'SELECT display_name, is_synthetic FROM match_profile WHERE user_id = $1', [pair]);
+        return { named: rows[0]?.display_name ?? null, look: await lookOf(db, pair, rows[0]?.is_synthetic === true) };
       });
       const face = await tenantSession(ctx, async (db) => {
         const { rows } = await db.query<{ id: string }>(
           'SELECT id FROM visible_photos($1, $2) LIMIT 1', [pair, ctx.userId]);
         return rows[0]?.id ?? null;
       });
-      return { other: pair, name: named, photoId: face };
+      return { other: pair, name: named, photoId: face, look };
     })();
 
     return c.json({
@@ -166,6 +172,7 @@ export const messageRoutes = new Hono()
       otherId: other,
       name: name ?? 'Someone',
       photoId,
+      look,
       messages: rows.map((m) => ({
         id: m.id,
         senderId: m.senderId,

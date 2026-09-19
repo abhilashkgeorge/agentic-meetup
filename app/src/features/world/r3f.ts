@@ -9,10 +9,12 @@
  * draws the old Home in the null case. `./canvas` is the only file allowed to import
  * three and r3f at the top, because it is only ever reached through this function.
  */
-import type { WorldCanvas as WorldCanvasType } from './canvas';
+import type { CharacterCanvas as CharacterCanvasType, WorldCanvas as WorldCanvasType } from './canvas';
 
 export interface WorldRenderer {
   WorldCanvas: typeof WorldCanvasType;
+  /** One character up close, for the builder. Same parts, same pose code. */
+  CharacterCanvas: typeof CharacterCanvasType;
 }
 
 let cached: WorldRenderer | null | undefined;
@@ -30,7 +32,7 @@ export async function loadWorldRenderer(): Promise<WorldRenderer | null> {
     await import('@react-three/fiber/native');
     stage = 'canvas';
     const mod = await import('./canvas');
-    cached = { WorldCanvas: mod.WorldCanvas };
+    cached = { WorldCanvas: mod.WorldCanvas, CharacterCanvas: mod.CharacterCanvas };
     rendererError = null;
   } catch (err) {
     rendererError = `${stage}: ${err instanceof Error ? err.message : String(err)}`;
