@@ -222,7 +222,7 @@ export const messageRoutes = new Hono()
         userId: z.string().uuid(),
         rendezvousId: z.string().uuid().nullable().default(null),
         reason: z.enum([
-          'harassment', 'inappropriate', 'fake_profile', 'underage', 'spam', 'other',
+          'harassment', 'inappropriate', 'fake_profile', 'underage', 'spam', 'felt_unsafe', 'other',
         ]),
         detail: z.string().max(2000).default(''),
       })

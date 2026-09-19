@@ -18,6 +18,8 @@ import { DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rou
 import { resolveAgentRef } from '../matching/world.js';
 import { lookOf, looksFor } from '../looks/store.js';
 import { award } from '../points/ledger.js';
+import { ANSWERS, WHY_NOT, checkinQuestions, type CheckinQuestion, type Shown } from '../checkin/questions.js';
+import type { PoolClient } from 'pg';
 import { BudgetExceeded, checkBudget } from '../metering.js';
 import { log } from '../log.js';
 
@@ -99,8 +101,91 @@ export function resolveLivesIn(
   return null;
 }
 
-/** Long enough for a date to have happened; short enough to still be remembered. */
-const MET_ASK_AFTER_MS = 3 * 24 * 60 * 60_000;
+/**
+ * Long enough for a date to have happened; short enough to still be remembered.
+ * Overridable so the flow can be walked on a desk without waiting three days.
+ */
+const MET_ASK_AFTER_MS = Number(process.env.MET_ASK_AFTER_HOURS ?? 72) * 60 * 60_000;
+
+interface OtherRow {
+  user_id: string; display_name: string | null; age: number | null;
+  traits: Record<string, unknown>; attribute_tags: string[]; look: Look;
+}
+
+/** The other person in a rendezvous, as the matchmaker may see them. Null if none. */
+async function otherOf(id: string, me: string, synthetic: boolean): Promise<OtherRow | null> {
+  return matchmakerSession(async (db) => {
+    const { rows } = await db.query<Omit<OtherRow, 'look'>>(
+      `SELECT p.user_id, p.display_name, p.age, p.traits, p.attribute_tags
+         FROM rendezvous r
+         JOIN match_profile p
+           ON p.user_id = CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END
+        WHERE r.id = $1`,
+      [id, me],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { ...row, look: await lookOf(db, row.user_id, synthetic) };
+  });
+}
+
+/**
+ * The reveal, and the record of what it showed.
+ *
+ * One function builds both, so the after-date questions (checkin/questions.ts) can
+ * only ever be about what this person actually saw. `payload` is what GET
+ * /v1/matches/:id sends; `shown` is the same facts kept raw for the generator.
+ */
+export function revealOf(other: OtherRow, practice: boolean, photosVisible: boolean) {
+  // Tags, not sentences. What they have said in their own words belongs in the
+  // brief, where it comes with a date and is quoted rather than summarised.
+  const tags = other.attribute_tags
+    .filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))
+    .map((raw) => ({ raw, word: raw.split(':')[1]?.replace(/[-_]/g, ' ') ?? '' }))
+    .filter((t) => t.word)
+    .slice(0, 8);
+  const name = other.display_name ?? 'Someone';
+  const livesIn = typeof other.traits.lives_in === 'string' ? other.traits.lives_in : null;
+  return {
+    payload: {
+      waiting: false as const,
+      // An invented profile, said so on the screen where the person decides. Nothing
+      // about the brief changes -- the agents really did meet and this really is what
+      // they made of each other. What changes is that there is no human on the far
+      // side, and the person is told before they answer rather than after.
+      practice,
+      // Needed to fetch their pictures: the photo route is keyed on the owner as well
+      // as the photo, so that holding an id is never by itself permission to see one.
+      userId: other.user_id,
+      name,                         // FIRST NAME ONLY (0027)
+      age: other.age,
+      tags: tags.map((t) => t.word),
+      livesIn,
+      look: other.look,
+    },
+    shown: { name, age: other.age, livesIn, tags: tags.map((t) => t.raw), photosVisible } satisfies Shown,
+  };
+}
+
+/** One row: where this person stands with a rendezvous, for the check-in. */
+async function checkinSeat(db: PoolClient, id: string, me: string) {
+  const { rows } = await db.query<{
+    status: string; introduced_at: string | null; met: boolean | null; other_id: string;
+    other_is_synthetic: boolean | null; again: boolean; answered: boolean; photos: number;
+  }>(
+    `SELECT r.status, r.introduced_at, b.met,
+            CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END AS other_id,
+            rendezvous_other_is_synthetic(r.id, $2) AS other_is_synthetic,
+            checkin_mutual_again(r.id, $2) AS again,
+            EXISTS (SELECT 1 FROM date_checkins c WHERE c.rendezvous_id = r.id AND c.for_user = $2) AS answered,
+            (SELECT count(*) FROM visible_photos(CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END, $2))::int AS photos
+       FROM rendezvous r
+       JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $2
+      WHERE r.id = $1`,
+    [id, me],
+  );
+  return rows[0] ?? null;
+}
 
 export const datingRoutes = new Hono()
   /**
@@ -434,22 +519,7 @@ export const datingRoutes = new Hono()
     });
     if (!seat) return c.json({ error: 'not found' }, 404);
 
-    const other = await matchmakerSession(async (db) => {
-      const { rows } = await db.query<{
-        user_id: string; display_name: string | null; age: number | null;
-        traits: Record<string, unknown>; attribute_tags: string[];
-      }>(
-        `SELECT p.user_id, p.display_name, p.age, p.traits, p.attribute_tags
-           FROM rendezvous r
-           JOIN match_profile p
-             ON p.user_id = CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END
-          WHERE r.id = $1`,
-        [id, ctx.userId],
-      );
-      const row = rows[0];
-      if (!row) return null;
-      return { ...row, look: await lookOf(db, row.user_id, seat.other_is_synthetic === true) };
-    });
+    const other = await otherOf(id, ctx.userId, seat.other_is_synthetic === true);
     if (!other) return c.json({ error: 'not found' }, 404);
 
     // The second mover sees the first mover's profile once the FIRST HAS SAID YES --
@@ -461,28 +531,103 @@ export const datingRoutes = new Hono()
       return c.json({ waiting: true, message: 'They are looking at your profile first.' });
     }
 
-    return c.json({
-      waiting: false,
-      // An invented profile, said so on the screen where the person decides. Nothing
-      // about the brief changes -- the agents really did meet and this really is what
-      // they made of each other. What changes is that there is no human on the far
-      // side, and the person is told before they answer rather than after.
-      practice: seat.other_is_synthetic === true,
-      // Needed to fetch their pictures: the photo route is keyed on the owner as well
-      // as the photo, so that holding an id is never by itself permission to see one.
-      userId: other.user_id,
-      name: other.display_name ?? 'Someone',
-      age: other.age,
-      // Tags, not sentences. What they have said in their own words belongs in the
-      // brief, where it comes with a date and is quoted rather than summarised.
-      tags: other.attribute_tags
-        .filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))
-        .map((t) => t.split(':')[1]?.replace(/[-_]/g, ' '))
-        .filter(Boolean)
-        .slice(0, 8),
-      livesIn: typeof other.traits.lives_in === 'string' ? other.traits.lives_in : null,
-      look: other.look,
+    const { payload } = revealOf(other, seat.other_is_synthetic === true, false);
+    // How many dates said the basics were true. Zero is said as nothing on the screen.
+    const confirmedBy = await tenantSession(ctx, async (db) => {
+      const { rows } = await db.query<{ n: number }>('SELECT confirmations_of($1, $2) AS n', [other.user_id, ctx.userId]);
+      return rows[0]?.n ?? 0;
     });
+    return c.json({ ...payload, confirmedBy });
+  })
+
+  /**
+   * The after-date check-in: what to ask, and the answers.
+   *
+   * GET says where this person stands -- not yet, "did you two meet" is due, the
+   * questions are ready, or done -- and, when ready, the questions themselves, built
+   * from the reveal and nothing else. POST records the answers for THIS side, once.
+   * The other person never sees them; `again` is the one bit that crosses, and only
+   * when both said yes.
+   */
+  .get('/v1/matches/:id/checkin', async (c) => {
+    const { ctx, res } = await ctxOr401(c);
+    if (!ctx) return c.json({ error: res }, 401);
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
+
+    const seat = await tenantSession(ctx, (db) => checkinSeat(db, id, ctx.userId));
+    if (!seat) return c.json({ error: 'not found' }, 404);
+    const introduced = seat.introduced_at ? new Date(seat.introduced_at).getTime() : null;
+    const due = introduced !== null && Date.now() - introduced >= MET_ASK_AFTER_MS;
+    const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';
+    const practice = seat.other_is_synthetic === true;
+
+    let questions: CheckinQuestion[] = [];
+    if (state === 'ask' && seat.met) {
+      const other = await otherOf(id, ctx.userId, practice);
+      if (other) questions = checkinQuestions(revealOf(other, practice, seat.photos > 0).shown);
+    }
+    return c.json({ state, met: seat.met, practice, questions, whyNot: WHY_NOT, again: seat.again });
+  })
+
+  .post('/v1/matches/:id/checkin', async (c) => {
+    const { ctx, res } = await ctxOr401(c);
+    if (!ctx) return c.json({ error: res }, 401);
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
+    const raw = await c.req.json().catch(() => null);
+
+    const seat = await tenantSession(ctx, (db) => checkinSeat(db, id, ctx.userId));
+    if (!seat || seat.answered) return c.json({ error: 'not found or already answered' }, 404);
+    if (seat.met === null) return c.json({ error: 'answer_met_first' }, 409);
+    const practice = seat.other_is_synthetic === true;
+
+    // What gets stored, by which question was actually asked.
+    let row: { answers: Record<string, string>; feltSafe: boolean | null; seeAgain: boolean | null };
+    if (seat.met) {
+      const body = z.object({
+        answers: z.record(z.string().max(64), z.enum(ANSWERS)),
+        feltSafe: z.boolean(),
+        seeAgain: z.boolean().nullable(),
+      }).safeParse(raw);
+      if (!body.success) return c.json({ error: 'bad request' }, 400);
+      // The questions are regenerated here, not trusted from the client: an answer to
+      // a question that was never asked is refused, and every identity question must
+      // have one -- those are the ones that count for anybody.
+      const other = await otherOf(id, ctx.userId, practice);
+      if (!other) return c.json({ error: 'not found' }, 404);
+      const questions = checkinQuestions(revealOf(other, practice, seat.photos > 0).shown);
+      const allowed = new Set(questions.map((q) => q.key));
+      for (const k of Object.keys(body.data.answers)) if (!allowed.has(k)) return c.json({ error: 'unknown_question', key: k }, 400);
+      for (const q of questions) if (q.identity && !(q.key in body.data.answers)) return c.json({ error: 'missing_answer', key: q.key }, 400);
+      row = { answers: body.data.answers, feltSafe: body.data.feltSafe, seeAgain: body.data.seeAgain };
+    } else {
+      const body = z.object({ whyNot: z.enum(WHY_NOT).optional() }).safeParse(raw ?? {});
+      if (!body.success) return c.json({ error: 'bad request' }, 400);
+      row = { answers: body.data.whyNot ? { why_not: body.data.whyNot } : {}, feltSafe: null, seeAgain: null };
+    }
+
+    const out = await tenantSession(ctx, async (db) => {
+      // The policy proves membership, introduction, the other seat and the met flag;
+      // a refusal from it and a second answer both read the same from here.
+      try {
+        await db.query(
+          `INSERT INTO date_checkins (rendezvous_id, for_user, about_user, met, answers, felt_safe, see_again)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, ctx.userId, seat.other_id, seat.met, row.answers, row.feltSafe, row.seeAgain],
+        );
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === '42501' || code === '23505') return null;
+        throw err;
+      }
+      // Points for answering: the same whether they met or not, and none for a practice pair.
+      const awarded = practice ? 0 : await award(db, ctx, 'checkin', id);
+      const { rows } = await db.query<{ again: boolean }>('SELECT checkin_mutual_again($1, $2) AS again', [id, ctx.userId]);
+      return { awarded, again: rows[0]?.again === true };
+    });
+    if (!out) return c.json({ error: 'not found or already answered' }, 404);
+    return c.json({ ok: true, ...out });
   })
 
   /**

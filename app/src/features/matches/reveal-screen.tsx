@@ -220,6 +220,12 @@ export default function RevealScreen() {
             {them.livesIn && (
               <Text style={[type.callout, { color: p.textSecondary }]}>{them.livesIn}</Text>
             )}
+            {/* Text, not a badge: people who met them said the basics were true. */}
+            {Boolean(them.confirmedBy) && (
+              <Text style={[type.callout, { color: p.success }]}>
+                {`Confirmed by ${them.confirmedBy} ${them.confirmedBy === 1 ? 'person' : 'people'} who met them`}
+              </Text>
+            )}
             {Boolean(them.tags?.length) && (
               <>
                 <Crease />

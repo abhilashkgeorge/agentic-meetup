@@ -64,6 +64,35 @@ export const adminRoutes = new Hono()
   /**
    * The queue. Open reports first, because those are the ones with somebody waiting.
    */
+  /**
+   * What the after-date check-ins say about somebody, in counts. Two independent
+   * people saying the photos or the age were wrong, or one who did not feel safe.
+   * Never a row, never who said it, and never an automatic consequence (0039).
+   */
+  .get('/v1/admin/flags', async (c) => {
+    const ctx = await reviewer(c.req.header('authorization'));
+    if (!ctx) return c.json({ error: 'not found' }, 404);
+    const rows = await matchmakerSession(async (db) => {
+      const { rows } = await db.query<{
+        about_user: string; no_photos: number; no_age: number; unsafe: number; checkins: number;
+        last_at: string; reports_against: number; photos: number;
+      }>(
+        `SELECT f.about_user, f.no_photos, f.no_age, f.unsafe, f.checkins, f.last_at,
+                (SELECT count(*)::int FROM reports x WHERE x.reported_id = f.about_user) AS reports_against,
+                (SELECT count(*)::int FROM photos p WHERE p.user_id = f.about_user AND p.hidden_at IS NULL) AS photos
+           FROM identity_flags() f
+          ORDER BY f.last_at DESC`);
+      return rows;
+    });
+    return c.json({
+      flags: rows.map((r) => ({
+        aboutId: r.about_user, noPhotos: r.no_photos, noAge: r.no_age, unsafe: r.unsafe,
+        checkins: r.checkins, lastAt: r.last_at,
+        context: { reportsAgainstThem: r.reports_against, photos: r.photos },
+      })),
+    });
+  })
+
   .get('/v1/admin/reports', async (c) => {
     const ctx = await reviewer(c.req.header('authorization'));
     if (!ctx) return c.json({ error: 'not found' }, 404);

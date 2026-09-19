@@ -65,6 +65,9 @@ const ERASER_ONLY = ['consents', 'points_ledger'] as const;
  * Hence an admin session, and an explicit list.
  */
 const SHARED_TABLES = [
+  // What they said after a date, and what was said about them. Both go: a check-in
+  // about somebody who no longer exists is not evidence of anything either.
+  { table: 'date_checkins', columns: ['for_user', 'about_user'] },
   // Before the rendezvous, because a brief written FOR them survives in a conversation
   // whose other half is somebody else's, and cascade order is not a thing to trust
   // when the row being removed is the point of the exercise.

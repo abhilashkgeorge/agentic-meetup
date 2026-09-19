@@ -627,6 +627,8 @@ export interface Reveal {
   /** An invented profile. See MatchCard.practice. */
   practice?: boolean;
   look?: Look;
+  /** How many dates said the basics were true. Zero is shown as nothing. */
+  confirmedBy?: number;
 }
 
 export const getReveal = (token: string, id: string) =>
@@ -642,7 +644,27 @@ export const matchMet = (token: string, id: string) =>
   get<{ askDue: boolean; met: boolean | null }>(`/v1/matches/${id}/met`, token);
 
 export const reportMet = (token: string, id: string, yes: boolean) =>
-  post<{ ok: boolean }>(`/v1/matches/${id}/met`, token, { yes });
+  post<{ ok: boolean; awarded?: number }>(`/v1/matches/${id}/met`, token, { yes });
+
+// ── the after-date check-in ─────────────────────────────────────────────────
+export interface CheckinQuestion { key: string; text: string; identity: boolean }
+export interface CheckinState {
+  /** not_yet: too soon. ask_met: "did you two meet" is due. ask: the questions are ready. done. */
+  state: 'not_yet' | 'ask_met' | 'ask' | 'done';
+  met: boolean | null;
+  practice: boolean;
+  questions: CheckinQuestion[];
+  whyNot: string[];
+  /** Both said they would see each other again. The one bit that crosses. */
+  again: boolean;
+}
+export const getCheckin = (token: string, id: string) => get<CheckinState>(`/v1/matches/${id}/checkin`, token);
+
+export type CheckinAnswers =
+  | { answers: Record<string, 'yes' | 'no' | 'unsure'>; feltSafe: boolean; seeAgain: boolean | null }
+  | { whyNot?: string };
+export const postCheckin = (token: string, id: string, body: CheckinAnswers) =>
+  send<{ ok: true; awarded: number; again: boolean }>('POST', `/v1/matches/${id}/checkin`, token, body);
 
 export const decideMatch = (token: string, id: string, yes: boolean) =>
   post<{ ok: boolean; introduced: boolean }>(`/v1/matches/${id}/decide`, token, { yes });
