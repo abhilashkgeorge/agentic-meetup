@@ -220,6 +220,9 @@ export default function RevealScreen() {
             {them.livesIn && (
               <Text style={[type.callout, { color: p.textSecondary }]}>{them.livesIn}</Text>
             )}
+            {them.photosChecked && (
+              <Text style={[type.callout, { color: p.success }]}>✓ Photos checked</Text>
+            )}
             {/* Text, not a badge: people who met them said the basics were true. */}
             {Boolean(them.confirmedBy) && (
               <Text style={[type.callout, { color: p.success }]}>

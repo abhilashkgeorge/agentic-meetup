@@ -121,6 +121,11 @@ function connect(): void {
         useWorld.getState().apply(ev);
         break;
 
+      case 'photos.checked':
+        // The selfie screen polls for the verdict; this is only the log line.
+        if (__DEV__) console.log(`[photos] checked: ${ev.result}`);
+        break;
+
       case 'heartbeat':
         break;
       case 'error':

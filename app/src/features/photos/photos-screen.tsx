@@ -13,7 +13,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import {
-  deletePhoto, getMyPhotos, reorderPhotos, uploadPhoto, type Photo,
+  deletePhoto, getMyPhotos, getSelfieStatus, reorderPhotos, uploadPhoto, type Photo, type SelfieStatus,
 } from '../../lib/api';
 import { Portrait } from './photo';
 import { useSession } from '../../store/session';
@@ -31,9 +31,11 @@ export default function PhotosScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(null);
+  const [selfie, setSelfie] = useState<SelfieStatus | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
+    void getSelfieStatus(token).then(setSelfie);
     const mine = await getMyPhotos(token);
     setPhotos(mine?.photos ?? []);
     setMax(mine?.max ?? 6);
@@ -129,6 +131,26 @@ export default function PhotosScreen() {
             taken is stripped off before it is stored.
           </Text>
         </Card>
+
+        {/* The photo check, offered only when the server runs one. A pass is a line on
+            the reveal ("Photos checked"), and it comes off the moment a photo is added. */}
+        {selfie && selfie.status !== 'unavailable' && photos.length > 0 && (
+          <Card label="Photos checked">
+            <Text style={[type.body, { color: selfie.covers ? p.success : p.text }]}>
+              {selfie.covers
+                ? 'Your photos are checked. People who can see them see that too.'
+                : selfie.status === 'pending' || selfie.status === 'queued' || selfie.status === 'running'
+                  ? 'Checking… this takes a few seconds.'
+                  : selfie.status === 'done' && selfie.result === 'match'
+                    ? 'You added a photo since your last check. Check again to keep the line.'
+                    : 'Two quick selfies, compared to your photos on our own server. Nothing is kept.'}
+            </Text>
+            {!selfie.covers && !(selfie.status === 'pending' || selfie.status === 'queued' || selfie.status === 'running') && (
+              <Button label={selfie.status === 'done' || selfie.status === 'failed' ? 'Check again' : 'Check your photos'}
+                      variant="secondary" onPress={() => router.push('/selfie')} />
+            )}
+          </Card>
+        )}
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
           {slots.map((photo, i) => (

@@ -60,6 +60,31 @@ export class BadImage extends Error {
 const dirFor = (userId: string) => join(env.PHOTO_DIR, userId);
 const fileFor = (userId: string, photoId: string, size: Size) =>
   join(dirFor(userId), `${photoId}.${size}.jpg`);
+/** Where a photo's bytes live, for the face check. */
+export const pathFor = fileFor;
+/** Where a selfie frame waits for the worker, for seconds. Under the person's own dir, so erasure sweeps it. */
+export const checkDir = (userId: string) => join(dirFor(userId), '_check');
+export const framePath = (userId: string, checkId: string, which: 'a' | 'b') =>
+  join(checkDir(userId), `${checkId}.${which}.jpg`);
+
+/**
+ * A selfie frame, ready for the face model: decoded, EXIF applied and dropped, a
+ * sensible size, JPEG. Never written anywhere but the check dir, never kept.
+ */
+export async function selfieFrame(input: Buffer): Promise<Buffer> {
+  if (input.byteLength > MAX_UPLOAD_BYTES) throw new BadImage('that picture is too big');
+  let meta;
+  try {
+    meta = await sharp(input, { limitInputPixels: MAX_PIXELS }).metadata();
+  } catch {
+    throw new BadImage('that file is not an image we can read');
+  }
+  if (!['jpeg', 'png', 'webp'].includes(meta.format ?? '')) throw new BadImage('use a JPEG, PNG or WebP');
+  return sharp(input, { limitInputPixels: MAX_PIXELS }).rotate()
+    .resize(720, 720, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 80, mozjpeg: true })
+    .toBuffer();
+}
 
 /**
  * Decode, strip, resize, re-encode. Returns the two files to write.

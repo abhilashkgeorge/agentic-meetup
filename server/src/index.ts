@@ -17,6 +17,9 @@ import { roundWorkerTick } from './matching/rounds.js';
 import { interviewRoutes } from './api/interview.js';
 import { messageRoutes } from './api/messages.js';
 import { photoRoutes } from './api/photos.js';
+import { verifyRoutes } from './api/verify.js';
+import { faceCheckTick, sweepOrphanFrames } from './photos/facecheck.js';
+import { faceCheckEnabled } from './photos/face.js';
 import { resolveCtx, Unauthorized } from './auth.js';
 import { close, pool } from './db/client.js';
 import { env } from './env.js';
@@ -55,6 +58,7 @@ app.route('/', lookRoutes);
 app.route('/', interviewRoutes);
 app.route('/', messageRoutes);
 app.route('/', photoRoutes);
+app.route('/', verifyRoutes);
 app.route('/', meRoutes);
 app.route('/', adminRoutes);
 app.route('/', consentRoutes);
@@ -137,6 +141,19 @@ const rounds = setInterval(() => {
   void roundWorkerTick().catch((err: unknown) => log.error({ err }, 'round worker failed'));
 }, 5_000);
 rounds.unref();
+
+// The photo check. Same shape as rounds: the app queues a row, this drains them. Off
+// by default; when off the app is told so and never offers it. Frames left behind by
+// a crash are swept at boot and every few minutes.
+if (faceCheckEnabled()) {
+  void sweepOrphanFrames().catch((err: unknown) => log.error({ err }, 'frame sweep failed'));
+  const checks = setInterval(() => {
+    void faceCheckTick().catch((err: unknown) => log.error({ err }, 'face check worker failed'));
+  }, 5_000);
+  checks.unref();
+} else {
+  log.info('FACE_CHECK=off: "Photos checked" is not offered');
+}
 
 
 if (!embeddingsAvailable()) {

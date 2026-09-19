@@ -629,6 +629,8 @@ export interface Reveal {
   look?: Look;
   /** How many dates said the basics were true. Zero is shown as nothing. */
   confirmedBy?: number;
+  /** Their selfies matched their photos, and every photo you can see was in that check. */
+  photosChecked?: boolean;
 }
 
 export const getReveal = (token: string, id: string) =>
@@ -841,3 +843,48 @@ export const buyItem = (token: string, item: string) =>
 
 export const getPoints = (token: string) =>
   get<{ balance: number; ledger: { reason: string; amount: number; at: string }[] }>('/v1/points', token);
+
+// ── the photo check ─────────────────────────────────────────────────────────
+//
+// Two frames, sent as raw bytes like uploadPhoto, because the phone cannot build
+// multipart. Neither frame is kept by the server; the app forgets the uris too.
+
+export interface SelfieStatus {
+  status: 'unavailable' | 'none' | 'pending' | 'queued' | 'running' | 'done' | 'failed';
+  result?: 'match' | 'no_match' | 'no_face' | 'not_live' | 'no_photos' | 'error' | null;
+  /** Every photo you have now was in the last pass. False the moment you add one. */
+  covers?: boolean;
+  checkedAt?: string | null;
+}
+
+export const getSelfieStatus = (token: string) => get<SelfieStatus>('/v1/photos/verify', token);
+
+async function sendFrame(path: string, token: string, uri: string): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; message: string }> {
+  try {
+    const { File } = await import('expo-file-system');
+    const bytes = await new File(uri).arrayBuffer();
+    const res = await fetch(`${getApiBase()}${path}`, {
+      method: 'POST',
+      headers: { ...BASE_HEADERS, authorization: `Bearer ${token}`, 'content-type': 'image/jpeg' },
+      body: bytes,
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!res.ok) {
+      return { ok: false, message: res.status === 409 ? 'A check is already running. Give it a minute.'
+        : res.status === 503 ? 'Photo checks are not on right now.'
+        : (typeof body.message === 'string' ? body.message : 'That did not go through. Try again.') };
+    }
+    return { ok: true, body };
+  } catch {
+    return { ok: false, message: 'Could not reach the server.' };
+  }
+}
+
+export async function startSelfieCheck(token: string, uri: string): Promise<{ ok: true; checkId: string } | { ok: false; message: string }> {
+  const r = await sendFrame('/v1/photos/verify', token, uri);
+  if (!r.ok) return r;
+  return typeof r.body.checkId === 'string' ? { ok: true, checkId: r.body.checkId } : { ok: false, message: 'That did not go through. Try again.' };
+}
+
+export const finishSelfieCheck = (token: string, checkId: string, uri: string) =>
+  sendFrame(`/v1/photos/verify/${checkId}`, token, uri);

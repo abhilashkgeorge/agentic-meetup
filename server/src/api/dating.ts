@@ -533,11 +533,12 @@ export const datingRoutes = new Hono()
 
     const { payload } = revealOf(other, seat.other_is_synthetic === true, false);
     // How many dates said the basics were true. Zero is said as nothing on the screen.
-    const confirmedBy = await tenantSession(ctx, async (db) => {
-      const { rows } = await db.query<{ n: number }>('SELECT confirmations_of($1, $2) AS n', [other.user_id, ctx.userId]);
-      return rows[0]?.n ?? 0;
+    const trust = await tenantSession(ctx, async (db) => {
+      const { rows } = await db.query<{ n: number; checked: boolean }>(
+        'SELECT confirmations_of($1, $2) AS n, photos_checked($1, $2) AS checked', [other.user_id, ctx.userId]);
+      return { confirmedBy: rows[0]?.n ?? 0, photosChecked: rows[0]?.checked === true };
     });
-    return c.json({ ...payload, confirmedBy });
+    return c.json({ ...payload, ...trust });
   })
 
   /**

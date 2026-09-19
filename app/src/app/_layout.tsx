@@ -208,6 +208,7 @@ export default function RootLayout() {
         <Stack.Screen name="preferences" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="character" options={{ headerShown: false }} />
+        <Stack.Screen name="selfie" options={{ headerShown: false }} />
         {/* Hidden: the 3D frame-rate check, reached from Settings. Draws its own header. */}
         <Stack.Screen name="dev/gl" options={{ headerShown: false }} />
       </Stack>

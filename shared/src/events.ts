@@ -146,6 +146,12 @@ export const ServerEvent = z.discriminatedUnion('type', [
   /** Both said yes. Sent to both. */
   z.object({ type: z.literal('match.introduced'), rendezvousId: z.uuid(), agent: AgentRef }),
 
+  /** The photo check finished. To the person who asked for it, only. */
+  z.object({
+    type: z.literal('photos.checked'),
+    result: z.enum(['match', 'no_match', 'no_face', 'not_live', 'no_photos', 'error']),
+  }),
+
   z.object({ type: z.literal('heartbeat') }),
   z.object({
     type: z.literal('error'),

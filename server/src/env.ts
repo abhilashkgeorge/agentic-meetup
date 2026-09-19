@@ -279,6 +279,13 @@ const Env = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   DAILY_COST_CAP_USD: z.coerce.number().default(2.0),
+  /**
+   * "Photos checked": a face model on this machine (photos/face.ts). off = not offered
+   * anywhere; tfjs-node = the native TensorFlow binary; wasm = the slower fallback.
+   */
+  FACE_CHECK: z.enum(['off', 'tfjs-node', 'wasm']).default('off'),
+  /** Similarity at or above which two faces are the same person. Set from scripts/face-spike.ts. */
+  FACE_MATCH_MIN: z.coerce.number().min(0).max(1).default(0.45),
   TRIAL_TURN_CAP_PER_DAY: z.coerce.number().default(10),
   MAX_SESSION_OUTPUT_TOKENS: z.coerce.number().default(60_000),
 });
