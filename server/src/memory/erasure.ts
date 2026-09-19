@@ -51,7 +51,7 @@ export const USER_TABLES = [
  * keeping proof that somebody agreed to be remembered, after they have asked to be
  * forgotten, is the wrong way round.
  */
-const ERASER_ONLY = ['consents'] as const;
+const ERASER_ONLY = ['consents', 'points_ledger'] as const;
 
 /**
  * The tables a conversation lives in, which the list above cannot describe.

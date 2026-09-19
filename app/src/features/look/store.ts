@@ -7,7 +7,7 @@
  */
 import { create } from 'zustand';
 import { STARTER } from '@clone/shared';
-import { getLook, putLook, type Look } from '../../lib/api';
+import { buyItem, getLook, putLook, type Look } from '../../lib/api';
 
 const NONE: ReadonlySet<string> = new Set();
 
@@ -19,7 +19,8 @@ interface LookStore {
   loaded: boolean;
   load: (token: string) => Promise<void>;
   setLook: (look: Look) => void;
-  save: (token: string) => Promise<{ ok: true; first: boolean } | { ok: false; error: string; items?: string[] }>;
+  save: (token: string) => Promise<{ ok: true; first: boolean; awarded: number } | { ok: false; error: string; items?: string[] }>;
+  buy: (token: string, item: string) => Promise<{ ok: true } | { ok: false; error: string; balance?: number }>;
 }
 
 export const useLook = create<LookStore>((set, get) => ({
@@ -38,7 +39,14 @@ export const useLook = create<LookStore>((set, get) => ({
     const r = await putLook(token, get().look);
     if (!r) return { ok: false, error: 'offline' };
     if ('error' in r) return { ok: false, error: r.error, ...(r.items ? { items: r.items } : {}) };
-    set({ look: r.look, saved: true });
-    return { ok: true, first: r.first };
+    set({ look: r.look, saved: true, balance: r.balance });
+    return { ok: true, first: r.first, awarded: r.awarded };
+  },
+  buy: async (token, item) => {
+    const r = await buyItem(token, item);
+    if (!r) return { ok: false, error: 'offline' };
+    if ('error' in r) return { ok: false, error: r.error };
+    set({ owned: new Set(r.owned), balance: r.balance });
+    return { ok: true };
   },
 }));

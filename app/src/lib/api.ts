@@ -811,4 +811,11 @@ export const getLook = (token: string) => get<LookState>('/v1/look', token);
 
 /** 402 `locked` carries the items that would have to be bought first. */
 export const putLook = (token: string, look: Look) =>
-  send<{ look: Look; first: boolean; awarded: number }>('PUT', '/v1/look', token, { look });
+  send<{ look: Look; first: boolean; awarded: number; balance: number }>('PUT', '/v1/look', token, { look });
+
+/** 409 `not_enough` carries the balance; 404 for a starter or unknown item. */
+export const buyItem = (token: string, item: string) =>
+  send<{ ok: true; balance: number; owned: string[] }>('POST', '/v1/look/buy', token, { item });
+
+export const getPoints = (token: string) =>
+  get<{ balance: number; ledger: { reason: string; amount: number; at: string }[] }>('/v1/points', token);

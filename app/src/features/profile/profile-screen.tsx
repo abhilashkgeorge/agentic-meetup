@@ -88,6 +88,7 @@ export default function ProfileScreen() {
 
   const look = useLook((s) => s.look);
   const lookSaved = useLook((s) => s.saved);
+  const points = useLook((s) => s.balance);
   const name = valueOf(k, 'preferred_name') ?? valueOf(k, 'full_name');
   const city = valueOf(k, 'lives_in');
   const work = valueOf(k, 'works_in') ?? valueOf(k, 'industry');
@@ -148,6 +149,8 @@ export default function ProfileScreen() {
           </Pressable>
           <Button label={lookSaved ? 'Edit' : 'Build your character'} variant="secondary"
                   onPress={() => router.push('/character')} />
+          {/* Owner-only, by the ledger's policy. Never on anybody else's screen. */}
+          <Row title="Points" value={String(points)} subtitle="Only you see this. Earned by answering after your dates." last />
         </Card>
 
         {/* Three sentence-stems in the person's own words. The only free text another

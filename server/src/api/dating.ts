@@ -17,6 +17,7 @@ import { decide, runRound } from '../matching/orchestrator.js';
 import { DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
 import { resolveAgentRef } from '../matching/world.js';
 import { lookOf, looksFor } from '../looks/store.js';
+import { award } from '../points/ledger.js';
 import { BudgetExceeded, checkBudget } from '../metering.js';
 import { log } from '../log.js';
 
@@ -556,14 +557,22 @@ export const datingRoutes = new Hono()
     if (!body.success) return c.json({ error: 'bad request' }, 400);
 
     // Own brief only, under RLS. An answer is final: the first one stands.
-    const { rowCount } = await tenantSession(ctx, (db) =>
-      db.query(
+    const out = await tenantSession(ctx, async (db) => {
+      const { rowCount } = await db.query(
         `UPDATE rendezvous_briefs SET met = $3, met_answered_at = now()
           WHERE rendezvous_id = $1 AND for_user = $2 AND met IS NULL`,
         [id, ctx.userId, body.data.yes],
-      ));
-    if (!rowCount) return c.json({ error: 'not found or already answered' }, 404);
-    return c.json({ ok: true });
+      );
+      if (!rowCount) return null;
+      // Points for answering -- yes or no alike, so nobody is paid to say yes to the
+      // one label the scorers are judged against -- and none for a practice pair.
+      const { rows } = await db.query<{ s: boolean | null }>(
+        'SELECT rendezvous_other_is_synthetic($1, $2) AS s', [id, ctx.userId]);
+      const awarded = rows[0]?.s ? 0 : await award(db, ctx, 'met', id);
+      return { awarded };
+    });
+    if (!out) return c.json({ error: 'not found or already answered' }, 404);
+    return c.json({ ok: true, awarded: out.awarded });
   })
 
   /**

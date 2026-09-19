@@ -42,6 +42,7 @@ export function CharacterBuilder({
   const balance = useLook((s) => s.balance);
   const setLook = useLook((s) => s.setLook);
   const save = useLook((s) => s.save);
+  const buy = useLook((s) => s.buy);
   const [part, setPart] = useState<LookPart>('skin');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -61,6 +62,17 @@ export function CharacterBuilder({
       return;
     }
     onSaved(r.first);
+  };
+
+  const onUnlock = async (id: string) => {
+    if (!token || busy) return;
+    setBusy(true); setNote(null);
+    const r = await buy(token, id);
+    setBusy(false);
+    if (!r.ok) {
+      setNote(r.error === 'not_enough' ? 'Not enough points yet. They come from answering after your dates.'
+        : r.error === 'offline' ? 'Cannot reach the server.' : 'That did not go through. Try again.');
+    }
   };
 
   const swatches = SWATCHES[part];
@@ -117,9 +129,14 @@ export function CharacterBuilder({
       )}
 
       {wornLocked && (
-        <Text style={[type.callout, { color: p.textSecondary }]}>
-          {`${wornLocked.label} costs ${wornLocked.cost} points. You have ${balance}. Points come from answering after your dates.`}
-        </Text>
+        <View style={{ gap: space.sm }}>
+          <Text style={[type.callout, { color: p.textSecondary }]}>
+            {`${wornLocked.label} costs ${wornLocked.cost} points. You have ${balance}.`}
+          </Text>
+          <Button label={balance >= wornLocked.cost ? `Unlock for ${wornLocked.cost}` : `Unlock for ${wornLocked.cost} · not yet`}
+                  variant="secondary" disabled={balance < wornLocked.cost || busy}
+                  onPress={() => void onUnlock(wornLocked.id)} />
+        </View>
       )}
       {note && <Text style={[type.callout, { color: p.danger }]}>{note}</Text>}
 
