@@ -70,7 +70,7 @@ export default function SelfTestScreen() {
   const finish = useCallback(async () => {
     // Photos last, for everybody. A person who finishes setup with none has an agent
     // that can go out and a profile nobody can say yes to.
-    router.replace('/onboarding/photos');
+    router.replace('/onboarding/character');
   }, []);
 
   const passed = ready?.passed ?? 0;

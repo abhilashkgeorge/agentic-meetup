@@ -17,6 +17,8 @@ import {
   type Knowledge, type Photo, type Profile,
 } from '../../lib/api';
 import { usePhoto } from '../photos/photo';
+import { CharacterAvatar } from '../look/character-avatar';
+import { useLook } from '../look/store';
 import { useSession } from '../../store/session';
 import { label, setupRoute } from './fields';
 import {
@@ -71,6 +73,7 @@ export default function ProfileScreen() {
     if (!token) return;
     const [kk, pr, po, ph] = await Promise.all([
       getKnowledge(token), getProfile(token), getPool(token), getMyPhotos(token),
+      useLook.getState().load(token),
     ]);
     setPics({ me: ph?.me ?? null, photos: ph?.photos ?? [] });
     setK(kk);
@@ -83,6 +86,8 @@ export default function ProfileScreen() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const look = useLook((s) => s.look);
+  const lookSaved = useLook((s) => s.saved);
   const name = valueOf(k, 'preferred_name') ?? valueOf(k, 'full_name');
   const city = valueOf(k, 'lives_in');
   const work = valueOf(k, 'works_in') ?? valueOf(k, 'industry');
@@ -126,6 +131,23 @@ export default function ProfileScreen() {
               ? 'Shown only after you have both said yes. Never used to match you.'
               : 'Add one — it is what somebody sees when they decide whether to meet you.'}
           </Text>
+        </Card>
+
+        {/* The character: you in the square, and what people see of you on a card
+            until you have both said yes. Photos are what they see after. */}
+        <Card label="Your character">
+          <Pressable onPress={() => router.push('/character')} accessibilityRole="button"
+                     accessibilityLabel="Your character"
+                     style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <CharacterAvatar look={look} size={72} />
+            <Text style={[type.body, { color: p.textSecondary, flex: 1 }]}>
+              {lookSaved
+                ? 'How you show up in the square, and on your card before your photos.'
+                : 'Build the one people see before your photos. Skipping leaves you a plain one.'}
+            </Text>
+          </Pressable>
+          <Button label={lookSaved ? 'Edit' : 'Build your character'} variant="secondary"
+                  onPress={() => router.push('/character')} />
         </Card>
 
         {/* Three sentence-stems in the person's own words. The only free text another

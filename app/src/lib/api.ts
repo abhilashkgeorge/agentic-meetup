@@ -1,4 +1,4 @@
-import type { ImportPromptsResponse } from '@clone/shared';
+import type { ImportPromptsResponse, Look } from '@clone/shared';
 import { getApiBase } from './env';
 
 export type ChatGuide = ImportPromptsResponse['chatGuide'];
@@ -290,6 +290,31 @@ export type ImportPrompts = ImportPromptsResponse;
 /** Served, not compiled in, so the wording can change without a store release. */
 export const getImportPrompts = () => get<ImportPrompts>('/v1/import/prompt');
 
+
+/**
+ * Like `post`, but a refusal keeps its reason. Most calls fold every non-2xx into
+ * null because "offline" is the only thing the screen can do anything about; a few
+ * -- saving a character that wears something unpaid, sending the agent to somebody
+ * -- refuse for reasons the person needs to read.
+ */
+async function send<T>(method: 'POST' | 'PUT', path: string, token: string, body: unknown):
+  Promise<T | { error: string; items?: string[] } | null> {
+  try {
+    const res = await fetch(`${getApiBase()}${path}`, {
+      method,
+      headers: { ...BASE_HEADERS, 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!res.ok) {
+      return { error: typeof parsed.error === 'string' ? parsed.error : `http_${res.status}`,
+               ...(Array.isArray(parsed.items) ? { items: parsed.items as string[] } : {}) };
+    }
+    return parsed as T;
+  } catch {
+    return null;
+  }
+}
 
 async function post<T>(path: string, token: string, body: unknown): Promise<T | null> {
   try {
@@ -763,3 +788,21 @@ export const acceptConsent = (token: string, docs: ConsentDoc[]) =>
   post<{ ok: boolean; settled: boolean }>('/v1/consent', token, {
     accept: docs.map((d) => ({ document: d.document, version: d.version })),
   });
+
+// ── your character ──────────────────────────────────────────────────────────
+export type { Look } from '@clone/shared';
+
+export interface LookState {
+  look: Look;
+  /** False until the person has saved one; the look is then the seeded free one. */
+  saved: boolean;
+  /** Catalog ids bought so far. */
+  owned: string[];
+  balance: number;
+}
+
+export const getLook = (token: string) => get<LookState>('/v1/look', token);
+
+/** 402 `locked` carries the items that would have to be bought first. */
+export const putLook = (token: string, look: Look) =>
+  send<{ look: Look; first: boolean; awarded: number }>('PUT', '/v1/look', token, { look });

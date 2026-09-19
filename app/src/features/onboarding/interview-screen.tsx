@@ -69,7 +69,7 @@ export default function InterviewScreen() {
    * first screen of onboarding, for ever, with no way in.
    */
   const done = (): void => {
-    router.replace(state.ready ? '/onboarding/photos' : '/onboarding/essentials');
+    router.replace(state.ready ? '/onboarding/character' : '/onboarding/essentials');
   };
 
   if (!state.question) {

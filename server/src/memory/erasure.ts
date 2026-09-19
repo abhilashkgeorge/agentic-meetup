@@ -32,6 +32,7 @@ import { log } from '../log.js';
  * Order matters where foreign keys do: children before parents.
  */
 export const USER_TABLES = [
+  'look_items', 'looks',
   'photos', 'question_answers', 'match_profile', 'preferences', 'predicate_status',
   'self_tests', 'device_sessions', 'rounds',
   'facts', 'episodes', 'memory_audit', 'fact_conflicts', 'session_extractions',
