@@ -110,6 +110,10 @@ export const CORE_PREDICATES: readonly PredicateDef[] = [
   { name: 'birth_date',           cardinality: 'single', durability: 'hard', matchable: true },
   { name: 'pronouns',             cardinality: 'single', durability: 'hard', matchable: false },
   { name: 'lives_in',             cardinality: 'single', durability: 'hard', matchable: true },
+  // Which part of town, from the thirty in areas.ts. Soft: people move across a city,
+  // and the pool never insists on it -- it places the agent on the map and sharpens
+  // distance matching from the city centre to a neighbourhood centre.
+  { name: 'area',                 cardinality: 'single', durability: 'soft', matchable: true },
   { name: 'grew_up_in',           cardinality: 'single', durability: 'hard', matchable: false },
   { name: 'nationality',          cardinality: 'multi',  durability: 'hard', matchable: false },
   { name: 'languages',            cardinality: 'multi',  durability: 'hard', matchable: true },

@@ -22,14 +22,22 @@
  * eight small integers from a public catalog (shared/look.ts), plus the practice bit.
  * Refs stay per-viewer; a look cannot be joined to a person by anybody who does not
  * already know them.
+ *
+ * Since the map, one more deliberate constant: `area`, the neighbourhood tile each
+ * agent stands in -- an id from the public list of thirty in shared/areas.ts, worked
+ * out on the server from the person's point (nearestArea) and never the point
+ * itself. A neighbourhood is hundreds of thousands of people and is what people put
+ * in a bio; somebody the map does not cover, or who never said, stands in the
+ * central tile. The sample of strangers is the forty nearest plus the twenty-four
+ * most recent, so a tile has its neighbours in it.
  */
 import { Hono } from 'hono';
-import { agreementWords, type AgreementWords } from '@clone/shared';
+import { CENTRAL_AREA, agreementWords, nearestArea, type AgreementWords } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { currentState } from '../memory/facts.js';
-import { candidateCount, candidateIds } from '../matching/candidates.js';
-import { rebuildMatchProfile, touchActive } from '../matching/profile.js';
+import { candidateCount, candidateIds, candidateIdsNear } from '../matching/candidates.js';
+import { rebuildMatchProfile, shouldAskArea, touchActive } from '../matching/profile.js';
 import { rank } from '../matching/score.js';
 import { latestRound } from '../matching/rounds.js';
 import { looksFor } from '../looks/store.js';
@@ -56,6 +64,8 @@ export interface WorldAgent {
   /** For the renderer: gait and bob phase. Derived from the ref, never from the person. */
   seed: number;
   state: 'idle' | SeatState;
+  /** The neighbourhood tile they stand in. Always present; the central tile when nobody knows. */
+  area: string;
   rendezvousId?: string;
   name?: string;
   agreement?: AgreementWords;
@@ -63,6 +73,9 @@ export interface WorldAgent {
 }
 
 const seedOf = (ref: string): number => parseInt(ref.slice(0, 8), 16);
+/** The tile a point stands in: the nearest of the thirty, or the central one. */
+const areaOf = (lat: number | null, lon: number | null): string =>
+  (lat !== null && lon !== null ? nearestArea(lat, lon)?.id : undefined) ?? CENTRAL_AREA;
 
 /**
  * The stranger sample, cached briefly per person.
@@ -89,11 +102,13 @@ export const worldRoutes = new Hono()
       // (essentials, tell, import) and so does /v1/pool, so the flag is current; the
       // rebuild is kept for the out-of-pool case, which is the only time `missing`
       // has anything in it.
-      const { rows: prof } = await db.query<{ in_pool: boolean }>(
-        'SELECT in_pool FROM match_profile WHERE user_id = $1', [me]);
+      const { rows: prof } = await db.query<{ in_pool: boolean; traits: Record<string, unknown> | null }>(
+        'SELECT in_pool, traits FROM match_profile WHERE user_id = $1', [me]);
       const state: { inPool: boolean; missing: string[] } = prof[0]?.in_pool
         ? { inPool: true, missing: [] }
         : await rebuildMatchProfile(db, ctx);
+      const myArea = typeof prof[0]?.traits?.area === 'string' ? (prof[0].traits.area as string) : null;
+      const askArea = await shouldAskArea(db, me);
       const round = await latestRound(db, me);
       const knows = (await currentState(db, me)).length;
       const { rows: city } = await db.query<{ object_text: string }>(
@@ -132,7 +147,7 @@ export const worldRoutes = new Hono()
             AND (r.status <> 'lapsed' OR b.decided_at > now() - interval '1 day')
             AND (r.status <> 'running' OR r.created_at > now() - interval '30 minutes')
           ORDER BY r.created_at DESC`, [me]);
-      return { state, round, knows, city: city[0]?.object_text ?? null,
+      return { state, round, knows, city: city[0]?.object_text ?? null, myArea, askArea,
                targetedToday: Number(targeted[0]?.n ?? 0), seats };
     });
 
@@ -147,20 +162,28 @@ export const worldRoutes = new Hono()
           const hit = sample.get(me);
           let ids = hit && Date.now() - hit.at < SAMPLE_TTL_MS ? hit.ids : null;
           if (!ids) {
-            const fresh = (await candidateIds(db, me, 64)).filter((id) => !metIds.has(id));
+            // The neighbours first, then the recently active, once each: sixty-four
+            // at most, the same count the ranker was sized for.
+            const near = await candidateIdsNear(db, me, 40);
+            const recent = await candidateIds(db, me, 24);
+            const fresh = [...new Set([...near, ...recent])].filter((id) => !metIds.has(id));
             ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);
             sample.set(me, { at: Date.now(), ids });
           }
           const synthetic = new Set<string>();
+          const areas = new Map<string, string>();
           if (ids.length) {
-            const { rows } = await db.query<{ user_id: string; is_synthetic: boolean }>(
-              'SELECT user_id, is_synthetic FROM match_profile WHERE user_id = ANY($1::uuid[])', [ids]);
-            for (const r of rows) if (r.is_synthetic) synthetic.add(r.user_id);
+            const { rows } = await db.query<{ user_id: string; is_synthetic: boolean; lat: number | null; lon: number | null }>(
+              'SELECT user_id, is_synthetic, lat, lon FROM match_profile WHERE user_id = ANY($1::uuid[])', [ids]);
+            for (const r of rows) {
+              if (r.is_synthetic) synthetic.add(r.user_id);
+              areas.set(r.user_id, areaOf(r.lat, r.lon));
+            }
           }
           const shown = ids.filter((id) => !metIds.has(id));
-          return { total, ids: shown, synthetic, looks: await looksFor(db, shown, synthetic) };
+          return { total, ids: shown, synthetic, areas, looks: await looksFor(db, shown, synthetic) };
         })
-      : { total: 0, ids: [] as string[], synthetic: new Set<string>(), looks: new Map<string, Look>() };
+      : { total: 0, ids: [] as string[], synthetic: new Set<string>(), areas: new Map<string, string>(), looks: new Map<string, Look>() };
 
     // Names: only for seats the reveal rule already opens. Same test as
     // GET /v1/matches/:id -- first mover, or the other side has said yes. Never while
@@ -168,13 +191,20 @@ export const worldRoutes = new Hono()
     const entitled = own.seats.filter((s) =>
       s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true));
     const names = new Map<string, string>();
-    // Characters for the people met and for me, in the same read as the names.
+    const seatAreas = new Map<string, string>();
+    // Characters and neighbourhoods for the people met and for me, in the same read
+    // as the names. The name is taken only for an entitled seat; the neighbourhood
+    // for every seat, as for any stranger.
     const seatLooks = await matchmakerSession(async (db) => {
-      if (entitled.length) {
-        const { rows } = await db.query<{ user_id: string; display_name: string | null }>(
-          'SELECT user_id, display_name FROM match_profile WHERE user_id = ANY($1::uuid[])',
-          [entitled.map((s) => s.other_id)]);
-        for (const r of rows) if (r.display_name) names.set(r.user_id, r.display_name);
+      if (own.seats.length) {
+        const entitledIds = new Set(entitled.map((s) => s.other_id));
+        const { rows } = await db.query<{ user_id: string; display_name: string | null; lat: number | null; lon: number | null }>(
+          'SELECT user_id, display_name, lat, lon FROM match_profile WHERE user_id = ANY($1::uuid[])',
+          [own.seats.map((s) => s.other_id)]);
+        for (const r of rows) {
+          if (r.display_name && entitledIds.has(r.user_id)) names.set(r.user_id, r.display_name);
+          seatAreas.set(r.user_id, areaOf(r.lat, r.lon));
+        }
       }
       return looksFor(db, [me, ...own.seats.map((s) => s.other_id)],
         new Set(own.seats.filter((s) => s.other_is_synthetic === true).map((s) => s.other_id)));
@@ -192,6 +222,7 @@ export const worldRoutes = new Hono()
       agents.push({
         ref, kind: 'met', practice: s.other_is_synthetic === true, seed: seedOf(ref), state,
         look: seatLooks.get(s.other_id)!,
+        area: seatAreas.get(s.other_id) ?? CENTRAL_AREA,
         rendezvousId: s.id,
         ...(name ? { name } : {}),
         agreement: agreementWords(s.agreement),
@@ -202,15 +233,16 @@ export const worldRoutes = new Hono()
       const ref = agentRef(me, id);
       const practice = strangers.synthetic.has(id);
       agents.push({ ref, kind: practice ? 'practice' : 'stranger', practice, seed: seedOf(ref), state: 'idle',
-                    look: strangers.looks.get(id)! });
+                    look: strangers.looks.get(id)!, area: strangers.areas.get(id) ?? CENTRAL_AREA });
     }
 
     return c.json({
-      square: { city: own.city },
+      square: { city: own.city, area: own.myArea ?? CENTRAL_AREA },
       me: {
         inPool: own.state.inPool, knows: own.knows,
-        missing: own.state.missing, need: own.state.missing,
+        missing: own.state.missing, need: [...own.state.missing, ...(own.askArea ? ['area'] : [])],
         look: seatLooks.get(me)!,
+        area: own.myArea,
       },
       pool: { total: strangers.total },
       round: own.round ? {

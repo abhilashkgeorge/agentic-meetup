@@ -86,4 +86,38 @@ describe('/v1/pool need', () => {
     expect(body.need).not.toContain('max_distance_km');
     expect(body.need).toEqual(expect.arrayContaining(['gender', 'birth_date', 'lives_in']));
   });
+
+  it('offers the neighbourhood to a Bangalore person, until answered or declined, and never to Mumbai', async () => {
+    const post = (token: string, predicate: string, value: unknown) =>
+      datingRoutes.request('/v1/essentials', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.9' },
+        body: JSON.stringify({ predicate, value }),
+      });
+    const need = async (token: string) => ((await (await getPool(token)).json()) as { need: string[] }).need;
+
+    // Nobody knows where they are yet: no neighbourhood question.
+    const b = await bareUser();
+    expect(await need(b.token)).not.toContain('area');
+    // Bangalore: asked, right after the city and before distance.
+    expect((await post(b.token, 'lives_in', 'Bangalore')).status).toBe(200);
+    const n = await need(b.token);
+    expect(n).toContain('area');
+    expect(n.indexOf('area')).toBeLessThan(n.indexOf('max_distance_km'));
+    // Answered: gone.
+    expect((await post(b.token, 'area', 'HSR Layout')).status).toBe(200);
+    expect(await need(b.token)).not.toContain('area');
+
+    // Declined: gone too, and it stays gone.
+    const d = await bareUser();
+    expect((await post(d.token, 'lives_in', 'Bengaluru')).status).toBe(200);
+    expect(await need(d.token)).toContain('area');
+    expect((await post(d.token, 'area', null)).status).toBe(200);
+    expect(await need(d.token)).not.toContain('area');
+
+    // Mumbai: the map does not cover it, so the question is never offered.
+    const m = await bareUser();
+    expect((await post(m.token, 'lives_in', 'Mumbai')).status).toBe(200);
+    expect(await need(m.token)).not.toContain('area');
+  });
 });

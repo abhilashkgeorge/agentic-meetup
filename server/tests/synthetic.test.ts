@@ -6,6 +6,7 @@
  * are numbers rather than eyeballing.
  */
 import { describe, expect, it } from 'vitest';
+import { AREAS } from '@clone/shared';
 import { assess, makeProfile, rng } from '../src/matching/synthetic.js';
 
 const build = (n: number, seed = 1) => {
@@ -61,8 +62,31 @@ describe('the sampler produces a population, not one person repeated', () => {
   it('puts most of them where the first real user is', () => {
     // A pool spread evenly over the planet tests the distance filter and nothing
     // else, because almost no pair survives it.
-    const bangalore = profiles.filter((p) => p.lat !== null && Math.abs(p.lat - 12.9716) < 0.1);
+    // By the city they say they live in, not by a band of latitude: since the map,
+    // a Bangalore person's point is their neighbourhood's centre, and Yelahanka and
+    // Electronic City are outside the old 0.1° band.
+    const bangalore = profiles.filter((p) => /bangalore|bengaluru/i.test(String(p.traits.lives_in)));
     expect(bangalore.length / profiles.length).toBeGreaterThan(0.3);
+  });
+
+  it('spreads the Bangalore ones over the neighbourhoods, a few of them nowhere in particular', () => {
+    const bangalore = profiles.filter((p) => /bangalore|bengaluru/i.test(String(p.traits.lives_in)));
+    const counts = new Map<string, number>();
+    let none = 0;
+    for (const p of bangalore) {
+      const a = p.traits.area;
+      if (typeof a !== 'string') { none++; continue; }
+      counts.set(a, (counts.get(a) ?? 0) + 1);
+      // Their point is that neighbourhood's centre, exactly as for a real person.
+      const area = AREAS.find((x) => x.id === a)!;
+      expect([p.lat, p.lon]).toEqual([area.lat, area.lon]);
+    }
+    expect(counts.size).toBeGreaterThanOrEqual(25);
+    for (const [id, n] of counts) expect(n / bangalore.length, id).toBeLessThan(0.15);
+    expect(none / bangalore.length).toBeGreaterThan(0.04);
+    expect(none / bangalore.length).toBeLessThan(0.13);
+    // Nobody outside Bangalore has one.
+    for (const p of profiles) if (!bangalore.includes(p)) expect(p.traits.area).toBeUndefined();
   });
 });
 

@@ -109,6 +109,27 @@ export async function candidateIds(
 }
 
 /**
+ * The same pool, nearest first: the square's sample of strangers is the people
+ * around this person, so a neighbourhood on the map has neighbours in it. Real
+ * before invented still; distance before recency. A person with no point (or a
+ * pool with none) falls back to recency, NULLS LAST.
+ */
+export async function candidateIdsNear(
+  c: PoolClient,
+  userId: string,
+  limit = 40,
+): Promise<string[]> {
+  const { rows } = await c.query<{ user_id: string }>(
+    `${build(ALL_CLAUSES)}
+     ORDER BY b.is_synthetic ASC,
+              earth_distance(ll_to_earth(a.lat, a.lon), ll_to_earth(b.lat, b.lon)) ASC NULLS LAST,
+              b.last_active_at DESC
+     LIMIT $2`, [userId, limit],
+  );
+  return rows.map((r) => r.user_id);
+}
+
+/**
  * Could this person's agent meet that one? The whole clause set, exactly -- not "is
  * that id within the first 500 of the ordered list", which would refuse a valid
  * target on a big pool. Blocks are in BASE, so a blocked pair is refused here,

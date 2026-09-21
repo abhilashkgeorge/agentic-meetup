@@ -12,7 +12,7 @@
  * coordinates rounded to the precision the person actually gave.
  */
 import type { PoolClient } from 'pg';
-import { MIN_AGE, POOL_REQUIRED, canFilterOn } from '@clone/shared';
+import { MIN_AGE, POOL_REQUIRED, canFilterOn, findArea, haversineKm, nearestArea } from '@clone/shared';
 // Aliased: this file already has its own REQUIRED -- the five structural answers --
 // and importing a second one under the same name silently shadowed it, emptying
 // `missing` for every profile. tsc accepted it; a test caught it.
@@ -101,6 +101,12 @@ export async function rebuildMatchProfile(
         if (b.year) age = new Date().getUTCFullYear() - b.year;
         break;
       }
+      case 'area':
+        // A neighbourhood: a trait the reveal may print and the map places, never a
+        // tag two people are compared on and never something a preference tests
+        // (canFilterOn refuses it). The point it stands for is applied after the loop.
+        traits.area = String(v);
+        continue;
       case 'lives_in': {
         const l = v as { city?: string; lat?: number; lon?: number };
         lat = l.lat ?? null;
@@ -121,6 +127,17 @@ export async function rebuildMatchProfile(
         traits[f.predicate] = v;
     }
     if (typeof v === 'string' && !(f.predicate in traits)) traits[f.predicate] = v;
+  }
+
+  // THE NEIGHBOURHOOD SHARPENS THE POINT. lives_in puts everybody in a city on one
+  // point -- the city centre -- so two people in Bangalore were always 0 km apart and
+  // the 10 km setting meant nothing. A named neighbourhood moves the point to that
+  // neighbourhood's centre (about two kilometres of vagueness, where the centre was
+  // twenty), but only while the city still agrees: an area kept from a previous
+  // city (they moved) must not drag them back.
+  if (typeof traits.area === 'string' && lat !== null && lon !== null) {
+    const a = findArea(traits.area);
+    if (a && haversineKm(lat, lon, a.lat, a.lon) <= 30) { lat = a.lat; lon = a.lon; }
   }
 
   // `string[]`, not the REQUIRED tuple's own element type: 'consent' goes on this
@@ -217,6 +234,25 @@ export async function touchActive(c: PoolClient, userId: string): Promise<void> 
  * strength that a fact has no use for. Collapsing them means every matching query has
  * to guess which rows describe the user and which describe an imagined partner.
  */
+/**
+ * Is "which part of town?" still worth asking? Only a person the map covers (their
+ * point is within reach of one of the thirty centres), and only until they have
+ * answered or declined -- a "prefer not to say" leaves no fact, so predicate_status
+ * is what says so, exactly as for max_distance_km.
+ */
+export async function shouldAskArea(c: PoolClient, userId: string): Promise<boolean> {
+  const { rows } = await c.query<{ lat: number | null; lon: number | null; traits: Record<string, unknown> | null }>(
+    'SELECT lat, lon, traits FROM match_profile WHERE user_id = $1', [userId]);
+  const p = rows[0];
+  if (!p || p.lat === null || p.lon === null) return false;
+  if (typeof p.traits?.area === 'string') return false;
+  if (nearestArea(p.lat, p.lon) === null) return false;
+  const { rows: st } = await c.query(
+    `SELECT 1 FROM predicate_status
+      WHERE user_id = $1 AND predicate = 'area' AND state IN ('known', 'declined')`, [userId]);
+  return st.length === 0;
+}
+
 /** Thrown for a dealbreaker on a predicate the candidate query cannot test. */
 export class PreferenceCannotFilter extends Error {
   constructor(public readonly predicate: string) {

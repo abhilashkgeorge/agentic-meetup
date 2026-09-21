@@ -7,11 +7,11 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { MIN_AGE, deriveValue, findPlace, isAdult, canFilterOn, type Look } from '@clone/shared';
+import { MIN_AGE, deriveValue, findArea, findPlace, isAdult, canFilterOn, type Look } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { commit } from '../memory/facts.js';
-import { rebuildMatchProfile, touchActive } from '../matching/profile.js';
+import { rebuildMatchProfile, shouldAskArea, touchActive } from '../matching/profile.js';
 import { candidateCount, poolBreakdown } from '../matching/candidates.js';
 import { decide, runRound } from '../matching/orchestrator.js';
 import { DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
@@ -216,6 +216,16 @@ export const datingRoutes = new Hono()
       }
     }
 
+    // A neighbourhood is typed or picked by name; what is stored is the id from the
+    // public list of thirty. A name the list does not know is a 400 with a sentence,
+    // not a silently dropped fact.
+    if (predicate === 'area' && value !== null && value !== '') {
+      const text = String(Array.isArray(value) ? value[0] : value);
+      if (!findArea(text)) {
+        return c.json({ error: 'unknown_area', message: 'That part of town is not on the map yet. Pick the nearest one.' }, 400);
+      }
+    }
+
     const out = await tenantSession(ctx, async (db) => {
       if (value === null || value === '') {
         await db.query(
@@ -241,7 +251,9 @@ export const datingRoutes = new Hono()
               ? resolveLivesIn(text, body.data.place)
               : predicate === 'max_distance_km'
                 ? Number(text)
-                : (deriveValue(predicate, text) ?? undefined);
+                : predicate === 'area'
+                  ? findArea(text)!.id
+                  : (deriveValue(predicate, text) ?? undefined);
 
         await commit(db, ctx, {
           predicate,
@@ -284,7 +296,7 @@ export const datingRoutes = new Hono()
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
 
-    const { state, askDistance } = await tenantSession(ctx, async (db) => {
+    const { state, askDistance, askArea } = await tenantSession(ctx, async (db) => {
       const s = await rebuildMatchProfile(db, ctx);
       // Distance is the one optional essential and is settable only in the setup
       // wizard, so the server -- not a client heuristic -- decides whether it is still
@@ -297,14 +309,17 @@ export const datingRoutes = new Hono()
           WHERE user_id = $1 AND predicate = 'max_distance_km' AND state IN ('known', 'declined')`,
         [ctx.userId],
       );
-      return { state: s, askDistance: rows.length === 0 };
+      // The neighbourhood is the other optional one, and only for a person the map
+      // covers. It is asked right after the city, so the wizard's list keeps that order.
+      return { state: s, askDistance: rows.length === 0, askArea: await shouldAskArea(db, ctx.userId) };
     });
     if (!state.inPool) {
       // `missing` is the friendly sentences the cards print, and stays REQUIRED-only so
       // an optional field never shows up as "still needs". `need` is the raw predicate
-      // keys the setup wizard asks -- the required ones, plus distance while it is still
-      // worth offering -- so the wizard asks ONLY what is left instead of all six.
-      const need = askDistance ? [...state.missing, 'max_distance_km'] : state.missing;
+      // keys the setup wizard asks -- the required ones, plus the neighbourhood and
+      // distance while they are still worth offering -- so the wizard asks ONLY what
+      // is left instead of all six.
+      const need = [...state.missing, ...(askArea ? ['area'] : []), ...(askDistance ? ['max_distance_km'] : [])];
       return c.json({
         total: 0, steps: [], inPool: false,
         missing: friendly(state.missing), need,
@@ -317,7 +332,8 @@ export const datingRoutes = new Hono()
       await poolBreakdown(db, ctx.userId),
     ]);
 
-    return c.json({ total, steps, inPool: true, missing: [], need: [] });
+    // In the pool, the only open question is the neighbourhood: the Home's chip asks it.
+    return c.json({ total, steps, inPool: true, missing: [], need: askArea ? ['area'] : [] });
   })
 
   /**

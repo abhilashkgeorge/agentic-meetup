@@ -9,7 +9,7 @@
  *
  * Adding a field here gives it both a step in setup and an editor on the profile.
  */
-import { DIETS, GENDERS, RELATIONSHIP_INTENTS } from '@clone/shared';
+import { AREAS, DIETS, GENDERS, RELATIONSHIP_INTENTS } from '@clone/shared';
 
 export type FieldKind = 'one' | 'many' | 'number' | 'text';
 
@@ -49,6 +49,13 @@ export const FIELDS: Field[] = [
   { key: 'lives_in', title: 'Where are you now?', kind: 'text', essential: true,
     rowLabel: 'Lives in',
     hint: 'Your city is enough. Nobody sees your exact location.' },
+  // Asked only of a person the map covers (the pool says so in `need`), and skipped at
+  // run time when the city typed a moment ago is not Bangalore. Optional: the pool never
+  // waits on it. What it does is put the agent in that neighbourhood on the Home map and
+  // sharpen distance matching from the city centre to the neighbourhood centre.
+  { key: 'area', title: 'Which part of town?', kind: 'one', essential: true, rowLabel: 'Part of town',
+    hint: 'Roughly. It puts your agent in that neighbourhood on the map.',
+    options: AREAS.map((a) => ({ value: a.id, label: a.name })) },
   { key: 'max_distance_km', title: 'How far would you travel?', kind: 'one', essential: true,
     options: [
       { value: '10', label: '10 km' }, { value: '25', label: '25 km' },
@@ -82,6 +89,7 @@ const MISSING_NOUN: Record<string, string> = {
   seeking_gender: 'Who you want to meet',
   relationship_intent: "What you're after",
   lives_in: 'Where you live',
+  area: 'Which part of town',
   max_distance_km: 'How far you would travel',
 };
 

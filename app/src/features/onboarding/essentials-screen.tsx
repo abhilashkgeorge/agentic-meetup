@@ -159,9 +159,17 @@ export default function EssentialsScreen() {
     );
     setBusy(false);
     if (!ok) { setNote({ text: 'That did not save. Check your connection and try again.', bad: true }); return; }
-    if (at + 1 < list.length) setAt(at + 1);
+    // The neighbourhood question is for Bangalore. The pool decided to offer it before
+    // the city was typed; if the city just typed is somewhere else, drop it from this
+    // run rather than ask a person in Mysore which part of Bangalore they live in.
+    let next = list;
+    if (q.key === 'lives_in' && !/bangalore|bengaluru/i.test(typed) && list.some((f) => f.key === 'area')) {
+      next = list.filter((f) => f.key !== 'area');
+      setQuestions(next);
+    }
+    if (at + 1 < next.length) setAt(at + 1);
     else routeOnward();
-  }, [token, q.key, answers, at, fix, list.length]);
+  }, [token, q.key, answers, at, fix, list]);
 
   const useMyLocation = async () => {
     setNote(null);

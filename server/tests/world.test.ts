@@ -23,7 +23,7 @@ import { pool, closeMatchPool } from '../src/db/client.js';
 import { env } from '../src/env.js';
 import { worldRoutes } from '../src/api/world.js';
 import { mintToken, newSessionId } from '../src/tokens.js';
-import { LOOK_PARTS, lookFor } from '@clone/shared';
+import { AREAS, AREA_IDS, LOOK_PARTS, lookFor } from '@clone/shared';
 import { lookSeed } from '../src/looks/store.js';
 
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
@@ -88,10 +88,10 @@ const fetchWorld = async (token: string) => {
   });
   expect(res.status).toBe(200);
   return res.json() as Promise<{
-    square: { city: string | null }; me: { inPool: boolean; knows: number };
+    square: { city: string | null; area: string }; me: { inPool: boolean; knows: number; area: string | null; need: string[] };
     pool: { total: number }; targetsLeftToday: number;
     agents: { ref: string; kind: string; practice: boolean; seed: number; state: string;
-              look: Record<string, number>;
+              look: Record<string, number>; area: string;
               name?: string; rendezvousId?: string; agreement?: string; yourTurn?: boolean }[];
     me: { inPool: boolean; knows: number; look: Record<string, number> };
   }>;
@@ -262,5 +262,47 @@ describe('the rest of the roster', () => {
     expect(w.me.inPool).toBe(true);
     expect(w.pool.total).toBeGreaterThan(0);
     expect(w.targetsLeftToday).toBe(5);
+  });
+});
+
+describe('neighbourhoods in the square', () => {
+  it('places everybody in one of the thirty tiles, and says nothing else about where', async () => {
+    const w = await fetchWorld(me.token);
+    for (const a of w.agents) expect(AREA_IDS, `${a.ref} in ${a.area}`).toContain(a.area);
+    // The scene's people all sit on 12.97, 77.59: the central tile.
+    const stranger = w.agents.find((a) => a.kind === 'stranger')!;
+    expect(stranger.area).toBe('mg-road');
+    // A stranger is exactly these seven things. A new key here is a new disclosure
+    // and needs the header of api/world.ts amended first.
+    expect(Object.keys(stranger).sort()).toEqual(['area', 'kind', 'look', 'practice', 'ref', 'seed', 'state']);
+    // Me: no trait, so no area of my own, and the square centres on the central tile.
+    expect(w.me.area).toBeNull();
+    expect(w.square.area).toBe('mg-road');
+    // ...and the question is still open, so the Home can ask it.
+    expect(w.me.need).toContain('area');
+  });
+
+  it('fills the square with the viewer\'s neighbours before the recently active', async () => {
+    // A second scene: me in Koramangala; six neighbours who were last here yesterday;
+    // sixty people in Whitefield who were here a minute ago. Recency alone (the old
+    // sample) would take the sixty and leave the six out.
+    const t2 = `${tag}-near`;
+    const kor = AREAS.find((a) => a.id === 'koramangala')!;
+    const wf = AREAS.find((a) => a.id === 'whitefield')!;
+    const viewer = await person('Near', { gender: 'man', seeking_gender: ['woman'], intent: [t2], lat: kor.lat, lon: kor.lon,
+                                          traits: JSON.stringify({ area: 'koramangala' }) });
+    const near: P[] = [];
+    for (let i = 0; i < 6; i++) near.push(await person(`N${i}`, { intent: [t2], lat: kor.lat, lon: kor.lon, last_active_at: new Date(Date.now() - 86_400_000) }));
+    for (let i = 0; i < 60; i++) await person(`F${i}`, { intent: [t2], lat: wf.lat, lon: wf.lon });
+    const w = await fetchWorld(viewer.token);
+    const { agentRef } = await import('../src/matching/world.js');
+    const refs = new Set(w.agents.map((a) => a.ref));
+    const found = near.filter((n) => refs.has(agentRef(viewer.userId, n.userId))).length;
+    expect(found).toBeGreaterThanOrEqual(5);
+    expect(w.agents.filter((a) => a.area === 'koramangala').length).toBe(found);
+    expect(w.agents.some((a) => a.area === 'whitefield')).toBe(true);
+    expect(w.me.area).toBe('koramangala');
+    expect(w.square.area).toBe('koramangala');
+    expect(w.me.need).not.toContain('area');
   });
 });

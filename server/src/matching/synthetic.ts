@@ -27,12 +27,12 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
-import { findPlace, toTag } from '@clone/shared';
+import { AREAS, findPlace, nearestArea, toTag } from '@clone/shared';
 import { voiceFor } from './synthetic-voice.js';
 import {
   AGE_BANDS, BODY, CITIES, DIET, EDUCATION, FREQ, GENDER, IMPORTANCE, INTENT,
   INTERESTS, MEDIA, MONOGAMY, NATIONALITY, SLEEP, SPENDING, TRANSPORT,
-  WANTS_CHILDREN, WORKS_IN, pick, tilt,
+  WANTS_CHILDREN, WORKS_IN, pick, tilt, type Dist,
 } from './marginals.js';
 
 /**
@@ -106,6 +106,9 @@ export interface SyntheticProfile {
   traits: Record<string, unknown>;
 }
 
+/** The thirty neighbourhoods as a distribution, in whole-number weights. */
+const AREA_DIST: Dist<string> = AREAS.map((a) => [a.id, Math.round(a.weight * 100)] as const);
+
 export function makeProfile(r: () => number, tenantId: string): SyntheticProfile {
   const gender = pick(GENDER, r);
   const names = gender === 'woman' ? NAMES_WOMAN : gender === 'man' ? NAMES_MAN : NAMES_OTHER;
@@ -134,6 +137,13 @@ export function makeProfile(r: () => number, tenantId: string): SyntheticProfile
 
   const city = pick(CITIES, r);
   const place = findPlace(city);
+  // A Bangalore person lives somewhere in Bangalore: one of the thirty neighbourhoods,
+  // weighted the way the areas table weights them, and their point is that
+  // neighbourhood's centre rather than the city's -- the same rule rebuildMatchProfile
+  // applies to a real person who names one. About one in twelve never says (Rule 3).
+  const inBangalore = place !== null && nearestArea(place.lat, place.lon, 3) !== null;
+  const area = inBangalore && r() >= 0.08 ? pick(AREA_DIST, r) : null;
+  const areaCentre = area ? AREAS.find((a) => a.id === area) ?? null : null;
 
   let intent = pick(INTENT, r);
   // The tilt, applied: older people fall through to something settled more often.
@@ -175,6 +185,7 @@ export function makeProfile(r: () => number, tenantId: string): SyntheticProfile
   // After the holes, so it is never one of them: the reveal's "lives in" line reads
   // this, and a person deciding whether to meet somebody is owed the city.
   traits.lives_in = city;
+  if (area) traits.area = area;
 
   const base = {
     userId: randomUUID(),
@@ -186,8 +197,8 @@ export function makeProfile(r: () => number, tenantId: string): SyntheticProfile
     seekingGender: seeking,
     ageMin,
     ageMax,
-    lat: place?.lat ?? null,
-    lon: place?.lon ?? null,
+    lat: areaCentre?.lat ?? place?.lat ?? null,
+    lon: areaCentre?.lon ?? place?.lon ?? null,
     maxDistanceKm: Number(
       pick([['10', 12], ['25', 24], ['50', 34], ['200', 18], ['20000', 12]] as const, r),
     ),
@@ -281,7 +292,10 @@ export function assess(profiles: readonly SyntheticProfile[]): QualityReport {
     );
   }
 
-  const totalFields = profiles.reduce((a, p) => a + Object.keys(p.traits).length, 0);
+  // The neighbourhood is not one of the eighteen sampled fields: it is placed after the
+  // holes (like lives_in, which the eighteen already count) and only for Bangalore, so
+  // counting it would move the hole rate for a reason that has nothing to do with holes.
+  const totalFields = profiles.reduce((a, p) => a + Object.keys(p.traits).filter((k) => k !== 'area').length, 0);
   const expectedFields = profiles.length * 18;
 
   const sets = new Set(

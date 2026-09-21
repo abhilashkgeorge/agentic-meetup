@@ -24,7 +24,10 @@ import { candidateIds } from './candidates.js';
 export const TARGETED_PER_DAY = Number(process.env.TARGETED_ROUNDS_PER_DAY ?? 5);
 
 /** How many strangers the square holds. Bounded, so the roster is a sample, never a list. */
-export const STRANGERS_IN_SQUARE = 24;
+// 40, up from 24, once the square became a city of thirty tiles: the sample is the
+// forty nearest plus the twenty-four most recent, ranked, and the canvas draws the
+// first sixty-four agents (met seats come first).
+export const STRANGERS_IN_SQUARE = 40;
 
 export function agentRef(viewerId: string, otherId: string): string {
   return createHmac('sha256', env.AUTH_SECRET)

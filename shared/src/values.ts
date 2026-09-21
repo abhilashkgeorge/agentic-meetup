@@ -23,6 +23,7 @@
  *    a sentence nobody can join on.
  */
 import { z } from 'zod';
+import { AREA_IDS } from './areas.js';
 
 /** Fixed vocabularies. Open-ended where the world is, closed where it is not. */
 export const GENDERS = ['woman', 'man', 'nonbinary', 'other'] as const;
@@ -126,6 +127,8 @@ export const VALUE_SHAPES = {
   drugs: Enum(FREQUENCY),
   exercise_habit: Enum(FREQUENCY),
 
+  /** A neighbourhood id from areas.ts; the essentials endpoint maps names and aliases to it. */
+  area: Enum(AREA_IDS),
   height_cm: z.number().int().min(120).max(230),
   max_distance_km: z.number().int().min(1).max(20_000),
   age_range_sought: z.object({ min: z.number().int().min(18), max: z.number().int().max(120) }),
@@ -290,7 +293,9 @@ export function satisfies(
  * a shape never acquires an object_value at all. A dealbreaker stored on any of those
  * excluded nobody, silently, for ever. Refusing to store it is the honest answer.
  */
-const ROUTED_ELSEWHERE = new Set(['birth_date', 'lives_in', 'age_range_sought', 'max_distance_km']);
+// `area` too: a neighbourhood is distance, and distance already has its own clause.
+// A dealbreaker on it would be a filter on a point the person is placed at.
+const ROUTED_ELSEWHERE = new Set(['birth_date', 'lives_in', 'age_range_sought', 'max_distance_km', 'area']);
 export function canFilterOn(predicate: string): boolean {
   return predicate in VALUE_SHAPES && !ROUTED_ELSEWHERE.has(predicate);
 }
