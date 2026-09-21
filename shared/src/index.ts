@@ -6,3 +6,5 @@ export * from './values.js';
 export * from './places.js';
 export * from './phone.js';
 export * from './look.js';
+export * from './geo.js';
+export * from './areas.js';
