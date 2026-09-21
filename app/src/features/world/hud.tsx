@@ -5,12 +5,16 @@
  * things the old Home's cards said, at a tenth of the height, because the town is the
  * content now. Everything here is the design system; nothing is drawn by hand.
  */
-import { Text, View } from 'react-native';
+import { useEffect, useMemo, useRef } from 'react';
+import { Animated, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CENTRAL_AREA } from '@clone/shared';
 import type { World } from '../../lib/api';
 import { missingLabel } from '../profile/fields';
 import { Button, Card, Chip, ChipGroup, space, type, usePalette } from '../../components/ui';
 import { roundActive } from './bridge';
+import { cityPose, toScreen, type Band, type Size } from './camera';
+import { MAP, areaName, cityTitle, type Frame } from './map';
 
 export function Hud({
   world,
@@ -18,6 +22,12 @@ export function Hud({
   onFinishSetup,
   onPeople,
   said,
+  band,
+  size,
+  frame,
+  onHome,
+  onCity,
+  onArea,
 }: {
   world: World | null;
   onSendOut: () => void;
@@ -26,6 +36,18 @@ export function Hud({
   onPeople: () => void;
   /** How the last round went, said once. */
   said: string | null;
+  /** The camera's zoom band; the neighbourhood names show at `city`. Null before the first frame. */
+  band: Band | null;
+  /** The canvas's size on screen, for placing the names. */
+  size: Size | null;
+  /** What this HUD covers, top and bottom: the city is centred between. */
+  frame: Frame;
+  /** Fly back to your own neighbourhood. */
+  onHome: () => void;
+  /** Pull out to the whole city. */
+  onCity: () => void;
+  /** "Which part of town?" -- the one question the map adds. */
+  onArea: () => void;
 }) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
@@ -33,7 +55,22 @@ export function Hud({
   // The round's own count lands only when it is over; while it runs, the people it
   // is still to talk to are the seats the roster shows talking.
   const talking = world?.agents.filter((a) => a.kind === 'met' && a.state === 'talking').length ?? 0;
-  const title = world?.square.city ? `${world.square.city} square` : 'The square';
+  const title = cityTitle(world?.square.city);
+  const myArea = world?.me.area ?? CENTRAL_AREA;
+  const here = world?.agents.filter((a) => (a.area ?? CENTRAL_AREA) === myArea).length ?? 0;
+  const askArea = world?.me.need.includes('area') ?? false;
+
+  // The thirty names, laid over the city at its zoomed-out pose, faded in and out
+  // with the band. Real text in the app's own type, not a texture.
+  const labels = useMemo(() => {
+    if (!size) return [];
+    const city = cityPose(MAP.outline, size, frame);
+    return MAP.areas.map((a) => ({ id: a.id, name: a.name.toUpperCase(), at: toScreen(a.centre[0], a.centre[1], city, size) }));
+  }, [size, frame]);
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(fade, { toValue: band === 'city' ? 1 : 0, duration: 250, useNativeDriver: true }).start();
+  }, [band, fade]);
 
   const status = !world
     ? 'Finding the square…'
@@ -49,6 +86,17 @@ export function Hud({
 
   return (
     <>
+      {labels.length > 0 && (
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', inset: 0, opacity: fade }}>
+          {labels.map((l) => (
+            <Text key={l.id} numberOfLines={1}
+                  style={[type.label, { position: 'absolute', left: l.at[0] - 60, top: l.at[1] - 7, width: 120, textAlign: 'center', color: p.textSecondary }]}>
+              {l.name}
+            </Text>
+          ))}
+        </Animated.View>
+      )}
+
       <View pointerEvents="box-none"
             style={{ position: 'absolute', top: insets.top + space.sm, left: space.screen, right: space.screen, gap: space.sm }}>
         <Text style={[type.title, { color: p.text }]}>{title}</Text>
@@ -56,6 +104,10 @@ export function Hud({
           <Text style={[type.body, { color: p.text }]}>{status}</Text>
           {world && world.me.inPool && (
             <ChipGroup>
+              {askArea
+                ? <Chip label="Which part of town?" selected={false} onPress={onArea} />
+                : <Chip label={`${areaName(myArea)} · ${here} here`} selected={band !== 'city'} onPress={onHome} />}
+              {band !== 'city' && <Chip label="Whole city" selected={false} onPress={onCity} />}
               <Chip label={`${world.pool.total.toLocaleString()} people nearby`} selected={false} onPress={() => {}} disabled />
               <Chip label={`${world.targetsLeftToday} visits left today`} selected={false} onPress={() => {}} disabled />
               <Chip label="Who's here" selected={false} onPress={onPeople} />

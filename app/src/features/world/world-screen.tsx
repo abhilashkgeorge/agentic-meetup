@@ -16,7 +16,8 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, View } from 'react-native';
+import { ActivityIndicator, AppState, View, type LayoutChangeEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatScreen from '../chat/chat-screen';
 import { runRound, type WorldAgent } from '../../lib/api';
 import { getFps30, getGlFuse, setGlFuse } from '../../lib/storage';
@@ -24,6 +25,7 @@ import { useSession } from '../../store/session';
 import { setupRoute } from '../profile/fields';
 import { Screen, useIsDark, usePalette } from '../../components/ui';
 import { AgentSheet } from './agent-sheet';
+import type { Band, Size, WorldControl } from './camera';
 
 /** What the server says when it will not send the agent, in the person's words. */
 const REFUSED: Record<string, string> = {
@@ -208,6 +210,18 @@ export default function WorldScreen() {
     [selected, world],
   );
 
+  // The camera: the HUD flies it, the canvas reports its band, both know the frame
+  // (what the HUD covers) so the zoomed-out city sits between the title and the button.
+  const control = useRef<WorldControl | null>(null);
+  const [band, setBand] = useState<Band | null>(null);
+  const [size, setSize] = useState<Size | null>(null);
+  const insets = useSafeAreaInsets();
+  const frame = useMemo(() => ({ top: insets.top + 168, bottom: Math.max(insets.bottom, 20) + 88, side: 12 }), [insets.top, insets.bottom]);
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setSize((s) => (s && s.width === width && s.height === height ? s : { width, height }));
+  }, []);
+
   const colors = useMemo(() => ({
     bg: p.bg, ground: p.sunken, light: p.light, prop: p.dark, you: p.accent, stranger: p.textTertiary,
     met: p.textSecondary, practice: p.textTertiary, success: p.success, danger: p.danger,
@@ -224,13 +238,17 @@ export default function WorldScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: p.bg }}>
+    <View style={{ flex: 1, backgroundColor: p.bg }} onLayout={onLayout}>
       <renderer.WorldCanvas key={epoch} sim={sim} colors={colors} active={focused && inFront} cap30={cap30}
-                            onTapAgent={onTap} onFirstFrame={firstFrame} />
+                            onTapAgent={onTap} onFirstFrame={firstFrame}
+                            control={control} onBand={setBand} frame={frame} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
-           onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })} />
+           onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })}
+           band={band} size={size} frame={frame}
+           onHome={() => control.current?.flyHome()} onCity={() => control.current?.flyCity()}
+           onArea={() => router.push({ pathname: setupRoute(['area']), params: { finish: '1' } })} />
       {peopleOpen && world && (
-        <PeopleSheet agents={world.agents} onClose={() => setPeopleOpen(false)}
+        <PeopleSheet agents={world.agents} myArea={world.me.area} onClose={() => setPeopleOpen(false)}
                      onPick={(ref) => { setPeopleOpen(false); onTap(ref); }} />
       )}
       {selectedAgent && (

@@ -300,6 +300,10 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   windows.name = 'windows'; windows.frustumCulled = false;
   group.add(windows); meshes.push(windows); disposables.push(windows.geometry, windows.material as THREE.Material);
 
+  // Taps: only the tiles answer the raycast. Roads, blocks and the rest would cost a
+  // few thousand triangles per pointer event and say nothing a tile does not.
+  for (const m of meshes) if (m !== tiles && m !== yours) m.raycast = () => {};
+
   return {
     group, water, bulbs, setYourTile,
     stats: () => ({

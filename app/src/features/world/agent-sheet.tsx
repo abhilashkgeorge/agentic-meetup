@@ -13,6 +13,7 @@ import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { WorldAgent } from '../../lib/api';
 import { Button, Surface, radius, space, type, usePalette } from '../../components/ui';
+import { areaName } from './map';
 
 const WORDS: Record<NonNullable<WorldAgent['agreement']>, string> = {
   got_on: 'Your agents got on.',
@@ -53,6 +54,9 @@ export function AgentSheet({ agent, onClose, visits, onSendOver }: {
             </Text>
           )}
           <Text style={[type.title, { color: p.text }]}>{title}</Text>
+          {/* Their neighbourhood: the one thing the square says about a stranger's
+              whereabouts, an id from a public list of thirty and never a place. */}
+          {agent.area && <Text style={[type.callout, { color: p.textTertiary }]}>Around {areaName(agent.area)}</Text>}
           <Text style={[type.body, { color: p.textSecondary }]}>{line}</Text>
 
           {/* SEND MY AGENT OVER. A real conversation between the two agents, the same

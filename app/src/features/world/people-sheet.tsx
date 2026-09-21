@@ -6,41 +6,27 @@
  * sheet the picture would have given you. It says exactly what the picture says --
  * a stranger is "someone in the square", a practice profile says so, a person you
  * met has their name only where the reveal already allows it.
+ *
+ * Grouped by neighbourhood: yours first, then the others nearest first, so the list
+ * reads the way the map does. Somebody with no neighbourhood stands in the central
+ * tile on the map and is listed there too.
  */
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { WorldAgent } from '../../lib/api';
 import { Button, Row, Surface, radius, space, type, usePalette } from '../../components/ui';
-import { YOU } from './bridge';
+import { peopleRows } from './people';
 
-const STATE: Record<WorldAgent['state'], string> = {
-  idle: '',
-  talking: 'Your agents are talking now',
-  briefed: 'Your agent met them',
-  waiting: 'Waiting on them',
-  introduced: 'You both said yes',
-  passed: 'You said not this one',
-};
-
-export function PeopleSheet({ agents, onPick, onClose }: {
+export function PeopleSheet({ agents, myArea, onPick, onClose }: {
   agents: readonly WorldAgent[];
+  /** Your neighbourhood, listed first. Null is the central tile. */
+  myArea: string | null | undefined;
   onPick: (ref: string) => void;
   onClose: () => void;
 }) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  // You first, then people you have met, then everybody else -- the order a person
-  // would ask about them in.
-  const rows: Array<{ ref: string; title: string; subtitle?: string }> = [
-    { ref: YOU, title: 'Your agent', subtitle: 'Tap to talk to it' },
-    ...[...agents]
-      .sort((a, b) => (a.kind === 'met' ? 0 : 1) - (b.kind === 'met' ? 0 : 1))
-      .map((a) => ({
-        ref: a.ref,
-        title: a.kind === 'met' ? (a.name ?? 'Someone your agent met') : a.practice ? 'Practice match' : 'Someone in the square',
-        subtitle: a.kind === 'met' ? (STATE[a.state] || undefined) : a.practice ? 'Not a real person' : undefined,
-      })),
-  ];
+  const rows = peopleRows(agents, myArea);
 
   return (
     <Pressable onPress={onClose} style={{ position: 'absolute', inset: 0 }} accessibilityLabel="Close">
@@ -52,10 +38,10 @@ export function PeopleSheet({ agents, onPick, onClose }: {
           <FlatList
             data={rows}
             keyExtractor={(r) => r.ref}
-            renderItem={({ item, index }) => (
-              <Row title={item.title} subtitle={item.subtitle} last={index === rows.length - 1}
-                   onPress={() => onPick(item.ref)} />
-            )}
+            renderItem={({ item, index }) => item.kind === 'header'
+              ? <Text style={[type.label, { color: p.textSecondary, paddingTop: space.md, paddingBottom: space.xs }]}>{item.title.toUpperCase()}</Text>
+              : <Row title={item.title} subtitle={item.subtitle} last={index === rows.length - 1 || rows[index + 1]?.kind === 'header'}
+                     onPress={() => onPick(item.ref)} />}
           />
           <Button label="Close" variant="ghost" onPress={onClose} />
         </Surface>

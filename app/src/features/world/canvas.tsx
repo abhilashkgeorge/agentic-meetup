@@ -15,16 +15,26 @@
  * (./map-mesh.ts) is thirteen more draw calls and about fifty thousand triangles,
  * built once and never touched per frame except the water's opacity.
  *
- * The camera follows your agent, softly, so a walk to Whitefield is a walk you watch.
+ * The camera follows your agent, softly, so a walk to Whitefield is a walk you watch,
+ * until a finger takes over: drag to pan, pinch to zoom, tap a tile to fly there, and
+ * the HUD's Home to come back and follow again. The gestures live on a View wrapped
+ * round the GL canvas that captures a touch once it moves (or has two fingers), so
+ * r3f still gets the taps -- its own responder yields on request and calls a touch
+ * under twenty pixels a click. The maths is in ./camera.ts, pure and tested.
  *
  * The frame loop touches no React state. The spike's lesson, verbatim: "touching React
  * state per frame would measure React, not the renderer."
  */
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
+import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
-import { HAIR_HEX, OUTFIT_HEX, SKIN_HEX, type Look } from '@clone/shared';
-import { MAP } from './map';
+import { HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
+import {
+  CITY_BAND, FLY_SECS, bandOf, cityPose, clampTarget, flyAt, pan, pinch, tileZoom,
+  type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
+} from './camera';
+import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
 
@@ -70,6 +80,51 @@ export interface WorldCanvasProps {
   onTapAgent?: (ref: string) => void;
   /** Called once, on the first drawn frame. The fuse in storage is cleared on it. */
   onFirstFrame?: () => void;
+  /** The HUD's handle on the camera. Filled while mounted, null otherwise. */
+  control?: MutableRefObject<WorldControl | null>;
+  /** The zoom band changed, after any fly has landed: city (labels on), mid, near. */
+  onBand?: (band: Band) => void;
+  /** What the HUD covers at the top and bottom: the whole city is centred between. */
+  frame?: Frame;
+}
+
+const DEFAULT_FRAME: Frame = { top: 160, bottom: 100, side: 12 };
+const BOUNDS: Bounds = (() => {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const [x, z] of MAP.outline) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+  return { minX, maxX, minZ, maxZ };
+})();
+/** Closest the camera starts: today's zoom, at which an agent is about forty pixels. */
+const ZOOM_START = 30;
+
+/**
+ * The camera, as a plain mutable object shared by the gesture handlers (on the
+ * wrapping View) and the frame loop (inside the canvas). No React state: a drag is
+ * sixty updates a second and none of them should render anything.
+ */
+interface CamState {
+  pose: Pose;
+  fly: Fly | null;
+  /** Follow your agent when nothing else is asked. Off after a drag or a fly elsewhere. */
+  follow: boolean;
+  followAfterFly: boolean;
+  band: Band | null;
+  size: Size;
+  city: Pose;
+  /** Seconds of sim time, so a fly started from a tap has a clock. */
+  clock: number;
+  lastDx: number; lastDy: number; pinchDist: number | null;
+}
+
+function startFly(cam: CamState, to: Pose, followAfter: boolean): void {
+  cam.fly = { from: { ...cam.pose }, to: clampTarget(to, BOUNDS), start: cam.clock, secs: FLY_SECS };
+  cam.follow = false;
+  cam.followAfterFly = followAfter;
+}
+
+function flyToArea(cam: CamState, id: string | null, followAfter: boolean): void {
+  const area = MAP.areas.find((a) => a.id === id) ?? MAP.areas.find((a) => a.id === 'mg-road') ?? MAP.areas[0]!;
+  startFly(cam, { tx: area.home[0], tz: area.home[1], zoom: tileZoom(area.radius, cam.size) }, followAfter);
 }
 
 const SLOTS = 64;
@@ -266,20 +321,81 @@ function flag(parts: PartSet) {
 // ── the town ─────────────────────────────────────────────────────────────────
 
 export function WorldCanvas(props: WorldCanvasProps) {
-  const { cap30 = false, active = true } = props;
+  const { cap30 = false, active = true, sim, control, frame = DEFAULT_FRAME } = props;
+  const cam = useRef<CamState | null>(null);
+  if (!cam.current) {
+    const [hx, hz] = sim.homeOf('you');
+    const size = { width: 390, height: 800 };
+    cam.current = {
+      pose: { tx: hx, tz: hz, zoom: ZOOM_START }, fly: null, follow: true, followAfterFly: true, band: null,
+      size, city: cityPose(MAP.outline, size, frame), clock: 0, lastDx: 0, lastDy: 0, pinchDist: null,
+    };
+  }
+  const c = cam.current;
+  useEffect(() => { c.city = cityPose(MAP.outline, c.size, frame); }, [c, frame]);
+
+  const onLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width > 0 && height > 0) { c.size = { width, height }; c.city = cityPose(MAP.outline, c.size, frame); }
+  };
+
+  // Drags and pinches are ours; taps stay with r3f. A touch becomes ours the moment
+  // it moves eight pixels or a second finger lands, and we do not give it back.
+  const responder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onStartShouldSetPanResponderCapture: () => false,
+    onMoveShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponderCapture: (_e, g) => g.numberActiveTouches >= 2 || Math.hypot(g.dx, g.dy) > 8,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: (_e, g) => { c.fly = null; c.follow = false; c.lastDx = g.dx; c.lastDy = g.dy; c.pinchDist = null; },
+    onPanResponderMove: (e, g) => {
+      const t = e.nativeEvent.touches;
+      if (t.length >= 2) {
+        const a = t[0]!; const b = t[1]!;
+        const d = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+        const mid: [number, number] = [(a.locationX + b.locationX) / 2, (a.locationY + b.locationY) / 2];
+        if (c.pinchDist && d > 0) c.pose = clampTarget(pinch(c.pose, mid, d / c.pinchDist, c.size, c.city.zoom), BOUNDS);
+        c.pinchDist = d; c.lastDx = g.dx; c.lastDy = g.dy;
+        return;
+      }
+      c.pinchDist = null;
+      const dx = g.dx - c.lastDx; const dy = g.dy - c.lastDy;
+      c.lastDx = g.dx; c.lastDy = g.dy;
+      c.pose = clampTarget(pan(c.pose, dx, dy), BOUNDS);
+    },
+    onPanResponderRelease: () => {
+      c.pinchDist = null;
+      // Let go near the city zoom: settle on the whole city, so the labels line up.
+      if (c.pose.zoom <= c.city.zoom * CITY_BAND) startFly(c, c.city, false);
+    },
+    onPanResponderTerminate: () => { c.pinchDist = null; },
+  }), [c]);
+
+  useEffect(() => {
+    if (!control) return;
+    control.current = {
+      flyTo: (id) => flyToArea(c, id, false),
+      flyHome: () => flyToArea(c, sim.get('you')?.area ?? null, true),
+      flyCity: () => startFly(c, c.city, false),
+    };
+    return () => { control.current = null; };
+  }, [control, c, sim]);
+
   return (
-    <Canvas
-      orthographic
-      // Zoom 30, up from 24: at 24 the square filled the middle third of a phone
-      // and an agent was thirty pixels tall, which is why tapping one took aim.
-      camera={{ position: [12, 12, 12], zoom: 30, near: 0.1, far: 100 }}
-      // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
-      // else, and the native Canvas type says so by leaving it out.
-      gl={{ antialias: false }}
-      frameloop={!active ? 'never' : cap30 ? 'demand' : 'always'}
-    >
-      <Town {...props} />
-    </Canvas>
+    <View style={{ flex: 1 }} onLayout={onLayout} {...responder.panHandlers}>
+      <Canvas
+        orthographic
+        // Zoom 30, up from 24: at 24 the square filled the middle third of a phone
+        // and an agent was thirty pixels tall, which is why tapping one took aim.
+        camera={{ position: [12, 12, 12], zoom: ZOOM_START, near: 0.1, far: 200 }}
+        // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
+        // else, and the native Canvas type says so by leaving it out.
+        gl={{ antialias: false }}
+        frameloop={!active ? 'never' : cap30 ? 'demand' : 'always'}
+      >
+        <Town {...props} cam={c} />
+      </Canvas>
+    </View>
   );
 }
 
@@ -288,7 +404,7 @@ const EYE = 12;
 /** How fast the camera catches up with your agent: 1 - e^(-k·dt) per frame. */
 const FOLLOW = 3;
 
-function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCanvasProps) {
+function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, cam }: WorldCanvasProps & { cam: CamState }) {
   const { gl, scene, camera, invalidate } = useThree();
 
   useEffect(() => {
@@ -299,8 +415,6 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCa
   const map = useMemo(() => buildMap(MAP, colors), [colors]);
   useEffect(() => () => map.dispose(), [map]);
   const yourArea = useRef<string | null | undefined>(undefined);
-  /** The point the camera looks at. Starts at home; follows your agent afterwards. */
-  const cam = useRef<[number, number] | null>(null);
 
   // 30 fps: r3f's demand mode draws only when asked, so ask on a 33 ms ticker.
   useEffect(() => {
@@ -362,18 +476,27 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCa
     const t = elapsed.current;
     sim.step(clamped);
 
-    // Your tile, lit once your agent knows which it is; the camera, on your agent.
+    // Your tile, lit once your agent knows which it is.
     const you = sim.get('you');
     if (you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area); }
-    const target = you ? [you.x, you.z] : sim.homeOf('you');
-    if (!cam.current) cam.current = [target[0], target[1]];
-    else {
+
+    // The camera: a fly in progress, else following your agent, else where it was left.
+    cam.clock = t;
+    if (cam.fly) {
+      const { pose, done } = flyAt(cam.fly, t);
+      cam.pose = pose;
+      if (done) { cam.fly = null; cam.follow = cam.followAfterFly; }
+    } else if (cam.follow && you) {
       const k = 1 - Math.exp(-FOLLOW * clamped);
-      cam.current[0] += (target[0] - cam.current[0]) * k;
-      cam.current[1] += (target[1] - cam.current[1]) * k;
+      cam.pose = clampTarget({ tx: cam.pose.tx + (you.x - cam.pose.tx) * k, tz: cam.pose.tz + (you.z - cam.pose.tz) * k, zoom: cam.pose.zoom }, BOUNDS);
     }
-    camera.position.set(cam.current[0] + EYE, EYE, cam.current[1] + EYE);
-    camera.lookAt(cam.current[0], 0, cam.current[1]);
+    camera.position.set(cam.pose.tx + EYE, EYE, cam.pose.tz + EYE);
+    camera.lookAt(cam.pose.tx, 0, cam.pose.tz);
+    if (camera.zoom !== cam.pose.zoom) { camera.zoom = cam.pose.zoom; camera.updateProjectionMatrix(); }
+    if (!cam.fly) {
+      const band = bandOf(cam.pose.zoom, cam.city.zoom);
+      if (band !== cam.band) { cam.band = band; onBand?.(band); }
+    }
 
     // The lakes breathe: a four-second sine on the opacity, and the glow at night.
     const breath = 0.5 + 0.5 * Math.sin(t * (Math.PI / 2));
@@ -499,9 +622,18 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCa
     }
   });
 
-  const tap = (e: { instanceId?: number }) => {
+  const tap = (e: { instanceId?: number; stopPropagation(): void }) => {
     const ref = e.instanceId === undefined ? undefined : refAt.current[e.instanceId];
-    if (ref && onTapAgent) onTapAgent(ref);
+    if (ref && onTapAgent) { e.stopPropagation(); onTapAgent(ref); }
+  };
+
+  /** A tap on a tile, when the tiles are the unit: fly there. Close in, taps are for people. */
+  const tapTile = (e: { point: { x: number; z: number }; stopPropagation(): void }) => {
+    if (cam.band === 'near' || cam.fly) return;
+    const hit = MAP.areas.find((a) => pointInPolygon([e.point.x, e.point.z], a.polygon));
+    if (!hit) return;
+    e.stopPropagation();
+    flyToArea(cam, hit.id, hit.id === (sim.get('you')?.area ?? null));
   };
 
   const rest = (set: PartSet) => set.all.filter((p) => p !== set.body && p !== set.head);
@@ -514,7 +646,7 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCa
       <hemisphereLight args={colors.night ? ['#8f9ab3', '#2a2e36', 0.6] : ['#ffffff', '#8a94a6', 0.95]} />
       <directionalLight position={[-4, 10, 8]} intensity={colors.night ? 0.35 : 0.75} />
 
-      <primitive object={map.group} />
+      <primitive object={map.group} onClick={tapTile} />
 
       {/* Taps land on bodies and heads, solid or ghost; the smaller parts pass through. */}
       <primitive object={meshes.solid.body.mesh} onClick={tap} />
