@@ -15,7 +15,8 @@
  * shadow grey, offset so it shows to the bottom-right; roads are the highlight white
  * drawn as ribbons; lakes and parks are faint tints. The tile top is y = 0, which is
  * where the people stand, so nothing in canvas.tsx moved when the square became a
- * city. Budget: about 50 K triangles, checked by tests/map-mesh.test.ts.
+ * city. Budget: 32 K triangles in either theme (tests/map-mesh.test.ts holds the line
+ * at 60 K and thirteen draw calls), on top of the town's forty calls at worst.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';

@@ -12,7 +12,7 @@
  * twin of every part. Sixty-four slots, no textures, no shadows, Lambert lighting;
  * about forty draw calls at worst against sixteen measured at 116 fps, and the bench
  * (features/dev/gl-bench.tsx) is what says whether that holds. The city under them
- * (./map-mesh.ts) is thirteen more draw calls and about fifty thousand triangles,
+ * (./map-mesh.ts) is thirteen more draw calls and thirty-two thousand triangles,
  * built once and never touched per frame except the water's opacity.
  *
  * The camera follows your agent, softly, so a walk to Whitefield is a walk you watch,

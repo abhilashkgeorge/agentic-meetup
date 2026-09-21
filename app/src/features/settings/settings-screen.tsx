@@ -259,6 +259,11 @@ export default function SettingsScreen() {
         <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
           Nobody else has ever seen what your clone knows about you.
         </Text>
+        {/* The map on Home is drawn from OpenStreetMap data (app/assets/map/ATTRIBUTION.md);
+            the Open Database License asks for this line wherever the map is shown. */}
+        <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
+          Map data © OpenStreetMap contributors
+        </Text>
         {/* Five taps on the version opens the hidden 3D frame-rate check. A developer
             door that is not a menu item, because it is not for anybody else. */}
         <Pressable onPress={tapVersion} accessibilityLabel="Version">
