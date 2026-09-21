@@ -25,6 +25,16 @@ describe('fromRoster', () => {
     // Everybody arrives with their character, you with yours.
     expect(specs[0]!.look).toEqual(STARTER);
     expect(specs.slice(1).map((s) => s.look)).toEqual(['a', 'b', 'c'].map((r) => lookFor(r.charCodeAt(0))));
+    // No neighbourhood said: the central tile, for you and for them.
+    expect(specs.map((s) => s.area)).toEqual([null, null, null, null]);
+  });
+
+  it('carries each person\'s neighbourhood, yours included', () => {
+    const w = world([{ ...agent('a', 'idle'), area: 'whitefield' }, agent('b', 'idle')]);
+    w.me.area = 'koramangala';
+    const specs = fromRoster(w);
+    expect(specs.map((s) => [s.ref, s.area])).toEqual([[YOU, 'koramangala'], ['a', 'whitefield'], ['b', null]]);
+    expect(metSpec('c').area).toBeNull();
   });
 });
 
@@ -98,7 +108,7 @@ describe('eventTransitions', () => {
 describe('metSpec', () => {
   it('makes the agent the roster would have made, so the next poll finds it in place', () => {
     const ref = 'a3f2c19e0000ffff0000ffff0000ffff';
-    expect(metSpec(ref)).toEqual({ ref, kind: 'met', seed: parseInt('a3f2c19e', 16), ghost: false, look: lookFor(parseInt('a3f2c19e', 16)) });
+    expect(metSpec(ref)).toEqual({ ref, kind: 'met', seed: parseInt('a3f2c19e', 16), ghost: false, look: lookFor(parseInt('a3f2c19e', 16)), area: null });
     expect(metSpec(ref, true).ghost, 'a practice profile is a ghost even once met').toBe(true);
     expect(seedOf(ref)).toBe(0xa3f2c19e);
   });

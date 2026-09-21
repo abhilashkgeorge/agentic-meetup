@@ -22,7 +22,7 @@ import { runRound, type WorldAgent } from '../../lib/api';
 import { getFps30, getGlFuse, setGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { setupRoute } from '../profile/fields';
-import { Screen, usePalette } from '../../components/ui';
+import { Screen, useIsDark, usePalette } from '../../components/ui';
 import { AgentSheet } from './agent-sheet';
 
 /** What the server says when it will not send the agent, in the person's words. */
@@ -34,15 +34,18 @@ const REFUSED: Record<string, string> = {
 import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
+import { MAP, spotsFrom } from './map';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { WorldSim } from './sim';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
 
 /** One town per app run. It outlives this screen so a tab switch does not reshuffle everybody. */
 const sim = new WorldSim(20260918);
+sim.setMap(spotsFrom(MAP));
 
 export default function WorldScreen() {
   const p = usePalette();
+  const night = useIsDark();
   const token = useSession((s) => s.token);
   const world = useWorld((s) => s.world);
   const load = useWorld((s) => s.load);
@@ -206,10 +209,10 @@ export default function WorldScreen() {
   );
 
   const colors = useMemo(() => ({
-    bg: p.bg, ground: p.sunken, prop: p.dark, you: p.accent, stranger: p.textTertiary,
+    bg: p.bg, ground: p.sunken, light: p.light, prop: p.dark, you: p.accent, stranger: p.textTertiary,
     met: p.textSecondary, practice: p.textTertiary, success: p.success, danger: p.danger,
-    warning: p.warning, accent: p.accent,
-  }), [p]);
+    warning: p.warning, accent: p.accent, night,
+  }), [p, night]);
 
   if (renderer === null) return <ChatScreen />;
   if (renderer === undefined) {

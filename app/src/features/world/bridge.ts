@@ -13,7 +13,8 @@ import { lookFor, type Look } from '@clone/shared';
 import type { AgreementWords, World, WorldAgent } from '../../lib/api';
 import type { AgentKind } from './sim';
 
-export interface AgentSpec { ref: string; kind: AgentKind; seed: number; ghost: boolean; look: Look }
+/** `area`: the neighbourhood tile to stand in; null is the central one. */
+export interface AgentSpec { ref: string; kind: AgentKind; seed: number; ghost: boolean; look: Look; area: string | null }
 
 export const YOU = 'you';
 
@@ -29,14 +30,15 @@ export const seedOf = (ref: string): number => parseInt(ref.slice(0, 8), 16);
  * which is a no-op, so the agent stayed at home for the whole round.
  */
 export const metSpec = (ref: string, practice = false): AgentSpec =>
-  // A seeded look stands in until the roster, two seconds later, says which one it is.
-  ({ ref, kind: 'met', seed: seedOf(ref), ghost: practice, look: lookFor(seedOf(ref)) });
+  // A seeded look and the central tile stand in until the roster, two seconds later,
+  // says which character and which neighbourhood.
+  ({ ref, kind: 'met', seed: seedOf(ref), ghost: practice, look: lookFor(seedOf(ref)), area: null });
 
 /** Everybody the sim should hold, you first. */
 export function fromRoster(world: World): AgentSpec[] {
   return [
-    { ref: YOU, kind: 'you', seed: 7, ghost: false, look: world.me.look },
-    ...world.agents.map((a) => ({ ref: a.ref, kind: a.kind, seed: a.seed, ghost: a.practice, look: a.look })),
+    { ref: YOU, kind: 'you', seed: 7, ghost: false, look: world.me.look, area: world.me.area ?? null },
+    ...world.agents.map((a) => ({ ref: a.ref, kind: a.kind, seed: a.seed, ghost: a.practice, look: a.look, area: a.area ?? null })),
   ];
 }
 

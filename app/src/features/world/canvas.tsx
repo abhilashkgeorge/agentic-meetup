@@ -11,7 +11,11 @@
  * scale zero when that person does not wear it. Practice profiles get a translucent
  * twin of every part. Sixty-four slots, no textures, no shadows, Lambert lighting;
  * about forty draw calls at worst against sixteen measured at 116 fps, and the bench
- * (features/dev/gl-bench.tsx) is what says whether that holds.
+ * (features/dev/gl-bench.tsx) is what says whether that holds. The city under them
+ * (./map-mesh.ts) is thirteen more draw calls and about fifty thousand triangles,
+ * built once and never touched per frame except the water's opacity.
+ *
+ * The camera follows your agent, softly, so a walk to Whitefield is a walk you watch.
  *
  * The frame loop touches no React state. The spike's lesson, verbatim: "touching React
  * state per frame would measure React, not the renderer."
@@ -20,11 +24,15 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { HAIR_HEX, OUTFIT_HEX, SKIN_HEX, type Look } from '@clone/shared';
-import { PLAZA, type SimAgent, type WorldSim } from './sim';
+import { MAP } from './map';
+import { buildMap } from './map-mesh';
+import type { SimAgent, WorldSim } from './sim';
 
 export interface WorldColors {
   bg: string;
   ground: string;
+  /** The highlight white: roads and blocks on the map. */
+  light: string;
   prop: string;
   you: string;
   stranger: string;
@@ -34,6 +42,8 @@ export interface WorldColors {
   danger: string;
   warning: string;
   accent: string;
+  /** Evening: the map lights its lamps and windows. */
+  night: boolean;
 }
 
 export interface WorldStats {
@@ -273,12 +283,24 @@ export function WorldCanvas(props: WorldCanvasProps) {
   );
 }
 
+/** Where the camera stands relative to what it looks at: the isometric (1,1,1). */
+const EYE = 12;
+/** How fast the camera catches up with your agent: 1 - e^(-k·dt) per frame. */
+const FOLLOW = 3;
+
 function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCanvasProps) {
-  const { gl, scene, invalidate } = useThree();
+  const { gl, scene, camera, invalidate } = useThree();
 
   useEffect(() => {
     scene.background = new THREE.Color(colors.bg);
   }, [scene, colors.bg]);
+
+  // The city, built once per palette; the theme toggle rebuilds it (lamps, windows).
+  const map = useMemo(() => buildMap(MAP, colors), [colors]);
+  useEffect(() => () => map.dispose(), [map]);
+  const yourArea = useRef<string | null | undefined>(undefined);
+  /** The point the camera looks at. Starts at home; follows your agent afterwards. */
+  const cam = useRef<[number, number] | null>(null);
 
   // 30 fps: r3f's demand mode draws only when asked, so ask on a 33 ms ticker.
   useEffect(() => {
@@ -339,6 +361,24 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCa
     elapsed.current += clamped;
     const t = elapsed.current;
     sim.step(clamped);
+
+    // Your tile, lit once your agent knows which it is; the camera, on your agent.
+    const you = sim.get('you');
+    if (you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area); }
+    const target = you ? [you.x, you.z] : sim.homeOf('you');
+    if (!cam.current) cam.current = [target[0], target[1]];
+    else {
+      const k = 1 - Math.exp(-FOLLOW * clamped);
+      cam.current[0] += (target[0] - cam.current[0]) * k;
+      cam.current[1] += (target[1] - cam.current[1]) * k;
+    }
+    camera.position.set(cam.current[0] + EYE, EYE, cam.current[1] + EYE);
+    camera.lookAt(cam.current[0], 0, cam.current[1]);
+
+    // The lakes breathe: a four-second sine on the opacity, and the glow at night.
+    const breath = 0.5 + 0.5 * Math.sin(t * (Math.PI / 2));
+    map.water.opacity = 0.72 + 0.16 * breath;
+    if (colors.night) map.water.emissiveIntensity = 0.25 + 0.2 * breath;
 
     const { solid, ghost, discs, dots, bars, rings } = meshes;
     const agents = sim.agents();
@@ -468,42 +508,13 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame }: WorldCa
 
   return (
     <>
-      <hemisphereLight args={['#ffffff', '#8a94a6', 0.95]} />
-      <directionalLight position={[6, 10, 4]} intensity={0.75} />
+      {/* Light from the screen's top-left in the isometric view, so the bevel highlight
+          sits top-left and the skirt bottom-right, exactly as the UI's raised() does.
+          In the evening the sun goes down and the lamps and windows carry the scene. */}
+      <hemisphereLight args={colors.night ? ['#8f9ab3', '#2a2e36', 0.6] : ['#ffffff', '#8a94a6', 0.95]} />
+      <directionalLight position={[-4, 10, 8]} intensity={colors.night ? 0.35 : 0.75} />
 
-      {/* Ground: the sunken grey, so the town reads as a well in the page. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
-        <planeGeometry args={[PLAZA * 2 + 10, PLAZA * 2 + 10]} />
-        <meshLambertMaterial color={colors.ground} />
-      </mesh>
-
-      {/* A fountain, two benches, two lamps. Enough to be a square, not a field. */}
-      <mesh position={[0, 0.25, 0]}>
-        <cylinderGeometry args={[1.3, 1.5, 0.5, 20]} />
-        <meshLambertMaterial color={colors.prop} />
-      </mesh>
-      <mesh position={[0, 0.55, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.9, 0.12, 8, 24]} />
-        <meshLambertMaterial color={colors.accent} />
-      </mesh>
-      {[[-5, 3], [5, -3]].map(([x, z], i) => (
-        <mesh key={`bench${i}`} position={[x, 0.25, z]} rotation={[0, i ? 0.6 : -0.6, 0]}>
-          <boxGeometry args={[1.6, 0.5, 0.5]} />
-          <meshLambertMaterial color={colors.prop} />
-        </mesh>
-      ))}
-      {[[-5, -5], [5, 5]].map(([x, z], i) => (
-        <group key={`lamp${i}`} position={[x, 0, z]}>
-          <mesh position={[0, 1.1, 0]}>
-            <cylinderGeometry args={[0.06, 0.08, 2.2, 6]} />
-            <meshLambertMaterial color={colors.prop} />
-          </mesh>
-          <mesh position={[0, 2.25, 0]}>
-            <sphereGeometry args={[0.22, 8, 6]} />
-            <meshLambertMaterial color={colors.warning} />
-          </mesh>
-        </group>
-      ))}
+      <primitive object={map.group} />
 
       {/* Taps land on bodies and heads, solid or ghost; the smaller parts pass through. */}
       <primitive object={meshes.solid.body.mesh} onClick={tap} />

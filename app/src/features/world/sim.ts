@@ -9,6 +9,14 @@
  *
  * Seeded, like AliveRig in features/avatar/animation.ts: a run is reproducible, so a
  * test can assert where somebody ends up. Nothing here imports three.
+ *
+ * THE MAP. With no map set this is the old square: a plaza of radius PLAZA around a
+ * fountain, everybody placed at random in it. With `setMap()` (world-screen.tsx calls
+ * it once with the miniature Bengaluru from ./map.ts) every agent has an `area`, a
+ * neighbourhood, and stands on one of that tile's seeded spots; you stand at your
+ * tile's home. Somebody with no area stands in the central tile. `spot()` and
+ * `home()` are the only two places a position is chosen, so the map is one branch
+ * in each and nothing else knows.
  */
 import { lookFor, type Look } from '@clone/shared';
 
@@ -17,6 +25,11 @@ export type AgentState =
   | 'idle' | 'walking' | 'approaching' | 'talking' | 'verdict' | 'leaving' | 'introduced' | 'gone';
 export type Verdict = 'got_on' | 'unsure' | 'did_not_click' | 'could_not_tell';
 export type Bubble = 'dots' | Verdict | null;
+
+export type Pt = readonly [number, number];
+/** One neighbourhood, as the sim needs it: where to stand, and how far "gone" is. */
+export interface MapArea { home: Pt; centre: Pt; radius: number; spots: readonly Pt[] }
+export interface MapSpots { central: string; areas: Readonly<Record<string, MapArea>> }
 
 export interface SimAgent {
   ref: string;
@@ -27,10 +40,14 @@ export interface SimAgent {
   ghost: boolean;
   /** How they are drawn: the character they built, or a seeded one. */
   look: Look;
+  /** The neighbourhood they stand in; null is the central tile (or the plaza). */
+  area: string | null;
   x: number;
   z: number;
   tx: number;
   tz: number;
+  /** Units per second toward the target: the walk or the hurry, or more for a long trip. */
+  speed: number;
   /** Radians, y-axis. The way they are looking. */
   facing: number;
   state: AgentState;
@@ -41,17 +58,27 @@ export interface SimAgent {
   ring: boolean;
 }
 
-/** Plaza radius in scene units. The renderer's ground is a little bigger. */
+export interface AgentInput {
+  ref: string; kind: AgentKind; seed: number; ghost?: boolean; look?: Look;
+  /** Omitted: leave the area alone. null: the central tile. */
+  area?: string | null;
+}
+
+/** Plaza radius in scene units, for the town with no map. */
 export const PLAZA = 8;
 /** The fountain's footprint. Nobody is placed inside it. */
 const FOUNTAIN = 2.2;
-/** Where YOUR agent stands when it is not out: front of the fountain, nearest the camera. */
+/** Where YOUR agent stands with no map: front of the fountain, nearest the camera. */
 export const HOME: readonly [number, number] = [0, PLAZA * 0.55];
 const WALK = 1.6;
 const HURRY = 2.2;
+/** No trip takes longer than this, however far: Koramangala to Whitefield is ~25 units. */
+const TRIP_SECS = 4;
 const ARRIVE = 0.15;
 const TOGETHER = 0.9;
 const VERDICT_SECS = 3;
+/** A spot is a place, not a pixel: two people sent to the same one do not overlap. */
+const JITTER = 0.35;
 
 /** The same LCG as the avatar rig, so one seed means one town. */
 function lcg(seed: number): () => number {
@@ -69,12 +96,18 @@ export class WorldSim {
   private readonly order: string[] = [];
   /** Visits a visitor has been asked to make while already on one, in order. */
   private readonly visits = new Map<string, string[]>();
+  private map: MapSpots | null = null;
   /** Bench only: agents start and finish conversations on their own. */
   private autoplay = false;
   private autoClock = 0;
 
   constructor(seed = 1) {
     this.rnd = lcg(seed);
+  }
+
+  /** The city to stand in. Set once, before anybody is added; null is the plaza. */
+  setMap(map: MapSpots | null): void {
+    this.map = map;
   }
 
   agents(): readonly SimAgent[] {
@@ -94,17 +127,30 @@ export class WorldSim {
    * Add agents that are new; leave the ones already here where they stand. A roster
    * refresh must not teleport the whole town.
    */
-  upsert(list: ReadonlyArray<{ ref: string; kind: AgentKind; seed: number; ghost?: boolean; look?: Look }>): void {
-    for (const { ref, kind, seed, ghost, look } of list) {
+  upsert(list: ReadonlyArray<AgentInput>): void {
+    for (const { ref, kind, seed, ghost, look, area } of list) {
       const have = this.byRef.get(ref);
       // A practice profile stays a ghost after it is met: "not a real person" is
       // about who they are, not about whether the agents have talked.
       const seeThrough = ghost ?? kind === 'practice';
-      // A refresh may bring a new character (they built one): swap it, do not move them.
-      if (have) { have.kind = kind; have.ghost = seeThrough; if (look) have.look = look; continue; }
-      const [x, z] = kind === 'you' ? HOME : this.spot();
+      if (have) {
+        // A refresh may bring a new character (they built one): swap it, do not move them.
+        have.kind = kind; have.ghost = seeThrough; if (look) have.look = look;
+        // A new neighbourhood (they answered the question): walk there -- unless they
+        // are mid-visit, which is never interrupted for scenery.
+        if (area !== undefined && area !== have.area) {
+          have.area = area;
+          if (have.state === 'idle' || have.state === 'walking') {
+            const [tx, tz] = kind === 'you' ? this.home(area) : this.spot(area);
+            this.setTarget(have, tx, tz, WALK); have.state = 'walking';
+          }
+        }
+        continue;
+      }
+      const where = area ?? null;
+      const [x, z] = kind === 'you' ? this.home(where) : this.spot(where);
       this.byRef.set(ref, {
-        ref, kind, seed, ghost: seeThrough, look: look ?? lookFor(seed), x, z, tx: x, tz: z,
+        ref, kind, seed, ghost: seeThrough, look: look ?? lookFor(seed), area: where, x, z, tx: x, tz: z, speed: WALK,
         facing: this.rnd() * Math.PI * 2,
         state: 'idle', wait: 1 + this.rnd() * 4, partner: null, bubble: null, ring: false,
       });
@@ -151,7 +197,7 @@ export class WorldSim {
     const dx = A.x - B.x;
     const dz = A.z - B.z;
     const len = Math.hypot(dx, dz) || 1;
-    A.tx = B.x + (dx / len) * TOGETHER; A.tz = B.z + (dz / len) * TOGETHER;
+    this.setTarget(A, B.x + (dx / len) * TOGETHER, B.z + (dz / len) * TOGETHER, HURRY);
     B.tx = B.x; B.tz = B.z;
     for (const p of [A, B]) {
       p.state = 'approaching'; p.bubble = null; p.ring = false;
@@ -196,7 +242,7 @@ export class WorldSim {
       if (!p) continue;
       p.partner = null; p.bubble = null;
       if (this.nextVisit(p)) continue;
-      [p.tx, p.tz] = p.kind === 'you' ? HOME : this.spot(); p.state = 'walking';
+      this.wander(p); p.state = 'walking';
     }
   }
 
@@ -210,13 +256,14 @@ export class WorldSim {
     this.settle(ref);
   }
 
-  /** Not for me: they walk to the edge of the square and are gone. */
+  /** Not for me: they walk out of their neighbourhood (or off the square) and are gone. */
   pass(ref: string): void {
     const a = this.byRef.get(ref);
     if (!a) return;
-    const ang = Math.atan2(a.z, a.x) || this.rnd() * Math.PI * 2;
-    a.tx = Math.cos(ang) * (PLAZA + 4);
-    a.tz = Math.sin(ang) * (PLAZA + 4);
+    const [cx, cz] = this.centreOf(a.area);
+    const r = this.radiusOf(a.area);
+    const ang = Math.atan2(a.z - cz, a.x - cx) || this.rnd() * Math.PI * 2;
+    this.setTarget(a, cx + Math.cos(ang) * (r + 4), cz + Math.sin(ang) * (r + 4), WALK);
     a.state = 'leaving'; a.bubble = null; a.ring = false; a.partner = null;
   }
 
@@ -232,15 +279,15 @@ export class WorldSim {
         // and always the same one to tap. Everybody else drifts about.
         if (a.kind === 'you') break;
         a.wait -= dt;
-        if (a.wait <= 0) { [a.tx, a.tz] = this.spot(); a.state = 'walking'; }
+        if (a.wait <= 0) { this.wander(a); a.state = 'walking'; }
         break;
       case 'walking':
-        if (this.moveToward(a, WALK, dt)) { a.state = 'idle'; a.wait = 4 + this.rnd() * 5; }
+        if (this.moveToward(a, dt)) { a.state = 'idle'; a.wait = 4 + this.rnd() * 5; }
         break;
       case 'approaching': {
         const p = a.partner ? this.byRef.get(a.partner) : undefined;
         if (!p) { this.lost(a); break; }
-        const arrived = this.moveToward(a, HURRY, dt);
+        const arrived = this.moveToward(a, dt);
         if (arrived && Math.hypot(p.x - a.x, p.z - a.z) <= TOGETHER + ARRIVE) {
           a.state = 'talking'; a.bubble = 'dots';
           a.facing = Math.atan2(p.x - a.x, p.z - a.z);
@@ -256,15 +303,17 @@ export class WorldSim {
         if (a.wait <= 0) {
           a.bubble = null; a.partner = null;
           if (this.nextVisit(a)) break;
-          [a.tx, a.tz] = a.kind === 'you' ? HOME : this.spot(); a.state = 'leaving';
+          this.wander(a); a.state = 'leaving';
         }
         break;
-      case 'leaving':
-        if (this.moveToward(a, WALK, dt)) {
-          if (Math.hypot(a.x, a.z) > PLAZA + 2) a.state = 'gone';
+      case 'leaving': {
+        if (this.moveToward(a, dt)) {
+          const [cx, cz] = this.centreOf(a.area);
+          if (Math.hypot(a.x - cx, a.z - cz) > this.radiusOf(a.area) + 2) a.state = 'gone';
           else { a.state = 'idle'; a.wait = 3 + this.rnd() * 4; }
         }
         break;
+      }
       case 'introduced':
         a.wait -= dt;
         if (a.wait <= 0) { a.ring = false; a.state = 'idle'; a.wait = 2; }
@@ -281,27 +330,69 @@ export class WorldSim {
   private lost(a: SimAgent): void {
     a.partner = null; a.bubble = null;
     if (this.nextVisit(a)) return;
-    [a.tx, a.tz] = a.kind === 'you' ? HOME : this.spot(); a.state = 'walking';
+    this.wander(a); a.state = 'walking';
+  }
+
+  /** Somewhere in their own neighbourhood: you go home, everybody else to a spot. */
+  private wander(a: SimAgent): void {
+    const [tx, tz] = a.kind === 'you' ? this.home(a.area) : this.spot(a.area);
+    this.setTarget(a, tx, tz, WALK);
+  }
+
+  /** Aim at a point; a long trip is hurried so it still takes about TRIP_SECS. */
+  private setTarget(a: SimAgent, tx: number, tz: number, base: number): void {
+    a.tx = tx; a.tz = tz;
+    a.speed = Math.max(base, Math.hypot(tx - a.x, tz - a.z) / TRIP_SECS);
   }
 
   /** Returns true on arrival. */
-  private moveToward(a: SimAgent, speed: number, dt: number): boolean {
+  private moveToward(a: SimAgent, dt: number): boolean {
     const dx = a.tx - a.x;
     const dz = a.tz - a.z;
     const d = Math.hypot(dx, dz);
     if (d <= ARRIVE) return true;
-    const stepLen = Math.min(d, speed * dt);
+    const stepLen = Math.min(d, a.speed * dt);
     a.x += (dx / d) * stepLen;
     a.z += (dz / d) * stepLen;
     a.facing = Math.atan2(dx, dz);
     return false;
   }
 
-  /** A place to stand: inside the square, and never in the fountain. */
-  private spot(): [number, number] {
+  private areaOf(id: string | null): MapArea | null {
+    if (!this.map) return null;
+    return this.map.areas[id ?? this.map.central] ?? this.map.areas[this.map.central] ?? null;
+  }
+
+  /** A place to stand: one of the tile's spots, or inside the square and never in the fountain. */
+  private spot(area: string | null): [number, number] {
+    const tile = this.areaOf(area);
+    if (tile && tile.spots.length) {
+      const s = tile.spots[Math.floor(this.rnd() * tile.spots.length)]!;
+      return [s[0] + (this.rnd() * 2 - 1) * JITTER, s[1] + (this.rnd() * 2 - 1) * JITTER];
+    }
     const ang = this.rnd() * Math.PI * 2;
     const r = FOUNTAIN + Math.sqrt(this.rnd()) * (PLAZA - 0.8 - FOUNTAIN);
     return [Math.cos(ang) * r, Math.sin(ang) * r];
+  }
+
+  /** Where your agent stands between outings: the tile's home, or the plaza's. */
+  home(area: string | null): [number, number] {
+    const tile = this.areaOf(area);
+    return tile ? [tile.home[0], tile.home[1]] : [HOME[0], HOME[1]];
+  }
+
+  /** The home of the tile `ref` belongs to; the central home for a ref not here. */
+  homeOf(ref: string): [number, number] {
+    return this.home(this.byRef.get(ref)?.area ?? null);
+  }
+
+  private centreOf(area: string | null): [number, number] {
+    const tile = this.areaOf(area);
+    return tile ? [tile.centre[0], tile.centre[1]] : [0, 0];
+  }
+
+  private radiusOf(area: string | null): number {
+    return this.areaOf(area)?.radius ?? PLAZA;
   }
 
   // ── Bench ────────────────────────────────────────────────────────────────
@@ -309,14 +400,16 @@ export class WorldSim {
   /**
    * A town of `n` for the frame-rate bench: you, strangers, every fourth one a practice
    * ghost, and conversations starting and ending by themselves so bubbles and verdict
-   * glyphs are on screen at a realistic rate. Real rounds drive all of this from
-   * events instead; nothing here is used outside the bench.
+   * glyphs are on screen at a realistic rate. On a map the town is spread over the
+   * neighbourhoods in turn, you in the central one. Real rounds drive all of this
+   * from events instead; nothing here is used outside the bench.
    */
   populateBench(n: number): void {
     for (const ref of [...this.order]) this.remove(ref);
     this.visits.clear();
-    const list: { ref: string; kind: AgentKind; seed: number; look: Look }[] = [
-      { ref: 'you', kind: 'you', seed: 7, look: lookFor(7) },
+    const ids = this.map ? Object.keys(this.map.areas) : [];
+    const list: AgentInput[] = [
+      { ref: 'you', kind: 'you', seed: 7, look: lookFor(7), area: null },
     ];
     for (let i = 1; i < n; i++) {
       const seed = Math.floor(this.rnd() * 1e9);
@@ -325,6 +418,7 @@ export class WorldSim {
         kind: i % 4 === 0 ? 'practice' : i % 9 === 0 ? 'met' : 'stranger',
         seed,
         look: lookFor(seed),
+        area: ids.length ? ids[i % ids.length]! : null,
       });
     }
     this.upsert(list);

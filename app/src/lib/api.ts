@@ -462,6 +462,8 @@ export interface WorldAgent {
   seed: number;
   /** Their character: how the square draws them. The same to every viewer. */
   look: Look;
+  /** Their neighbourhood, an id from shared/areas.ts; absent means the central tile. */
+  area?: string;
   state: 'idle' | 'talking' | 'briefed' | 'waiting' | 'introduced' | 'passed';
   rendezvousId?: string;
   name?: string;
@@ -469,8 +471,8 @@ export interface WorldAgent {
   yourTurn?: boolean;
 }
 export interface World {
-  square: { city: string | null };
-  me: { inPool: boolean; knows: number; missing: string[]; need: string[]; look: Look };
+  square: { city: string | null; area?: string };
+  me: { inPool: boolean; knows: number; missing: string[]; need: string[]; look: Look; area?: string | null };
   pool: { total: number };
   round: RoundState | null;
   targetsLeftToday: number;

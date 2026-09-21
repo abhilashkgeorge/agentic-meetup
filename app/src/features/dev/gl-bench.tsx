@@ -14,11 +14,12 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
+import { MAP, spotsFrom } from '../world/map';
 import { loadWorldRenderer, rendererError, type WorldRenderer } from '../world/r3f';
 import { WorldSim } from '../world/sim';
 import type { WorldStats } from '../world/canvas';
 import {
-  Card, Chip, ChipGroup, Header, Screen, StatRow, space, type, usePalette,
+  Card, Chip, ChipGroup, Header, Screen, StatRow, space, type, useIsDark, usePalette,
 } from '../../components/ui';
 
 // 64 is the canvas's instance-slot cap (SLOTS in ../world/canvas.tsx); a bigger
@@ -39,6 +40,7 @@ function verdict(s: WorldStats | null): { label: string; note: string; tone: 'ok
 
 export default function GlBenchScreen() {
   const p = usePalette();
+  const night = useIsDark();
   const [renderer, setRenderer] = useState<WorldRenderer | null | undefined>(undefined);
   const [size, setSize] = useState<(typeof SIZES)[number]>(48);
   const [cap30, setCap30] = useState(false);
@@ -49,6 +51,7 @@ export default function GlBenchScreen() {
   // One town per configuration; remounting the canvas resets the clocks.
   const sim = useMemo(() => {
     const s = new WorldSim(20260918);
+    s.setMap(spotsFrom(MAP));
     s.populateBench(size);
     return s;
   }, [size]);
@@ -57,10 +60,10 @@ export default function GlBenchScreen() {
   const tone = v.tone === 'ok' ? p.success : v.tone === 'warn' ? p.warning : v.tone === 'bad' ? p.danger : p.textTertiary;
 
   const colors = useMemo(() => ({
-    bg: p.bg, ground: p.sunken, prop: p.dark, you: p.accent, stranger: p.textTertiary,
+    bg: p.bg, ground: p.sunken, light: p.light, prop: p.dark, you: p.accent, stranger: p.textTertiary,
     met: p.textSecondary, practice: p.textTertiary, success: p.success, danger: p.danger,
-    warning: p.warning, accent: p.accent,
-  }), [p]);
+    warning: p.warning, accent: p.accent, night,
+  }), [p, night]);
 
   return (
     <Screen scroll={false} padded={false}>
@@ -79,7 +82,7 @@ export default function GlBenchScreen() {
         )}
         {renderer && (
           <renderer.WorldCanvas
-            key={`${size}-${cap30 ? 30 : 60}`}
+            key={`${size}-${cap30 ? 30 : 60}-${night ? 'night' : 'day'}`}
             sim={sim}
             colors={colors}
             cap30={cap30}
