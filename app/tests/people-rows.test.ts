@@ -44,3 +44,15 @@ describe('peopleRows', () => {
     expect(cityTitle(null)).toBe('The square');
   });
 });
+
+describe('placeLabels', () => {
+  it('lets the bigger tile keep its name and silences a neighbour that would cross it', async () => {
+    const { placeLabels } = await import('../src/features/world/camera');
+    const out = placeLabels([
+      { name: 'SMALL', radius: 2, at: [100, 100] },
+      { name: 'BIG', radius: 9, at: [110, 104] },
+      { name: 'FAR AWAY', radius: 1, at: [400, 400] },
+    ]);
+    expect(out.map((l) => l.name)).toEqual(['BIG', 'FAR AWAY']);
+  });
+});

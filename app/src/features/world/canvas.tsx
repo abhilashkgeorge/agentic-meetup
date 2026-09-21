@@ -387,7 +387,7 @@ export function WorldCanvas(props: WorldCanvasProps) {
         orthographic
         // Zoom 30, up from 24: at 24 the square filled the middle third of a phone
         // and an agent was thirty pixels tall, which is why tapping one took aim.
-        camera={{ position: [12, 12, 12], zoom: ZOOM_START, near: 0.1, far: 200 }}
+        camera={{ position: [EYE, EYE, EYE], zoom: ZOOM_START, near: 0.1, far: 400 }}
         // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
         // else, and the native Canvas type says so by leaving it out.
         gl={{ antialias: false }}
@@ -399,8 +399,15 @@ export function WorldCanvas(props: WorldCanvasProps) {
   );
 }
 
-/** Where the camera stands relative to what it looks at: the isometric (1,1,1). */
-const EYE = 12;
+/**
+ * Where the camera stands relative to what it looks at: the isometric (1,1,1), far
+ * enough back that the whole city is in front of it. Orthographic, so the distance
+ * changes nothing but the clipping -- and at 12 it clipped: zoomed out, the southern
+ * half of the city was behind the camera and the plate ended in a straight line
+ * across Whitefield (seen on the Seeker, 2026-09-21). The eye-to-target distance is
+ * EYE·√3 ≈ 173 units; the far plane below covers it with room to spare.
+ */
+const EYE = 100;
 /** How fast the camera catches up with your agent: 1 - e^(-k·dt) per frame. */
 const FOLLOW = 3;
 
@@ -643,8 +650,11 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, c
       {/* Light from the screen's top-left in the isometric view, so the bevel highlight
           sits top-left and the skirt bottom-right, exactly as the UI's raised() does.
           In the evening the sun goes down and the lamps and windows carry the scene. */}
-      <hemisphereLight args={colors.night ? ['#8f9ab3', '#2a2e36', 0.6] : ['#ffffff', '#8a94a6', 0.95]} />
-      <directionalLight position={[-4, 10, 8]} intensity={colors.night ? 0.35 : 0.75} />
+      {/* The evening keeps most of the light: the dark palette's page grey is already
+          four times darker than the day's, and halving the light on top of that made
+          the city a black field with dots on it (seen on the Seeker, 2026-09-21). */}
+      <hemisphereLight args={colors.night ? ['#aab4cc', '#2a2e36', 0.95] : ['#ffffff', '#8a94a6', 0.95]} />
+      <directionalLight position={[-4, 10, 8]} intensity={colors.night ? 0.6 : 0.75} />
 
       <primitive object={map.group} onClick={tapTile} />
 

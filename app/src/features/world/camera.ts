@@ -128,3 +128,25 @@ export function flyAt(fly: Fly, now: number): { pose: Pose; done: boolean } {
     : { tx: fly.from.tx + (fly.to.tx - fly.from.tx) * e, tz: fly.from.tz + (fly.to.tz - fly.from.tz) * e, zoom: Math.exp(lz) };
   return { pose, done: s >= 1 };
 }
+
+/** type.label: 11 px medium with 1.1 px tracking is about 8 px a character. */
+const LABEL_CHAR = 8;
+const LABEL_H = 16;
+
+/**
+ * Names that do not print on top of each other: the bigger tile wins its spot and a
+ * smaller neighbour whose name would cross it stays quiet. The six small tiles round
+ * MG Road printed six names in one place (on the Seeker, 2026-09-21); tapping a tile
+ * still flies there and the chip still says where you are.
+ */
+export function placeLabels<T extends { name: string; radius: number; at: readonly [number, number] }>(all: readonly T[]): T[] {
+  const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
+  const out: T[] = [];
+  for (const l of [...all].sort((a, b) => b.radius - a.radius)) {
+    const w = l.name.length * LABEL_CHAR;
+    const box = { x0: l.at[0] - w / 2, x1: l.at[0] + w / 2, y0: l.at[1] - LABEL_H / 2, y1: l.at[1] + LABEL_H / 2 };
+    if (placed.some((p) => box.x0 < p.x1 && box.x1 > p.x0 && box.y0 < p.y1 && box.y1 > p.y0)) continue;
+    placed.push(box); out.push(l);
+  }
+  return out;
+}

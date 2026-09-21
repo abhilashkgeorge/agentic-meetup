@@ -20,6 +20,7 @@ import { usePhoto } from '../photos/photo';
 import { CharacterAvatar } from '../look/character-avatar';
 import { useLook } from '../look/store';
 import { useSession } from '../../store/session';
+import { AREAS } from '@clone/shared';
 import { label, setupRoute } from './fields';
 import {
   Avatar, Button, Card, Chip, ChipGroup, Crease, PhotoSlot, Row, Screen, ScreenTitle,
@@ -190,6 +191,12 @@ export default function ProfileScreen() {
                    onPress={() => router.push('/edit/birth_date')} />
               <Row title="Lives in" value={city ?? 'Not set'}
                    onPress={() => router.push('/edit/lives_in')} />
+              {/* Only for a city the map covers: the row would be a lie in Mumbai. */}
+              {(city && /bangalore|bengaluru/i.test(city)) || valueOf(k, 'area') ? (
+                <Row title="Part of town"
+                     value={(() => { const v = valueOf(k, 'area'); return v ? (AREAS.find((a) => a.id === v)?.name ?? v) : 'Not set'; })()}
+                     onPress={() => router.push('/edit/area')} />
+              ) : null}
               <Row title="Here for"
                    value={(() => { const v = valueOf(k, 'relationship_intent'); return v ? label(v) : 'Not set'; })()}
                    onPress={() => router.push('/edit/relationship_intent')} />

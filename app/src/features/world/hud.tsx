@@ -13,7 +13,7 @@ import type { World } from '../../lib/api';
 import { missingLabel } from '../profile/fields';
 import { Button, Card, Chip, ChipGroup, space, type, usePalette } from '../../components/ui';
 import { roundActive } from './bridge';
-import { cityPose, toScreen, type Band, type Size } from './camera';
+import { cityPose, placeLabels, toScreen, type Band, type Size } from './camera';
 import { MAP, areaName, cityTitle, type Frame } from './map';
 
 export function Hud({
@@ -65,7 +65,7 @@ export function Hud({
   const labels = useMemo(() => {
     if (!size) return [];
     const city = cityPose(MAP.outline, size, frame);
-    return MAP.areas.map((a) => ({ id: a.id, name: a.name.toUpperCase(), at: toScreen(a.centre[0], a.centre[1], city, size) }));
+    return placeLabels(MAP.areas.map((a) => ({ id: a.id, name: a.name.toUpperCase(), radius: a.radius, at: toScreen(a.centre[0], a.centre[1], city, size) })));
   }, [size, frame]);
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -104,9 +104,8 @@ export function Hud({
           <Text style={[type.body, { color: p.text }]}>{status}</Text>
           {world && world.me.inPool && (
             <ChipGroup>
-              {askArea
-                ? <Chip label="Which part of town?" selected={false} onPress={onArea} />
-                : <Chip label={`${areaName(myArea)} · ${here} here`} selected={band !== 'city'} onPress={onHome} />}
+              {askArea && <Chip label="Which part of town?" selected={false} onPress={onArea} />}
+              <Chip label={`${areaName(myArea)} · ${here} here`} selected={band !== 'city'} onPress={onHome} />
               {band !== 'city' && <Chip label="Whole city" selected={false} onPress={onCity} />}
               <Chip label={`${world.pool.total.toLocaleString()} people nearby`} selected={false} onPress={() => {}} disabled />
               <Chip label={`${world.targetsLeftToday} visits left today`} selected={false} onPress={() => {}} disabled />
