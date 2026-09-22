@@ -42,8 +42,8 @@ export interface BuiltGarden {
  * read as dark cards standing about the field rather than as grass (on the phone,
  * 2026-09-22).
  */
-const GRASS_H = 0.055;
-const GRASS_W = 0.03;
+const GRASS_H = 0.044;
+const GRASS_W = 0.022;
 const TRUNK_H = 1.15;
 // Barely off the ground, and BELOW the disc drawn under your own agent (0.02 x
 // PERSON). At 0.006 the path was above it and swallowed the one marker that tells
@@ -56,17 +56,26 @@ const HILL_FAR = 96;
 interface Palette {
   skyTop: string; skyLow: string; hill: string; grass: string;
   path: string; pond: string; canopy: string; trunk: string; stone: string; leaf: string;
+  wood: string; bush: string; reed: string;
   sun: number; ambient: number;
 }
+
+/**
+  * What is planted in the beds. A park has a few colours in it, not a rainbow -- and
+  * nothing pure white, which at this size reads as litter rather than as a flower.
+  */
+const BLOOMS = ['#E0637E', '#E8B14C', '#C77BD6', '#F0D8A8', '#DE8A4C'] as const;
 const DAY: Palette = {
   skyTop: '#8FB8DE', skyLow: '#DCE7EC', hill: '#A9C4A6', grass: '#86AA5E',
   path: '#D6C6A2', pond: '#7FA6C6', canopy: '#79A45C', trunk: '#7A644C',
   stone: '#9BA1A6', leaf: '#D9B65A', sun: 0.95, ambient: 0.85,
+  wood: '#A8825A', bush: '#688F4C', reed: '#6E9450',
 };
 const NIGHT: Palette = {
   skyTop: '#1E2740', skyLow: '#55597A', hill: '#3B4752', grass: '#465B45',
   path: '#6E6654', pond: '#37506B', canopy: '#3A5540', trunk: '#453A2E',
   stone: '#565C63', leaf: '#8A7440', sun: 0.4, ambient: 0.55,
+  wood: '#544432', bush: '#31462E', reed: '#3A4E33',
 };
 
 const mix = (a: string | THREE.Color, b: string | THREE.Color, t: number) =>
@@ -236,7 +245,10 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     emissive: new THREE.Color(P.pond), emissiveIntensity: colors.night ? 0.3 : 0,
   });
-  add(fill(g.pond, POND_Y), pondMat, 'pond');
+  const waterParts = [fill(g.pond, POND_Y), fill(g.river, POND_Y)];
+  const water = mergeGeometries(waterParts, false)!;
+  for (const w of waterParts) w.dispose();
+  add(water, pondMat, 'water');
 
   // Trees: a trunk and three canopy blobs, two draw calls for the lot.
   const trunks = new THREE.InstancedMesh(
@@ -277,7 +289,10 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
   // means one of them always faces you, which is what DoubleSide was there for.
   const grassMat = new THREE.MeshLambertMaterial({ color: '#ffffff', side: THREE.FrontSide });
   const { time: windTime } = windy(grassMat);
-  const tufts = new THREE.InstancedMesh(tuftGeometry(), grassMat, Math.max(1, g.tufts.length));
+  // The reeds ride along in the same mesh: same blades, taller and bluer, so the
+  // water's edge sways with everything else and costs no extra draw call.
+  const blades = g.tufts.length + g.reeds.length;
+  const tufts = new THREE.InstancedMesh(tuftGeometry(), grassMat, Math.max(1, blades));
   g.tufts.forEach((t, i) => {
     dummy.position.set(t.x, 0, t.z);
     dummy.rotation.set(0, t.rot, 0);
@@ -285,8 +300,109 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
     dummy.updateMatrix(); tufts.setMatrixAt(i, dummy.matrix);
     tufts.setColorAt(i, shade.set(P.grass).multiplyScalar(0.74 + ((i * 11) % 13) / 42));
   });
+  g.reeds.forEach((r, k) => {
+    const i = g.tufts.length + k;
+    dummy.position.set(r.x, 0, r.z);
+    dummy.rotation.set(0, r.rot, 0);
+    dummy.scale.set(r.scale * 0.7, r.scale * 2.6, r.scale * 0.7);
+    dummy.updateMatrix(); tufts.setMatrixAt(i, dummy.matrix);
+    tufts.setColorAt(i, shade.set(P.reed).multiplyScalar(0.8 + ((k * 7) % 9) / 26));
+  });
   tufts.name = 'grass'; tufts.frustumCulled = false; tufts.raycast = () => {};
   group.add(tufts); meshes.push(tufts); junk.push(tufts.geometry, grassMat);
+
+  // A bridge where the path fords the river. Without one the river is a wall and the
+  // path stops being a path; the sim is told the same thing in gardenSpots.
+  if (g.bridge) {
+    const b = g.bridge;
+    const parts: THREE.BufferGeometry[] = [];
+    const deck = new THREE.BoxGeometry(b.width, 0.035, b.span);
+    deck.translate(0, 0.055, 0); parts.push(deck);
+    for (const side of [-1, 1]) {
+      const rail = new THREE.BoxGeometry(0.03, 0.025, b.span);
+      rail.translate((b.width / 2 - 0.02) * side, 0.145, 0); parts.push(rail);
+      for (const end of [-1, 1]) {
+        const post = new THREE.BoxGeometry(0.035, 0.12, 0.035);
+        post.translate((b.width / 2 - 0.02) * side, 0.1, (b.span / 2 - 0.06) * end); parts.push(post);
+      }
+    }
+    for (const q of parts) { q.deleteAttribute('uv'); q.rotateY(b.rot); q.translate(b.x, 0, b.z); }
+    const merged = mergeGeometries(parts, false)!;
+    for (const q of parts) q.dispose();
+    add(merged, new THREE.MeshLambertMaterial({ color: P.wood }), 'bridge');
+  }
+
+  // The fountain: a stone basin with water in it and a bowl on a column above.
+  {
+    const parts: THREE.BufferGeometry[] = [];
+    const basin = new THREE.CylinderGeometry(g.fountain.radius, g.fountain.radius * 1.04, 0.1, 20);
+    basin.translate(0, 0.05, 0); parts.push(basin);
+    const column = new THREE.CylinderGeometry(0.1, 0.14, 0.3, 8);
+    column.translate(0, 0.25, 0); parts.push(column);
+    const bowl = new THREE.CylinderGeometry(0.4, 0.26, 0.06, 12);
+    bowl.translate(0, 0.42, 0); parts.push(bowl);
+    for (const q of parts) { q.deleteAttribute('uv'); q.translate(g.fountain.x, 0, g.fountain.z); }
+    const merged = mergeGeometries(parts, false)!;
+    for (const q of parts) q.dispose();
+    add(merged, new THREE.MeshLambertMaterial({ color: P.stone }), 'fountain');
+    const pool = new THREE.CircleGeometry(g.fountain.radius * 0.92, 20);
+    pool.rotateX(-Math.PI / 2);
+    pool.translate(g.fountain.x, 0.101, g.fountain.z);
+    add(pool, new THREE.MeshLambertMaterial({ color: mix(P.pond, '#ffffff', 0.12) }), 'fountain-water');
+  }
+
+  // Benches, all of them one mesh. Somewhere to sit is most of what makes a field a
+  // park, and they are what the people standing about are standing about near.
+  if (g.benches.length) {
+    const parts: THREE.BufferGeometry[] = [];
+    for (const bn of g.benches) {
+      const bits: THREE.BufferGeometry[] = [];
+      const seat = new THREE.BoxGeometry(0.34, 0.018, 0.12); seat.translate(0, 0.06, 0); bits.push(seat);
+      const back = new THREE.BoxGeometry(0.34, 0.08, 0.016); back.translate(0, 0.105, -0.05); bits.push(back);
+      for (const side of [-1, 1]) {
+        const leg = new THREE.BoxGeometry(0.024, 0.06, 0.1);
+        leg.translate(0.14 * side, 0.03, 0); bits.push(leg);
+      }
+      for (const q of bits) { q.deleteAttribute('uv'); q.rotateY(bn.rot); q.translate(bn.x, 0, bn.z); }
+      parts.push(...bits);
+    }
+    const merged = mergeGeometries(parts, false)!;
+    for (const q of parts) q.dispose();
+    add(merged, new THREE.MeshLambertMaterial({ color: P.wood }), 'benches');
+  }
+
+  // Hedges.
+  if (g.bushes.length) {
+    // A hedge is about waist high on a person, not shoulder high: at 0.3 they were
+    // boulders with leaves (on the phone, 2026-09-22).
+    const bushMesh = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.15, 7, 5),
+      new THREE.MeshLambertMaterial({ color: '#ffffff' }), g.bushes.length);
+    g.bushes.forEach((b, i) => {
+      dummy.position.set(b.x, 0.095 * b.scale, b.z);
+      dummy.rotation.set(0, i * 1.1, 0);
+      dummy.scale.set(b.scale, b.scale * 0.72, b.scale * 0.92);
+      dummy.updateMatrix(); bushMesh.setMatrixAt(i, dummy.matrix);
+      bushMesh.setColorAt(i, shade.set(P.bush).multiplyScalar(0.84 + ((i * 13) % 11) / 30));
+    });
+    bushMesh.name = 'bushes'; bushMesh.frustumCulled = false; bushMesh.raycast = () => {};
+    group.add(bushMesh); meshes.push(bushMesh); junk.push(bushMesh.geometry, bushMesh.material as THREE.Material);
+  }
+
+  // Flowers, in beds. Normals up, like the grass, for the same reason.
+  if (g.flowers.length) {
+    const bloom = new THREE.InstancedMesh(
+      tuftGeometry(), new THREE.MeshLambertMaterial({ color: '#ffffff', side: THREE.FrontSide }), g.flowers.length);
+    g.flowers.forEach((f, i) => {
+      dummy.position.set(f.x, 0, f.z);
+      dummy.rotation.set(0, i * 2.4, 0);
+      dummy.scale.set(f.scale * 1.5, f.scale * 1.7, f.scale * 1.5);
+      dummy.updateMatrix(); bloom.setMatrixAt(i, dummy.matrix);
+      bloom.setColorAt(i, shade.set(BLOOMS[Math.floor(f.tint * BLOOMS.length) % BLOOMS.length]!));
+    });
+    bloom.name = 'flowers'; bloom.frustumCulled = false; bloom.raycast = () => {};
+    group.add(bloom); meshes.push(bloom); junk.push(bloom.geometry, bloom.material as THREE.Material);
+  }
 
   // Lanterns and rocks, merged into one piece of stone.
   const stone: THREE.BufferGeometry[] = [];

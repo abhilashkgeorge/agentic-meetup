@@ -46,8 +46,13 @@ export interface MapSpots {
   areas: Readonly<Record<string, MapArea>>;
   /** Buildings and trees. Walked around, never through. */
   solids?: readonly Solid[];
-  /** Lakes. Walked around, never across. */
+  /** Lakes and rivers. Walked around, never across -- except on a bridge. */
   lakes?: readonly (readonly Pt[])[];
+  /**
+   * The places water does not stop you: a bridge deck, a line of stepping stones.
+   * Checked before the water is, so a river can run right through a path.
+   */
+  bridges?: readonly Solid[];
 }
 
 /**
@@ -68,10 +73,11 @@ interface Lake { ring: readonly Pt[]; minX: number; maxX: number; minZ: number; 
 class Ground {
   private readonly solids = new Map<number, Solid[]>();
   private readonly lakes = new Map<number, Lake[]>();
+  private readonly bridges = new Map<number, Solid[]>();
   readonly empty: boolean;
 
   constructor(map: MapSpots | null) {
-    this.empty = !map || (!map.solids?.length && !map.lakes?.length);
+    this.empty = !map || (!map.solids?.length && !map.lakes?.length && !map.bridges?.length);
     if (!map) return;
     const file = <T>(into: Map<number, T[]>, item: T, minX: number, maxX: number, minZ: number, maxZ: number) => {
       for (let cx = Math.floor(minX / CELL); cx <= Math.floor(maxX / CELL); cx++) {
@@ -83,6 +89,7 @@ class Ground {
       }
     };
     for (const s of map.solids ?? []) file(this.solids, s, s.x - s.r, s.x + s.r, s.z - s.r, s.z + s.r);
+    for (const b of map.bridges ?? []) file(this.bridges, b, b.x - b.r, b.x + b.r, b.z - b.r, b.z + b.r);
     for (const ring of map.lakes ?? []) {
       if (ring.length < 3) continue;
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -135,6 +142,11 @@ class Ground {
       if ((x - s.x) ** 2 + (z - s.z) ** 2 < d * d) return true;
     }
     if (!wet) return false;
+    // A bridge is the water's exception, so it is asked first: without it a river
+    // across a path is a wall, and the path stops being a path.
+    for (const b of this.bridges.get(k) ?? []) {
+      if ((x - b.x) ** 2 + (z - b.z) ** 2 < b.r * b.r) return false;
+    }
     for (const l of this.lakes.get(k) ?? []) {
       if (x < l.minX || x > l.maxX || z < l.minZ || z > l.maxZ) continue;
       if (pointInPolygon([x, z], l.ring)) return true;

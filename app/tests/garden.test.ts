@@ -95,9 +95,64 @@ describe('the garden', () => {
     const spots = gardenSpots(g);
     expect(Object.keys(spots.areas)).toEqual([g.id]);
     expect(spots.central).toBe(g.id);
-    expect(spots.lakes).toHaveLength(1);
-    expect(spots.solids!.length).toBeGreaterThan(g.trees.length + g.props.length);
+    expect(spots.lakes, 'the pond and the river').toHaveLength(2);
+    expect(spots.solids!.length).toBeGreaterThan(g.trees.length + g.props.length + g.benches.length);
     // Every solid has a height, or the walking camera cannot tell a rock from a tree.
     for (const s of spots.solids!) { expect(s.h).toBeGreaterThan(0); expect(s.r).toBeGreaterThan(0); }
+  });
+
+  it('is a park: somewhere to sit, something to look at, and planting', () => {
+    for (const id of AREA_IDS) {
+      const g = makeGarden(id);
+      expect(g.benches.length, `${id} benches`).toBeGreaterThan(3);
+      expect(g.bushes.length, `${id} hedges`).toBeGreaterThan(15);
+      expect(g.flowers.length, `${id} flowers`).toBeGreaterThan(120);
+      expect(g.reeds.length, `${id} reeds`).toBeGreaterThan(80);
+      expect(g.river.length, `${id} river`).toBeGreaterThan(20);
+      expect(g.fountain.radius).toBeGreaterThan(0);
+      // The fountain stands beside the path, not on it and not in the water.
+      expect(toPath([g.fountain.x, g.fountain.z], g.path)).toBeGreaterThan(PATH_WIDTH / 2);
+    }
+  });
+
+  it('bridges the river where the path crosses it, and only there', () => {
+    // Control: return `bridges: []` from gardenSpots -- the walk test below stops at
+    // the near bank, because a river with no bridge is a wall across the path.
+    let bridged = 0;
+    for (const id of AREA_IDS) if (makeGarden(id).bridge) bridged++;
+    expect(bridged, 'the river is laid across the path, so it should nearly always ford it')
+      .toBeGreaterThan(AREA_IDS.length * 0.8);
+
+    const g = makeGarden(AREA_IDS.find((id) => makeGarden(id).bridge)!);
+    const b = g.bridge!;
+    const sim = new WorldSim(3);
+    sim.setMap(gardenSpots(g));
+    // You can stand on the bridge, and not in the river a few metres upstream of it.
+    expect(sim.standable(b.x, b.z), 'on the bridge').toBe(true);
+    const off = g.riverLine.find((p) => Math.hypot(p[0] - b.x, p[1] - b.z) > b.span);
+    expect(sim.standable(off![0], off![1]), 'in the river away from the bridge').toBe(false);
+  });
+
+  it('walks the whole path, across the water, without getting stuck', () => {
+    const g = makeGarden('indiranagar');
+    const sim = new WorldSim(4);
+    sim.setMap(gardenSpots(g));
+    sim.upsert([{ ref: 'you', kind: 'you', seed: 7, area: g.id }]);
+    const you = sim.get('you')!;
+    // Start at one end of the path and walk along it, steering at each waypoint.
+    [you.x, you.z] = [g.path[2]![0], g.path[2]![1]];
+    let reached = 0;
+    for (let k = 3; k < g.path.length; k += 3) {
+      const target = g.path[k]!;
+      for (let i = 0; i < 300 && Math.hypot(you.x - target[0], you.z - target[1]) > 0.5; i++) {
+        const dx = target[0] - you.x; const dz = target[1] - you.z;
+        const len = Math.hypot(dx, dz) || 1;
+        sim.drive('you', (dx / len) * 0.62, (dz / len) * 0.62);
+        sim.step(1 / 30);
+      }
+      if (Math.hypot(you.x - target[0], you.z - target[1]) <= 0.9) reached = k;
+    }
+    // Control: drop the bridge and this stops dead at the river.
+    expect(reached, 'got most of the way along the path').toBeGreaterThan(g.path.length * 0.7);
   });
 });

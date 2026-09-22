@@ -22,6 +22,12 @@ import type { MapSpots, Pt, Solid } from './sim';
 export interface Tree { x: number; z: number; scale: number; lean: number; kind: number }
 export interface Tuft { x: number; z: number; scale: number; rot: number }
 export interface Prop { x: number; z: number; rot: number; kind: 'lantern' | 'rock' }
+export interface Bench { x: number; z: number; rot: number }
+export interface Bush { x: number; z: number; scale: number }
+export interface Flower { x: number; z: number; scale: number; tint: number }
+export interface Reed { x: number; z: number; scale: number; rot: number }
+export interface Bridge { x: number; z: number; rot: number; span: number; width: number }
+export interface Fountain { x: number; z: number; radius: number }
 
 export interface Garden {
   id: string;
@@ -30,9 +36,19 @@ export interface Garden {
   /** The path, as a smooth polyline from one side to the other. */
   path: Pt[];
   pond: Pt[];
+  /** The river's banks as one ring, and the line down the middle of it. */
+  river: Pt[];
+  riverLine: Pt[];
+  /** Where the path crosses the river. Null only if the two never meet. */
+  bridge: Bridge | null;
+  fountain: Fountain;
   trees: Tree[];
   tufts: Tuft[];
   props: Prop[];
+  benches: Bench[];
+  bushes: Bush[];
+  flowers: Flower[];
+  reeds: Reed[];
   /** Where people stand: along the path, off to the sides. */
   spots: Pt[];
   home: Pt;
@@ -44,6 +60,10 @@ export const GARDEN_RADIUS = 26;
 export const PATH_WIDTH = 0.95;
 const TREE_R = 0.55;
 const PROP_R = 0.3;
+const BENCH_R = 0.26;
+const BUSH_R = 0.16;
+/** Wide enough to read as water you would not step into, narrow enough to bridge. */
+const RIVER_W = 2.1;
 
 const lcg = (seed: number) => {
   let s = seed >>> 0 || 1;
@@ -83,6 +103,33 @@ function inRing(p: Pt, ring: readonly Pt[]): boolean {
     if ((zi > p[1]) !== (zj > p[1]) && p[0] < xj + ((p[1] - zj) * (xi - xj)) / (zi - zj)) inside = !inside;
   }
   return inside;
+}
+
+/** Where two segments cross, or null. Used to find the ford the bridge goes over. */
+function meet(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
+  const rx = b[0] - a[0]; const rz = b[1] - a[1];
+  const sx = d[0] - c[0]; const sz = d[1] - c[1];
+  const den = rx * sz - rz * sx;
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((c[0] - a[0]) * sz - (c[1] - a[1]) * sx) / den;
+  const u = ((c[0] - a[0]) * rz - (c[1] - a[1]) * rx) / den;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return [a[0] + rx * t, a[1] + rz * t];
+}
+
+/** Both banks of a line as one ring: down one side and back up the other. */
+function banks(line: readonly Pt[], width: number): Pt[] {
+  const half = width / 2;
+  const left: Pt[] = []; const right: Pt[] = [];
+  for (let i = 0; i < line.length; i++) {
+    const a = line[Math.max(0, i - 1)]!; const b = line[Math.min(line.length - 1, i + 1)]!;
+    let dx = b[0] - a[0]; let dz = b[1] - a[1];
+    const len = Math.hypot(dx, dz) || 1; dx /= len; dz /= len;
+    const p = line[i]!;
+    left.push([p[0] - dz * half, p[1] + dx * half]);
+    right.push([p[0] + dz * half, p[1] - dx * half]);
+  }
+  return [...left, ...right.reverse()];
 }
 
 /** Catmull-Rom through the control points, so the path bends rather than dog-legs. */
@@ -142,8 +189,53 @@ export function makeGarden(id: string): Garden {
   }
   const pondMid: Pt = [cx0, cz0];
 
+  // A river, crossing the way the path does not, so the two meet once and the meeting
+  // is worth a bridge. It runs past the pond, which reads as the pond feeding it.
+  const across = enter + Math.PI / 2;
+  const riverControl: Pt[] = [
+    [Math.cos(across) * R * 1.15, Math.sin(across) * R * 1.15],
+    [Math.cos(across) * R * 0.55 + (rnd() - 0.5) * 7, Math.sin(across) * R * 0.55 + (rnd() - 0.5) * 7],
+    [(rnd() - 0.5) * 6, (rnd() - 0.5) * 6],
+    [-Math.cos(across) * R * 0.55 + (rnd() - 0.5) * 7, -Math.sin(across) * R * 0.55 + (rnd() - 0.5) * 7],
+    [-Math.cos(across) * R * 1.15, -Math.sin(across) * R * 1.15],
+  ];
+  const riverLine = smooth(riverControl, 9);
+  const river = banks(riverLine, RIVER_W);
+
+  // The ford: the first place the path and the river actually cross. A bridge goes
+  // there, and the sim is told the water does not stop you on it.
+  let bridge: Bridge | null = null;
+  outer: for (let i = 0; i + 1 < path.length; i++) {
+    for (let j = 0; j + 1 < riverLine.length; j++) {
+      const hit = meet(path[i]!, path[i + 1]!, riverLine[j]!, riverLine[j + 1]!);
+      if (!hit) continue;
+      const dx = path[i + 1]![0] - path[i]![0]; const dz = path[i + 1]![1] - path[i]![1];
+      bridge = { x: hit[0], z: hit[1], rot: Math.atan2(dx, dz), span: RIVER_W + 1.3, width: PATH_WIDTH + 0.22 };
+      break outer;
+    }
+  }
+
+  const inRiver = (p: Pt) => inRing(p, river);
+  const onBridge = (p: Pt) => !!bridge && dist(p, [bridge.x, bridge.z]) < bridge.span * 0.6;
+
+  // A clearing with a fountain in it, off the path but beside it, so it is somewhere
+  // you arrive at rather than somewhere you pass.
+  let fountain: Fountain = { x: 0, z: 0, radius: 1.5 };
+  for (let i = 0; i < 300; i++) {
+    const a = rnd() * Math.PI * 2;
+    const r = 5 + rnd() * (R * 0.55);
+    const c: Pt = [Math.cos(a) * r, Math.sin(a) * r];
+    const near = toPath(c, path);
+    if (near < PATH_WIDTH * 0.5 + 2 || near > 6) continue;
+    if (inRiver(c) || inRing(c, pond)) continue;
+    fountain = { x: c[0], z: c[1], radius: 1.5 };
+    break;
+  }
+
   const clearOfPath = (p: Pt, by: number) => toPath(p, path) > PATH_WIDTH * 0.5 + by;
   const clearOfPond = (p: Pt, by: number) => !inRing(p, pond) && dist(p, pondMid) > pondR * 0.6 + by;
+  const clearOfWater = (p: Pt, by: number) => !inRiver(p) && !inRing(p, pond)
+    && dist(p, [fountain.x, fountain.z]) > fountain.radius + by;
 
   // Trees in clumps, because scattered trees read as a plantation.
   const trees: Tree[] = [];
@@ -155,7 +247,7 @@ export function makeGarden(id: string): Garden {
     for (let k = 0; k < n && trees.length < 70; k++) {
       const p: Pt = [cx + (rnd() - 0.5) * 6, cz + (rnd() - 0.5) * 6];
       if (Math.hypot(p[0], p[1]) > R) continue;
-      if (!clearOfPath(p, 0.9) || !clearOfPond(p, 0.6)) continue;
+      if (!clearOfPath(p, 0.9) || !clearOfPond(p, 0.6) || !clearOfWater(p, 0.8)) continue;
       if (trees.some((t) => dist([t.x, t.z], p) < 1.3)) continue;
       trees.push({ x: p[0], z: p[1], scale: 0.75 + rnd() * 0.7, lean: (rnd() - 0.5) * 0.12, kind: Math.floor(rnd() * 3) });
     }
@@ -175,17 +267,95 @@ export function makeGarden(id: string): Garden {
   for (let i = 0; i < 7; i++) {
     const a = rnd() * Math.PI * 2;
     const p: Pt = [pondMid[0] + Math.cos(a) * (pondR + 0.7), pondMid[1] + Math.sin(a) * (pondR * 0.75 + 0.7)];
-    if (!clearOfPath(p, 0.4)) continue;
+    if (!clearOfPath(p, 0.4) || inRiver(p)) continue;
     props.push({ x: p[0], z: p[1], rot: rnd() * Math.PI, kind: 'rock' });
+  }
+
+  // Benches, facing the path they sit beside, and a couple looking at the water.
+  const benches: Bench[] = [];
+  const bench = (p: Pt, facing: number) => {
+    if (!clearOfWater(p, 0.5) || Math.hypot(p[0], p[1]) > R - 1) return;
+    if (trees.some((t) => dist([t.x, t.z], p) < TREE_R * t.scale + 0.5)) return;
+    if (benches.some((b) => dist([b.x, b.z], p) < 2.2)) return;
+    benches.push({ x: p[0], z: p[1], rot: facing });
+  };
+  for (let i = 1; i < 9; i++) {
+    const at = Math.floor((i / 9) * (path.length - 1));
+    const a = path[at]!; const b = path[Math.min(path.length - 1, at + 1)]!;
+    const dx = b[0] - a[0]; const dz = b[1] - a[1];
+    const len = Math.hypot(dx, dz) || 1;
+    const side = i % 2 === 0 ? 1 : -1;
+    const off = PATH_WIDTH * 0.5 + 0.62;
+    // Facing the path, which means facing back across the offset.
+    bench([a[0] - (dz / len) * off * side, a[1] + (dx / len) * off * side], Math.atan2((dz / len) * side, -(dx / len) * side));
+  }
+  for (let i = 0; i < 5; i++) {
+    const a = rnd() * Math.PI * 2;
+    const p: Pt = [pondMid[0] + Math.cos(a) * (pondR + 1.35), pondMid[1] + Math.sin(a) * (pondR * 0.75 + 1.35)];
+    bench(p, Math.atan2(pondMid[0] - p[0], pondMid[1] - p[1]));
+  }
+
+  // Hedges: low and rounded, gathered at the feet of the trees and along the path.
+  const bushes: Bush[] = [];
+  for (let i = 0; i < 600 && bushes.length < 60; i++) {
+    const a = rnd() * Math.PI * 2;
+    const r = 3 + Math.sqrt(rnd()) * (R - 3);
+    const p: Pt = [Math.cos(a) * r, Math.sin(a) * r];
+    if (!clearOfPath(p, 0.55) || !clearOfWater(p, 0.5)) continue;
+    if (benches.some((b) => dist([b.x, b.z], p) < 1.2)) continue;
+    if (bushes.some((b) => dist([b.x, b.z], p) < 0.9)) continue;
+    const byTree = trees.some((t) => dist([t.x, t.z], p) < 2.4);
+    if (!byTree && toPath(p, path) > 4 && rnd() < 0.7) continue;
+    bushes.push({ x: p[0], z: p[1], scale: 0.7 + rnd() * 0.7 });
+  }
+
+  // Flower beds: a few patches rather than confetti, so they read as planted.
+  const flowers: Flower[] = [];
+  for (let bed = 0; bed < 7; bed++) {
+    let c: Pt = [0, 0];
+    let ok = false;
+    for (let k = 0; k < 120 && !ok; k++) {
+      const a = rnd() * Math.PI * 2;
+      const r = 4 + rnd() * (R - 5);
+      c = [Math.cos(a) * r, Math.sin(a) * r];
+      ok = clearOfPath(c, 0.9) && clearOfWater(c, 0.9) && toPath(c, path) < 7;
+    }
+    if (!ok) continue;
+    const tint = rnd();
+    const spread = 0.9 + rnd() * 1.1;
+    for (let i = 0; i < 90; i++) {
+      const p: Pt = [c[0] + (rnd() - 0.5) * spread * 2, c[1] + (rnd() - 0.5) * spread * 2];
+      if (!clearOfPath(p, 0.25) || !clearOfWater(p, 0.3)) continue;
+      flowers.push({ x: p[0], z: p[1], scale: 0.7 + rnd() * 0.6, tint });
+    }
+  }
+
+  // Reeds at the water's edge: the thing that stops a pond looking like spilled paint.
+  const reeds: Reed[] = [];
+  for (let i = 0; i < 1400 && reeds.length < 420; i++) {
+    const onPond = rnd() < 0.45;
+    let p: Pt;
+    if (onPond) {
+      const a = rnd() * Math.PI * 2;
+      const r = pondR * (0.92 + rnd() * 0.22);
+      p = [pondMid[0] + Math.cos(a) * r, pondMid[1] + Math.sin(a) * r * 0.75];
+    } else {
+      const at = riverLine[Math.floor(rnd() * riverLine.length)]!;
+      const a = rnd() * Math.PI * 2;
+      p = [at[0] + Math.cos(a) * (RIVER_W * 0.5 + rnd() * 0.5), at[1] + Math.sin(a) * (RIVER_W * 0.5 + rnd() * 0.5)];
+    }
+    if (Math.hypot(p[0], p[1]) > R) continue;
+    if (onBridge(p) || !clearOfPath(p, 0.2)) continue;
+    reeds.push({ x: p[0], z: p[1], scale: 0.8 + rnd() * 0.9, rot: rnd() * Math.PI });
   }
 
   // Grass, thickest beside the path where you actually see it.
   const tufts: Tuft[] = [];
-  for (let i = 0; i < 14000 && tufts.length < 4200; i++) {
+  for (let i = 0; i < 22000 && tufts.length < 7000; i++) {
     const a = rnd() * Math.PI * 2;
     const r = Math.sqrt(rnd()) * R;
     const p: Pt = [Math.cos(a) * r, Math.sin(a) * r];
-    if (!clearOfPath(p, 0.1) || !clearOfPond(p, 0.2)) continue;
+    if (!clearOfPath(p, 0.1) || !clearOfPond(p, 0.2) || !clearOfWater(p, 0.15)) continue;
     if (trees.some((t) => dist([t.x, t.z], p) < 0.5 * t.scale)) continue;
     // Thickest where you walk, thinning out toward the trees.
     const near = toPath(p, path);
@@ -206,12 +376,20 @@ export function makeGarden(id: string): Garden {
     const p: Pt = [at[0] - (dz / len) * off * side, at[1] + (dx / len) * off * side];
     const blocked = trees.some((t2) => dist([t2.x, t2.z], p) < TREE_R * t2.scale + 0.2)
       || props.some((pr) => dist([pr.x, pr.z], p) < PROP_R + 0.2)
+      || benches.some((b) => dist([b.x, b.z], p) < BENCH_R + 0.2)
+      || bushes.some((b) => dist([b.x, b.z], p) < BUSH_R * b.scale + 0.2)
+      || dist(p, [fountain.x, fountain.z]) < fountain.radius + 0.2
+      || (inRiver(p) && !onBridge(p))
       || inRing(p, pond);
     spots.push(blocked ? [at[0], at[1]] : p);
   }
 
   const mid = path[Math.floor(path.length / 2)]!;
-  return { id, radius: R, path, pond, trees, tufts, props, spots, home: [mid[0], mid[1]] };
+  return {
+    id, radius: R, path, pond, river, riverLine, bridge, fountain,
+    trees, tufts, props, benches, bushes, flowers, reeds, spots,
+    home: [mid[0], mid[1]],
+  };
 }
 
 /**
@@ -223,6 +401,11 @@ export function gardenSpots(g: Garden): MapSpots {
   const solids: Solid[] = [
     ...g.trees.map((t) => ({ x: t.x, z: t.z, r: TREE_R * t.scale, h: 2.2 * t.scale })),
     ...g.props.map((p) => ({ x: p.x, z: p.z, r: PROP_R, h: p.kind === 'lantern' ? 0.35 : 0.15 })),
+    // You walk round a bench, not through it, but the camera sees over both it and
+    // the hedges -- which is what the height on each of these is for.
+    ...g.benches.map((b) => ({ x: b.x, z: b.z, r: BENCH_R, h: 0.13 })),
+    ...g.bushes.map((b) => ({ x: b.x, z: b.z, r: BUSH_R * b.scale, h: 0.16 * b.scale })),
+    { x: g.fountain.x, z: g.fountain.z, r: g.fountain.radius, h: 0.5 },
   ];
   // The edge of the world, as a ring of solids you cannot push past.
   const edge = 44;
@@ -239,6 +422,7 @@ export function gardenSpots(g: Garden): MapSpots {
     central: g.id,
     areas: { [g.id]: { home: g.home, centre: [0, 0], radius: g.radius, spots: g.spots, polygon: ring } },
     solids,
-    lakes: [g.pond],
+    lakes: [g.pond, g.river],
+    bridges: g.bridge ? [{ x: g.bridge.x, z: g.bridge.z, r: g.bridge.span * 0.6, h: 0 }] : [],
   };
 }
