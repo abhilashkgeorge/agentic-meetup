@@ -34,7 +34,7 @@ const SQ6 = Math.sqrt(6);
 /** Closest the camera comes: an agent is about fifty pixels tall. */
 export const ZOOM_MAX = 44;
 /** The band a tile is looked at in. */
-export const ZOOM_NEAR = 22;
+export const ZOOM_NEAR = 20;
 /** Above this multiple of the city zoom the labels go and the tiles are the unit. */
 export const CITY_BAND = 1.3;
 /** The fly, in seconds. */
@@ -105,10 +105,16 @@ export function cityPose(outline: readonly (readonly [number, number])[], size: 
   return { tx: gx - ox, tz: gz - oz, zoom };
 }
 
-/** The zoom that fills the screen's shorter side with a tile of this radius, kept tappable. */
+/**
+ * The zoom that fills the screen's shorter side with a tile of this radius, kept
+ * tappable. Capped at 30, not 40: a small tile like MG Road wanted 50 and was clamped
+ * to 40, which dropped the camera in among the buildings so you saw three of them and
+ * none of the neighbourhood (on the phone, 2026-09-22). At 30 a person is about
+ * forty-five pixels tall, which is still a comfortable thumb target.
+ */
 export function tileZoom(radius: number, size: Size): number {
   const fit = Math.min(size.width, size.height) / (2 * Math.max(0.5, radius));
-  return Math.min(40, Math.max(24, fit));
+  return Math.min(30, Math.max(18, fit));
 }
 
 export function bandOf(zoom: number, cityZoom: number): Band {

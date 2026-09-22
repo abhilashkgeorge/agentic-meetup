@@ -59,10 +59,10 @@ const SKIRT_Y = PLATE_Y + 0.012;
 const SKIRT_OFFSET = 0.3;
 const ROAD_Y = 0.012;
 const FLAT_Y = 0.008;
-const ROAD_WIDTH: Record<string, number> = { trunk: 0.22, primary: 0.16, secondary: 0.11 };
+const ROAD_WIDTH: Record<string, number> = { trunk: 0.34, primary: 0.24, secondary: 0.16 };
 const MAX_WINDOWS = 900;
 
-const mix = (a: string, b: string, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), t);
+const mix = (a: string | THREE.Color, b: string | THREE.Color, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), t);
 const lambert = (color: THREE.Color | string, extra: THREE.MeshLambertMaterialParameters = {}) =>
   new THREE.MeshLambertMaterial({ color, ...extra });
 
@@ -220,7 +220,10 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
 
   // Tiles, and your tile: the same extrusion, one of them lifted toward the accent.
   const tileMaterial = lambert(colors.bg);
-  const yoursMaterial = lambert(mix(colors.bg, colors.accent, 0.25));
+  // Your neighbourhood, plainly. At 22 % the tint vanished under the buildings and the
+  // city had no focal point at all (on the phone, 2026-09-22); this is the one place
+  // the map is allowed to say "you are here".
+  const yoursMaterial = lambert(mix(colors.bg, colors.accent, 0.42));
   const tiles = new THREE.Mesh(new THREE.BufferGeometry(), tileMaterial);
   const yours = new THREE.Mesh(new THREE.BufferGeometry(), yoursMaterial);
   for (const m of [tiles, yours]) { m.frustumCulled = false; group.add(m); meshes.push(m); }
@@ -240,11 +243,19 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   };
   setYourTile(null);
 
-  // Roads: the highlight, drawn.
-  add(ribbons(map.roads), lambert(colors.light), 'roads');
+  // ROADS ARE A CHANNEL, NOT A HIGHLIGHT. White on a near-white tile was legible
+  // while the ground was empty; once buildings covered it, the street network
+  // disappeared into them and the city read as gravel (on the phone, 2026-09-22).
+  // A road is now a shade darker than the ground it cuts through, which is what makes
+  // the grid readable from any height. The highlight edge that the design system asks
+  // for is still there -- it is the tile's own bevel, catching the light top-left.
+  add(ribbons(map.roads), lambert(mix(colors.bg, colors.prop, night ? 0.55 : 0.72)), 'roads');
 
   // Lakes: a lavender that breathes (canvas.tsx animates the material).
-  const waterColour = mix(colors.ground, colors.accent, night ? 0.35 : 0.15);
+  // Lakes at 15 % accent were grey with a rumour of purple in them; a lake has to read
+  // as water from across the city or the map is one flat grey (seen on the phone,
+  // 2026-09-22). Same for the parks and their trees below.
+  const waterColour = mix(colors.ground, colors.accent, night ? 0.45 : 0.4);
   const water = lambert(waterColour, {
     transparent: true, opacity: 0.85, depthWrite: false,
     emissive: waterColour, emissiveIntensity: night ? 0.35 : 0,
@@ -252,14 +263,19 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   add(flatRings(map.water.map((w) => w.polygon), FLAT_Y + 0.004), water, 'water');
 
   // Parks, with sparse tree domes.
-  add(flatRings(map.parks.map((p) => p.polygon), FLAT_Y), lambert(mix(colors.bg, colors.success, 0.2)), 'parks');
+  add(flatRings(map.parks.map((p) => p.polygon), FLAT_Y), lambert(mix(colors.bg, colors.success, 0.34)), 'parks');
   const treeList = map.parks.flatMap((p) => p.trees);
   if (treeList.length) {
-    const trees = new THREE.InstancedMesh(new THREE.SphereGeometry(0.34, 6, 4), lambert(mix(colors.bg, colors.success, 0.4)), treeList.length);
+    const treeColour = mix(colors.bg, colors.success, 0.62);
+    const trees = new THREE.InstancedMesh(new THREE.SphereGeometry(0.34, 6, 4), lambert('#ffffff'), treeList.length);
+    const shade = new THREE.Color();
     treeList.forEach((t, i) => {
       const s = t[2] ?? 1;
       dummy.position.set(t[0]!, 0.3 * s, t[1]!); dummy.rotation.set(0, 0, 0); dummy.scale.set(s, s * 0.9, s);
       dummy.updateMatrix(); trees.setMatrixAt(i, dummy.matrix);
+      // A wood, not a stamp: each tree a shade off its neighbour. Instance colours are
+      // free -- same mesh, same draw call.
+      trees.setColorAt(i, shade.copy(treeColour).multiplyScalar(0.86 + ((i * 37) % 11) / 39));
     });
     trees.name = 'trees'; trees.frustumCulled = false;
     group.add(trees); meshes.push(trees); disposables.push(trees.geometry, trees.material as THREE.Material);
@@ -269,11 +285,19 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   // and 455 of them were 136 K on their own, three times the whole budget, for a
   // corner nobody sees at the town's zoom (a block is ten to thirty pixels wide).
   const blockList = map.areas.flatMap((a) => a.blocks);
-  const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), lambert(mix(colors.light, colors.bg, 0.4)), blockList.length);
+  // A touch of warmth in the walls. The palette is a cool blue-grey throughout, which
+  // is right for a card and reads as concrete over a whole city; a few percent toward
+  // a warm off-white is sunlight on a building, not a second colour in the app.
+  const blockColour = night ? mix(colors.bg, colors.light, 0.5) : mix(mix(colors.light, colors.bg, 0.06), '#FFF6E8', 0.22);
+  const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), lambert('#ffffff'), blockList.length);
+  const wall = new THREE.Color();
   blockList.forEach((b, i) => {
     const [x, z, w, d, h, rot] = b as [number, number, number, number, number, number];
     dummy.position.set(x, h / 2, z); dummy.rotation.set(0, rot, 0); dummy.scale.set(w, h, d);
     dummy.updateMatrix(); blocks.setMatrixAt(i, dummy.matrix);
+    // Seven hundred buildings in one colour are a texture; a few percent apart, they
+    // are a skyline. The taller ones go a shade darker, as distance does.
+    blocks.setColorAt(i, wall.copy(blockColour).multiplyScalar(0.92 + ((i * 53) % 13) / 78 - Math.min(0.08, h * 0.03)));
   });
   blocks.name = 'blocks'; blocks.frustumCulled = false;
   group.add(blocks); meshes.push(blocks); disposables.push(blocks.geometry, blocks.material as THREE.Material);
@@ -281,10 +305,16 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   // Landmarks: eight icons in the shadow grey.
   add(landmarksGeometry(map), lambert(colors.prop), 'landmarks');
 
-  // Lamps along the main roads: posts, and bulbs that glow in the evening.
-  const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.045, 1.1, 5), lambert(colors.prop), map.lamps.length);
+  // LAMPS ARE AN EVENING THING. Lit, they are what carries the dark theme. In
+  // daylight a hundred posts with orange tips read as map pins dropped over the whole
+  // city -- the single noisiest thing on the screen (on the phone, 2026-09-22) -- and
+  // an unlit lamp post says nothing a building does not. So: count 0 by day, exactly
+  // as the windows do, and no draw call for either.
+  const lampCount = night ? map.lamps.length : 0;
+  const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.045, 1.1, 5), lambert(colors.prop), Math.max(1, map.lamps.length));
   const bulbs = lambert(colors.warning, { emissive: colors.warning, emissiveIntensity: night ? 0.9 : 0.15 });
-  const bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 6, 4), bulbs, map.lamps.length);
+  const bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 6, 4), bulbs, Math.max(1, map.lamps.length));
+  posts.count = lampCount; bulbMesh.count = lampCount;
   map.lamps.forEach(([x, z], i) => {
     dummy.position.set(x, 0.55, z); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
     dummy.updateMatrix(); posts.setMatrixAt(i, dummy.matrix);

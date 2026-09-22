@@ -29,7 +29,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
-import { HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
+import { CENTRAL_AREA, HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
   CITY_BAND, FLY_SECS, bandOf, cityPose, clampTarget, flyAt, pan, pinch, tileZoom,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
@@ -94,8 +94,12 @@ const BOUNDS: Bounds = (() => {
   for (const [x, z] of MAP.outline) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
   return { minX, maxX, minZ, maxZ };
 })();
-/** Closest the camera starts: today's zoom, at which an agent is about forty pixels. */
-const ZOOM_START = 30;
+/**
+ * Where the camera starts: far enough back to see the neighbourhood your agent is in
+ * rather than the three buildings beside it, close enough that a person is about
+ * forty pixels tall and easy to tap.
+ */
+const ZOOM_START = 26;
 
 /**
  * The camera, as a plain mutable object shared by the gesture handlers (on the
@@ -484,8 +488,11 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, c
     sim.step(clamped);
 
     // Your tile, lit once your agent knows which it is.
+    // Your tile is lit wherever your agent actually stands -- including the central
+    // one, before the neighbourhood question is answered. Lighting nothing left the
+    // city with no focal point at all (on the phone, 2026-09-22).
     const you = sim.get('you');
-    if (you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area); }
+    if (you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area ?? CENTRAL_AREA); }
 
     // The camera: a fly in progress, else following your agent, else where it was left.
     cam.clock = t;

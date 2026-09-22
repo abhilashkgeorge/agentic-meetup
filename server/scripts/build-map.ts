@@ -204,8 +204,25 @@ async function main() {
   const round2 = (v: number) => Math.round(v * 100) / 100;
   const r2 = (p: Pt): Pt => [round2(p[0]), round2(p[1])];
 
-  const totalBlocksWanted = AREAS.reduce((s, _a, i) => s + Math.round(6 + 34 * density[i]!), 0);
-  const blockScale = Math.min(1, 450 / totalBlocksWanted);
+  // FEWER, BIGGER BUILDINGS. Seven hundred small ones tiled the ground edge to edge
+  // and the roads, parks and lakes had nowhere to show: the city read as gravel
+  // (on the phone, 2026-09-22). Five hundred with a wider footprint and a metre
+  // between them leaves ground visible, which is what makes the rest legible.
+  const totalBlocksWanted = AREAS.reduce((s, _a, i) => s + Math.round(8 + 40 * density[i]!), 0);
+  const blockScale = Math.min(1, 500 / totalBlocksWanted);
+
+  /**
+   * How tall a building is, in scene units, where a person is about 1.5.
+   *
+   * THE SCALE IS A MODEL, NOT A STREET. One unit is 550 metres, so one of these is a
+   * city block rather than a house, and the people standing on the map are markers
+   * over a model -- the whole point of the miniature. Two passes got this wrong on
+   * the phone (2026-09-22): at 0.25-0.39 they were ankle-high and read as spilled
+   * dice; at up to 2.8 they were half-kilometre slabs that walled the people in and
+   * hid the streets. Under head height, with a few standing up, is the shape that
+   * reads: the city is the stage, the people are what you look at.
+   */
+  const heightAt = (d: number, rnd: () => number) => 0.22 + d * (0.25 + rnd() ** 2 * 1.15);
   const areasOut = AREAS.map((a, i) => {
     const tile = tiles[i]!;
     const rnd = lcg(0x5eed + i);
@@ -227,15 +244,43 @@ async function main() {
     const c = centroid(tile);
     const home = spots.reduce((best, p) => (Math.hypot(p[0] - c[0], p[1] - c[1]) < Math.hypot(best[0] - c[0], best[1] - c[1]) ? p : best), spots[0]!);
     const radius = Math.max(...tile.map((v) => Math.hypot(v[0] - c[0], v[1] - c[1])));
+    // BUILDINGS STAND ALONG STREETS. The first cut scattered them at random and told
+    // them to keep 0.3 away from any road, which put every building in the middle of a
+    // block facing nowhere: from above it read as spilled dice. Now they line the road
+    // they belong to, set back from its edge, alternating sides, turned to face it --
+    // which is what makes a grey field read as a city. Whatever a tile's roads cannot
+    // carry is filled in at random, so a tile with no trunk or primary road still has
+    // buildings in it.
     const blocks: number[][] = [];
-    const want = Math.round(Math.round(6 + 34 * density[i]!) * blockScale);
-    for (let k = 0; k < want; k++) {
-      const p = sample(0.45, 3000, (q) => !nearRoad(q, 0.3) && !inAny(q, water) && !inAny(q, parks)
-        && blocks.every((b) => Math.hypot(b[0]! - q[0], b[1]! - q[1]) > 0.45));
+    const clear = (q: Pt, r: number) => blocks.every((b) => Math.hypot(b[0]! - q[0], b[1]! - q[1]) > r);
+    const want = Math.round(Math.round(8 + 40 * density[i]!) * blockScale);
+    const place = (p: Pt, rot: number) => {
+      const w = 0.5 + rnd() * 0.8; const d = 0.4 + rnd() * 0.45;
+      blocks.push([round2(p[0]), round2(p[1]), round2(w), round2(d), round2(heightAt(density[i]!, rnd)), round2(rot)]);
+    };
+    for (const [a1, b1] of roadSegs) {
+      if (blocks.length >= want) break;
+      const len = Math.hypot(b1[0] - a1[0], b1[1] - a1[1]);
+      if (len < 0.3) continue;
+      const ux = (b1[0] - a1[0]) / len; const uz = (b1[1] - a1[1]) / len;
+      // Only this tile's stretch of the road, and only if it runs through it at all.
+      const mid: Pt = [(a1[0] + b1[0]) / 2, (a1[1] + b1[1]) / 2];
+      if (!pointInPolygon(mid, tile)) continue;
+      for (let s = 0.4; s < len && blocks.length < want; s += 1.7) {
+        for (const side of [1, -1]) {
+          if (blocks.length >= want) break;
+          const back = 0.5 + rnd() * 0.35;
+          const q: Pt = [a1[0] + ux * s - uz * back * side, a1[1] + uz * s + ux * back * side];
+          if (!pointInPolygon(q, tile) || distToRing(q, tile) < 0.3) continue;
+          if (inAny(q, water) || inAny(q, parks) || !clear(q, 1.05)) continue;
+          place(q, Math.atan2(ux, uz));
+        }
+      }
+    }
+    for (let k = blocks.length; k < want; k++) {
+      const p = sample(0.45, 2000, (q) => !nearRoad(q, 0.28) && !inAny(q, water) && !inAny(q, parks) && clear(q, 1.15));
       if (!p) break;
-      const w = 0.35 + rnd() * 0.55; const d = 0.35 + rnd() * 0.55;
-      const h = 0.15 + density[i]! * 0.45 * (0.6 + rnd() * 0.8);
-      blocks.push([round2(p[0]), round2(p[1]), round2(w), round2(d), round2(h), round2(rnd() * Math.PI)]);
+      place(p, rnd() * Math.PI);
     }
     return {
       id: a.id, name: a.name, centre: r2(c), home: r2(home), radius: round2(radius), density: round2(density[i]!),
@@ -248,8 +293,8 @@ async function main() {
     const rnd = lcg(0x7ee + i);
     const pb = bbox(pk.polygon);
     const trees: number[][] = [];
-    const n = Math.min(12, Math.max(3, Math.round(polygonArea(pk.polygon) * 4)));
-    for (let t = 0; t < 400 && trees.length < n; t++) {
+    const n = Math.min(22, Math.max(5, Math.round(polygonArea(pk.polygon) * 7)));
+    for (let t = 0; t < 900 && trees.length < n; t++) {
       const p: Pt = [pb.minX + rnd() * (pb.maxX - pb.minX), pb.minZ + rnd() * (pb.maxZ - pb.minZ)];
       if (pointInPolygon(p, pk.polygon) && distToRing(p, pk.polygon) > 0.2) trees.push([round2(p[0]), round2(p[1]), round2(0.7 + rnd() * 0.6)]);
     }

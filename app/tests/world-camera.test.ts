@@ -70,9 +70,9 @@ describe('the isometric map', () => {
     expect(bandOf(city.zoom, city.zoom)).toBe('city');
     expect(bandOf(city.zoom * 1.5, city.zoom)).toBe('mid');
     expect(bandOf(30, city.zoom)).toBe('near');
-    expect(tileZoom(5, size)).toBe(39);
-    expect(tileZoom(14, size), 'a huge tile still shows people').toBe(24);
-    expect(tileZoom(1, size), 'a tiny tile is never closer than the cap').toBe(40);
+    expect(tileZoom(5, size)).toBe(30);
+    expect(tileZoom(14, size), 'a huge tile still shows people').toBe(18);
+    expect(tileZoom(1, size), 'a tiny tile is never closer than the cap').toBe(30);
   });
 
   it('flies out of the start, eases, and lands exactly on the target at the end', () => {

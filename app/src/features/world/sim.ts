@@ -18,7 +18,7 @@
  * `home()` are the only two places a position is chosen, so the map is one branch
  * in each and nothing else knows.
  */
-import { lookFor, type Look } from '@clone/shared';
+import { lookFor, pointInPolygon, type Look } from '@clone/shared';
 
 export type AgentKind = 'you' | 'stranger' | 'practice' | 'met';
 export type AgentState =
@@ -27,8 +27,12 @@ export type Verdict = 'got_on' | 'unsure' | 'did_not_click' | 'could_not_tell';
 export type Bubble = 'dots' | Verdict | null;
 
 export type Pt = readonly [number, number];
-/** One neighbourhood, as the sim needs it: where to stand, and how far "gone" is. */
-export interface MapArea { home: Pt; centre: Pt; radius: number; spots: readonly Pt[] }
+/**
+ * One neighbourhood, as the sim needs it: where to stand, and how far "gone" is.
+ * The outline is here so a crowded tile can spread people without pushing anybody
+ * over the edge into the next neighbourhood.
+ */
+export interface MapArea { home: Pt; centre: Pt; radius: number; spots: readonly Pt[]; polygon: readonly Pt[] }
 export interface MapSpots { central: string; areas: Readonly<Record<string, MapArea>> }
 
 export interface SimAgent {
@@ -77,8 +81,19 @@ const TRIP_SECS = 4;
 const ARRIVE = 0.15;
 const TOGETHER = 0.9;
 const VERDICT_SECS = 3;
-/** A spot is a place, not a pixel: two people sent to the same one do not overlap. */
-const JITTER = 0.35;
+/**
+ * A spot is a place, not a pixel: two people sent to the same one do not overlap.
+ *
+ * Scaled to the neighbourhood, because a tile has twenty-four spots and can hold far
+ * more than twenty-four people -- fifty-one of them stood in one heap in MG Road on
+ * the phone (2026-09-22). Spreading them over the tile they are actually in is honest
+ * and is the difference between a crowd crush and a neighbourhood.
+ */
+const JITTER_MIN = 0.35;
+const JITTER_MAX = 1.5;
+const jitterFor = (radius: number) => Math.min(JITTER_MAX, Math.max(JITTER_MIN, radius * 0.24));
+/** 137.5°, the angle a sunflower uses. Consecutive placements never line up. */
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
 /** The same LCG as the avatar rig, so one seed means one town. */
 function lcg(seed: number): () => number {
@@ -96,6 +111,8 @@ export class WorldSim {
   private readonly order: string[] = [];
   /** Visits a visitor has been asked to make while already on one, in order. */
   private readonly visits = new Map<string, string[]>();
+  /** How many people have been placed in each tile, so the next one goes somewhere new. */
+  private readonly placed = new Map<string, number>();
   private map: MapSpots | null = null;
   /** Bench only: agents start and finish conversations on their own. */
   private autoplay = false;
@@ -367,8 +384,29 @@ export class WorldSim {
   private spot(area: string | null): [number, number] {
     const tile = this.areaOf(area);
     if (tile && tile.spots.length) {
-      const s = tile.spots[Math.floor(this.rnd() * tile.spots.length)]!;
-      return [s[0] + (this.rnd() * 2 - 1) * JITTER, s[1] + (this.rnd() * 2 - 1) * JITTER];
+      // EVENLY, NOT AT RANDOM. Picking one of twenty-four spots at random for each of
+      // fifty-one people leaves half the tile empty and puts four people on one
+      // corner -- the birthday problem, and on the phone it read as a crowd crush
+      // (2026-09-22). Counting instead means every spot is used before any is used
+      // twice, and the second and third person at a spot stand off it at the golden
+      // angle, so a full tile is a scatter rather than a heap.
+      const key = area ?? this.map?.central ?? '';
+      const n = this.placed.get(key) ?? 0;
+      this.placed.set(key, n + 1);
+      const s = tile.spots[n % tile.spots.length]!;
+      const ring = Math.floor(n / tile.spots.length);
+      const j = jitterFor(tile.radius);
+      const ang = n * GOLDEN;
+      let r = ring === 0 ? j * 0.3 * this.rnd() : j * (0.45 + 0.4 * Math.min(ring, 3));
+      // Never over the edge: a ring wide enough to spread a full tile is wide enough
+      // to put somebody in the neighbourhood next door, which would be a lie about
+      // where they live. Halve it until it lands, then give up and use the spot.
+      for (let t = 0; t < 5; t++) {
+        const p: Pt = [s[0] + Math.cos(ang) * r, s[1] + Math.sin(ang) * r];
+        if (!tile.polygon.length || pointInPolygon(p, tile.polygon)) return [p[0], p[1]];
+        r /= 2;
+      }
+      return [s[0], s[1]];
     }
     const ang = this.rnd() * Math.PI * 2;
     const r = FOUNTAIN + Math.sqrt(this.rnd()) * (PLAZA - 0.8 - FOUNTAIN);

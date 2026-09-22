@@ -42,7 +42,7 @@ export const MAP = asset as unknown as MapAsset;
 /** What the sim needs of the map: per area, where to stand. */
 export function spotsFrom(map: MapAsset): MapSpots {
   const areas: Record<string, MapSpots['areas'][string]> = {};
-  for (const a of map.areas) areas[a.id] = { home: a.home, centre: a.centre, radius: a.radius, spots: a.spots };
+  for (const a of map.areas) areas[a.id] = { home: a.home, centre: a.centre, radius: a.radius, spots: a.spots, polygon: a.polygon };
   return { central: CENTRAL_AREA, areas };
 }
 

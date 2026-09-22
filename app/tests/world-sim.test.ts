@@ -165,7 +165,7 @@ const fixture = (): MapSpots => ({
   areas: Object.fromEntries(Object.entries(TRI).map(([id, poly]) => {
     const spots = inside(poly);
     const centre = spots[0]!;
-    return [id, { home: spots[0]!, centre, radius: 5, spots }];
+    return [id, { home: spots[0]!, centre, radius: 5, spots, polygon: poly }];
   })),
 });
 const mapped = () => { const s = new WorldSim(9); s.setMap(fixture()); return s; };
@@ -228,6 +228,22 @@ describe('on the map', () => {
     run(s, 20);
     expect(s.get('p')!.state).toBe('gone');
     expect(pointInPolygon([s.get('p')!.x, s.get('p')!.z], TRI.c)).toBe(false);
+  });
+
+  it('uses every standing spot before it uses one twice, and stacks nobody', () => {
+    // Control: pick a spot at random per person -> some spots go unused and several
+    // people share one, which is the crowd crush seen on the phone (2026-09-22).
+    const s = mapped();
+    const spots = fixture().areas.b!.spots;
+    s.upsert(Array.from({ length: spots.length * 2 }, (_, i) => ({ ref: `q${i}`, kind: 'stranger' as const, seed: i, area: 'b' })));
+    const people = s.agents();
+    const nearest = (p: { x: number; z: number }) => Math.min(...spots.map((t) => Math.hypot(p.x - t[0], p.z - t[1])));
+    const used = new Set(people.map((p) => spots.findIndex((t) => Math.hypot(p.x - t[0], p.z - t[1]) === nearest(p))));
+    expect(used.size, 'every spot has somebody at it').toBe(spots.length);
+    for (const a of people) {
+      expect(pointInPolygon([a.x, a.z], TRI.b), `${a.ref} left the tile`).toBe(true);
+      for (const b of people) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z), `${a.ref} on top of ${b.ref}`).toBeGreaterThan(0.01);
+    }
   });
 
   it('spreads the bench over the neighbourhoods, you in the central one', () => {
