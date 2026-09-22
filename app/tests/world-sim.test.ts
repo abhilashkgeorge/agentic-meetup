@@ -246,6 +246,53 @@ describe('on the map', () => {
     }
   });
 
+  it('walks around a building instead of through it', () => {
+    // A wall of solid across the direct line between two spots. Control: return false
+    // from Ground.blocked and the walker goes straight through the middle of it.
+    const f = fixture();
+    const from: [number, number] = [2, 1];
+    const to: [number, number] = [6, 1];
+    // Solid, with no gap to wedge in: overlapping circles from z -1 to z 2, so the
+    // only way to the far side is round one end.
+    const wall = Array.from({ length: 13 }, (_, i) => ({ x: 4, z: -1 + i * 0.25, r: 0.3 }));
+    const s = new WorldSim(3);
+    s.setMap({ ...f, solids: wall, areas: { ...f.areas, a: { ...f.areas.a!, spots: [from], home: from } } });
+    s.upsert([{ ref: 'w', kind: 'stranger', seed: 1, area: 'a' }]);
+    const a = s.get('w')!;
+    a.x = from[0]; a.z = from[1]; a.tx = to[0]; a.tz = to[1]; a.state = 'walking'; a.speed = 1;
+    const seen: [number, number][] = [];
+    for (let i = 0; i < 900; i++) { s.step(1 / 30); seen.push([a.x, a.z]); }
+    // Never inside the wall...
+    for (const [x, z] of seen) {
+      for (const w of wall) expect(Math.hypot(x - w.x, z - w.z), `walked into ${w.x},${w.z}`).toBeGreaterThan(0.3);
+    }
+    // ...and it got past it rather than stopping dead at the near face.
+    expect(Math.max(...seen.map((p) => p[0]))).toBeGreaterThan(4.6);
+  });
+
+  it('does not walk on water', () => {
+    const f = fixture();
+    const lake: [number, number][] = [[3, 0], [5, 0], [5, 2], [3, 2]];
+    const s = new WorldSim(4);
+    s.setMap({ ...f, lakes: [lake], areas: { ...f.areas, a: { ...f.areas.a!, spots: [[2, 1]], home: [2, 1] } } });
+    s.upsert([{ ref: 'w', kind: 'stranger', seed: 1, area: 'a' }]);
+    const a = s.get('w')!;
+    a.x = 2; a.z = 1; a.tx = 6; a.tz = 1; a.state = 'walking'; a.speed = 1;
+    for (let i = 0; i < 400; i++) {
+      s.step(1 / 30);
+      expect(pointInPolygon([a.x, a.z], lake), `in the lake at ${a.x},${a.z}`).toBe(false);
+    }
+  });
+
+  it('tells you where a person could stand', () => {
+    const f = fixture();
+    const s = new WorldSim(5);
+    s.setMap({ ...f, solids: [{ x: 4, z: 4, r: 0.5 }], lakes: [[[10, 10], [12, 10], [12, 12], [10, 12]]] });
+    expect(s.standable(4, 4)).toBe(false);
+    expect(s.standable(11, 11)).toBe(false);
+    expect(s.standable(0, 0)).toBe(true);
+  });
+
   it('spreads the bench over the neighbourhoods, you in the central one', () => {
     const s = mapped();
     s.populateBench(12);

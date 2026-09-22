@@ -31,7 +31,8 @@ import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
 import { CENTRAL_AREA, HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
-  CITY_BAND, FLY_SECS, bandOf, cityPose, clampTarget, flyAt, pan, pinch, tileZoom,
+  CITY_BAND, FLY_SECS, ZOOM_MAX, bandOf, cityPose, clampTarget, elevationFor, eyeOffset,
+  flyAt, pan, pinch, tileZoom, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
 } from './camera';
 import { MAP, type Frame } from './map';
@@ -95,11 +96,12 @@ const BOUNDS: Bounds = (() => {
   return { minX, maxX, minZ, maxZ };
 })();
 /**
- * Where the camera starts: far enough back to see the neighbourhood your agent is in
- * rather than the three buildings beside it, close enough that a person is about
- * forty pixels tall and easy to tap.
+ * Where the camera starts: down in the streets, about eight buildings across the
+ * screen, where a person is a person walking past them rather than a giant standing
+ * on the roofs. Pinch out for the neighbourhood, and out again for the whole city.
+ * At 150 you could see four buildings and could not find your own agent among them.
  */
-const ZOOM_START = 26;
+const ZOOM_START = 85;
 
 /**
  * The camera, as a plain mutable object shared by the gesture handlers (on the
@@ -216,16 +218,19 @@ interface Posed { x: number; z: number; facing: number; look: Look }
  * Write one agent's parts into slot `i` of `set`. Pure geometry: position, facing,
  * bob, and the look. Everything not worn gets the hidden matrix.
  */
-function poseAgent(set: PartSet, i: number, a: Posed, bob: number, dummy: THREE.Object3D, hidden: THREE.Matrix4, col: Colours) {
+function poseAgent(set: PartSet, i: number, a: Posed, bob: number, dummy: THREE.Object3D, hidden: THREE.Matrix4, col: Colours, scale = 1) {
   const { look } = a;
   const f = a.facing;
   const fx = Math.sin(f), fz = Math.cos(f);       // forward
   const rx = Math.cos(f), rz = -Math.sin(f);      // right
   const headY = 1.12 + bob;
+  // Every part is built at human size and placed about the agent's feet, so one
+  // multiply here is the whole figure's scale: the town draws people small enough to
+  // walk between buildings, the builder's preview draws the same body at full size.
   const place = (p: Part, k: number, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, rxr = 0, ryr = f, rzr = 0) => {
-    dummy.position.set(x, y, z);
+    dummy.position.set(a.x + (x - a.x) * scale, y * scale, a.z + (z - a.z) * scale);
     dummy.rotation.set(rxr, ryr, rzr);
-    dummy.scale.set(sx, sy, sz);
+    dummy.scale.set(sx * scale, sy * scale, sz * scale);
     dummy.updateMatrix();
     p.mesh.setMatrixAt(i * p.per + k, dummy.matrix);
   };
@@ -358,14 +363,15 @@ export function WorldCanvas(props: WorldCanvasProps) {
         const a = t[0]!; const b = t[1]!;
         const d = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
         const mid: [number, number] = [(a.locationX + b.locationX) / 2, (a.locationY + b.locationY) / 2];
-        if (c.pinchDist && d > 0) c.pose = clampTarget(pinch(c.pose, mid, d / c.pinchDist, c.size, c.city.zoom), BOUNDS);
+        const vert = verticalOf(elevationFor(c.pose.zoom, c.city.zoom));
+        if (c.pinchDist && d > 0) c.pose = clampTarget(pinch(c.pose, mid, d / c.pinchDist, c.size, c.city.zoom, ZOOM_MAX, vert), BOUNDS);
         c.pinchDist = d; c.lastDx = g.dx; c.lastDy = g.dy;
         return;
       }
       c.pinchDist = null;
       const dx = g.dx - c.lastDx; const dy = g.dy - c.lastDy;
       c.lastDx = g.dx; c.lastDy = g.dy;
-      c.pose = clampTarget(pan(c.pose, dx, dy), BOUNDS);
+      c.pose = clampTarget(pan(c.pose, dx, dy, verticalOf(elevationFor(c.pose.zoom, c.city.zoom))), BOUNDS);
     },
     onPanResponderRelease: () => {
       c.pinchDist = null;
@@ -378,8 +384,14 @@ export function WorldCanvas(props: WorldCanvasProps) {
   useEffect(() => {
     if (!control) return;
     control.current = {
+      // A tile tap shows the neighbourhood from above; Home goes back down to your
+      // own agent, in the street, and follows it again.
       flyTo: (id) => flyToArea(c, id, false),
-      flyHome: () => flyToArea(c, sim.get('you')?.area ?? null, true),
+      flyHome: () => {
+        const you = sim.get('you');
+        const [hx, hz] = you ? [you.x, you.z] : sim.homeOf('you');
+        startFly(c, { tx: hx, tz: hz, zoom: ZOOM_START }, true);
+      },
       flyCity: () => startFly(c, c.city, false),
     };
     return () => { control.current = null; };
@@ -391,7 +403,7 @@ export function WorldCanvas(props: WorldCanvasProps) {
         orthographic
         // Zoom 30, up from 24: at 24 the square filled the middle third of a phone
         // and an agent was thirty pixels tall, which is why tapping one took aim.
-        camera={{ position: [EYE, EYE, EYE], zoom: ZOOM_START, near: 0.1, far: 400 }}
+        camera={{ position: eyeOffset(elevationFor(ZOOM_START, 7), EYE), zoom: ZOOM_START, near: 0.1, far: 700 }}
         // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
         // else, and the native Canvas type says so by leaving it out.
         gl={{ antialias: false }}
@@ -404,14 +416,26 @@ export function WorldCanvas(props: WorldCanvasProps) {
 }
 
 /**
- * Where the camera stands relative to what it looks at: the isometric (1,1,1), far
- * enough back that the whole city is in front of it. Orthographic, so the distance
+ * How big a person is drawn, against a map whose unit is 550 real metres.
+ *
+ * Nothing on this map is to scale with anything -- it is a model of a city with
+ * markers walking on it -- so the only question that matters is how a person reads
+ * against the buildings beside them. At full size they were half a kilometre tall,
+ * stood on rooftops and stepped over towers: "why are people bigger than the
+ * buildings" (2026-09-22). At 0.16 a person is about a quarter of a unit, the
+ * shortest building is twice their height and a street is three of them across.
+ */
+const PERSON = 0.16;
+
+/**
+ * How far the camera stands from what it looks at. Orthographic, so the distance
  * changes nothing but the clipping -- and at 12 it clipped: zoomed out, the southern
  * half of the city was behind the camera and the plate ended in a straight line
- * across Whitefield (seen on the Seeker, 2026-09-21). The eye-to-target distance is
- * EYE·√3 ≈ 173 units; the far plane below covers it with room to spare.
+ * across Whitefield (seen on the Seeker, 2026-09-21). WHICH WAY it stands comes from
+ * the zoom (elevationFor in ./camera.ts), so this only has to be further out than the
+ * city is wide, at any angle.
  */
-const EYE = 100;
+const EYE = 220;
 /** How fast the camera catches up with your agent: 1 - e^(-k·dt) per frame. */
 const FOLLOW = 3;
 
@@ -504,7 +528,10 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, c
       const k = 1 - Math.exp(-FOLLOW * clamped);
       cam.pose = clampTarget({ tx: cam.pose.tx + (you.x - cam.pose.tx) * k, tz: cam.pose.tz + (you.z - cam.pose.tz) * k, zoom: cam.pose.zoom }, BOUNDS);
     }
-    camera.position.set(cam.pose.tx + EYE, EYE, cam.pose.tz + EYE);
+    // The angle follows the zoom: a map seen from above out at the city, a game
+    // camera looking along the street once you are down in it.
+    const [ex, ey, ez] = eyeOffset(elevationFor(cam.pose.zoom, cam.city.zoom), EYE);
+    camera.position.set(cam.pose.tx + ex, ey, cam.pose.tz + ez);
     camera.lookAt(cam.pose.tx, 0, cam.pose.tz);
     if (camera.zoom !== cam.pose.zoom) { camera.zoom = cam.pose.zoom; camera.updateProjectionMatrix(); }
     if (!cam.fly) {
@@ -536,27 +563,27 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, c
       const bob = Math.sin(t * (moving ? 9 : 2) + a.seed) * (moving ? 0.06 : 0.03);
       const set = a.ghost ? ghost : solid;
       hideAgent(a.ghost ? solid : ghost, i, hidden);
-      poseAgent(set, i, a, bob, dummy, hidden, col);
+      poseAgent(set, i, a, bob, dummy, hidden, col, PERSON);
 
       // Who they are to you: a disc at the feet. You in the accent, people you have
       // met in the secondary grey, strangers nothing. The body no longer says it.
       if (a.kind === 'you' || a.kind === 'met') {
-        dummy.position.set(a.x, 0.02, a.z);
+        dummy.position.set(a.x, 0.02 * PERSON, a.z);
         dummy.rotation.set(0, 0, 0);
-        dummy.scale.setScalar(1);
+        dummy.scale.setScalar(PERSON);
         dummy.updateMatrix();
         discs.setMatrixAt(i, dummy.matrix);
         discs.setColorAt(i, a.kind === 'you' ? col.you : col.met);
       } else discs.setMatrixAt(i, hidden);
 
       // Bubbles. Dots while talking; a tick, a cross or a single dot for the verdict.
-      const top = 1.55 + bob;
+      const top = (1.55 + bob) * PERSON;
       if (a.bubble === 'dots') {
         for (let k = 0; k < DOTS_PER; k++) {
           const phase = Math.sin(t * 6 + k * 1.1);
-          dummy.position.set(a.x + (k - 1) * 0.17, top + 0.06 * Math.max(0, phase), a.z);
+          dummy.position.set(a.x + (k - 1) * 0.17 * PERSON, top + 0.06 * PERSON * Math.max(0, phase), a.z);
           dummy.rotation.set(0, 0, 0);
-          dummy.scale.setScalar(0.8 + 0.2 * Math.max(0, phase));
+          dummy.scale.setScalar((0.8 + 0.2 * Math.max(0, phase)) * PERSON);
           dummy.updateMatrix();
           dots.setMatrixAt(i * DOTS_PER + k, dummy.matrix);
           dots.setColorAt(i * DOTS_PER + k, col.prop);
@@ -567,18 +594,18 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, c
         const colour = ok ? col.success : col.danger;
         // A tick is a short bar and a long bar at 45°; a cross is two equal bars.
         for (let k = 0; k < BARS_PER; k++) {
-          dummy.position.set(a.x + (ok && k === 0 ? -0.12 : 0), top + 0.05, a.z);
+          dummy.position.set(a.x + (ok && k === 0 ? -0.12 * PERSON : 0), top + 0.05 * PERSON, a.z);
           dummy.rotation.set(0, Math.PI / 4, k === 0 ? Math.PI / 4 : -Math.PI / 4);
-          dummy.scale.set(ok && k === 0 ? 0.55 : 1, 1, 1);
+          dummy.scale.set((ok && k === 0 ? 0.55 : 1) * PERSON, PERSON, PERSON);
           dummy.updateMatrix();
           bars.setMatrixAt(i * BARS_PER + k, dummy.matrix);
           bars.setColorAt(i * BARS_PER + k, colour);
         }
         for (let k = 0; k < DOTS_PER; k++) dots.setMatrixAt(i * DOTS_PER + k, hidden);
       } else if (a.bubble === 'unsure' || a.bubble === 'could_not_tell') {
-        dummy.position.set(a.x, top + 0.05, a.z);
+        dummy.position.set(a.x, top + 0.05 * PERSON, a.z);
         dummy.rotation.set(0, 0, 0);
-        dummy.scale.setScalar(1.3);
+        dummy.scale.setScalar(1.3 * PERSON);
         dummy.updateMatrix();
         dots.setMatrixAt(i * DOTS_PER, dummy.matrix);
         dots.setColorAt(i * DOTS_PER, a.bubble === 'unsure' ? col.warning : col.grey);
@@ -590,8 +617,8 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, c
       }
 
       if (a.ring) {
-        const pulse = 1 + 0.12 * Math.sin(t * 4);
-        dummy.position.set(a.x, 0.03, a.z);
+        const pulse = (1 + 0.12 * Math.sin(t * 4)) * PERSON;
+        dummy.position.set(a.x, 0.03 * PERSON, a.z);
         dummy.rotation.set(-Math.PI / 2, 0, 0);
         dummy.scale.setScalar(pulse);
         dummy.updateMatrix();

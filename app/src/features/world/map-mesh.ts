@@ -20,7 +20,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { MapAreaAsset, MapAsset } from './map';
+import { TREE, type MapAreaAsset, type MapAsset } from './map';
 import type { Pt } from './sim';
 
 export interface MapColors {
@@ -59,7 +59,12 @@ const SKIRT_Y = PLATE_Y + 0.012;
 const SKIRT_OFFSET = 0.3;
 const ROAD_Y = 0.012;
 const FLAT_Y = 0.008;
-const ROAD_WIDTH: Record<string, number> = { trunk: 0.34, primary: 0.24, secondary: 0.16 };
+/**
+ * A street is wide enough to walk down. The people are about 0.24 units tall, so a
+ * 0.7-unit road is three of them across -- a street rather than the 0.24-unit kerb
+ * line it was, which a person could not have stood on (on the phone, 2026-09-22).
+ */
+const ROAD_WIDTH: Record<string, number> = { trunk: 0.9, primary: 0.68, secondary: 0.45 };
 const MAX_WINDOWS = 900;
 
 const mix = (a: string | THREE.Color, b: string | THREE.Color, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), t);
@@ -166,15 +171,23 @@ function landmark(kind: string): Prim[] {
   }
 }
 
+/**
+ * Landmarks are drawn three-quarter size. Their parts were sized against buildings a
+ * person could step over; now that a building is a building, a full-size dome sat
+ * over the city like a planet (on the phone, 2026-09-22).
+ */
+const LANDMARK = 0.75;
+
 function landmarksGeometry(map: MapAsset): THREE.BufferGeometry | null {
   const parts: THREE.BufferGeometry[] = [];
   for (const l of map.landmarks) {
     for (const p of landmark(l.kind)) {
       const g = p.g;
+      g.scale(LANDMARK, LANDMARK, LANDMARK);
       if (p.rx) g.rotateX(p.rx);
       if (p.rz) g.rotateZ(p.rz);
       if (p.ry) g.rotateY(p.ry);
-      g.translate(p.x ?? 0, p.y ?? 0, p.z ?? 0);
+      g.translate((p.x ?? 0) * LANDMARK, (p.y ?? 0) * LANDMARK, (p.z ?? 0) * LANDMARK);
       g.rotateY(l.rot);
       g.translate(l.at[0], 0, l.at[1]);
       // BoxGeometry carries no uv2 but a merge wants the same attribute set everywhere.
@@ -220,10 +233,11 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
 
   // Tiles, and your tile: the same extrusion, one of them lifted toward the accent.
   const tileMaterial = lambert(colors.bg);
-  // Your neighbourhood, plainly. At 22 % the tint vanished under the buildings and the
-  // city had no focal point at all (on the phone, 2026-09-22); this is the one place
-  // the map is allowed to say "you are here".
-  const yoursMaterial = lambert(mix(colors.bg, colors.accent, 0.42));
+  // Your neighbourhood, plainly -- but only as plainly as it needs to be. At 22 % the
+  // tint vanished under the buildings when the whole tile was in view; at 42 % it was
+  // a lavender floor once the camera came down into the streets. This reads at both
+  // (on the phone, 2026-09-22).
+  const yoursMaterial = lambert(mix(colors.bg, colors.accent, 0.3));
   const tiles = new THREE.Mesh(new THREE.BufferGeometry(), tileMaterial);
   const yours = new THREE.Mesh(new THREE.BufferGeometry(), yoursMaterial);
   for (const m of [tiles, yours]) { m.frustumCulled = false; group.add(m); meshes.push(m); }
@@ -267,11 +281,14 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   const treeList = map.parks.flatMap((p) => p.trees);
   if (treeList.length) {
     const treeColour = mix(colors.bg, colors.success, 0.62);
-    const trees = new THREE.InstancedMesh(new THREE.SphereGeometry(0.34, 6, 4), lambert('#ffffff'), treeList.length);
+    // A canopy, not a hill. At 0.34 they were wider than the buildings beside them
+    // (on the phone, 2026-09-22); TREE is shared with map.ts, which blocks walking
+    // through the same circle.
+    const trees = new THREE.InstancedMesh(new THREE.SphereGeometry(TREE, 6, 4), lambert('#ffffff'), treeList.length);
     const shade = new THREE.Color();
     treeList.forEach((t, i) => {
       const s = t[2] ?? 1;
-      dummy.position.set(t[0]!, 0.3 * s, t[1]!); dummy.rotation.set(0, 0, 0); dummy.scale.set(s, s * 0.9, s);
+      dummy.position.set(t[0]!, TREE * 0.85 * s, t[1]!); dummy.rotation.set(0, 0, 0); dummy.scale.set(s, s * 0.9, s);
       dummy.updateMatrix(); trees.setMatrixAt(i, dummy.matrix);
       // A wood, not a stamp: each tree a shade off its neighbour. Instance colours are
       // free -- same mesh, same draw call.

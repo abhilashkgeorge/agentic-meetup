@@ -8,7 +8,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  ZOOM_MAX, bandOf, cityPose, clampTarget, flyAt, fromScreen, pan, pinch, tileZoom, toScreen, type Pose,
+  CITY_ELEVATION, ISO_VERTICAL, STREET_ELEVATION, ZOOM_MAX, bandOf, cityPose, clampTarget,
+  elevationFor, eyeOffset, flyAt, fromScreen, pan, pinch, tileZoom, toScreen, verticalOf, type Pose,
 } from '../src/features/world/camera';
 import { MAP } from '../src/features/world/map';
 
@@ -69,7 +70,8 @@ describe('the isometric map', () => {
     }
     expect(bandOf(city.zoom, city.zoom)).toBe('city');
     expect(bandOf(city.zoom * 1.5, city.zoom)).toBe('mid');
-    expect(bandOf(30, city.zoom)).toBe('near');
+    expect(bandOf(30, city.zoom), 'over the neighbourhood').toBe('mid');
+    expect(bandOf(150, city.zoom), 'down in the streets').toBe('near');
     expect(tileZoom(5, size)).toBe(30);
     expect(tileZoom(14, size), 'a huge tile still shows people').toBe(18);
     expect(tileZoom(1, size), 'a tiny tile is never closer than the cap').toBe(30);
@@ -88,5 +90,50 @@ describe('the isometric map', () => {
     expect(end.done).toBe(true);
     expect(end.pose).toEqual(fly.to);
     expect(flyAt(fly, 12).pose).toEqual(fly.to);
+  });
+
+  it('tips from a map to a game camera as you zoom in, and back', () => {
+    // Control: return CITY_ELEVATION whatever the zoom -> the street view goes back to
+    // the top-down map the founder complained about, and this test's middle case fails.
+    const city = 7;
+    expect(elevationFor(city, city)).toBeCloseTo(CITY_ELEVATION, 9);
+    expect(elevationFor(city / 3, city), 'further out than the city still reads as a map').toBeCloseTo(CITY_ELEVATION, 9);
+    expect(elevationFor(200, city), 'right down in the streets').toBeCloseTo(STREET_ELEVATION, 9);
+    const mid = elevationFor(30, city);
+    expect(mid).toBeLessThan(CITY_ELEVATION);
+    expect(mid).toBeGreaterThan(STREET_ELEVATION);
+    // A lower angle flattens the screen: a step away from the camera covers less height.
+    expect(verticalOf(STREET_ELEVATION)).toBeLessThan(verticalOf(CITY_ELEVATION));
+    expect(verticalOf(CITY_ELEVATION)).toBeCloseTo(ISO_VERTICAL, 12);
+    expect(ISO_VERTICAL).toBeCloseTo(1 / Math.sqrt(6), 12);
+  });
+
+  it('puts the eye on the diagonal at the angle it was given, at the distance it was given', () => {
+    for (const elev of [CITY_ELEVATION, STREET_ELEVATION, 0.9]) {
+      const [x, y, z] = eyeOffset(elev, 220);
+      expect(Math.hypot(x, y, z)).toBeCloseTo(220, 9);
+      expect(x, 'the compass bearing never changes, only the height').toBeCloseTo(z, 12);
+      expect(Math.atan2(y, Math.hypot(x, z))).toBeCloseTo(elev, 9);
+    }
+    // The isometric angle is the familiar equal-thirds eye.
+    const [ix, iy] = eyeOffset(CITY_ELEVATION, Math.sqrt(3));
+    expect(ix).toBeCloseTo(1, 9); expect(iy).toBeCloseTo(1, 9);
+  });
+
+  it('keeps the ground under the finger at the flatter street angle too', () => {
+    const vert = verticalOf(STREET_ELEVATION);
+    const street: Pose = { tx: 3, tz: -2, zoom: 85 };
+    for (const [dx, dy] of [[57, 0], [0, -80], [-30, 45]] as const) {
+      const under = fromScreen(120, 300, street, size, vert);
+      const moved = pan(street, dx, dy, vert);
+      const [px, py] = toScreen(under[0], under[1], moved, size, vert);
+      expect(px).toBeCloseTo(120 + dx, 6);
+      expect(py).toBeCloseTo(300 + dy, 6);
+    }
+    const mid: [number, number] = [250, 520];
+    const at = fromScreen(mid[0], mid[1], street, size, vert);
+    const zoomed = pinch(street, mid, 1.4, size, 7, ZOOM_MAX, vert);
+    const [px, py] = toScreen(at[0], at[1], zoomed, size, vert);
+    expect(px).toBeCloseTo(mid[0], 6); expect(py).toBeCloseTo(mid[1], 6);
   });
 });

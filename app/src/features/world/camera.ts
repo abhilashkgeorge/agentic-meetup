@@ -29,49 +29,95 @@ export interface WorldControl {
 }
 
 const SQ2 = Math.SQRT2;
-const SQ6 = Math.sqrt(6);
 
-/** Closest the camera comes: an agent is about fifty pixels tall. */
-export const ZOOM_MAX = 44;
-/** The band a tile is looked at in. */
-export const ZOOM_NEAR = 20;
+/**
+ * HOW FAR ABOVE THE GROUND THE CAMERA SITS, in radians above the horizon.
+ *
+ * Zoomed out this is the classic isometric 35.26° -- eye at (1,1,1) -- which is what
+ * a map wants: you see the shape of the city and very little of the sides of things.
+ * Down in the streets that reads as a floor plan, and the founder said so: "why is it
+ * a top view . give it a third person view of the world . from the side .like how most
+ * of the video games look" (2026-09-22).
+ *
+ * 27° is where that lands. It is a three-quarter view: you see the fronts of the
+ * buildings and the street between them, which is what the ask was, while still
+ * seeing over the low ones to the people behind. 19° was tried first and is the
+ * angle an actual third-person game uses -- but those put one character in the
+ * foreground under a perspective lens, and an orthographic city at 19° is a wall of
+ * facades with everybody hidden behind the first row.
+ *
+ * It eases between the two with the zoom, so pinching in tips the world toward you.
+ */
+export const CITY_ELEVATION = Math.atan(1 / SQ2);
+export const STREET_ELEVATION = 0.47;
+
+/**
+ * How much of a ground step toward the horizon shows as screen height: sin(elevation)
+ * over root two. At the isometric angle it is the familiar 1/root 6 = 0.408; flat on
+ * would be 0. Every screen/ground conversion here takes it, so one number decides the
+ * angle and nothing else has an opinion about it.
+ */
+export const verticalOf = (elevation: number): number => Math.sin(elevation) / SQ2;
+export const ISO_VERTICAL = verticalOf(CITY_ELEVATION);
+
+/** Closest the camera comes: a person fills about a tenth of the screen. */
+export const ZOOM_MAX = 340;
+/** At or past this, you are down in the streets rather than over the neighbourhood. */
+export const ZOOM_NEAR = 70;
 /** Above this multiple of the city zoom the labels go and the tiles are the unit. */
 export const CITY_BAND = 1.3;
 /** The fly, in seconds. */
 export const FLY_SECS = 0.6;
 
 /** Screen offset (pixels from the centre) of a ground offset (dx, dz) from the target. */
-export function toScreenOffset(dx: number, dz: number, zoom: number): [number, number] {
-  return [(zoom * (dx - dz)) / SQ2, (zoom * (dx + dz)) / SQ6];
+export function toScreenOffset(dx: number, dz: number, zoom: number, vert = ISO_VERTICAL): [number, number] {
+  return [(zoom * (dx - dz)) / SQ2, zoom * (dx + dz) * vert];
 }
 
 /** Ground offset from the target of a screen offset (pixels from the centre). */
-export function fromScreenOffset(sx: number, sy: number, zoom: number): [number, number] {
-  const a = (sx * SQ2) / zoom; const b = (sy * SQ6) / zoom;
+export function fromScreenOffset(sx: number, sy: number, zoom: number, vert = ISO_VERTICAL): [number, number] {
+  const a = (sx * SQ2) / zoom; const b = sy / (zoom * vert);
   return [(a + b) / 2, (b - a) / 2];
 }
 
-export function toScreen(x: number, z: number, pose: Pose, size: Size): [number, number] {
-  const [sx, sy] = toScreenOffset(x - pose.tx, z - pose.tz, pose.zoom);
+export function toScreen(x: number, z: number, pose: Pose, size: Size, vert = ISO_VERTICAL): [number, number] {
+  const [sx, sy] = toScreenOffset(x - pose.tx, z - pose.tz, pose.zoom, vert);
   return [size.width / 2 + sx, size.height / 2 + sy];
 }
 
-export function fromScreen(px: number, py: number, pose: Pose, size: Size): [number, number] {
-  const [dx, dz] = fromScreenOffset(px - size.width / 2, py - size.height / 2, pose.zoom);
+export function fromScreen(px: number, py: number, pose: Pose, size: Size, vert = ISO_VERTICAL): [number, number] {
+  const [dx, dz] = fromScreenOffset(px - size.width / 2, py - size.height / 2, pose.zoom, vert);
   return [pose.tx + dx, pose.tz + dz];
 }
 
+/**
+ * The angle for a zoom: the map's angle out at the city, a game's angle in the
+ * streets, eased between on a log scale so a pinch tips the world smoothly.
+ */
+export function elevationFor(zoom: number, cityZoom: number): number {
+  const top = Math.log(Math.max(cityZoom, 1e-3));
+  const bottom = Math.log(ZOOM_NEAR);
+  const t = Math.min(1, Math.max(0, (Math.log(Math.max(zoom, 1e-3)) - top) / Math.max(1e-6, bottom - top)));
+  return CITY_ELEVATION + (STREET_ELEVATION - CITY_ELEVATION) * t;
+}
+
+/** Where the camera sits relative to what it looks at, for a given angle and distance. */
+export function eyeOffset(elevation: number, distance: number): [number, number, number] {
+  const flat = (Math.cos(elevation) / SQ2) * distance;
+  return [flat, Math.sin(elevation) * distance, flat];
+}
+
 /** Drag the ground by (dx, dy) pixels: whatever was under the finger stays under it. */
-export function pan(pose: Pose, dx: number, dy: number): Pose {
-  const [gx, gz] = fromScreenOffset(dx, dy, pose.zoom);
+export function pan(pose: Pose, dx: number, dy: number, vert = ISO_VERTICAL): Pose {
+  const [gx, gz] = fromScreenOffset(dx, dy, pose.zoom, vert);
   return { tx: pose.tx - gx, tz: pose.tz - gz, zoom: pose.zoom };
 }
 
 /** Scale the zoom about a screen point: the ground under the fingers' midpoint stays put. */
-export function pinch(pose: Pose, mid: [number, number], scale: number, size: Size, zoomMin: number, zoomMax = ZOOM_MAX): Pose {
+export function pinch(pose: Pose, mid: [number, number], scale: number, size: Size, zoomMin: number, zoomMax = ZOOM_MAX, vert = ISO_VERTICAL): Pose {
   const zoom = Math.min(zoomMax, Math.max(zoomMin, pose.zoom * scale));
-  const [gx, gz] = fromScreen(mid[0], mid[1], pose, size);
-  const [ox, oz] = fromScreenOffset(mid[0] - size.width / 2, mid[1] - size.height / 2, zoom);
+  const [gx, gz] = fromScreen(mid[0], mid[1], pose, size, vert);
+  const [ox, oz] = fromScreenOffset(mid[0] - size.width / 2, mid[1] - size.height / 2, zoom, vert);
   return { tx: gx - ox, tz: gz - oz, zoom };
 }
 

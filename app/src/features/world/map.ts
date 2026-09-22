@@ -8,7 +8,7 @@
  */
 import { AREAS, CENTRAL_AREA } from '@clone/shared';
 import asset from '../../../assets/map/bangalore.json';
-import type { MapSpots, Pt } from './sim';
+import type { MapSpots, Pt, Solid } from './sim';
 
 export interface MapAreaAsset {
   id: string;
@@ -39,11 +39,31 @@ export interface MapAsset {
 
 export const MAP = asset as unknown as MapAsset;
 
-/** What the sim needs of the map: per area, where to stand. */
+/**
+ * A tree's canopy radius, before its own scale. It lives here rather than beside the
+ * mesh that draws it because this file is the pure one: the sim walks people around
+ * exactly the circle map-mesh.ts draws, and tests/native-imports.test.ts will not let
+ * a file the app imports at startup reach into the one that imports three.
+ */
+export const TREE = 0.15;
+
+/**
+ * What the sim needs of the map: per area, where to stand -- and everywhere, what
+ * cannot be walked through. A building becomes the circle that fits inside its
+ * footprint, so somebody may cut a corner but never cross the middle of one; a tree
+ * becomes its canopy; a lake stays the shape it is.
+ */
 export function spotsFrom(map: MapAsset): MapSpots {
   const areas: Record<string, MapSpots['areas'][string]> = {};
   for (const a of map.areas) areas[a.id] = { home: a.home, centre: a.centre, radius: a.radius, spots: a.spots, polygon: a.polygon };
-  return { central: CENTRAL_AREA, areas };
+  const solids: Solid[] = [];
+  for (const a of map.areas) {
+    for (const b of a.blocks) solids.push({ x: b[0]!, z: b[1]!, r: (b[2]! + b[3]!) / 4 });
+  }
+  for (const p of map.parks) {
+    for (const t of p.trees) solids.push({ x: t[0]!, z: t[1]!, r: TREE * (t[2] ?? 1) });
+  }
+  return { central: CENTRAL_AREA, areas, solids, lakes: map.water.map((w) => w.polygon) };
 }
 
 /** The neighbourhood's name for an id; null (no answer) is the central tile. */

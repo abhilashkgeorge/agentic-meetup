@@ -214,15 +214,17 @@ async function main() {
   /**
    * How tall a building is, in scene units, where a person is about 1.5.
    *
-   * THE SCALE IS A MODEL, NOT A STREET. One unit is 550 metres, so one of these is a
-   * city block rather than a house, and the people standing on the map are markers
-   * over a model -- the whole point of the miniature. Two passes got this wrong on
-   * the phone (2026-09-22): at 0.25-0.39 they were ankle-high and read as spilled
-   * dice; at up to 2.8 they were half-kilometre slabs that walled the people in and
-   * hid the streets. Under head height, with a few standing up, is the shape that
-   * reads: the city is the stage, the people are what you look at.
+   * A BUILDING IS TALLER THAN A PERSON. The map's unit is 550 real metres, so none of
+   * this is to scale with anything -- what matters is only how a building reads
+   * against the people standing beside it, and the people are drawn at about 0.24
+   * units (PERSON in app/features/world/canvas.tsx). Three passes got this wrong on
+   * the phone: ankle-high dice, then half-kilometre slabs, then buildings a person
+   * could step over -- "why are people bigger than the buildings" (2026-09-22). At
+   * 0.4 to 2.4 the shortest is nearly twice a person and the tallest is a tower. The
+   * ceiling matters as much as the floor: at 3.5 the towers walled off the street
+   * once the camera came down to a game angle and you could not see anybody.
    */
-  const heightAt = (d: number, rnd: () => number) => 0.22 + d * (0.25 + rnd() ** 2 * 1.15);
+  const heightAt = (d: number, rnd: () => number) => 0.4 + d * (0.4 + rnd() ** 2 * 1.55);
   const areasOut = AREAS.map((a, i) => {
     const tile = tiles[i]!;
     const rnd = lcg(0x5eed + i);
@@ -236,14 +238,6 @@ async function main() {
       }
       return null;
     };
-    const spots: Pt[] = [];
-    for (let k = 0; k < 24; k++) {
-      const p = sample(0.5, 4000, (q) => !inAny(q, water) && !inAny(q, parks)) ?? sample(0.2) ?? centroid(tile);
-      spots.push(p);
-    }
-    const c = centroid(tile);
-    const home = spots.reduce((best, p) => (Math.hypot(p[0] - c[0], p[1] - c[1]) < Math.hypot(best[0] - c[0], best[1] - c[1]) ? p : best), spots[0]!);
-    const radius = Math.max(...tile.map((v) => Math.hypot(v[0] - c[0], v[1] - c[1])));
     // BUILDINGS STAND ALONG STREETS. The first cut scattered them at random and told
     // them to keep 0.3 away from any road, which put every building in the middle of a
     // block facing nowhere: from above it read as spilled dice. Now they line the road
@@ -269,7 +263,7 @@ async function main() {
       for (let s = 0.4; s < len && blocks.length < want; s += 1.7) {
         for (const side of [1, -1]) {
           if (blocks.length >= want) break;
-          const back = 0.5 + rnd() * 0.35;
+          const back = 0.8 + rnd() * 0.4;
           const q: Pt = [a1[0] + ux * s - uz * back * side, a1[1] + uz * s + ux * back * side];
           if (!pointInPolygon(q, tile) || distToRing(q, tile) < 0.3) continue;
           if (inAny(q, water) || inAny(q, parks) || !clear(q, 1.05)) continue;
@@ -282,6 +276,23 @@ async function main() {
       if (!p) break;
       place(p, rnd() * Math.PI);
     }
+
+    // STANDING SPOTS COME AFTER THE BUILDINGS, so nobody is spawned inside one. They
+    // used to be drawn first and knew only about water and parks, which is how people
+    // ended up standing on rooftops (on the phone, 2026-09-22). `onRoad` keeps them on
+    // the street rather than in the middle of a block, which is where people walk.
+    const inBlock = (q: Pt) => blocks.some((b) =>
+      Math.abs(q[0] - b[0]!) < b[2]! / 2 + 0.12 && Math.abs(q[1] - b[1]!) < b[3]! / 2 + 0.12);
+    const spots: Pt[] = [];
+    for (let k = 0; k < 24; k++) {
+      const p = sample(0.5, 4000, (q) => nearRoad(q, 0.5) && !inBlock(q) && !inAny(q, water) && !inAny(q, parks))
+        ?? sample(0.5, 3000, (q) => !inBlock(q) && !inAny(q, water) && !inAny(q, parks))
+        ?? sample(0.2) ?? centroid(tile);
+      spots.push(p);
+    }
+    const c = centroid(tile);
+    const home = spots.reduce((best, p) => (Math.hypot(p[0] - c[0], p[1] - c[1]) < Math.hypot(best[0] - c[0], best[1] - c[1]) ? p : best), spots[0]!);
+    const radius = Math.max(...tile.map((v) => Math.hypot(v[0] - c[0], v[1] - c[1])));
     return {
       id: a.id, name: a.name, centre: r2(c), home: r2(home), radius: round2(radius), density: round2(density[i]!),
       polygon: tile.map(r2), spots: spots.map(r2), blocks,

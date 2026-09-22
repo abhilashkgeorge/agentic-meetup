@@ -33,7 +33,101 @@ export type Pt = readonly [number, number];
  * over the edge into the next neighbourhood.
  */
 export interface MapArea { home: Pt; centre: Pt; radius: number; spots: readonly Pt[]; polygon: readonly Pt[] }
-export interface MapSpots { central: string; areas: Readonly<Record<string, MapArea>> }
+/** Something you cannot walk through: a building or a tree, as a circle. */
+export interface Solid { x: number; z: number; r: number }
+
+export interface MapSpots {
+  central: string;
+  areas: Readonly<Record<string, MapArea>>;
+  /** Buildings and trees. Walked around, never through. */
+  solids?: readonly Solid[];
+  /** Lakes. Walked around, never across. */
+  lakes?: readonly (readonly Pt[])[];
+}
+
+/**
+ * Where the solid things are, in a grid, so a walking agent asks about four of them
+ * rather than five hundred.
+ *
+ * Cells are two units across and everything is filed into every cell its own box
+ * touches, so a lookup is the one cell under the foot. Without this the collision
+ * test is 444 buildings plus 213 trees plus 54 lakes for every agent for every
+ * candidate heading for every frame, which is the whole frame budget.
+ */
+const CELL = 2;
+const cellKey = (x: number, z: number): number =>
+  (Math.floor(x / CELL) + 512) * 1024 + (Math.floor(z / CELL) + 512);
+
+interface Lake { ring: readonly Pt[]; minX: number; maxX: number; minZ: number; maxZ: number }
+
+class Ground {
+  private readonly solids = new Map<number, Solid[]>();
+  private readonly lakes = new Map<number, Lake[]>();
+  readonly empty: boolean;
+
+  constructor(map: MapSpots | null) {
+    this.empty = !map || (!map.solids?.length && !map.lakes?.length);
+    if (!map) return;
+    const file = <T>(into: Map<number, T[]>, item: T, minX: number, maxX: number, minZ: number, maxZ: number) => {
+      for (let cx = Math.floor(minX / CELL); cx <= Math.floor(maxX / CELL); cx++) {
+        for (let cz = Math.floor(minZ / CELL); cz <= Math.floor(maxZ / CELL); cz++) {
+          const k = (cx + 512) * 1024 + (cz + 512);
+          const at = into.get(k);
+          if (at) at.push(item); else into.set(k, [item]);
+        }
+      }
+    };
+    for (const s of map.solids ?? []) file(this.solids, s, s.x - s.r, s.x + s.r, s.z - s.r, s.z + s.r);
+    for (const ring of map.lakes ?? []) {
+      if (ring.length < 3) continue;
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const [x, z] of ring) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+      }
+      file(this.lakes, { ring, minX, maxX, minZ, maxZ }, minX, maxX, minZ, maxZ);
+    }
+  }
+
+  /**
+   * A unit vector out of whatever this point is inside, or null when it is clear.
+   * Straight away from the nearest solid; for a lake, away from its middle, which is
+   * crude and is only ever used to walk somebody off water they should not be on.
+   */
+  escape(x: number, z: number, pad: number): [number, number] | null {
+    if (this.empty) return null;
+    const k = cellKey(x, z);
+    for (const s of this.solids.get(k) ?? []) {
+      const d = s.r + pad;
+      const dx = x - s.x; const dz = z - s.z;
+      const len = Math.hypot(dx, dz);
+      if (len < d) return len < 1e-6 ? [1, 0] : [dx / len, dz / len];
+    }
+    for (const l of this.lakes.get(k) ?? []) {
+      if (x < l.minX || x > l.maxX || z < l.minZ || z > l.maxZ) continue;
+      if (!pointInPolygon([x, z], l.ring)) continue;
+      const dx = x - (l.minX + l.maxX) / 2; const dz = z - (l.minZ + l.maxZ) / 2;
+      const len = Math.hypot(dx, dz);
+      return len < 1e-6 ? [1, 0] : [dx / len, dz / len];
+    }
+    return null;
+  }
+
+  /** Is this a place a person cannot stand? `pad` is how wide the person is. */
+  blocked(x: number, z: number, pad: number): boolean {
+    if (this.empty) return false;
+    const k = cellKey(x, z);
+    for (const s of this.solids.get(k) ?? []) {
+      const d = s.r + pad;
+      if ((x - s.x) ** 2 + (z - s.z) ** 2 < d * d) return true;
+    }
+    for (const l of this.lakes.get(k) ?? []) {
+      if (x < l.minX || x > l.maxX || z < l.minZ || z > l.maxZ) continue;
+      if (pointInPolygon([x, z], l.ring)) return true;
+    }
+    return false;
+  }
+}
 
 export interface SimAgent {
   ref: string;
@@ -57,6 +151,11 @@ export interface SimAgent {
   state: AgentState;
   /** Seconds left in the current state, where the state is timed. */
   wait: number;
+  /** Seconds spent with every way forward blocked. Past a second, they go elsewhere. */
+  stuck: number;
+  /** Which way round the thing in front: +1 or -1, and how long that choice holds. */
+  dodge: 1 | -1;
+  dodgeFor: number;
   partner: string | null;
   bubble: Bubble;
   ring: boolean;
@@ -74,12 +173,22 @@ export const PLAZA = 8;
 const FOUNTAIN = 2.2;
 /** Where YOUR agent stands with no map: front of the fountain, nearest the camera. */
 export const HOME: readonly [number, number] = [0, PLAZA * 0.55];
-const WALK = 1.6;
-const HURRY = 2.2;
+// A person is about 0.24 units tall (PERSON in canvas.tsx), so these are a pace and
+// a hurry in person-heights per second rather than the 1.6 units -- nearly a
+// kilometre a second -- that looked fine only while the people were giants.
+const WALK = 0.45;
+const HURRY = 0.75;
 /** No trip takes longer than this, however far: Koramangala to Whitefield is ~25 units. */
 const TRIP_SECS = 4;
-const ARRIVE = 0.15;
-const TOGETHER = 0.9;
+const ARRIVE = 0.08;
+/** How far apart two agents stand to talk: close enough to be talking. */
+const TOGETHER = 0.3;
+/** How wide a person is on the ground, for walking around things. */
+const FOOT = 0.09;
+/** How far off the straight line an agent will look for a way past, in radians. */
+const DETOURS = [0.4, 0.85, 1.35, 1.9, 2.4] as const;
+/** How long an agent keeps going round a building the same way once it has committed. */
+const DODGE_SECS = 1.6;
 const VERDICT_SECS = 3;
 /**
  * A spot is a place, not a pixel: two people sent to the same one do not overlap.
@@ -114,6 +223,7 @@ export class WorldSim {
   /** How many people have been placed in each tile, so the next one goes somewhere new. */
   private readonly placed = new Map<string, number>();
   private map: MapSpots | null = null;
+  private ground = new Ground(null);
   /** Bench only: agents start and finish conversations on their own. */
   private autoplay = false;
   private autoClock = 0;
@@ -125,6 +235,12 @@ export class WorldSim {
   /** The city to stand in. Set once, before anybody is added; null is the plaza. */
   setMap(map: MapSpots | null): void {
     this.map = map;
+    this.ground = new Ground(map);
+  }
+
+  /** For tests and the bench: is this a place somebody could stand? */
+  standable(x: number, z: number): boolean {
+    return !this.ground.blocked(x, z, FOOT);
   }
 
   agents(): readonly SimAgent[] {
@@ -169,7 +285,8 @@ export class WorldSim {
       this.byRef.set(ref, {
         ref, kind, seed, ghost: seeThrough, look: look ?? lookFor(seed), area: where, x, z, tx: x, tz: z, speed: WALK,
         facing: this.rnd() * Math.PI * 2,
-        state: 'idle', wait: 1 + this.rnd() * 4, partner: null, bubble: null, ring: false,
+        state: 'idle', wait: 1 + this.rnd() * 4, stuck: 0, dodge: 1, dodgeFor: 0,
+        partner: null, bubble: null, ring: false,
       });
       this.order.push(ref);
     }
@@ -362,16 +479,59 @@ export class WorldSim {
     a.speed = Math.max(base, Math.hypot(tx - a.x, tz - a.z) / TRIP_SECS);
   }
 
-  /** Returns true on arrival. */
+  /**
+   * A step toward the target, around whatever is in the way. Returns true on arrival.
+   *
+   * People used to walk through buildings, trees and lakes, because nothing in the
+   * sim knew they were there ("add physics please", 2026-09-22). They now try straight
+   * ahead, then further and further off it, and take the first heading that is clear.
+   *
+   * THE SIDE IS STICKY, and that is the whole trick. Trying left and right alternately
+   * looks reasonable and does not work: pressed against a wall, an agent finds a gap
+   * to its left, steps into it, and from there the first clear heading is back to the
+   * right -- so it shuffles on the spot for ever, which is exactly what the test
+   * caught. Committing to one way round for a second and a half turns that shuffle
+   * into somebody walking round a building.
+   *
+   * Two escapes matter: somebody standing inside something walks straight out of it
+   * (a roster may place anyone anywhere), and somebody genuinely boxed in gives up on
+   * this target and wants to be somewhere else rather than standing still for ever.
+   */
   private moveToward(a: SimAgent, dt: number): boolean {
     const dx = a.tx - a.x;
     const dz = a.tz - a.z;
     const d = Math.hypot(dx, dz);
     if (d <= ARRIVE) return true;
     const stepLen = Math.min(d, a.speed * dt);
-    a.x += (dx / d) * stepLen;
-    a.z += (dz / d) * stepLen;
-    a.facing = Math.atan2(dx, dz);
+    const base = Math.atan2(dx, dz);
+    const go = (ang: number): boolean => {
+      const nx = a.x + Math.sin(ang) * stepLen;
+      const nz = a.z + Math.cos(ang) * stepLen;
+      if (this.ground.blocked(nx, nz, FOOT)) return false;
+      a.x = nx; a.z = nz; a.facing = ang; a.stuck = 0;
+      return true;
+    };
+    a.dodgeFor = Math.max(0, a.dodgeFor - dt);
+
+    // Standing in something: out, the shortest way, whatever the target says.
+    const out = this.ground.escape(a.x, a.z, FOOT);
+    if (out) {
+      a.x += out[0] * stepLen; a.z += out[1] * stepLen;
+      a.facing = Math.atan2(out[0], out[1]);
+      return false;
+    }
+    if (go(base)) { a.dodgeFor = 0; return false; }
+    const sides: readonly (1 | -1)[] = a.dodgeFor > 0 ? [a.dodge, (-a.dodge) as 1 | -1] : [1, -1];
+    for (const side of sides) {
+      for (const off of DETOURS) {
+        if (!go(base + off * side)) continue;
+        a.dodge = side; a.dodgeFor = DODGE_SECS;
+        return false;
+      }
+    }
+    // Every way is blocked: wait a moment, then want to be somewhere else.
+    a.stuck += dt;
+    if (a.stuck > 1.2) { a.stuck = 0; a.dodgeFor = 0; this.wander(a); }
     return false;
   }
 
@@ -398,12 +558,14 @@ export class WorldSim {
       const j = jitterFor(tile.radius);
       const ang = n * GOLDEN;
       let r = ring === 0 ? j * 0.3 * this.rnd() : j * (0.45 + 0.4 * Math.min(ring, 3));
-      // Never over the edge: a ring wide enough to spread a full tile is wide enough
-      // to put somebody in the neighbourhood next door, which would be a lie about
-      // where they live. Halve it until it lands, then give up and use the spot.
+      // Never over the edge and never inside a building: a ring wide enough to spread a
+      // full tile is wide enough to put somebody in the neighbourhood next door or on
+      // a roof. Halve it until it lands, then give up and use the spot, which the
+      // build script already put on a street.
       for (let t = 0; t < 5; t++) {
         const p: Pt = [s[0] + Math.cos(ang) * r, s[1] + Math.sin(ang) * r];
-        if (!tile.polygon.length || pointInPolygon(p, tile.polygon)) return [p[0], p[1]];
+        const inside = !tile.polygon.length || pointInPolygon(p, tile.polygon);
+        if (inside && !this.ground.blocked(p[0], p[1], FOOT)) return [p[0], p[1]];
         r /= 2;
       }
       return [s[0], s[1]];
