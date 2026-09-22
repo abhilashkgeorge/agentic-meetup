@@ -22,6 +22,22 @@ import {
   polygonArea, project, projection, rdp, rdpRing, unproject, voronoiCells, type Pt,
 } from '@clone/shared';
 
+/**
+ * The eight things you can point at. Hoisted out of the build so the standing
+ * spots below can be kept clear of them: a spot inside the cricket stadium put seven
+ * people in the bowl and the walking camera with them (on the phone, 2026-09-22).
+ */
+const LANDMARKS: { id: string; name: string; lat: number; lon: number; kind: string; rot: number }[] = [
+  { id: 'vidhana-soudha', name: 'Vidhana Soudha', lat: 12.9797, lon: 77.5912, kind: 'dome', rot: 0 },
+  { id: 'ub-city', name: 'UB City', lat: 12.9718, lon: 77.5960, kind: 'tower', rot: 0.3 },
+  { id: 'palace', name: 'Bangalore Palace', lat: 12.9988, lon: 77.5921, kind: 'palace', rot: 0 },
+  { id: 'iskcon', name: 'ISKCON', lat: 13.0098, lon: 77.5510, kind: 'temple', rot: 0 },
+  { id: 'lalbagh', name: 'Lalbagh Glass House', lat: 12.9507, lon: 77.5848, kind: 'glasshouse', rot: 0.2 },
+  { id: 'chinnaswamy', name: 'Chinnaswamy Stadium', lat: 12.9788, lon: 77.5996, kind: 'stadium', rot: 0 },
+  { id: 'fort', name: 'Bangalore Fort', lat: 12.9627, lon: 77.5757, kind: 'fort', rot: 0 },
+  { id: 'bull-temple', name: 'Bull Temple', lat: 12.9426, lon: 77.5680, kind: 'bull', rot: 0 },
+];
+
 const here = dirname(fileURLToPath(import.meta.url));
 const CACHE = join(here, 'map-cache');
 const OUT = join(here, '..', '..', 'app', 'assets', 'map');
@@ -208,6 +224,10 @@ async function main() {
   // and the roads, parks and lakes had nowhere to show: the city read as gravel
   // (on the phone, 2026-09-22). Five hundred with a wider footprint and a metre
   // between them leaves ground visible, which is what makes the rest legible.
+  // Where the landmarks stand, so nothing is placed on top of one.
+  const landmarkAt = LANDMARKS.map((l) => project(l.lat, l.lon, P));
+  const nearLandmark = (q: Pt, d: number) => landmarkAt.some((m) => Math.hypot(q[0] - m[0], q[1] - m[1]) < d);
+
   const totalBlocksWanted = AREAS.reduce((s, _a, i) => s + Math.round(8 + 40 * density[i]!), 0);
   const blockScale = Math.min(1, 500 / totalBlocksWanted);
 
@@ -266,13 +286,13 @@ async function main() {
           const back = 0.8 + rnd() * 0.4;
           const q: Pt = [a1[0] + ux * s - uz * back * side, a1[1] + uz * s + ux * back * side];
           if (!pointInPolygon(q, tile) || distToRing(q, tile) < 0.3) continue;
-          if (inAny(q, water) || inAny(q, parks) || !clear(q, 1.05)) continue;
+          if (inAny(q, water) || inAny(q, parks) || nearLandmark(q, 1.0) || !clear(q, 1.05)) continue;
           place(q, Math.atan2(ux, uz));
         }
       }
     }
     for (let k = blocks.length; k < want; k++) {
-      const p = sample(0.45, 2000, (q) => !nearRoad(q, 0.28) && !inAny(q, water) && !inAny(q, parks) && clear(q, 1.15));
+      const p = sample(0.45, 2000, (q) => !nearRoad(q, 0.28) && !inAny(q, water) && !inAny(q, parks) && !nearLandmark(q, 1.0) && clear(q, 1.15));
       if (!p) break;
       place(p, rnd() * Math.PI);
     }
@@ -285,9 +305,9 @@ async function main() {
       Math.abs(q[0] - b[0]!) < b[2]! / 2 + 0.12 && Math.abs(q[1] - b[1]!) < b[3]! / 2 + 0.12);
     const spots: Pt[] = [];
     for (let k = 0; k < 24; k++) {
-      const p = sample(0.5, 4000, (q) => nearRoad(q, 0.5) && !inBlock(q) && !inAny(q, water) && !inAny(q, parks))
-        ?? sample(0.5, 3000, (q) => !inBlock(q) && !inAny(q, water) && !inAny(q, parks))
-        ?? sample(0.2) ?? centroid(tile);
+      const p = sample(0.5, 4000, (q) => nearRoad(q, 0.5) && !inBlock(q) && !nearLandmark(q, 1.1) && !inAny(q, water) && !inAny(q, parks))
+        ?? sample(0.5, 3000, (q) => !inBlock(q) && !nearLandmark(q, 1.1) && !inAny(q, water) && !inAny(q, parks))
+        ?? sample(0.2, 2000, (q) => !inBlock(q) && !nearLandmark(q, 0.9)) ?? centroid(tile);
       spots.push(p);
     }
     const c = centroid(tile);
@@ -324,16 +344,6 @@ async function main() {
   const lampStep = Math.max(1, Math.ceil(lamps.length / 120));
   const lampsOut = lamps.filter((_, i) => i % lampStep === 0);
 
-  const LANDMARKS: { id: string; name: string; lat: number; lon: number; kind: string; rot: number }[] = [
-    { id: 'vidhana-soudha', name: 'Vidhana Soudha', lat: 12.9797, lon: 77.5912, kind: 'dome', rot: 0 },
-    { id: 'ub-city', name: 'UB City', lat: 12.9718, lon: 77.5960, kind: 'tower', rot: 0.3 },
-    { id: 'palace', name: 'Bangalore Palace', lat: 12.9988, lon: 77.5921, kind: 'palace', rot: 0 },
-    { id: 'iskcon', name: 'ISKCON', lat: 13.0098, lon: 77.5510, kind: 'temple', rot: 0 },
-    { id: 'lalbagh', name: 'Lalbagh Glass House', lat: 12.9507, lon: 77.5848, kind: 'glasshouse', rot: 0.2 },
-    { id: 'chinnaswamy', name: 'Chinnaswamy Stadium', lat: 12.9788, lon: 77.5996, kind: 'stadium', rot: 0 },
-    { id: 'fort', name: 'Bangalore Fort', lat: 12.9627, lon: 77.5757, kind: 'fort', rot: 0 },
-    { id: 'bull-temple', name: 'Bull Temple', lat: 12.9426, lon: 77.5680, kind: 'bull', rot: 0 },
-  ];
   const landmarks = LANDMARKS.map((l) => ({
     id: l.id, name: l.name, area: nearestArea(l.lat, l.lon)?.id ?? CENTRAL_AREA, at: r2(project(l.lat, l.lon, P)), kind: l.kind, rot: l.rot,
   }));

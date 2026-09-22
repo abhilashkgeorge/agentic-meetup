@@ -16,6 +16,33 @@ export type ChatGuide = ImportPromptsResponse['chatGuide'];
  */
 const BASE_HEADERS = { 'ngrok-skip-browser-warning': '1' } as const;
 
+/**
+ * WHAT TO DO WHEN THE SERVER SAYS "NOT YOU".
+ *
+ * A session is revoked, or expires (thirty days for a test device, six months for a
+ * phone), or the keys are rotated -- ROTATION.md says so in as many words. Until now
+ * nothing in the app noticed: every call quietly returned null, so the town sat on
+ * "Finding the square…" for ever, the profile stayed blank, and there was nothing on
+ * any screen to say the words "sign in again". It cost most of an afternoon on the
+ * test phone (2026-09-22) before the tunnel's own log gave it away as a 401.
+ *
+ * So one place decides. The app clears the credential and whoever set this up sends
+ * the person to sign in. It fires once -- a dead token means several screens are
+ * polling, and they should not race each other to sign out.
+ */
+type Rejected = () => void;
+let onRejected: Rejected | null = null;
+let rejecting = false;
+export function onTokenRejected(fn: Rejected | null): void {
+  onRejected = fn;
+  if (fn) rejecting = false;
+}
+function rejected(status: number): void {
+  if (status !== 401 || rejecting || !onRejected) return;
+  rejecting = true;
+  onRejected();
+}
+
 export interface Profile {
   knowsYou: { band: string; score: number };
   coverage: { essentials: string; texture: string; details: number };
@@ -34,7 +61,8 @@ async function get<T>(path: string, token?: string): Promise<T | null> {
     const res = await fetch(`${getApiBase()}${path}`, {
       headers: token ? { ...BASE_HEADERS, Authorization: `Bearer ${token}` } : { ...BASE_HEADERS },
     });
-    return res.ok ? ((await res.json()) as T) : null;
+    if (!res.ok) { if (token) rejected(res.status); return null; }
+    return (await res.json()) as T;
   } catch {
     return null; // offline is a normal state, not an error to shout about
   }
@@ -307,6 +335,7 @@ async function send<T>(method: 'POST' | 'PUT', path: string, token: string, body
     });
     const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
+      rejected(res.status);
       return { error: typeof parsed.error === 'string' ? parsed.error : `http_${res.status}`,
                ...(Array.isArray(parsed.items) ? { items: parsed.items as string[] } : {}) };
     }

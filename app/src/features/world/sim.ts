@@ -156,6 +156,9 @@ export interface SimAgent {
   /** Which way round the thing in front: +1 or -1, and how long that choice holds. */
   dodge: 1 | -1;
   dodgeFor: number;
+  /** Units a second, set by the person holding the stick. Zero means nobody is. */
+  driveX: number;
+  driveZ: number;
   partner: string | null;
   bubble: Bubble;
   ring: boolean;
@@ -243,6 +246,26 @@ export class WorldSim {
     return !this.ground.blocked(x, z, FOOT);
   }
 
+  /**
+   * Take the wheel. `vx`/`vz` are world units a second, straight from the stick;
+   * (0, 0) lets go and leaves them standing where they are.
+   *
+   * A driven agent is not steered by anything else -- no wandering, no walking home
+   * on the next roster -- but it still cannot walk through a wall, and it still gets
+   * called on when a round sends somebody over.
+   */
+  drive(ref: string, vx: number, vz: number): void {
+    const a = this.byRef.get(ref);
+    if (!a) return;
+    a.driveX = vx; a.driveZ = vz;
+  }
+
+  /** Is somebody holding the stick for this agent? */
+  driven(ref: string): boolean {
+    const a = this.byRef.get(ref);
+    return !!a && (a.driveX !== 0 || a.driveZ !== 0);
+  }
+
   agents(): readonly SimAgent[] {
     const out: SimAgent[] = [];
     for (const ref of this.order) {
@@ -273,7 +296,9 @@ export class WorldSim {
         // are mid-visit, which is never interrupted for scenery.
         if (area !== undefined && area !== have.area) {
           have.area = area;
-          if (have.state === 'idle' || have.state === 'walking') {
+          // Not while somebody is walking them by hand: a poll must not yank the
+          // agent out from under a thumb.
+          if (have.driveX === 0 && have.driveZ === 0 && (have.state === 'idle' || have.state === 'walking')) {
             const [tx, tz] = kind === 'you' ? this.home(area) : this.spot(area);
             this.setTarget(have, tx, tz, WALK); have.state = 'walking';
           }
@@ -286,7 +311,7 @@ export class WorldSim {
         ref, kind, seed, ghost: seeThrough, look: look ?? lookFor(seed), area: where, x, z, tx: x, tz: z, speed: WALK,
         facing: this.rnd() * Math.PI * 2,
         state: 'idle', wait: 1 + this.rnd() * 4, stuck: 0, dodge: 1, dodgeFor: 0,
-        partner: null, bubble: null, ring: false,
+        driveX: 0, driveZ: 0, partner: null, bubble: null, ring: false,
       });
       this.order.push(ref);
     }
@@ -407,6 +432,14 @@ export class WorldSim {
   }
 
   private stepOne(a: SimAgent, dt: number): void {
+    // Somebody is driving: their hand beats the state machine. They still face where
+    // they push even when a wall stops them, which is what tells you it is a wall.
+    if (a.driveX !== 0 || a.driveZ !== 0) {
+      a.facing = Math.atan2(a.driveX, a.driveZ);
+      this.push(a, a.driveX * dt, a.driveZ * dt);
+      a.state = 'walking'; a.tx = a.x; a.tz = a.z; a.stuck = 0;
+      return;
+    }
     switch (a.state) {
       case 'idle':
         // Your own agent stays put between outings, so it is always where you left it
@@ -465,6 +498,21 @@ export class WorldSim {
     a.partner = null; a.bubble = null;
     if (this.nextVisit(a)) return;
     this.wander(a); a.state = 'walking';
+  }
+
+  /**
+   * A step taken by hand, sliding along whatever it runs into: the full move first,
+   * then each axis alone. Sliding is what a wall should feel like under a thumb --
+   * stopping dead reads as the controls having broken.
+   */
+  private push(a: SimAgent, dx: number, dz: number): void {
+    const free = (x: number, z: number) => !this.ground.blocked(x, z, FOOT);
+    if (free(a.x + dx, a.z + dz)) { a.x += dx; a.z += dz; return; }
+    if (dx !== 0 && free(a.x + dx, a.z)) { a.x += dx; return; }
+    if (dz !== 0 && free(a.x, a.z + dz)) { a.z += dz; return; }
+    // Wedged: let them out the way they came in rather than trap them.
+    const out = this.ground.escape(a.x, a.z, FOOT);
+    if (out) { a.x += out[0] * Math.hypot(dx, dz); a.z += out[1] * Math.hypot(dx, dz); }
   }
 
   /** Somewhere in their own neighbourhood: you go home, everybody else to a spot. */

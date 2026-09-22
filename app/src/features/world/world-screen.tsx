@@ -213,6 +213,9 @@ export default function WorldScreen() {
   // The camera: the HUD flies it, the canvas reports its band, both know the frame
   // (what the HUD covers) so the zoomed-out city sits between the title and the button.
   const control = useRef<WorldControl | null>(null);
+  // The stick's live value, read by the renderer once a frame and never rendered.
+  const stick = useRef({ x: 0, y: 0 });
+  const [walking, setWalking] = useState(false);
   const [band, setBand] = useState<Band | null>(null);
   const [size, setSize] = useState<Size | null>(null);
   const insets = useSafeAreaInsets();
@@ -241,12 +244,14 @@ export default function WorldScreen() {
     <View style={{ flex: 1, backgroundColor: p.bg }} onLayout={onLayout}>
       <renderer.WorldCanvas key={epoch} sim={sim} colors={colors} active={focused && inFront} cap30={cap30}
                             onTapAgent={onTap} onFirstFrame={firstFrame}
-                            control={control} onBand={setBand} frame={frame} />
+                            control={control} onBand={setBand} frame={frame}
+                            stick={stick} onWalking={setWalking} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
            onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })}
            band={band} size={size} frame={frame}
            onHome={() => control.current?.flyHome()} onCity={() => control.current?.flyCity()}
-           onArea={() => router.push({ pathname: setupRoute(['area']), params: { finish: '1' } })} />
+           onArea={() => router.push({ pathname: setupRoute(['area']), params: { finish: '1' } })}
+           walking={walking} onWalk={(on) => control.current?.setWalking(on)} stick={stick} />
       {peopleOpen && world && (
         <PeopleSheet agents={world.agents} myArea={world.me.area} onClose={() => setPeopleOpen(false)}
                      onPick={(ref) => { setPeopleOpen(false); onTap(ref); }} />

@@ -2,9 +2,9 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
-  getToken, setToken as persistToken, isOnboarded, getServerUrl, setServerUrl,
+  clearToken, getToken, setToken as persistToken, isOnboarded, getServerUrl, setServerUrl,
 } from '../lib/storage';
-import { getConsent, isLegacyToken, upgradeToken } from '../lib/api';
+import { getConsent, isLegacyToken, onTokenRejected, upgradeToken } from '../lib/api';
 import { defaultBase, getApiBase, pingServer, setApiBase } from '../lib/env';
 import { useSession } from '../store/session';
 import { startSocket } from '../lib/socket';
@@ -110,6 +110,20 @@ export default function RootLayout() {
       }
 
       setToken(token);
+
+      // A session that the server no longer accepts -- revoked, expired, or the keys
+      // rotated -- is a dead end unless somebody acts on it. Before this, every call
+      // just returned null and the app waited for ever on a spinner. Forget the
+      // credential and send them back to the door.
+      onTokenRejected(() => {
+        void (async () => {
+          await clearToken();
+          setToken(null);
+          // The phone-number door, the same one a device with no token starts at:
+          // typing the number lands back in the account that already exists.
+          router.replace('/phone');
+        })();
+      });
 
       // CONSENT BEFORE SETUP, and before anything else this account can do. The
       // server refuses to put an agent in the pool without it (0039), so a person who

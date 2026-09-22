@@ -18,6 +18,73 @@ export interface Pose { tx: number; tz: number; zoom: number }
 export interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number }
 export type Band = 'city' | 'mid' | 'near';
 
+/**
+ * WALKING IT YOURSELF -- the camera just behind your agent's head.
+ *
+ * Everything else here is an orthographic map seen from a fixed compass bearing.
+ * This is the other thing entirely: a perspective camera a step behind the shoulder,
+ * turning with them, which is the view every third-person game uses and the one the
+ * founder asked for by name (2026-09-22). The numbers are in scene units against an
+ * agent drawn about 0.24 tall (PERSON in canvas.tsx). At this lens a person fills
+ * about a seventh of the screen height, which is where a third-person game puts one:
+ * close enough to read their character, far enough to see the street they are walking
+ * down. The first cut sat 0.58 back and the agent filled half the frame with a
+ * building wall behind it -- you were looking at the back of a head, not at a city.
+ */
+export const WALK_BACK = 1.35;
+export const WALK_RISE = 0.45;
+export const WALK_AIM = 1.6;
+export const WALK_EYE = 0.22;
+export const WALK_FOV = 62;
+
+export interface Follow { eye: [number, number, number]; look: [number, number, number] }
+
+/**
+ * Where that camera sits, and what it points at, for somebody at (x, z) facing `yaw`.
+ *
+ * `aim` is how far in front of them the camera looks. At full distance that is well
+ * down the street, which is what puts them low in frame with the road ahead. Pulled
+ * in against a wall it has to come back toward them, or the camera is a hand's width
+ * behind somebody while staring at the building in front of them.
+ */
+export function followPose(x: number, z: number, yaw: number, back = WALK_BACK, rise = WALK_RISE, aim = WALK_AIM): Follow {
+  const fx = Math.sin(yaw); const fz = Math.cos(yaw);
+  return {
+    eye: [x - fx * back, rise, z - fz * back],
+    look: [x + fx * aim, WALK_EYE, z + fz * aim],
+  };
+}
+
+/**
+ * Where the stick points, in the world. `jx` is right and `jy` is DOWN, the way a
+ * screen measures; up on the stick is away from the camera, which is what a thumb
+ * expects and is why this needs the camera's bearing rather than the agent's.
+ *
+ * Screen right for a camera looking along (sin y, 0, cos y) is (-cos y, 0, sin y) --
+ * three builds its basis from `cross(up, eye - target)`, so it is not the (cos, -sin)
+ * that the right-hand rule suggests at a glance. Getting that backwards mirrors the
+ * controls, which is the sort of thing a test is for.
+ */
+export function driveVector(jx: number, jy: number, camYaw: number): [number, number] {
+  const s = Math.sin(camYaw); const c = Math.cos(camYaw);
+  return [-s * jy - c * jx, -c * jy + s * jx];
+}
+
+/**
+ * The shortest way round from one bearing to another, for turning the camera, kept
+ * inside a single turn. Without the wrap the answer is still right to a sine and a
+ * cosine but grows without bound -- it read 77 radians after half a minute of
+ * walking, which is unreadable in a log and eventually loses precision.
+ */
+export function turnToward(from: number, to: number, t: number): number {
+  const wrap = (a: number) => {
+    const m = ((a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    return m - Math.PI;
+  };
+  let d = wrap(to - from);
+  return wrap(from + d * Math.min(1, Math.max(0, t)));
+}
+
 /** What the HUD may ask of the camera without touching the lazy renderer. */
 export interface WorldControl {
   /** Fly to a neighbourhood and stay there (the camera stops following your agent). */
@@ -26,6 +93,8 @@ export interface WorldControl {
   flyHome(): void;
   /** Pull out to the whole city. */
   flyCity(): void;
+  /** Walk your agent yourself, with the camera behind its head. */
+  setWalking(on: boolean): void;
 }
 
 const SQ2 = Math.SQRT2;

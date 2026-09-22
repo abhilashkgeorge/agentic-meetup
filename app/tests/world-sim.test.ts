@@ -293,6 +293,59 @@ describe('on the map', () => {
     expect(s.standable(0, 0)).toBe(true);
   });
 
+  it('is walked by hand when somebody takes the stick, and slides along walls', () => {
+    // Control: drop the per-axis retries in `push` and the walker stops dead at the
+    // wall instead of sliding along it, so `z` never changes.
+    const f = fixture();
+    const wall = Array.from({ length: 17 }, (_, i) => ({ x: 4, z: -2 + i * 0.25, r: 0.3 }));
+    const s = new WorldSim(6);
+    s.setMap({ ...f, solids: wall, areas: { ...f.areas, a: { ...f.areas.a!, spots: [[2, 1]], home: [2, 1] } } });
+    s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: 'a' }]);
+    const you = s.get('you')!;
+    expect([you.x, you.z]).toEqual([2, 1]);
+
+    // Pushed into the wall at an angle: it gets close, never through, and keeps
+    // moving ALONG it -- which is the whole point of the per-axis retry.
+    s.drive('you', 1, 0.6);
+    expect(s.driven('you')).toBe(true);
+    const startZ = you.z;
+    for (let i = 0; i < 200; i++) {
+      s.step(1 / 30);
+      for (const w of wall) expect(Math.hypot(you.x - w.x, you.z - w.z)).toBeGreaterThan(0.3);
+    }
+    expect(you.x, 'reached the wall').toBeGreaterThan(3.4);
+    expect(you.z - startZ, 'slid along it instead of stopping dead').toBeGreaterThan(1.5);
+    expect(you.facing, 'faces the way it is pushed, even when stopped')
+      .toBeCloseTo(Math.atan2(1, 0.6), 6);
+
+    // Let go: it stands where it was left rather than walking home.
+    s.drive('you', 0, 0);
+    expect(s.driven('you')).toBe(false);
+    const where: [number, number] = [you.x, you.z];
+    for (let i = 0; i < 60; i++) s.step(1 / 30);
+    expect([you.x, you.z]).toEqual(where);
+    expect(startZ).toBe(1);
+  });
+
+  it('is not yanked away by a roster while somebody is walking it', () => {
+    const f = fixture();
+    const s = new WorldSim(7);
+    s.setMap(f);
+    s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: 'a' }]);
+    s.drive('you', 0, 1);
+    for (let i = 0; i < 30; i++) s.step(1 / 30);
+    const moved: [number, number] = [s.get('you')!.x, s.get('you')!.z];
+    // A poll says they are in another neighbourhood now. It must not teleport them
+    // mid-step; it is remembered and acted on once the stick is let go.
+    s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: 'c' }]);
+    expect(s.get('you')!.area).toBe('c');
+    for (let i = 0; i < 30; i++) s.step(1 / 30);
+    // Driving +z, so it is z that keeps moving, and x that stays put.
+    expect(s.get('you')!.z).toBeGreaterThan(moved[1]);
+    expect(s.get('you')!.x).toBeCloseTo(moved[0], 9);
+    expect(s.get('you')!.state, 'still under the thumb, not walking off to tile c').toBe('walking');
+  });
+
   it('spreads the bench over the neighbourhoods, you in the central one', () => {
     const s = mapped();
     s.populateBench(12);

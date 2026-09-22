@@ -8,8 +8,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  CITY_ELEVATION, ISO_VERTICAL, STREET_ELEVATION, ZOOM_MAX, bandOf, cityPose, clampTarget,
-  elevationFor, eyeOffset, flyAt, fromScreen, pan, pinch, tileZoom, toScreen, verticalOf, type Pose,
+  CITY_ELEVATION, ISO_VERTICAL, STREET_ELEVATION, WALK_AIM, WALK_BACK, WALK_RISE, ZOOM_MAX,
+  bandOf, cityPose, clampTarget, driveVector, elevationFor, eyeOffset, flyAt, followPose,
+  fromScreen, pan, pinch, tileZoom, toScreen, turnToward, verticalOf, type Pose,
 } from '../src/features/world/camera';
 import { MAP } from '../src/features/world/map';
 
@@ -135,5 +136,50 @@ describe('the isometric map', () => {
     const zoomed = pinch(street, mid, 1.4, size, 7, ZOOM_MAX, vert);
     const [px, py] = toScreen(at[0], at[1], zoomed, size, vert);
     expect(px).toBeCloseTo(mid[0], 6); expect(py).toBeCloseTo(mid[1], 6);
+  });
+
+  it('sends the stick where the camera is looking, not where the agent is facing', () => {
+    // Control: swap the screen-right vector for the (cos, -sin) the right-hand rule
+    // suggests and the left/right cases come out mirrored.
+    const near = (a: readonly number[], b: readonly number[]) =>
+      a.forEach((v, i) => expect(v).toBeCloseTo(b[i]!, 9));
+    // Facing +z: up the stick is +z, right is -x (three builds its basis that way).
+    near(driveVector(0, -1, 0), [0, 1]);
+    near(driveVector(1, 0, 0), [-1, 0]);
+    // Turned a quarter: up is +x.
+    near(driveVector(0, -1, Math.PI / 2), [1, 0]);
+    near(driveVector(1, 0, Math.PI / 2), [0, 1]);
+    // Half a turn back on itself.
+    near(driveVector(0, -1, Math.PI), [0, -1]);
+    // A stick held on the diagonal keeps its length.
+    const d = driveVector(0.6, -0.8, 1.1);
+    expect(Math.hypot(d[0], d[1])).toBeCloseTo(1, 9);
+  });
+
+  it('puts the camera behind the shoulder and looks past them down the street', () => {
+    const { eye, look } = followPose(4, -2, 0);
+    expect(eye[0]).toBeCloseTo(4, 9);
+    expect(eye[2]).toBeCloseTo(-2 - WALK_BACK, 9);     // behind somebody facing +z
+    expect(eye[1]).toBeCloseTo(WALK_RISE, 9);           // and above them
+    expect(look[2]).toBeCloseTo(-2 + WALK_AIM, 9);      // looking past them
+    expect(look[1]).toBeLessThan(eye[1]);               // slightly down
+    // Turned round, it is on the other side.
+    const behind = followPose(0, 0, Math.PI).eye;
+    expect(behind[2]).toBeCloseTo(WALK_BACK, 9);
+    // Pulled in against a wall, it comes closer and rides higher.
+    const tight = followPose(0, 0, 0, 0.1, 0.9, 0.3);
+    expect(Math.hypot(tight.eye[0], tight.eye[2])).toBeCloseTo(0.1, 9);
+    expect(tight.eye[1]).toBe(0.9);
+  });
+
+  it('turns the short way round and stays inside one turn', () => {
+    // Control: drop the wrap and this climbs past seven radians instead of settling.
+    const wrapped = (a: number) => a > -Math.PI - 1e-9 && a < Math.PI + 1e-9;
+    expect(turnToward(3.0, -3.0, 1)).toBeCloseTo(-3.0, 9);      // over the seam, not the long way
+    expect(turnToward(-3.0, 3.0, 1)).toBeCloseTo(3.0, 9);
+    expect(turnToward(0, 1, 0.5)).toBeCloseTo(0.5, 9);          // halfway
+    expect(turnToward(1, 1, 1)).toBeCloseTo(1, 9);              // already there
+    let a = 0;
+    for (let i = 0; i < 400; i++) { a = turnToward(a, a + 2.5, 1); expect(wrapped(a)).toBe(true); }
   });
 });

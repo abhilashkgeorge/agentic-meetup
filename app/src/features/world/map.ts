@@ -48,6 +48,18 @@ export const MAP = asset as unknown as MapAsset;
 export const TREE = 0.15;
 
 /**
+ * How much room each landmark takes on the ground, after the three-quarter scale the
+ * mesh is drawn at. They are not buildings and were not in the walking test, so the
+ * first walk ended up standing in the middle of the cricket stadium with the camera
+ * inside the bowl (on the phone, 2026-09-22). Roughly the footprint of the widest
+ * part of each, which is all a person walking past needs to be kept out of.
+ */
+export const LANDMARK_RADIUS: Record<string, number> = {
+  dome: 0.62, tower: 0.26, palace: 0.6, temple: 0.36,
+  glasshouse: 0.42, stadium: 0.72, fort: 0.5, bull: 0.46,
+};
+
+/**
  * What the sim needs of the map: per area, where to stand -- and everywhere, what
  * cannot be walked through. A building becomes the circle that fits inside its
  * footprint, so somebody may cut a corner but never cross the middle of one; a tree
@@ -63,6 +75,7 @@ export function spotsFrom(map: MapAsset): MapSpots {
   for (const p of map.parks) {
     for (const t of p.trees) solids.push({ x: t[0]!, z: t[1]!, r: TREE * (t[2] ?? 1) });
   }
+  for (const l of map.landmarks) solids.push({ x: l.at[0], z: l.at[1], r: LANDMARK_RADIUS[l.kind] ?? 0.45 });
   return { central: CENTRAL_AREA, areas, solids, lakes: map.water.map((w) => w.polygon) };
 }
 

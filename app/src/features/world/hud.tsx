@@ -5,7 +5,7 @@
  * things the old Home's cards said, at a tenth of the height, because the town is the
  * content now. Everything here is the design system; nothing is drawn by hand.
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import { Animated, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CENTRAL_AREA } from '@clone/shared';
@@ -13,6 +13,7 @@ import type { World } from '../../lib/api';
 import { missingLabel } from '../profile/fields';
 import { Button, Card, Chip, ChipGroup, space, type, usePalette } from '../../components/ui';
 import { roundActive } from './bridge';
+import { Stick } from './stick';
 import { cityPose, placeLabels, toScreen, type Band, type Size } from './camera';
 import { MAP, areaName, cityTitle, type Frame } from './map';
 
@@ -28,6 +29,9 @@ export function Hud({
   onHome,
   onCity,
   onArea,
+  walking,
+  onWalk,
+  stick,
 }: {
   world: World | null;
   onSendOut: () => void;
@@ -48,6 +52,11 @@ export function Hud({
   onCity: () => void;
   /** "Which part of town?" -- the one question the map adds. */
   onArea: () => void;
+  /** Walking your own agent: the stick is out and the camera is behind its head. */
+  walking: boolean;
+  onWalk: (on: boolean) => void;
+  /** Where the stick writes what the thumb is doing. */
+  stick: MutableRefObject<{ x: number; y: number }>;
 }) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
@@ -86,7 +95,7 @@ export function Hud({
 
   return (
     <>
-      {labels.length > 0 && (
+      {labels.length > 0 && !walking && (
         <Animated.View pointerEvents="none" style={{ position: 'absolute', inset: 0, opacity: fade }}>
           {labels.map((l) => (
             <Text key={l.id} numberOfLines={1}
@@ -105,8 +114,9 @@ export function Hud({
           {world && world.me.inPool && (
             <ChipGroup>
               {askArea && <Chip label="Which part of town?" selected={false} onPress={onArea} />}
-              <Chip label={`${areaName(myArea)} · ${here} here`} selected={band !== 'city'} onPress={onHome} />
-              {band !== 'city' && <Chip label="Whole city" selected={false} onPress={onCity} />}
+              <Chip label={walking ? 'Stop walking' : 'Walk around'} selected={walking} onPress={() => onWalk(!walking)} />
+              <Chip label={`${areaName(myArea)} · ${here} here`} selected={!walking && band !== 'city'} onPress={onHome} />
+              {!walking && band !== 'city' && <Chip label="Whole city" selected={false} onPress={onCity} />}
               <Chip label={`${world.pool.total.toLocaleString()} people nearby`} selected={false} onPress={() => {}} disabled />
               <Chip label={`${world.targetsLeftToday} visits left today`} selected={false} onPress={() => {}} disabled />
               <Chip label="Who's here" selected={false} onPress={onPeople} />
@@ -115,9 +125,18 @@ export function Hud({
         </Card>
       </View>
 
+      {/* The stick sits where a thumb already is, and takes the bottom of the screen
+          to itself: the round button would be under the heel of the hand. */}
+      {walking && (
+        <View pointerEvents="box-none"
+              style={{ position: 'absolute', bottom: Math.max(insets.bottom, space.lg) + space.lg, left: space.screen }}>
+          <Stick value={stick} />
+        </View>
+      )}
+
       <View pointerEvents="box-none"
             style={{ position: 'absolute', bottom: space.lg, left: space.screen, right: space.screen }}>
-        {world && !world.me.inPool ? (
+        {walking ? null : world && !world.me.inPool ? (
           <Button label="Finish setup" variant="primary" onPress={onFinishSetup} />
         ) : (
           <Button label={active ? 'Your agent is out…' : 'Send my agent out'} variant="primary"

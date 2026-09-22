@@ -31,8 +31,8 @@ import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
 import { CENTRAL_AREA, HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
-  CITY_BAND, FLY_SECS, ZOOM_MAX, bandOf, cityPose, clampTarget, elevationFor, eyeOffset,
-  flyAt, pan, pinch, tileZoom, verticalOf,
+  CITY_BAND, FLY_SECS, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget, driveVector,
+  elevationFor, eyeOffset, flyAt, followPose, pan, pinch, tileZoom, turnToward, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
 } from './camera';
 import { MAP, type Frame } from './map';
@@ -87,7 +87,61 @@ export interface WorldCanvasProps {
   onBand?: (band: Band) => void;
   /** What the HUD covers at the top and bottom: the whole city is centred between. */
   frame?: Frame;
+  /**
+   * The on-screen stick, written by the HUD and read once a frame: x right, y DOWN,
+   * each -1..1. A ref, not a prop, because a thumb moves sixty times a second and
+   * none of those should render anything.
+   */
+  stick?: MutableRefObject<{ x: number; y: number }>;
+  /** Told when walking starts and stops, so the HUD can show the stick. */
+  onWalking?: (on: boolean) => void;
 }
+
+/** How fast your own agent walks when the stick is all the way over, units a second. */
+const WALK_SPEED = 0.62;
+/** How quickly the camera swings round behind them: 1 - e^(-k·dt) a frame. */
+const TURN = 5;
+/** Radians of camera swing per pixel dragged sideways while walking. */
+const ORBIT_PER_PX = 0.006;
+/**
+ * Closest the walking camera is ever pulled in when a wall is behind you: near enough
+ * to be over their shoulder. The first cut used 0.3 as the floor AND as the first
+ * sample, so it never asked whether 0.3 itself was clear -- stand with your back to a
+ * building and the camera sat inside it, drawing one flat grey wall over the whole
+ * screen (on the phone, 2026-09-22).
+ */
+const WALK_MIN_BACK = 0.07;
+
+/**
+ * How far behind somebody the camera can sit without being inside a building.
+ *
+ * Nothing stops an orthographic map camera, but a camera on somebody's shoulder walks
+ * into walls: standing in a doorway in MG Road it sat inside the building behind and
+ * drew the inside of its wall across the whole screen (on the phone, 2026-09-22).
+ * Every game solves this the same way, by pulling the camera in until the line back
+ * to the player is clear.
+ */
+function clearBack(sim: WorldSim, x: number, z: number, yaw: number, want: number): number {
+  const fx = Math.sin(yaw); const fz = Math.cos(yaw);
+  let ok = WALK_MIN_BACK;
+  for (let i = 0; i <= 10; i++) {
+    const d = WALK_MIN_BACK + ((want - WALK_MIN_BACK) * i) / 10;
+    if (!sim.standable(x - fx * d, z - fz * d)) break;
+    ok = d;
+  }
+  return ok;
+}
+
+/**
+ * How high the camera rides. Pulled in by a wall it goes UP, not down: from a step
+ * behind the shoulder it is at head height, and from right on top of them it is
+ * looking over the roofs -- which is the only view left when they are backed into a
+ * corner. It used to do the opposite and drop as it came in, which put the lens at
+ * ground level inside whatever was behind them.
+ */
+const riseFor = (back: number): number => WALK_RISE * (1 + 1.1 * (1 - back / WALK_BACK));
+/** ...and looks nearer to them, so they stay in frame rather than a wall filling it. */
+const aimFor = (back: number): number => WALK_AIM * (0.25 + 0.75 * (back / WALK_BACK));
 
 const DEFAULT_FRAME: Frame = { top: 160, bottom: 100, side: 12 };
 const BOUNDS: Bounds = (() => {
@@ -110,6 +164,19 @@ const ZOOM_START = 85;
  */
 interface CamState {
   pose: Pose;
+  /** Walking it yourself: the stick moves the agent and the camera sits behind its head. */
+  walking: boolean;
+  /**
+   * The camera's own bearing while walking. It is ITS OWN STATE, not an offset from
+   * the agent's, and that distinction is the whole thing: the stick steers in the
+   * camera's frame and the agent turns to face where it is pushed, so a camera that
+   * chases "the agent's facing plus an offset" is chasing a number derived from
+   * itself. With any offset at all the two spin round each other for ever -- held
+   * forward, the agent turned through 160° and the camera ended up in front of it,
+   * filming a wall (on the phone, 2026-09-22). A drag moves this directly; walking
+   * eases it back behind them, where the two agree and it settles.
+   */
+  yaw: number;
   fly: Fly | null;
   /** Follow your agent when nothing else is asked. Off after a drag or a fly elsewhere. */
   follow: boolean;
@@ -336,7 +403,8 @@ export function WorldCanvas(props: WorldCanvasProps) {
     const [hx, hz] = sim.homeOf('you');
     const size = { width: 390, height: 800 };
     cam.current = {
-      pose: { tx: hx, tz: hz, zoom: ZOOM_START }, fly: null, follow: true, followAfterFly: true, band: null,
+      pose: { tx: hx, tz: hz, zoom: ZOOM_START }, walking: false, yaw: 0,
+      fly: null, follow: true, followAfterFly: true, band: null,
       size, city: cityPose(MAP.outline, size, frame), clock: 0, lastDx: 0, lastDy: 0, pinchDist: null,
     };
   }
@@ -356,8 +424,15 @@ export function WorldCanvas(props: WorldCanvasProps) {
     onMoveShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponderCapture: (_e, g) => g.numberActiveTouches >= 2 || Math.hypot(g.dx, g.dy) > 8,
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (_e, g) => { c.fly = null; c.follow = false; c.lastDx = g.dx; c.lastDy = g.dy; c.pinchDist = null; },
+    onPanResponderGrant: (_e, g) => { c.fly = null; if (!c.walking) c.follow = false; c.lastDx = g.dx; c.lastDy = g.dy; c.pinchDist = null; },
     onPanResponderMove: (e, g) => {
+      // Walking: a drag looks around rather than moving the map, which has no meaning
+      // when the camera is tied to somebody's shoulders.
+      if (c.walking) {
+        c.yaw -= (g.dx - c.lastDx) * ORBIT_PER_PX;
+        c.lastDx = g.dx; c.lastDy = g.dy;
+        return;
+      }
       const t = e.nativeEvent.touches;
       if (t.length >= 2) {
         const a = t[0]!; const b = t[1]!;
@@ -386,13 +461,20 @@ export function WorldCanvas(props: WorldCanvasProps) {
     control.current = {
       // A tile tap shows the neighbourhood from above; Home goes back down to your
       // own agent, in the street, and follows it again.
-      flyTo: (id) => flyToArea(c, id, false),
+      setWalking: (on) => {
+        c.walking = on;
+        c.fly = null;
+        if (on) { c.yaw = sim.get('you')?.facing ?? 0; c.follow = false; }
+        else { c.follow = true; sim.drive('you', 0, 0); }
+      },
+      flyTo: (id) => { c.walking = false; sim.drive('you', 0, 0); flyToArea(c, id, false); },
       flyHome: () => {
+        c.walking = false; sim.drive('you', 0, 0);
         const you = sim.get('you');
         const [hx, hz] = you ? [you.x, you.z] : sim.homeOf('you');
         startFly(c, { tx: hx, tz: hz, zoom: ZOOM_START }, true);
       },
-      flyCity: () => startFly(c, c.city, false),
+      flyCity: () => { c.walking = false; sim.drive('you', 0, 0); startFly(c, c.city, false); },
     };
     return () => { control.current = null; };
   }, [control, c, sim]);
@@ -400,10 +482,9 @@ export function WorldCanvas(props: WorldCanvasProps) {
   return (
     <View style={{ flex: 1 }} onLayout={onLayout} {...responder.panHandlers}>
       <Canvas
-        orthographic
-        // Zoom 30, up from 24: at 24 the square filled the middle third of a phone
-        // and an agent was thirty pixels tall, which is why tapping one took aim.
-        camera={{ position: eyeOffset(elevationFor(ZOOM_START, 7), EYE), zoom: ZOOM_START, near: 0.1, far: 700 }}
+        // Perspective, but a long lens: see MAP_FOV. The frame loop owns everything
+        // about this camera from the first frame, so the prop only has to be harmless.
+        camera={{ fov: MAP_FOV, position: eyeOffset(elevationFor(ZOOM_START, 7), MAP_DIST), near: 1, far: 4000 }}
         // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
         // else, and the native Canvas type says so by leaving it out.
         gl={{ antialias: false }}
@@ -436,11 +517,38 @@ const PERSON = 0.16;
  * city is wide, at any angle.
  */
 const EYE = 220;
+
+/**
+ * ONE CAMERA, TWO LENSES, and no swapping.
+ *
+ * The map wants an orthographic camera and walking wants a perspective one, and the
+ * obvious answer -- keep both and tell r3f which is current -- does not hold: the
+ * Canvas declares its camera as a prop, so r3f reconfigures it on the very next
+ * render and quietly puts the map's camera back. The walk mode then ran with its
+ * camera positioned and never drawn; the chip said "Stop walking" over a map
+ * (on the phone, 2026-09-22).
+ *
+ * So there is one perspective camera throughout. For the map it is a long lens six
+ * degrees wide, sixteen hundred units out, which is orthographic to within about two
+ * per cent across the whole city -- a few pixels on a label, and every screen/ground
+ * conversion in ./camera.ts stays true. For walking it becomes a normal lens a step
+ * behind the shoulder. Near and far move with the lens: one pair covering both would
+ * span five orders of magnitude and z-fight.
+ */
+const MAP_FOV = 6;
+const MAP_DIST = 1600;
+/** The camera zoom that makes one world unit cover `zoom` pixels, at this lens. */
+const zoomFor = (zoom: number, fovDeg: number, dist: number, heightPx: number): number =>
+  (zoom * 2 * dist * Math.tan((fovDeg * Math.PI) / 360)) / Math.max(1, heightPx);
 /** How fast the camera catches up with your agent: 1 - e^(-k·dt) per frame. */
 const FOLLOW = 3;
 
-function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, cam }: WorldCanvasProps & { cam: CamState }) {
-  const { gl, scene, camera, invalidate } = useThree();
+function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, onWalking, stick, cam }: WorldCanvasProps & { cam: CamState }) {
+  const { gl, scene, camera, invalidate, size } = useThree();
+
+  const mode = useRef<'map' | 'walk' | null>(null);
+  /** The last projection this camera was given, so it is rebuilt only when it changes. */
+  const lens = useRef('');
 
   useEffect(() => {
     scene.background = new THREE.Color(colors.bg);
@@ -518,6 +626,18 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, c
     const you = sim.get('you');
     if (you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area ?? CENTRAL_AREA); }
 
+    // The stick, if a thumb is on it: it steers in the camera's bearing, not the
+    // agent's, so "up" always means away from you however they are facing.
+    if (cam.walking && stick) {
+      const { x: jx, y: jy } = stick.current;
+      const push = Math.min(1, Math.hypot(jx, jy));
+      if (push > 0.08) {
+        const [dx, dz] = driveVector(jx, jy, cam.yaw);
+        const len = Math.hypot(dx, dz) || 1;
+        sim.drive('you', (dx / len) * WALK_SPEED * push, (dz / len) * WALK_SPEED * push);
+      } else sim.drive('you', 0, 0);
+    }
+
     // The camera: a fly in progress, else following your agent, else where it was left.
     cam.clock = t;
     if (cam.fly) {
@@ -528,15 +648,52 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, c
       const k = 1 - Math.exp(-FOLLOW * clamped);
       cam.pose = clampTarget({ tx: cam.pose.tx + (you.x - cam.pose.tx) * k, tz: cam.pose.tz + (you.z - cam.pose.tz) * k, zoom: cam.pose.zoom }, BOUNDS);
     }
-    // The angle follows the zoom: a map seen from above out at the city, a game
-    // camera looking along the street once you are down in it.
-    const [ex, ey, ez] = eyeOffset(elevationFor(cam.pose.zoom, cam.city.zoom), EYE);
-    camera.position.set(cam.pose.tx + ex, ey, cam.pose.tz + ez);
-    camera.lookAt(cam.pose.tx, 0, cam.pose.tz);
-    if (camera.zoom !== cam.pose.zoom) { camera.zoom = cam.pose.zoom; camera.updateProjectionMatrix(); }
-    if (!cam.fly) {
-      const band = bandOf(cam.pose.zoom, cam.city.zoom);
-      if (band !== cam.band) { cam.band = band; onBand?.(band); }
+    const want = cam.walking && you ? 'walk' : 'map';
+    if (want !== mode.current) {
+      const was = mode.current;
+      mode.current = want;
+      onWalking?.(want === 'walk');
+      // Leaving: the map picks up where the walk left off, over your agent.
+      if (was !== null && want === 'map' && you) { cam.pose = { tx: you.x, tz: you.z, zoom: ZOOM_START }; cam.follow = true; }
+    }
+
+    const lensNow = want === 'walk'
+      ? `w:${size.width}:${size.height}`
+      : `m:${cam.pose.zoom.toFixed(3)}:${size.width}:${size.height}`;
+    if (lensNow !== lens.current) {
+      lens.current = lensNow;
+      const p = camera as THREE.PerspectiveCamera;
+      p.aspect = Math.max(0.1, size.width / Math.max(1, size.height));
+      if (want === 'walk') { p.fov = WALK_FOV; p.zoom = 1; p.near = 0.02; p.far = 400; }
+      else {
+        p.fov = MAP_FOV;
+        p.zoom = zoomFor(cam.pose.zoom, MAP_FOV, MAP_DIST, size.height);
+        p.near = MAP_DIST * 0.4; p.far = MAP_DIST * 2.2;
+      }
+      p.updateProjectionMatrix();
+    }
+
+    if (want === 'walk' && you) {
+      // Behind the head, swinging round to where they are facing. The drag offset
+      // rides on top, so you can look about without turning them.
+      // Only while they are walking: a drag to look around must stay where it was put.
+      if (you.driveX !== 0 || you.driveZ !== 0) {
+        cam.yaw = turnToward(cam.yaw, you.facing, 1 - Math.exp(-TURN * clamped));
+      }
+      const back = clearBack(sim, you.x, you.z, cam.yaw, WALK_BACK);
+      const { eye, look } = followPose(you.x, you.z, cam.yaw, back, riseFor(back), aimFor(back));
+      camera.position.set(eye[0], eye[1], eye[2]);
+      camera.lookAt(look[0], look[1], look[2]);
+    } else {
+      // The angle follows the zoom: a map seen from above out at the city, a game
+      // camera looking along the street once you are down in it.
+      const [ex, ey, ez] = eyeOffset(elevationFor(cam.pose.zoom, cam.city.zoom), MAP_DIST);
+      camera.position.set(cam.pose.tx + ex, ey, cam.pose.tz + ez);
+      camera.lookAt(cam.pose.tx, 0, cam.pose.tz);
+      if (!cam.fly) {
+        const band = bandOf(cam.pose.zoom, cam.city.zoom);
+        if (band !== cam.band) { cam.band = band; onBand?.(band); }
+      }
     }
 
     // The lakes breathe: a four-second sine on the opacity, and the glow at night.
