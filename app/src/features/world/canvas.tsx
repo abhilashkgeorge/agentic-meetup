@@ -696,7 +696,13 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       lens.current = lensNow;
       const p = camera as THREE.PerspectiveCamera;
       p.aspect = Math.max(0.1, size.width / Math.max(1, size.height));
-      if (want === 'walk') { p.fov = WALK_FOV; p.zoom = 1; p.near = 0.02; p.far = 400; }
+      // NEAR AND FAR DECIDE WHETHER THE GROUND HOLDS TOGETHER. A depth buffer spends
+      // its precision near the camera, so 0.02 to 400 -- twenty thousand to one --
+      // left almost none for ground thirty units away, and the roads, parks and tiles
+      // lying a centimetre apart tore into each other. It looked like half a render
+      // (the founder's words, 2026-09-22). The lens can only see about forty units
+      // down a street anyway, so the range is the one it actually uses.
+      if (want === 'walk') { p.fov = WALK_FOV; p.zoom = 1; p.near = 0.08; p.far = 90; }
       else {
         p.fov = MAP_FOV;
         p.zoom = zoomFor(cam.pose.zoom, MAP_FOV, MAP_DIST, size.height);

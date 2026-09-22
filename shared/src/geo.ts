@@ -260,22 +260,67 @@ export function insetTowardCentroid(ring: Ring, gap: number): Pt[] {
 }
 
 /**
+ * Does this ring cross itself? Earcut will happily triangulate one that does, into a
+ * fan of overlapping wedges, and the result looks like a half-finished render rather
+ * than like an error -- which is why anything that builds a ring checks here first.
+ */
+export function isSimple(ring: Ring): boolean {
+  const n = ring.length;
+  if (n < 4) return true;
+  const side = (o: Pt, a: Pt, b: Pt) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const crosses = (a: Pt, b: Pt, c: Pt, d: Pt) => {
+    const d1 = side(c, d, a); const d2 = side(c, d, b);
+    const d3 = side(a, b, c); const d4 = side(a, b, d);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      if (crosses(ring[i]!, ring[(i + 1) % n]!, ring[j]!, ring[(j + 1) % n]!)) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Shrink a ring by a fixed gap along each vertex's mitre (the bisector of the two
  * inward edge normals), so concave corners move inward too -- insetTowardCentroid
  * pushes a concave vertex OUT when the centroid is on the wrong side of it. A mitre
  * that lands outside the ring (a sliver) falls back to the centroid direction, then
  * to the vertex itself.
  */
-export function insetRing(ring: Ring, gap: number): Pt[] {
+export function insetRing(ring: Ring, want: number): Pt[] {
   const n = ring.length;
-  if (n < 3 || gap <= 0) return [...ring];
+  if (n < 3 || want <= 0) return [...ring];
+  /**
+   * How far this vertex may move before it walks into the far side of the shape.
+   *
+   * Moving every vertex inward by a fixed distance is only safe while the shape is
+   * everywhere wider than twice that distance. Where a Voronoi cell narrows to a
+   * spit -- Whitefield, Kengeri, Electronic City all have one -- the two sides cross
+   * and the ring self-intersects, which earcut then triangulates into a fan of
+   * overlapping wedges: nine of the thirty tiles were torn this way, and it showed
+   * up as ground that looked half-rendered (2026-09-22). Capping the move at a bit
+   * under half the distance to the nearest far edge keeps the ring simple.
+   */
+  const room = (i: number): number => {
+    const p = ring[i]!;
+    let d = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (j === i || (j + 1) % n === i) continue;
+      d = Math.min(d, distToSegment(p, ring[j]!, ring[(j + 1) % n]!));
+    }
+    return d * 0.45;
+  };
   const s = signedArea(ring) > 0 ? 1 : -1;
   const [cx, cz] = centroid(ring);
   const inward = (a: Pt, b: Pt): Pt => {
     const dx = b[0] - a[0]; const dz = b[1] - a[1]; const l = Math.hypot(dx, dz) || 1;
     return [(-dz / l) * s, (dx / l) * s];
   };
-  return ring.map((v, i) => {
+  const attempt = (want2: number): Pt[] => ring.map((v, i) => {
+    const gap = Math.min(want2, room(i));
+    if (gap <= 1e-6) return v;
     const n1 = inward(ring[(i + n - 1) % n]!, v); const n2 = inward(v, ring[(i + 1) % n]!);
     let bx = n1[0] + n2[0]; let bz = n1[1] + n2[1];
     const bl = Math.hypot(bx, bz);
@@ -294,6 +339,16 @@ export function insetRing(ring: Ring, gap: number): Pt[] {
     const alt: Pt = [cx + (v[0] - cx) * f, cz + (v[1] - cz) * f];
     return pointInPolygon(alt, ring) ? alt : v;
   });
+
+  // Belt and braces. The per-vertex cap above keeps almost every ring simple, but a
+  // shape can still fold on itself where three narrow parts meet. Halve the gap and
+  // try again; if even a quarter of it will not come out clean, leave the ring alone.
+  // A tile with no gap round it is a cosmetic loss; a torn one is a visible fault.
+  for (const scale of [1, 0.5, 0.25]) {
+    const out = attempt(want * scale);
+    if (isSimple(out)) return out;
+  }
+  return [...ring];
 }
 
 /** The same LCG the town's sim uses: one seed, one sequence, everywhere. */

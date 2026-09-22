@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AREAS, CENTRAL_AREA, nearestArea,
-  bbox, centroid, dedupeRing, distToRing, distToSegment, insetRing, lcg, pointInPolygon,
+  bbox, centroid, dedupeRing, distToRing, distToSegment, insetRing, isSimple, lcg, pointInPolygon,
   polygonArea, project, projection, rdp, rdpRing, unproject, voronoiCells, type Pt,
 } from '@clone/shared';
 
@@ -219,6 +219,13 @@ async function main() {
   const inAny = (p: Pt, rings: { polygon: Pt[] }[]) => rings.some((r) => pointInPolygon(p, r.polygon));
   const round2 = (v: number) => Math.round(v * 100) / 100;
   const r2 = (p: Pt): Pt => [round2(p[0]), round2(p[1])];
+  /**
+   * A ring at the precision it ships at. Rounding to two decimals is what keeps the
+   * asset under 200 KB, and it is also what can turn two distinct points into one --
+   * so the deduplication has to happen AFTER the rounding, not before it. Done the
+   * other way round, one lake shipped with a repeated vertex.
+   */
+  const ring2 = (r: readonly Pt[]): Pt[] => dedupeRing(r.map(r2));
 
   // FEWER, BIGGER BUILDINGS. Seven hundred small ones tiled the ground edge to edge
   // and the roads, parks and lakes had nowhere to show: the city read as gravel
@@ -325,7 +332,7 @@ async function main() {
     const radius = Math.max(...tile.map((v) => Math.hypot(v[0] - c[0], v[1] - c[1])));
     return {
       id: a.id, name: a.name, centre: r2(c), home: r2(home), radius: round2(radius), density: round2(density[i]!),
-      polygon: tile.map(r2), spots: spots.map(r2), blocks,
+      polygon: ring2(tile), spots: spots.map(r2), blocks,
     };
   });
 
@@ -339,7 +346,7 @@ async function main() {
       const p: Pt = [pb.minX + rnd() * (pb.maxX - pb.minX), pb.minZ + rnd() * (pb.maxZ - pb.minZ)];
       if (pointInPolygon(p, pk.polygon) && distToRing(p, pk.polygon) > 0.2) trees.push([round2(p[0]), round2(p[1]), round2(0.7 + rnd() * 0.6)]);
     }
-    return { name: pk.name, polygon: pk.polygon.map(r2), trees };
+    return { name: pk.name, polygon: ring2(pk.polygon), trees };
   });
   const lamps: Pt[] = [];
   for (const line of roads.primary ?? []) {
@@ -360,10 +367,10 @@ async function main() {
 
   const asset = {
     meta: { origin: P.origin, k: P.k, cosLat: round2(P.cosLat * 10000) / 10000, built: new Date().toISOString().slice(0, 10), osm: `relation/${city.id}` },
-    outline: outline.map(r2),
+    outline: ring2(outline),
     areas: areasOut,
     roads: Object.fromEntries(Object.entries(roads).map(([k, lines]) => [k, lines.map((l) => l.map(r2))])),
-    water: water.map((w) => ({ name: w.name, polygon: w.polygon.map(r2) })),
+    water: water.map((w) => ({ name: w.name, polygon: ring2(w.polygon) })),
     parks: parksOut,
     landmarks,
     lamps: lampsOut,
@@ -427,8 +434,14 @@ function areasFrom(elements: OsmEl[], minKm2: number): { name: string; polygon: 
     else if (e.type === 'relation' && e.members) ring = assembleOuter(e.members)[0] ?? null;
     if (!ring || ring.length < 4) continue;
     if (polygonArea(ring) * KM2_PER_UNIT2 < minKm2) continue;
+    // Simplifying can fold a lake's outline over itself, and earcut turns a folded
+    // ring into overlapping wedges rather than an error. Take the simplified one only
+    // if it came out clean, else the original, else leave the lake out.
     const simple = rdpRing(ring, 0.06);
-    if (simple.length >= 3) out.push({ name, polygon: simple });
+    const raw = dedupeRing(ring);
+    const good = simple.length >= 3 && isSimple(simple) ? simple
+      : raw.length >= 3 && isSimple(raw) ? raw : null;
+    if (good) out.push({ name, polygon: good });
   }
   // Largest first, and one polygon per name.
   const seen = new Set<string>();

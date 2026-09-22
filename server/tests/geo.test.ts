@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AREAS, CENTRAL_AREA, clipHalfPlane, distToRing, findArea, insetRing, insetTowardCentroid, lcg, nearestArea, pieces,
-  pointInPolygon, polygonArea, project, projection, rdp, rdpRing, unproject, voronoiCells, type Pt,
+  isSimple, pointInPolygon, polygonArea, project, projection, rdp, rdpRing, unproject, voronoiCells, type Pt,
 } from '@clone/shared';
 
 const square = (s: number): Pt[] => [[-s, -s], [s, -s], [s, s], [-s, s]];
@@ -94,6 +94,28 @@ describe('voronoi tiles', () => {
     }
     const inset = insetTowardCentroid(tiles[0]!, 0.3);
     expect(polygonArea(inset)).toBeLessThan(polygonArea(tiles[0]!));
+  });
+
+  it('never returns a ring that crosses itself, however thin the shape gets', () => {
+    // Control: remove the `room` cap and the simplicity retry in insetRing -> the
+    // spit in this shape folds over and isSimple fails. Nine of the thirty real tiles
+    // were torn that way, and earcut draws a torn ring as overlapping wedges rather
+    // than as an error, so it reached the phone looking like a half-finished render.
+    const spit: Pt[] = [[0, 0], [10, 0], [10, 6], [6, 6], [6, 5.4], [9, 5.4], [9, 0.6], [1, 0.6], [1, 6], [0, 6]];
+    expect(isSimple(spit), 'the fixture itself is simple').toBe(true);
+    for (const gap of [0.1, 0.3, 0.6, 1.2, 4]) {
+      const out = insetRing(spit, gap);
+      expect(isSimple(out), `gap ${gap} folded the ring`).toBe(true);
+      expect(out).toHaveLength(spit.length);
+      // Either it moved every vertex inward, or it gave the ring back untouched --
+      // a vertex left sitting on the original outline would be neither.
+      const same = out.every((v, i) => v[0] === spit[i]![0] && v[1] === spit[i]![1]);
+      if (!same) for (const v of out) expect(pointInPolygon(v, spit), `gap ${gap} left the shape`).toBe(true);
+    }
+    // A gap wider than the shape gives the ring back rather than a knot.
+    expect(insetRing(spit, 50)).toEqual(spit);
+    // And it still insets a shape with room in it.
+    expect(polygonArea(insetRing(square(5), 1))).toBeLessThan(polygonArea(square(5)));
   });
 
   it('inset a concave ring by a gap: every vertex inside, exactly gap from the old edges', () => {

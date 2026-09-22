@@ -9,7 +9,7 @@
  */
 import { readFileSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { AREAS, dedupeRing, distToRing, pointInPolygon, polygonArea, type Pt } from '@clone/shared';
+import { AREAS, dedupeRing, distToRing, isSimple, pointInPolygon, polygonArea, type Pt } from '@clone/shared';
 import { spotsFrom } from '../src/features/world/map';
 import { WorldSim } from '../src/features/world/sim';
 
@@ -26,7 +26,13 @@ const asset = JSON.parse(readFileSync(FILE, 'utf8')) as {
 };
 
 const finite = (p: readonly number[]) => p.every((v) => Number.isFinite(v));
-const goodRing = (ring: Pt[]) => ring.length >= 3 && ring.every(finite) && dedupeRing(ring).length === ring.length && polygonArea(ring) > 0;
+// SIMPLE, not just closed. A ring that crosses itself is triangulated into a fan of
+// overlapping wedges rather than rejected, so it renders as torn ground instead of as
+// an error -- nine of the thirty tiles and one lake were like this and it read as the
+// map half-failing to draw (2026-09-22). Control: drop isSimple and rebuild with the
+// uncapped inset; this passes while the phone shows the tear.
+const goodRing = (ring: Pt[]) => ring.length >= 3 && ring.every(finite)
+  && dedupeRing(ring).length === ring.length && polygonArea(ring) > 0 && isSimple(ring);
 
 describe('bangalore.json', () => {
   it('is small enough to bundle and says where it came from', () => {

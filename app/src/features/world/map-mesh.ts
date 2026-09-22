@@ -51,20 +51,35 @@ export interface BuiltMap {
   dispose(): void;
 }
 
-/** Tile top is y = 0; the body hangs below it, the plate further down. */
+/**
+ * Tile top is y = 0 and the body hangs below it. The plate underneath sits just
+ * below the tops, NOT below the bodies: with a tile 0.38 deep and a 0.3 gap between
+ * tiles, a plate at the bottom turned every neighbourhood boundary into a trench
+ * four times a person's height, and walking the streets meant crossing canyons
+ * (2026-09-22). At 0.05 the gaps read as seams -- still there from above, where the
+ * bevel and the skirt do the separating, but nothing to fall into down in the city.
+ */
 const TILE_DEPTH = 0.22;
 const BEVEL = 0.08;
-const PLATE_Y = -(TILE_DEPTH + BEVEL * 2) - 0.04;
+const PLATE_Y = -0.05;
 const SKIRT_Y = PLATE_Y + 0.012;
 const SKIRT_OFFSET = 0.3;
 const ROAD_Y = 0.012;
 const FLAT_Y = 0.008;
 /**
- * A street is wide enough to walk down. The people are about 0.24 units tall, so a
- * 0.7-unit road is three of them across -- a street rather than the 0.24-unit kerb
- * line it was, which a person could not have stood on (on the phone, 2026-09-22).
+ * Roads, lakes and parks lie flat ON the tiles, a few millimetres above them, which
+ * is exactly the case a depth buffer cannot call: whichever it picks varies pixel by
+ * pixel and the ground shreds. Lifting them further apart would show as a step at the
+ * walking camera's height, so instead they are biased toward the viewer in depth only
+ * -- the standard way to lay a marking on a road -- and the argument never happens.
  */
-const ROAD_WIDTH: Record<string, number> = { trunk: 0.9, primary: 0.68, secondary: 0.45 };
+const DECAL = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 } as const;
+/**
+ * A street is wide enough to walk down, and no wider. The people are about 0.24 units
+ * tall, so a half-unit road is two of them across. At 0.9 it was wider than the
+ * buildings beside it and the ground read as one continuous grey slab.
+ */
+const ROAD_WIDTH: Record<string, number> = { trunk: 0.52, primary: 0.38, secondary: 0.26 };
 const MAX_WINDOWS = 900;
 
 const mix = (a: string | THREE.Color, b: string | THREE.Color, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), t);
@@ -101,46 +116,89 @@ function tileGeometry(a: MapAreaAsset): THREE.BufferGeometry {
 }
 
 /**
- * Roads as ribbons: two vertices per polyline point, offset along the local normal,
- * quads between. Sharp corners pinch a little at 0.16 wide, which nobody sees at
- * the town's zoom.
+ * Roads, as a mitred ribbon per run.
+ *
+ * Two earlier attempts are worth remembering. The first offset every point along the
+ * perpendicular of its neighbours and shared vertices between segments: at any corner
+ * sharper than a gentle bend the two offset points cross, the quad becomes a bow tie,
+ * and a long thin wedge draws across the street. Once the roads were widened to
+ * something a person could walk down it covered the ground in torn grey shapes --
+ * "why does it look like half renders" (2026-09-22). The second gave every segment
+ * its own rectangle, which cannot cross but leaves the union of them with a sawtooth
+ * edge wherever the road bends.
+ *
+ * This one mitres properly: each point is offset along the bisector of its two
+ * segments, lengthened by 1/cos(half the turn) so the outer edge stays straight
+ * through the corner. That blows up on a hairpin, so the length is capped and the run
+ * is cut there and started again -- a clean end and a clean start beats a spike.
  */
+const MITRE_MIN_COS = 0.4;
+
 function ribbons(roads: Record<string, Pt[][]>): THREE.BufferGeometry {
-  let verts = 0; let quads = 0;
-  for (const [cls, lines] of Object.entries(roads)) {
-    if (!(cls in ROAD_WIDTH)) continue;
-    for (const l of lines) { if (l.length >= 2) { verts += l.length * 2; quads += l.length - 1; } }
-  }
-  const pos = new Float32Array(verts * 3);
-  const nrm = new Float32Array(verts * 3);
-  const idx = new Uint32Array(quads * 6);
-  let v = 0; let q = 0;
+  const pos: number[] = [];
+  const idx: number[] = [];
+  const dirOf = (a: Pt, b: Pt): [number, number] | null => {
+    const dx = b[0] - a[0]; const dz = b[1] - a[1];
+    const len = Math.hypot(dx, dz);
+    return len < 1e-6 ? null : [dx / len, dz / len];
+  };
+
+  const emit = (run: Pt[], half: number) => {
+    if (run.length < 2) return;
+    const dirs: [number, number][] = [];
+    for (let i = 0; i + 1 < run.length; i++) {
+      const d = dirOf(run[i]!, run[i + 1]!);
+      if (d) dirs.push(d); else { run.splice(i + 1, 1); i--; }
+    }
+    if (dirs.length === 0) return;
+    const start = pos.length / 3;
+    for (let i = 0; i < run.length; i++) {
+      const dIn = dirs[Math.max(0, i - 1)]!;
+      const dOut = dirs[Math.min(dirs.length - 1, i)]!;
+      // The bisector of the two segment normals, lengthened so the outer edge of the
+      // ribbon runs straight through the corner rather than pinching in at it.
+      let mx = -(dIn[1] + dOut[1]); let mz = dIn[0] + dOut[0];
+      const mlen = Math.hypot(mx, mz) || 1;
+      mx /= mlen; mz /= mlen;
+      const cos = Math.max(MITRE_MIN_COS, mx * -dOut[1] + mz * dOut[0]);
+      const out = half / cos;
+      const p = run[i]!;
+      pos.push(p[0] + mx * out, ROAD_Y, p[1] + mz * out,
+               p[0] - mx * out, ROAD_Y, p[1] - mz * out);
+    }
+    for (let i = 0; i + 1 < run.length; i++) {
+      const a = start + i * 2;
+      idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  };
+
   for (const [cls, lines] of Object.entries(roads)) {
     const w = ROAD_WIDTH[cls];
     if (w === undefined) continue;
-    for (const l of lines) {
-      if (l.length < 2) continue;
-      const base = v;
-      for (let i = 0; i < l.length; i++) {
-        const p = l[i]!; const prev = l[Math.max(0, i - 1)]!; const next = l[Math.min(l.length - 1, i + 1)]!;
-        let dx = next[0] - prev[0]; let dz = next[1] - prev[1];
-        const len = Math.hypot(dx, dz) || 1; dx /= len; dz /= len;
-        const nx = -dz * w * 0.5; const nz = dx * w * 0.5;
-        pos.set([p[0] + nx, ROAD_Y, p[1] + nz, p[0] - nx, ROAD_Y, p[1] - nz], v * 3);
-        nrm.set([0, 1, 0, 0, 1, 0], v * 3);
-        v += 2;
+    const half = w * 0.5;
+    for (const line of lines) {
+      // Cut the line wherever it doubles back on itself: a mitre there would be a
+      // spike several times the width of the road.
+      let run: Pt[] = [];
+      let last: [number, number] | null = null;
+      for (let i = 0; i < line.length; i++) {
+        const d = i + 1 < line.length ? dirOf(line[i]!, line[i + 1]!) : null;
+        if (last && d && last[0] * d[0] + last[1] * d[1] < 0.15) {
+          run.push(line[i]!);
+          emit(run, half);
+          run = [];
+        }
+        run.push(line[i]!);
+        if (d) last = d;
       }
-      for (let i = 0; i < l.length - 1; i++) {
-        const a = base + i * 2;
-        idx.set([a, a + 2, a + 1, a + 1, a + 2, a + 3], q * 6);
-        q++;
-      }
+      emit(run, half);
     }
   }
+
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  g.setIndex(idx);
   return g;
 }
 
@@ -263,7 +321,7 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   // A road is now a shade darker than the ground it cuts through, which is what makes
   // the grid readable from any height. The highlight edge that the design system asks
   // for is still there -- it is the tile's own bevel, catching the light top-left.
-  add(ribbons(map.roads), lambert(mix(colors.bg, colors.prop, night ? 0.55 : 0.72)), 'roads');
+  add(ribbons(map.roads), lambert(mix(colors.bg, colors.prop, night ? 0.55 : 0.72), { ...DECAL }), 'roads');
 
   // Lakes: a lavender that breathes (canvas.tsx animates the material).
   // Lakes at 15 % accent were grey with a rumour of purple in them; a lake has to read
@@ -271,13 +329,13 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   // 2026-09-22). Same for the parks and their trees below.
   const waterColour = mix(colors.ground, colors.accent, night ? 0.45 : 0.4);
   const water = lambert(waterColour, {
-    transparent: true, opacity: 0.85, depthWrite: false,
+    transparent: true, opacity: 0.85, depthWrite: false, ...DECAL,
     emissive: waterColour, emissiveIntensity: night ? 0.35 : 0,
   });
   add(flatRings(map.water.map((w) => w.polygon), FLAT_Y + 0.004), water, 'water');
 
   // Parks, with sparse tree domes.
-  add(flatRings(map.parks.map((p) => p.polygon), FLAT_Y), lambert(mix(colors.bg, colors.success, 0.34)), 'parks');
+  add(flatRings(map.parks.map((p) => p.polygon), FLAT_Y), lambert(mix(colors.bg, colors.success, 0.34), { ...DECAL }), 'parks');
   const treeList = map.parks.flatMap((p) => p.trees);
   if (treeList.length) {
     const treeColour = mix(colors.bg, colors.success, 0.62);
