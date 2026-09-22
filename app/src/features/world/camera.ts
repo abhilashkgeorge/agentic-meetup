@@ -30,9 +30,16 @@ export type Band = 'city' | 'mid' | 'near';
  * close enough to read their character, far enough to see the street they are walking
  * down. The first cut sat 0.58 back and the agent filled half the frame with a
  * building wall behind it -- you were looking at the back of a head, not at a city.
+ *
+ * THE RISE IS SET BY THE ROOFS, not by taste. A block on this map is 550 metres
+ * across and the gaps between them are narrower than the camera needs, so a lens at
+ * shoulder height has a wall behind it nearly everywhere and spends its life being
+ * pulled in. At 0.95 it is above the middle of the range of building heights, sees
+ * over most of them, and only gives way to the genuinely tall ones -- which is both
+ * the steadier picture and the one where you can see where you are going.
  */
-export const WALK_BACK = 1.35;
-export const WALK_RISE = 0.45;
+export const WALK_BACK = 1.45;
+export const WALK_RISE = 0.95;
 export const WALK_AIM = 1.6;
 export const WALK_EYE = 0.22;
 export const WALK_FOV = 62;

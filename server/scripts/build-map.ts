@@ -269,7 +269,11 @@ async function main() {
     const clear = (q: Pt, r: number) => blocks.every((b) => Math.hypot(b[0]! - q[0], b[1]! - q[1]) > r);
     const want = Math.round(Math.round(8 + 40 * density[i]!) * blockScale);
     const place = (p: Pt, rot: number) => {
-      const w = 0.5 + rnd() * 0.8; const d = 0.4 + rnd() * 0.45;
+      // Slimmer than they were. A person is 0.24 and the camera needs about a unit
+      // behind them, so a block 1.3 across with a 1-unit gap made every street an
+      // alley the camera could not fit down -- "behind buildings" (2026-09-22). At
+      // this size a street is five or six people wide and you can see along it.
+      const w = 0.32 + rnd() * 0.5; const d = 0.26 + rnd() * 0.3;
       blocks.push([round2(p[0]), round2(p[1]), round2(w), round2(d), round2(heightAt(density[i]!, rnd)), round2(rot)]);
     };
     for (const [a1, b1] of roadSegs) {
@@ -280,19 +284,19 @@ async function main() {
       // Only this tile's stretch of the road, and only if it runs through it at all.
       const mid: Pt = [(a1[0] + b1[0]) / 2, (a1[1] + b1[1]) / 2];
       if (!pointInPolygon(mid, tile)) continue;
-      for (let s = 0.4; s < len && blocks.length < want; s += 1.7) {
+      for (let s = 0.4; s < len && blocks.length < want; s += 1.25) {
         for (const side of [1, -1]) {
           if (blocks.length >= want) break;
-          const back = 0.8 + rnd() * 0.4;
+          const back = 0.62 + rnd() * 0.3;
           const q: Pt = [a1[0] + ux * s - uz * back * side, a1[1] + uz * s + ux * back * side];
           if (!pointInPolygon(q, tile) || distToRing(q, tile) < 0.3) continue;
-          if (inAny(q, water) || inAny(q, parks) || nearLandmark(q, 1.0) || !clear(q, 1.05)) continue;
+          if (inAny(q, water) || inAny(q, parks) || nearLandmark(q, 1.0) || !clear(q, 0.72)) continue;
           place(q, Math.atan2(ux, uz));
         }
       }
     }
     for (let k = blocks.length; k < want; k++) {
-      const p = sample(0.45, 2000, (q) => !nearRoad(q, 0.28) && !inAny(q, water) && !inAny(q, parks) && !nearLandmark(q, 1.0) && clear(q, 1.15));
+      const p = sample(0.45, 2000, (q) => !nearRoad(q, 0.28) && !inAny(q, water) && !inAny(q, parks) && !nearLandmark(q, 1.0) && clear(q, 0.8));
       if (!p) break;
       place(p, rnd() * Math.PI);
     }
@@ -301,8 +305,14 @@ async function main() {
     // used to be drawn first and knew only about water and parks, which is how people
     // ended up standing on rooftops (on the phone, 2026-09-22). `onRoad` keeps them on
     // the street rather than in the middle of a block, which is where people walk.
+    // THE SAME CIRCLE THE APP WALKS AROUND, not a box. app/features/world/map.ts turns
+    // each block into a circle of radius (w + d) / 4 and the sim keeps people out of
+    // it; testing an axis-aligned box here instead let a spot sit outside the box and
+    // well inside the circle, so an agent span into a building it could not walk out
+    // of -- and the walking camera, starting from inside, had nowhere to go and drew
+    // grey (on the phone, 2026-09-22). One shape, defined once, tested the same way.
     const inBlock = (q: Pt) => blocks.some((b) =>
-      Math.abs(q[0] - b[0]!) < b[2]! / 2 + 0.12 && Math.abs(q[1] - b[1]!) < b[3]! / 2 + 0.12);
+      Math.hypot(q[0] - b[0]!, q[1] - b[1]!) < (b[2]! + b[3]!) / 4 + 0.14);
     const spots: Pt[] = [];
     for (let k = 0; k < 24; k++) {
       const p = sample(0.5, 4000, (q) => nearRoad(q, 0.5) && !inBlock(q) && !nearLandmark(q, 1.1) && !inAny(q, water) && !inAny(q, parks))

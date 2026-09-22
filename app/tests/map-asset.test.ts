@@ -10,6 +10,8 @@
 import { readFileSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { AREAS, dedupeRing, distToRing, pointInPolygon, polygonArea, type Pt } from '@clone/shared';
+import { spotsFrom } from '../src/features/world/map';
+import { WorldSim } from '../src/features/world/sim';
 
 const FILE = new URL('../assets/map/bangalore.json', import.meta.url);
 const asset = JSON.parse(readFileSync(FILE, 'utf8')) as {
@@ -65,7 +67,23 @@ describe('bangalore.json', () => {
       expect(a.radius).toBeGreaterThan(0);
       expect(a.density).toBeGreaterThanOrEqual(0); expect(a.density).toBeLessThanOrEqual(1);
     }
-    expect(asset.areas.reduce((s, a) => s + a.blocks.length, 0)).toBeLessThanOrEqual(460);
+    // The build script aims for 500 (blockScale); this is the ceiling it must not
+    // drift past. The real budget is triangles, which tests/map-mesh.test.ts holds.
+    expect(asset.areas.reduce((s, a) => s + a.blocks.length, 0)).toBeLessThanOrEqual(520);
+  });
+
+  it('never puts a standing spot inside something the sim will not let you stand in', () => {
+    // THE TWO TESTS HAVE TO AGREE. The build script decides where people stand; the
+    // sim decides what they can walk through. The script used an axis-aligned box and
+    // the sim a circle, so spots sat outside the box and well inside the circle --
+    // agents span into buildings and the walking camera started with nowhere to go.
+    // Control: put the box test back in build-map.ts and rebuild; this fails.
+    const sim = new WorldSim(1);
+    sim.setMap(spotsFrom(asset as never));
+    for (const a of asset.areas) {
+      expect(sim.standable(a.home[0], a.home[1]), `${a.id} home`).toBe(true);
+      for (const p of a.spots) expect(sim.standable(p[0], p[1]), `${a.id} spot ${p}`).toBe(true);
+    }
   });
 
   it('places landmarks, lamps and trees on the map', () => {

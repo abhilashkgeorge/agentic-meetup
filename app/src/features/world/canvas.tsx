@@ -111,6 +111,25 @@ const ORBIT_PER_PX = 0.006;
  * screen (on the phone, 2026-09-22).
  */
 const WALK_MIN_BACK = 0.07;
+/** How wide the lens is treated as being, so it keeps off the corners of buildings. */
+const CAM_PAD = 0.16;
+/**
+ * How fast the camera closes on a wall and how slowly it opens out again.
+ *
+ * It has to come in NOW -- a frame spent inside a building is a frame of grey -- and
+ * go back out gently, or every doorway and gap it passes snaps it in and out and the
+ * whole picture shakes. That asymmetry is the difference between a camera and a
+ * jitter, and without it walking the streets was unwatchable (the founder's word:
+ * "very gittery", 2026-09-22).
+ */
+const BACK_IN = 20;
+const BACK_OUT = 3.2;
+/**
+ * How closely the lens tracks the agent's own position. Not rigidly: sliding along a
+ * wall moves them one axis at a time, and a camera bolted to that stutters sideways
+ * with every step. A little lag turns that into a follow.
+ */
+const TRACK = 14;
 
 /**
  * How far behind somebody the camera can sit without being inside a building.
@@ -124,9 +143,13 @@ const WALK_MIN_BACK = 0.07;
 function clearBack(sim: WorldSim, x: number, z: number, yaw: number, want: number): number {
   const fx = Math.sin(yaw); const fz = Math.cos(yaw);
   let ok = WALK_MIN_BACK;
-  for (let i = 0; i <= 10; i++) {
-    const d = WALK_MIN_BACK + ((want - WALK_MIN_BACK) * i) / 10;
-    if (!sim.standable(x - fx * d, z - fz * d)) break;
+  for (let i = 0; i <= 12; i++) {
+    const d = WALK_MIN_BACK + ((want - WALK_MIN_BACK) * i) / 12;
+    // At the lens's own height, and dry: a roof below it is not in the way and a lake
+    // never is. Asking the walking question instead -- "could somebody stand here?" --
+    // pulled the camera in for every bungalow in a city built of them, which is most
+    // of what made the picture shake.
+    if (!sim.seeThrough(x - fx * d, z - fz * d, WALK_RISE, CAM_PAD)) break;
     ok = d;
   }
   return ok;
@@ -150,12 +173,12 @@ const BOUNDS: Bounds = (() => {
   return { minX, maxX, minZ, maxZ };
 })();
 /**
- * Where the camera starts: down in the streets, about eight buildings across the
- * screen, where a person is a person walking past them rather than a giant standing
- * on the roofs. Pinch out for the neighbourhood, and out again for the whole city.
- * At 150 you could see four buildings and could not find your own agent among them.
+ * Where the camera starts: in the streets, about a dozen buildings across the screen.
+ * At 150 you could see four of them and could not find your own agent; at 85 standing
+ * next to a tall one filled the whole screen with its wall. Pinch out for the
+ * neighbourhood, and out again for the whole city.
  */
-const ZOOM_START = 85;
+const ZOOM_START = 55;
 
 /**
  * The camera, as a plain mutable object shared by the gesture handlers (on the
@@ -166,6 +189,10 @@ interface CamState {
   pose: Pose;
   /** Walking it yourself: the stick moves the agent and the camera sits behind its head. */
   walking: boolean;
+  /** How far behind the shoulder the lens actually is, eased, never jumped. */
+  back: number;
+  /** The point the walking lens is tracking: the agent, a fraction of a step behind. */
+  at: [number, number] | null;
   /**
    * The camera's own bearing while walking. It is ITS OWN STATE, not an offset from
    * the agent's, and that distinction is the whole thing: the stick steers in the
@@ -403,7 +430,7 @@ export function WorldCanvas(props: WorldCanvasProps) {
     const [hx, hz] = sim.homeOf('you');
     const size = { width: 390, height: 800 };
     cam.current = {
-      pose: { tx: hx, tz: hz, zoom: ZOOM_START }, walking: false, yaw: 0,
+      pose: { tx: hx, tz: hz, zoom: ZOOM_START }, walking: false, back: WALK_BACK, at: null, yaw: 0,
       fly: null, follow: true, followAfterFly: true, band: null,
       size, city: cityPose(MAP.outline, size, frame), clock: 0, lastDx: 0, lastDy: 0, pinchDist: null,
     };
@@ -464,7 +491,12 @@ export function WorldCanvas(props: WorldCanvasProps) {
       setWalking: (on) => {
         c.walking = on;
         c.fly = null;
-        if (on) { c.yaw = sim.get('you')?.facing ?? 0; c.follow = false; }
+        if (on) {
+          const me = sim.get('you');
+          c.yaw = me?.facing ?? 0; c.back = WALK_BACK;
+          c.at = me ? [me.x, me.z] : null;
+          c.follow = false;
+        }
         else { c.follow = true; sim.drive('you', 0, 0); }
       },
       flyTo: (id) => { c.walking = false; sim.drive('you', 0, 0); flyToArea(c, id, false); },
@@ -680,8 +712,16 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       if (you.driveX !== 0 || you.driveZ !== 0) {
         cam.yaw = turnToward(cam.yaw, you.facing, 1 - Math.exp(-TURN * clamped));
       }
-      const back = clearBack(sim, you.x, you.z, cam.yaw, WALK_BACK);
-      const { eye, look } = followPose(you.x, you.z, cam.yaw, back, riseFor(back), aimFor(back));
+      if (!cam.at) cam.at = [you.x, you.z];
+      const t2 = 1 - Math.exp(-TRACK * clamped);
+      cam.at[0] += (you.x - cam.at[0]) * t2;
+      cam.at[1] += (you.z - cam.at[1]) * t2;
+      const [ax, az] = cam.at;
+      const want = clearBack(sim, ax, az, cam.yaw, WALK_BACK);
+      const k = 1 - Math.exp(-(want < cam.back ? BACK_IN : BACK_OUT) * clamped);
+      cam.back += (want - cam.back) * k;
+      const back = cam.back;
+      const { eye, look } = followPose(ax, az, cam.yaw, back, riseFor(back), aimFor(back));
       camera.position.set(eye[0], eye[1], eye[2]);
       camera.lookAt(look[0], look[1], look[2]);
     } else {

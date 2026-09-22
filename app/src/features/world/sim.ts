@@ -33,8 +33,13 @@ export type Pt = readonly [number, number];
  * over the edge into the next neighbourhood.
  */
 export interface MapArea { home: Pt; centre: Pt; radius: number; spots: readonly Pt[]; polygon: readonly Pt[] }
-/** Something you cannot walk through: a building or a tree, as a circle. */
-export interface Solid { x: number; z: number; r: number }
+/**
+ * Something you cannot walk through: a building, a tree or a landmark, as a circle
+ * with a height. The height is what lets the camera tell a bungalow from a tower --
+ * a lens riding above the roofs is not blocked by them, and a camera that pulls in
+ * for every low building in a city of them is a camera that never stops lurching.
+ */
+export interface Solid { x: number; z: number; r: number; h: number }
 
 export interface MapSpots {
   central: string;
@@ -113,14 +118,23 @@ class Ground {
     return null;
   }
 
-  /** Is this a place a person cannot stand? `pad` is how wide the person is. */
-  blocked(x: number, z: number, pad: number): boolean {
+  /**
+   * Is this a place a person cannot stand? `pad` is how wide they are.
+   *
+   * `above` is how high off the ground the question is being asked: a person asks at
+   * 0 and everything counts, a camera asks at its own height and anything shorter
+   * than that is simply below it. `wet` is false for a camera -- you cannot walk on
+   * a lake but you can certainly look across one.
+   */
+  blocked(x: number, z: number, pad: number, above = 0, wet = true): boolean {
     if (this.empty) return false;
     const k = cellKey(x, z);
     for (const s of this.solids.get(k) ?? []) {
+      if (s.h <= above) continue;
       const d = s.r + pad;
       if ((x - s.x) ** 2 + (z - s.z) ** 2 < d * d) return true;
     }
+    if (!wet) return false;
     for (const l of this.lakes.get(k) ?? []) {
       if (x < l.minX || x > l.maxX || z < l.minZ || z > l.maxZ) continue;
       if (pointInPolygon([x, z], l.ring)) return true;
@@ -244,6 +258,14 @@ export class WorldSim {
   /** For tests and the bench: is this a place somebody could stand? */
   standable(x: number, z: number): boolean {
     return !this.ground.blocked(x, z, FOOT);
+  }
+
+  /**
+   * Is the view clear at this point, for a lens `above` the ground and `pad` wide?
+   * Roofs below it do not count and water never does.
+   */
+  seeThrough(x: number, z: number, above: number, pad: number): boolean {
+    return !this.ground.blocked(x, z, pad, above, false);
   }
 
   /**

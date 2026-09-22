@@ -105,13 +105,35 @@ export async function setTheme(choice: 'system' | 'light' | 'dark'): Promise<voi
  */
 const GL_FUSE_KEY = 'clone.gl';
 
+/**
+ * ONE STRIKE IS NOT A CRASH.
+ *
+ * The fuse is written before the canvas mounts and cleared on its first frame, so a
+ * leftover "trying" means the app went down in between -- which is what a GL context
+ * that takes the process with it looks like. It is also what a force-stop, a Metro
+ * reload and a swipe-away look like, and in a day of development that happens far
+ * more often than a crash: the town turned itself off four times in an afternoon and
+ * each time had to be switched back on by hand in Settings (2026-09-22).
+ *
+ * So it counts. One unexplained exit is forgiven and the town is tried again; two in
+ * a row is a real crash loop and it falls back, which is the case the fuse exists for.
+ * `strike` reports how many have been forgiven so far, for the row in Settings.
+ */
 export async function getGlFuse(): Promise<'trying' | 'off' | null> {
   try {
     const v = await SecureStore.getItemAsync(GL_FUSE_KEY);
-    return v === 'trying' || v === 'off' ? v : null;
+    if (v === 'off') return 'off';
+    if (v === 'trying') return 'trying';
+    if (v === 'trying2') return 'off';
+    return null;
   } catch {
     return null;
   }
+}
+
+/** A "trying" that survived a launch becomes the second strike; a third is "off". */
+export async function strikeGlFuse(): Promise<void> {
+  await SecureStore.setItemAsync(GL_FUSE_KEY, 'trying2').catch(() => {});
 }
 
 export async function setGlFuse(state: 'trying' | 'off' | null): Promise<void> {

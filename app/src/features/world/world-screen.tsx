@@ -20,7 +20,7 @@ import { ActivityIndicator, AppState, View, type LayoutChangeEvent } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatScreen from '../chat/chat-screen';
 import { runRound, type WorldAgent } from '../../lib/api';
-import { getFps30, getGlFuse, setGlFuse } from '../../lib/storage';
+import { getFps30, getGlFuse, setGlFuse, strikeGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { setupRoute } from '../profile/fields';
 import { Screen, useIsDark, usePalette } from '../../components/ui';
@@ -41,7 +41,12 @@ import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { WorldSim } from './sim';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
 
-/** One town per app run. It outlives this screen so a tab switch does not reshuffle everybody. */
+/**
+ * One town per app run. It outlives this screen so a tab switch does not reshuffle
+ * everybody -- which also means everybody keeps whatever position they walked to
+ * until the module itself is reloaded. Worth knowing while developing: a change to
+ * the map asset does not move anyone who is already standing on it.
+ */
 const sim = new WorldSim(20260918);
 sim.setMap(spotsFrom(MAP));
 
@@ -74,9 +79,16 @@ export default function WorldScreen() {
     void (async () => {
       const fuse = await getGlFuse();
       if (fuse === 'off') { if (live) setRenderer(null); return; }
+      // One unexplained exit is forgiven: a force-stop, a reload or a swipe-away all
+      // leave the same trace as a crash, and turning the town off for those is how it
+      // came to be switched off by hand four times in one afternoon. The second in a
+      // row is a crash loop, and getGlFuse reports that as 'off'.
       if (fuse === 'trying') {
-        await setGlFuse('off');
-        if (live) setRenderer(null);
+        await strikeGlFuse();
+        const r = await loadWorldRenderer();
+        if (!live) return;
+        if (!r) { setRenderer(null); return; }
+        if (live) setRenderer(r);
         return;
       }
       const r = await loadWorldRenderer();

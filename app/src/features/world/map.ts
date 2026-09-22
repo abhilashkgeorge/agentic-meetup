@@ -59,6 +59,12 @@ export const LANDMARK_RADIUS: Record<string, number> = {
   glasshouse: 0.42, stadium: 0.72, fort: 0.5, bull: 0.46,
 };
 
+/** Roughly how tall each stands, so the walking camera knows what it can see over. */
+export const LANDMARK_HEIGHT: Record<string, number> = {
+  dome: 1.0, tower: 1.55, palace: 0.8, temple: 0.95,
+  glasshouse: 0.5, stadium: 0.3, fort: 0.7, bull: 0.5,
+};
+
 /**
  * What the sim needs of the map: per area, where to stand -- and everywhere, what
  * cannot be walked through. A building becomes the circle that fits inside its
@@ -70,12 +76,14 @@ export function spotsFrom(map: MapAsset): MapSpots {
   for (const a of map.areas) areas[a.id] = { home: a.home, centre: a.centre, radius: a.radius, spots: a.spots, polygon: a.polygon };
   const solids: Solid[] = [];
   for (const a of map.areas) {
-    for (const b of a.blocks) solids.push({ x: b[0]!, z: b[1]!, r: (b[2]! + b[3]!) / 4 });
+    for (const b of a.blocks) solids.push({ x: b[0]!, z: b[1]!, r: (b[2]! + b[3]!) / 4, h: b[4]! });
   }
   for (const p of map.parks) {
-    for (const t of p.trees) solids.push({ x: t[0]!, z: t[1]!, r: TREE * (t[2] ?? 1) });
+    for (const t of p.trees) solids.push({ x: t[0]!, z: t[1]!, r: TREE * (t[2] ?? 1), h: TREE * 2 * (t[2] ?? 1) });
   }
-  for (const l of map.landmarks) solids.push({ x: l.at[0], z: l.at[1], r: LANDMARK_RADIUS[l.kind] ?? 0.45 });
+  for (const l of map.landmarks) {
+    solids.push({ x: l.at[0], z: l.at[1], r: LANDMARK_RADIUS[l.kind] ?? 0.45, h: LANDMARK_HEIGHT[l.kind] ?? 0.9 });
+  }
   return { central: CENTRAL_AREA, areas, solids, lakes: map.water.map((w) => w.polygon) };
 }
 

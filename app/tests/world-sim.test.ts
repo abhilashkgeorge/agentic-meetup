@@ -254,7 +254,7 @@ describe('on the map', () => {
     const to: [number, number] = [6, 1];
     // Solid, with no gap to wedge in: overlapping circles from z -1 to z 2, so the
     // only way to the far side is round one end.
-    const wall = Array.from({ length: 13 }, (_, i) => ({ x: 4, z: -1 + i * 0.25, r: 0.3 }));
+    const wall = Array.from({ length: 13 }, (_, i) => ({ x: 4, z: -1 + i * 0.25, r: 0.3, h: 1 }));
     const s = new WorldSim(3);
     s.setMap({ ...f, solids: wall, areas: { ...f.areas, a: { ...f.areas.a!, spots: [from], home: from } } });
     s.upsert([{ ref: 'w', kind: 'stranger', seed: 1, area: 'a' }]);
@@ -284,10 +284,33 @@ describe('on the map', () => {
     }
   });
 
+  it('lets the camera see over a low roof but not through a tower', () => {
+    // Control: make seeThrough call blocked() with above 0 and the bungalow stops the
+    // lens, which is what pulled the camera in for every building in the city.
+    const f = fixture();
+    const s = new WorldSim(8);
+    s.setMap({ ...f, solids: [{ x: 4, z: 4, r: 0.5, h: 0.3 }, { x: 8, z: 8, r: 0.5, h: 2 }],
+      lakes: [[[10, 10], [12, 10], [12, 12], [10, 12]]] });
+    // On the ground, both are in the way and so is the lake.
+    expect(s.standable(4, 4)).toBe(false);
+    expect(s.standable(8, 8)).toBe(false);
+    expect(s.standable(11, 11)).toBe(false);
+    // A lens at 0.6 rides over the low one, is stopped by the tall one, and can
+    // always see across water.
+    expect(s.seeThrough(4, 4, 0.6, 0.1)).toBe(true);
+    expect(s.seeThrough(8, 8, 0.6, 0.1)).toBe(false);
+    expect(s.seeThrough(11, 11, 0.6, 0.1)).toBe(true);
+    // Down at ankle height the low one is in the way again.
+    expect(s.seeThrough(4, 4, 0.1, 0.1)).toBe(false);
+    // A wider lens keeps further off the corners.
+    expect(s.seeThrough(8.65, 8, 0.6, 0.02)).toBe(true);
+    expect(s.seeThrough(8.65, 8, 0.6, 0.3)).toBe(false);
+  });
+
   it('tells you where a person could stand', () => {
     const f = fixture();
     const s = new WorldSim(5);
-    s.setMap({ ...f, solids: [{ x: 4, z: 4, r: 0.5 }], lakes: [[[10, 10], [12, 10], [12, 12], [10, 12]]] });
+    s.setMap({ ...f, solids: [{ x: 4, z: 4, r: 0.5, h: 1 }], lakes: [[[10, 10], [12, 10], [12, 12], [10, 12]]] });
     expect(s.standable(4, 4)).toBe(false);
     expect(s.standable(11, 11)).toBe(false);
     expect(s.standable(0, 0)).toBe(true);
@@ -297,7 +320,7 @@ describe('on the map', () => {
     // Control: drop the per-axis retries in `push` and the walker stops dead at the
     // wall instead of sliding along it, so `z` never changes.
     const f = fixture();
-    const wall = Array.from({ length: 17 }, (_, i) => ({ x: 4, z: -2 + i * 0.25, r: 0.3 }));
+    const wall = Array.from({ length: 17 }, (_, i) => ({ x: 4, z: -2 + i * 0.25, r: 0.3, h: 1 }));
     const s = new WorldSim(6);
     s.setMap({ ...f, solids: wall, areas: { ...f.areas, a: { ...f.areas.a!, spots: [[2, 1]], home: [2, 1] } } });
     s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: 'a' }]);
