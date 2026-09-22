@@ -36,6 +36,8 @@ const REFUSED: Record<string, string> = {
 import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
+import { CENTRAL_AREA } from '@clone/shared';
+import { gardenSpots, makeGarden } from './garden';
 import { MAP, spotsFrom } from './map';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { WorldSim } from './sim';
@@ -136,13 +138,29 @@ export default function WorldScreen() {
     return () => clearInterval(t);
   }, [token, focused, active, load]);
 
+  /**
+   * THE OTHER WORLD. The city answers "who is near me and where"; it is a map, and at
+   * head height a map looks like a map. Walking opens a garden instead -- one per
+   * neighbourhood, grown from its id, so yours is always yours -- with the same
+   * people standing in it. Two towns, because they are two different questions.
+   */
+  const gardenId = world?.me.area ?? CENTRAL_AREA;
+  const gardenSim = useMemo(() => {
+    const s = new WorldSim(20260922);
+    s.setMap(gardenSpots(makeGarden(gardenId)));
+    return s;
+  }, [gardenId]);
+
   // Roster -> sim. Only what changed since the last roster, so a poll never restarts
   // a walk-over already under way.
   const applied = useRef(new Map<string, WorldAgent['state']>());
   useEffect(() => {
     if (!world) return;
-    sim.upsert(fromRoster(world));
-    for (const ref of departed(applied.current, world.agents)) sim.remove(ref);
+    const roster = fromRoster(world);
+    sim.upsert(roster);
+    // The same people, standing in the garden instead of in their neighbourhoods.
+    gardenSim.upsert(roster.map((a) => ({ ...a, area: gardenId })));
+    for (const ref of departed(applied.current, world.agents)) { sim.remove(ref); gardenSim.remove(ref); }
     for (const t of planTransitions(applied.current, world.agents)) {
       if (t.op === 'meet') sim.meet(YOU, t.ref);
       else if (t.op === 'introduced') sim.introduced(YOU, t.ref);
@@ -150,7 +168,7 @@ export default function WorldScreen() {
       else sim.settle(t.ref);
     }
     applied.current = new Map(world.agents.map((a) => [a.ref, a.state]));
-  }, [world]);
+  }, [world, gardenSim, gardenId]);
 
   // Socket -> sim, at once. Each is recorded as applied so the roster that follows
   // two seconds later does not replay it.
@@ -257,7 +275,8 @@ export default function WorldScreen() {
       <renderer.WorldCanvas key={epoch} sim={sim} colors={colors} active={focused && inFront} cap30={cap30}
                             onTapAgent={onTap} onFirstFrame={firstFrame}
                             control={control} onBand={setBand} frame={frame}
-                            stick={stick} onWalking={setWalking} />
+                            stick={stick} onWalking={setWalking}
+                            gardenSim={gardenSim} gardenOf={gardenId} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
            onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })}
            band={band} size={size} frame={frame}

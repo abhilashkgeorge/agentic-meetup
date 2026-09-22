@@ -35,6 +35,8 @@ import {
   elevationFor, eyeOffset, flyAt, followPose, pan, pinch, tileZoom, turnToward, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
 } from './camera';
+import { makeGarden, gardenSpots } from './garden';
+import { buildGarden, skyFollow } from './garden-mesh';
 import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
@@ -95,6 +97,14 @@ export interface WorldCanvasProps {
   stick?: MutableRefObject<{ x: number; y: number }>;
   /** Told when walking starts and stops, so the HUD can show the stick. */
   onWalking?: (on: boolean) => void;
+  /**
+   * The other world. The map is the city -- who is where, and where to send your
+   * agent; walking opens a garden instead, and this is the town that lives in it.
+   * Given both, the frame loop steps whichever one you are actually in.
+   */
+  gardenSim?: WorldSim;
+  /** Which neighbourhood's garden. One seed, one garden, every time. */
+  gardenOf?: string;
 }
 
 /** How fast your own agent walks when the stick is all the way over, units a second. */
@@ -575,7 +585,7 @@ const zoomFor = (zoom: number, fovDeg: number, dist: number, heightPx: number): 
 /** How fast the camera catches up with your agent: 1 - e^(-k·dt) per frame. */
 const FOLLOW = 3;
 
-function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, onWalking, stick, cam }: WorldCanvasProps & { cam: CamState }) {
+function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, onWalking, stick, gardenSim, gardenOf, cam }: WorldCanvasProps & { cam: CamState }) {
   const { gl, scene, camera, invalidate, size } = useThree();
 
   const mode = useRef<'map' | 'walk' | null>(null);
@@ -589,6 +599,21 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
   // The city, built once per palette; the theme toggle rebuilds it (lamps, windows).
   const map = useMemo(() => buildMap(MAP, colors), [colors]);
   useEffect(() => () => map.dispose(), [map]);
+
+  // The garden, built once per neighbourhood and palette. Only one of the two worlds
+  // is ever visible, so the other costs nothing but the memory it is holding.
+  const garden = useMemo(
+    () => buildGarden(makeGarden(gardenOf ?? 'garden'), { night: colors.night, accent: colors.accent }),
+    [gardenOf, colors.night, colors.accent],
+  );
+  useEffect(() => () => garden.dispose(), [garden]);
+  // Null, not false: the first frame has to apply the choice, not skip it as a no-op.
+  const inGarden = useRef<boolean | null>(null);
+  const appliedGarden = useRef<unknown>(null);
+  useEffect(() => {
+    const was = scene.fog;
+    return () => { scene.fog = was; };
+  }, [scene]);
   const yourArea = useRef<string | null | undefined>(undefined);
 
   // 30 fps: r3f's demand mode draws only when asked, so ask on a 33 ms ticker.
@@ -649,14 +674,33 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
     const clamped = Math.min(dt, 0.1);
     elapsed.current += clamped;
     const t = elapsed.current;
-    sim.step(clamped);
+
+    // WHICH WORLD. Walking puts you in the garden with the same people; the map is
+    // the city. Only the one you are in is stepped, drawn, or asked about collision.
+    const walking = cam.walking && !!gardenSim;
+    const live = walking ? gardenSim! : sim;
+    // Set every frame, not only when it changes: two boolean writes cost nothing, and
+    // a rule that only fires on a transition loses its grip the moment either world
+    // is rebuilt -- a theme change or a reload left the garden drawn over the city,
+    // and then the city drawn over the garden (on the phone, 2026-09-22).
+    map.group.visible = !walking;
+    garden.group.visible = walking;
+    if (walking !== inGarden.current || appliedGarden.current !== garden) {
+      inGarden.current = walking;
+      appliedGarden.current = garden;
+      scene.fog = walking ? new THREE.Fog(garden.horizon, 18, 92) : null;
+      scene.background = new THREE.Color(walking ? garden.horizon : colors.bg);
+      onWalking?.(walking);
+    }
+    live.step(clamped);
+    if (walking) garden.tick(t, clamped);
 
     // Your tile, lit once your agent knows which it is.
     // Your tile is lit wherever your agent actually stands -- including the central
     // one, before the neighbourhood question is answered. Lighting nothing left the
     // city with no focal point at all (on the phone, 2026-09-22).
-    const you = sim.get('you');
-    if (you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area ?? CENTRAL_AREA); }
+    const you = live.get('you');
+    if (!walking && you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area ?? CENTRAL_AREA); }
 
     // The stick, if a thumb is on it: it steers in the camera's bearing, not the
     // agent's, so "up" always means away from you however they are facing.
@@ -666,8 +710,8 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       if (push > 0.08) {
         const [dx, dz] = driveVector(jx, jy, cam.yaw);
         const len = Math.hypot(dx, dz) || 1;
-        sim.drive('you', (dx / len) * WALK_SPEED * push, (dz / len) * WALK_SPEED * push);
-      } else sim.drive('you', 0, 0);
+        live.drive('you', (dx / len) * WALK_SPEED * push, (dz / len) * WALK_SPEED * push);
+      } else live.drive('you', 0, 0);
     }
 
     // The camera: a fly in progress, else following your agent, else where it was left.
@@ -723,13 +767,14 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       cam.at[0] += (you.x - cam.at[0]) * t2;
       cam.at[1] += (you.z - cam.at[1]) * t2;
       const [ax, az] = cam.at;
-      const want = clearBack(sim, ax, az, cam.yaw, WALK_BACK);
+      const want = clearBack(live, ax, az, cam.yaw, WALK_BACK);
       const k = 1 - Math.exp(-(want < cam.back ? BACK_IN : BACK_OUT) * clamped);
       cam.back += (want - cam.back) * k;
       const back = cam.back;
       const { eye, look } = followPose(ax, az, cam.yaw, back, riseFor(back), aimFor(back));
       camera.position.set(eye[0], eye[1], eye[2]);
       camera.lookAt(look[0], look[1], look[2]);
+      skyFollow(garden, eye[0], 0, eye[2]);
     } else {
       // The angle follows the zoom: a map seen from above out at the city, a game
       // camera looking along the street once you are down in it.
@@ -748,7 +793,7 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
     if (colors.night) map.water.emissiveIntensity = 0.25 + 0.2 * breath;
 
     const { solid, ghost, discs, dots, bars, rings } = meshes;
-    const agents = sim.agents();
+    const agents = live.agents();
     const n = Math.min(agents.length, SLOTS);
     refAt.current.length = n;
 
@@ -894,6 +939,7 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       <directionalLight position={[-4, 10, 8]} intensity={colors.night ? 0.6 : 0.75} />
 
       <primitive object={map.group} onClick={tapTile} />
+      <primitive object={garden.group} />
 
       {/* Taps land on bodies and heads, solid or ghost; the smaller parts pass through. */}
       <primitive object={meshes.solid.body.mesh} onClick={tap} />
