@@ -32,7 +32,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import {
-  answerQuestion, getNextQuestion, setWhoFine, type InterviewState, type WhoFine,
+  answerQuestion, getNextQuestion, markQuestionDone, setWhoFine, skipQuestionOfDay,
+  type InterviewState, type WhoFine,
 } from '../../lib/api';
 import { useSession } from '../../store/session';
 import { missingLabel } from '../profile/fields';
@@ -56,7 +57,7 @@ export default function InterviewScreen() {
    * and then back where they came from -- never into the onboarding tail, and never
    * through a dozen optional chips they did not come for.
    */
-  const { finish } = useLocalSearchParams<{ finish?: string }>();
+  const { finish, card: one, qotd } = useLocalSearchParams<{ finish?: string; card?: string; qotd?: string }>();
   const fromFinish = finish === '1';
   const [state, setState] = useState<InterviewState | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
@@ -84,8 +85,9 @@ export default function InterviewScreen() {
     setNote(null);
     setProposal(null);
     setTold(null);
-    setState(await getNextQuestion(token));
-  }, [token]);
+    // ONE CARD (the question of the day): that card, opened again, then back.
+    setState(await getNextQuestion(token, one));
+  }, [token, one]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -105,8 +107,15 @@ export default function InterviewScreen() {
       if (then.kind === 'confirm') { setProposal(then.proposal); return; }
       if (then.kind === 'note') { setTold(then.text); return; }
     }
+    // Opened for one card: say the question of the day is done -- or, when an optional
+    // card was skipped whole, that it was skipped -- and go back where they came from.
+    if (one) {
+      if (qotd) await (values.length === 0 && !whoFine ? skipQuestionOfDay(token, qotd) : markQuestionDone(token, qotd));
+      router.back();
+      return;
+    }
     void load();
-  }, [token, state, load]);
+  }, [token, state, load, one, qotd]);
 
   /** "Keep this": the proposal becomes the card's rule. The only way it ever does. */
   const keep = useCallback(async () => {

@@ -16,6 +16,11 @@
  *   - a question already answered on their sheet is never offered;
  *   - two a day at most, answered or skipped; a skipped one stays quiet for a week;
  *   - nobody reads anybody else's, and the app role cannot write one;
+ *   - on a CARD topic (drinking, kids, faith...) the gap is the card: a private want
+ *     that could not be read because the other person has no answer on that card is
+ *     recorded as `card:<predicate>` for them, their question of the day opens that card,
+ *     and answering the card through the card route is what counts -- a card value, never
+ *     a sentence; a card they have a value on is never offered;
  *   - an answer goes through the same rules as every sentence: one holding a contact
  *     detail, or naming a private topic, is kept but never goes on the sheet, never
  *     comes out of the quote door, never reaches a round's read of the sheets, and the
@@ -27,6 +32,10 @@
  *   - questionOfDay offering what the sheet answers     -> "already answered" fails
  *   - ensureSheet without withExplicit                  -> "after the sheet is rebuilt" fails
  *   - answerDailyQuestion writing every answer onto the sheet -> "same rules" fails
+ *   - unknownCardsOf returning nothing                  -> "opens that card" fails
+ *   - a valued card not counted as known                -> "never offered" fails
+ *   - markCardAnswered not checking the card's answer   -> "only once the card is answered" fails
+ *   - /v1/interview/next ignoring ?card=                -> "opens that card" fails
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Pool } from 'pg';
@@ -57,8 +66,14 @@ vi.mock('../src/llm/index.js', async (importOriginal) => {
       complete: async (req: { messages: { content: string }[] }) => {
         stub.calls++;
         const prompt = req.messages.map((m) => m.content).join('\n');
-        // The talk gets the script; the sheet's pointer points at nothing at all.
+        // The talk gets the script; a wants check maps a drinking want onto the drinking
+        // card; the sheet's pointer points at nothing at all.
         if (prompt.includes("A'S SENTENCES") && stub.talk) return { text: '', parsed: stub.talk(prompt), usage };
+        if (prompt.startsWith('WANTS\n')) {
+          const wants = prompt.split('\n\n')[0]!.split('\n').slice(1);
+          const cards = wants.flatMap((l, i) => (l.includes("doesn't drink") ? [{ want: i + 1, card: 'drinking', values: ['never'] }] : []));
+          return { text: '', parsed: { checks: [], cards }, usage };
+        }
         return { text: '', parsed: { answers: [] }, usage };
       },
       decide: async () => { throw new Error('no typed model'); },
@@ -71,7 +86,8 @@ const { pool, tenantSession, matchmakerSession, closeMatchPool } = await import(
 const { commit } = await import('../src/memory/facts.js');
 const episodes = await import('../src/memory/episodes.js');
 const { SHEET, ensureSheet, readOwnSheet, readSheets, withExplicit } = await import('../src/matching/answer-sheet.js');
-const { unknownsOf } = await import('../src/matching/unknowns.js');
+const { unknownsOf, unknownCardsOf } = await import('../src/matching/unknowns.js');
+const { interviewRoutes } = await import('../src/api/interview.js');
 const { loadQuotes } = await import('../src/matching/brief.js');
 const { runRound } = await import('../src/matching/orchestrator.js');
 const { questionOfDayRoutes } = await import('../src/api/question-of-day.js');
@@ -308,4 +324,68 @@ describe('an answer goes through the same rules as every sentence', () => {
       expect((await readOwnSheet(me)).find((q) => q.id === c.question)?.answer).toBeNull();
     });
   }
+});
+
+describe('a card topic', () => {
+  it('is a gap only where a private want met no answer on the card', () => {
+    const r = (status: string, card?: string, priv = true) =>
+      ({ want: 'w', kind: 'wants' as const, status: status as 'cant_check', quote: null, private: priv, ...(card ? { card } : {}) });
+    expect(unknownCardsOf([r('cant_check', 'drinking'), r('cant_check'), r('met', 'smoking'), r('cant_check', 'drinking')]))
+      .toEqual(['card:drinking']);
+    expect(unknownCardsOf([r('cant_check', 'drinking', false)])).toEqual([]);
+    expect(unknownCardsOf(undefined)).toEqual([]);
+  });
+
+  it('opens that card, and counts only once the card is answered through the card', async () => {
+    const tag = `qd-card-${Date.now()}`;
+    const her = await person('her-card', { intent: [tag] });
+    await tenantSession(her, (db) => commit(db, her, {
+      predicate: 'seeking', objectText: "Someone who doesn't drink", stance: 'asserted', originClass: 'owner',
+      sourceQuote: "Someone who doesn't drink", sourceEpisodeIds: [], extractorModel: 't', extractorVersion: '0',
+      promptVersion: '0', disclosure: 'matchable_only',
+    }));
+    const him = await person('him-card', { gender: 'man', seeking_gender: ['woman'], intent: [tag], traits: {} });
+    await runRound(her.userId);
+
+    const q = await today(him);
+    expect(q, 'no card question').toEqual({
+      id: 'card:drinking', ask: 'Do you drink?', count: 1, card: { id: 'card-drinking', topic: 'Drinking' },
+    });
+    // The card itself, opened by id -- not a text box.
+    const next = await (await interviewRoutes.request('/v1/interview/next?card=card-drinking', { headers: H(him) }))
+      .json() as { question: { id: string; whoFine?: unknown } | null };
+    expect(next.question?.id).toBe('card-drinking');
+    expect(next.question?.whoFine).toBeTruthy();
+
+    // Not done until the card is answered.
+    const early = await questionOfDayRoutes.request('/v1/question-of-day/done',
+      { method: 'POST', headers: H(him), body: JSON.stringify({ id: 'card:drinking' }) });
+    expect(early.status).toBe(409);
+    const answered = await interviewRoutes.request('/v1/interview/answer', {
+      method: 'POST', headers: H(him),
+      body: JSON.stringify({ questionId: 'card-drinking', values: ['never'], whoFine: { anyone: true } }),
+    });
+    expect(answered.status, await answered.clone().text()).toBe(200);
+    const done = await questionOfDayRoutes.request('/v1/question-of-day/done',
+      { method: 'POST', headers: H(him), body: JSON.stringify({ id: 'card:drinking' }) });
+    expect(done.status).toBe(200);
+
+    // A card value -- what her want is checked against, by code -- and no sentence.
+    const { rows } = await owner.query<{ object_value: unknown; disclosure: string }>(
+      `SELECT object_value, disclosure FROM facts WHERE user_id = $1 AND predicate = 'drinking' AND status = 'active'`,
+      [him.userId]);
+    expect(rows).toEqual([{ object_value: 'never', disclosure: 'matchable_only' }]);
+    expect(await today(him), 'the card was offered again').toBeNull();
+  });
+
+  it('a card they have a value on is never offered', async () => {
+    const me = await person('card-known');
+    await seed(me, 'card:smoking', 3);
+    await seed(me, 'travel', 1);
+    await tenantSession(me, (db) => commit(db, me, {
+      predicate: 'smoking', objectText: 'never', objectValue: 'never', stance: 'asserted', originClass: 'owner',
+      sourceQuote: 'Do you smoke? never', sourceEpisodeIds: [], extractorModel: 'interview', extractorVersion: '1', promptVersion: 'card-smoking',
+    }));
+    expect((await today(me))?.id).toBe('travel');
+  });
 });

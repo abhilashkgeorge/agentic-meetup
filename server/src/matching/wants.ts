@@ -55,6 +55,8 @@ export type WantStatus = 'met' | 'not_met' | 'unknown' | 'cant_check';
 export interface WantResult {
   want: string; kind: Want['kind']; status: WantStatus; quote: string | null;
   private?: boolean; practice?: boolean;
+  /** A private want's card, when the model mapped it onto one (card answers are read by code). */
+  card?: string;
 }
 
 /**
@@ -161,7 +163,7 @@ export function readWantChecks(
       const answer = m ? cardsOf[pi]?.[m.card] : undefined;
       const status: WantStatus = !m || typeof answer !== 'string' ? 'cant_check'
         : m.values.has(answer) ? 'met' : 'not_met';
-      return { want: w.text, kind: w.kind, status, quote: null, private: true };
+      return { want: w.text, kind: w.kind, status, quote: null, private: true, ...(m ? { card: m.card } : {}) };
     }
     const c = first.get(`${pi + 1}:${wi + 1}`);
     const s = c && c.status !== 'unknown' && c.sentence >= 1 && c.sentence <= list.length ? list[c.sentence - 1]! : null;

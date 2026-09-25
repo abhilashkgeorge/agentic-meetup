@@ -521,6 +521,14 @@ contact detail, or naming a private topic, goes through the same rules as any se
 kept, never put on the sheet, never repeated -- and the screen says which it was. The
 Town shows "A question for you" when one is waiting. No model call anywhere in it.
 
+**A card topic opens the card** (2026-09-25). When a private want (§7c) could not be
+checked because the other person has no answer on that card -- never answered, or "prefer
+not to say" -- the round records `card:<predicate>` as their gap. Their question of the day
+is then that card, both rows, answered through the card route
+(`/v1/interview/next?card=`, then `/v1/question-of-day/done`), so the answer is a card
+value -- checked by code, never said -- and not a sentence. A card they have a value on is
+never offered.
+
 ---
 
 ## 8. The scorers, measured against each other

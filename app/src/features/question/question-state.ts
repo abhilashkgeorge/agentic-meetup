@@ -24,3 +24,13 @@ export function unusedNote(reason: 'contact' | 'private' | null | undefined): st
   }
   return null;
 }
+
+/**
+ * The reason on a CARD question. Still a count and nothing else -- and it says what a card
+ * is, because the answer goes somewhere different from a sentence: it is checked, never
+ * said.
+ */
+export function cardReason(count: number): string {
+  const times = count === 1 ? 'once' : count === 2 ? 'twice' : `${count} times`;
+  return `Other agents asked about this ${times} lately, and yours could not say. It is one of your cards: nobody ever sees your answer. It is only used to check who fits.`;
+}

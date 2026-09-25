@@ -453,7 +453,16 @@ export const saveStory = (token: string, id: string, text: string) =>
  * The question of the day (server matching/unknowns.ts): something other agents asked
  * yours that it could not answer. `count` is how many times lately -- never who asked.
  */
-export interface DailyQuestion { id: string; ask: string; count: number }
+export interface DailyQuestion {
+  id: string;
+  ask: string;
+  count: number;
+  /**
+   * On a card topic (drinking, kids, faith...): the card to open instead of a text box,
+   * so the answer is a card value -- checked, never said.
+   */
+  card?: { id: string; topic: string };
+}
 export const getQuestionOfDay = (token: string) =>
   get<{ question: DailyQuestion | null; min: number; max: number }>('/v1/question-of-day', token);
 /** Saved either way; `usable` false means no agent will ever say it, and `reason` says why. */
@@ -462,6 +471,9 @@ export const answerQuestionOfDay = (token: string, id: string, text: string) =>
     '/v1/question-of-day', token, { id, text });
 export const skipQuestionOfDay = (token: string, id: string) =>
   post<{ ok: boolean }>('/v1/question-of-day/skip', token, { id });
+/** A card question, answered through the card itself: record that it was. */
+export const markQuestionDone = (token: string, id: string) =>
+  post<{ ok: boolean }>('/v1/question-of-day/done', token, { id });
 
 export interface HistoryEntry {
   value: string;
@@ -766,8 +778,9 @@ export interface InterviewState {
   poolSize: number | null;
 }
 
-export const getNextQuestion = (token: string) =>
-  get<InterviewState>('/v1/interview/next', token);
+/** The next question -- or, with `card`, that one card, opened again (the question of the day). */
+export const getNextQuestion = (token: string, card?: string) =>
+  get<InterviewState>(`/v1/interview/next${card ? `?card=${encodeURIComponent(card)}` : ''}`, token);
 
 /** An empty `values` array means skipped, which is recorded rather than inferred. */
 /** `text` carries the answer to a free question; `values` carries chip answers. */

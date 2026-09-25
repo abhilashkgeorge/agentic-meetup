@@ -18,7 +18,7 @@ import {
   Button, Card, Field, Header, Screen, ScreenTitle, Skeleton, space, type, usePalette,
 } from '../../components/ui';
 import { canSave, contactNote, tooShort } from '../stories/stories-state';
-import { questionReason, unusedNote } from './question-state';
+import { cardReason, questionReason, unusedNote } from './question-state';
 
 export default function QuestionScreen() {
   const p = usePalette();
@@ -73,6 +73,17 @@ export default function QuestionScreen() {
           <Card>
             <Text style={[type.body, { color: p.text }]}>{unused}</Text>
             <Button label="Done" variant="primary" onPress={() => router.back()} />
+          </Card>
+        ) : q?.card ? (
+          // A CARD TOPIC OPENS THE CARD (the founder, 2026-09-25): both rows, the answer
+          // read by code and never said -- not a sentence in a box.
+          <Card>
+            <Text style={[type.label, { color: p.textSecondary }]}>{q.card.topic.toUpperCase()}</Text>
+            <Text style={[type.title, { color: p.text }]}>{q.ask}</Text>
+            <Text style={[type.callout, { color: p.textSecondary }]}>{cardReason(q.count)}</Text>
+            <Button label="Answer the card" variant="primary"
+                    onPress={() => router.replace({ pathname: '/onboarding/interview', params: { card: q.card!.id, qotd: q.id } })} />
+            <Button label="Not now" variant="ghost" onPress={() => void skip()} />
           </Card>
         ) : q === null ? (
           <Text style={[type.body, { color: p.textSecondary }]}>

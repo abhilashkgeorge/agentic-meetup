@@ -137,9 +137,17 @@ export const interviewRoutes = new Hono()
       if (!state.profile.missing.includes(BY_ID.get(id)!.predicate)) answered.add(id);
     }
 
-    const next = await tenantSession(ctx, (db) =>
-      nextQuestion(db, ctx.userId, answered, candidates, state.asked.skipped),
-    );
+    // ONE CARD, BY ID (the question of the day, matching/unknowns.ts): a card the person
+    // may already have answered or declined, opened again so a gap another agent hit can
+    // be filled with a card answer. Only a card is asked this way; any other id gets the
+    // ordinary next question.
+    const one = c.req.query('card');
+    const pinned = one ? BY_ID.get(one) : undefined;
+    const next = pinned?.whoFine
+      ? { question: pinned, remaining: 0 }
+      : await tenantSession(ctx, (db) =>
+          nextQuestion(db, ctx.userId, answered, candidates, state.asked.skipped),
+        );
 
     return c.json({
       question: next

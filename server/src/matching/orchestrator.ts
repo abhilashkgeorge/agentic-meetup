@@ -54,7 +54,7 @@ import {
   TALK_SENTENCES, TALK_SOURCES, agentTalk, practiceSentences, talkFor, talkOn,
 } from './talk.js';
 import { cantCheck, cardAnswers, checkShortlist, checkWants, demote, loadWants, notMetCounts, wantRows } from './wants.js';
-import { recordUnknowns, unknownsOf } from './unknowns.js';
+import { recordUnknowns, unknownCardsOf, unknownsOf } from './unknowns.js';
 import { voiceText } from '../memory/profile.js';
 import { agentRef, notify } from './world.js';
 
@@ -386,7 +386,13 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       // person, later. Real people only -- a practice profile has nobody to ask.
       const qaA = compareSheets(sheetA, sheetB);
       const qaB = compareSheets(sheetB, sheetA);
-      const gaps = unknownsOf(talkFor(said.talk, 'a'), qaA, qaB);
+      const talked = unknownsOf(talkFor(said.talk, 'a'), qaA, qaB);
+      // And the CARDS a want could not read: A's private wants against B's card answers
+      // are B's gaps, and B's against A's are A's (unknowns.ts CARD_QUESTIONS).
+      const gaps = {
+        a: [...talked.a, ...unknownCardsOf(bChecked?.results[0])],
+        b: [...talked.b, ...unknownCardsOf(pre?.byId.get(pair.b.userId))],
+      };
       const o = { pair, runs, ok, briefs, jevScore: jev.score, jevCost: jev.costUsd, talkCost: said.costUsd,
                   wantCost: bChecked?.costUsd ?? 0, gaps };
       out.push(o);

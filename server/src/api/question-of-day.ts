@@ -9,7 +9,8 @@ import { resolveCtx, Unauthorized } from '../auth.js';
 import { log } from '../log.js';
 import { STORY_MAX, STORY_MIN } from '../onboarding/stories.js';
 import {
-  QUIET_DAYS, SHEET_IDS, answerDailyQuestion, questionOfDay, skipDailyQuestion,
+  CARD_QUESTIONS, QUESTION_IDS, QUIET_DAYS, SHEET_IDS, answerDailyQuestion, markCardAnswered, questionOfDay,
+  skipDailyQuestion,
 } from '../matching/unknowns.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
@@ -30,7 +31,10 @@ export const questionOfDayRoutes = new Hono()
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
     const q = await questionOfDay(ctx);
-    return c.json({ question: q ? { id: q.id, ask: q.ask, count: q.count } : null, min: STORY_MIN, max: STORY_MAX });
+    return c.json({
+      question: q ? { id: q.id, ask: q.ask, count: q.count, ...(q.card ? { card: q.card } : {}) } : null,
+      min: STORY_MIN, max: STORY_MAX,
+    });
   })
 
   /** Their answer, in their own words: on their sheet at once. */
@@ -54,7 +58,21 @@ export const questionOfDayRoutes = new Hono()
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
     const body = z.object({ id: z.string().min(1).max(64) }).safeParse(await c.req.json().catch(() => null));
-    if (!body.success || !SHEET_IDS.has(body.data.id)) return c.json({ error: 'bad request' }, 400);
+    if (!body.success || !QUESTION_IDS.has(body.data.id)) return c.json({ error: 'bad request' }, 400);
     await skipDailyQuestion(ctx, body.data.id);
     return c.json({ ok: true, quietDays: QUIET_DAYS });
+  })
+
+  /**
+   * A card question, answered through the card itself (POST /v1/interview/answer), which
+   * is what makes it count: the answer is a card value, read by code, never said. This
+   * only records that it was -- and refuses when the card has no fresh answer.
+   */
+  .post('/v1/question-of-day/done', async (c) => {
+    const { ctx, res } = await ctxOr401(c);
+    if (!ctx) return c.json({ error: res }, 401);
+    const body = z.object({ id: z.string().min(1).max(64) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success || !CARD_QUESTIONS.has(body.data.id)) return c.json({ error: 'bad request' }, 400);
+    if (!(await markCardAnswered(ctx, body.data.id))) return c.json({ error: 'card_not_answered' }, 409);
+    return c.json({ ok: true });
   });

@@ -21,6 +21,8 @@ import { tenantSession } from '../db/client.js';
 import { saveOwnSentence } from '../onboarding/stories.js';
 import { SHEET, readOwnSheet } from './answer-sheet.js';
 import { mayRepeat, namesCoreValue, type QaLine, type TalkView } from './brief.js';
+import { ALL_CARDS, BY_ID } from '../onboarding/questions.js';
+import type { WantResult } from './wants.js';
 
 /** At most this many questions a day, answered or skipped. */
 export const DAILY_QUESTIONS = 2;
@@ -32,6 +34,35 @@ export const WINDOW_DAYS = 14;
 const ID_BY_SHORT = new Map(SHEET.map((q) => [q.short, q.id]));
 const ID_BY_ASK = new Map(SHEET.map((q) => [q.ask, q.id]));
 export const SHEET_IDS: ReadonlySet<string> = new Set(SHEET.map((q) => q.id));
+
+/**
+ * THE CARDS AS QUESTIONS (the founder, 2026-09-25). A private want is checked against
+ * the other person's card answer (wants.ts); when they have none -- never answered, or
+ * "prefer not to say" -- it could not be checked. That gap is theirs to fill, and on a
+ * card topic the way to fill it is THE CARD: both rows, their answer read by code, never
+ * said, so it counts as a check-only match. `card:<predicate>` is how such a gap is
+ * recorded; the question of the day then opens that card instead of a text box.
+ */
+export const CARD_QUESTIONS: ReadonlyMap<string, { questionId: string; predicate: string; text: string; topic: string }> =
+  new Map(ALL_CARDS.map((c) => {
+    const q = BY_ID.get(c.id)!;
+    return [`card:${c.predicate}`, { questionId: c.id, predicate: c.predicate, text: q.text, topic: q.topic ?? q.text }];
+  }));
+
+/** Everything a gap may be recorded as: a bank question, or a card. */
+export const QUESTION_IDS: ReadonlySet<string> = new Set([...SHEET_IDS, ...CARD_QUESTIONS.keys()]);
+
+/**
+ * The cards a want check could not read for the other person: private wants mapped onto
+ * a card they have no answer on. Pure.
+ */
+export function unknownCardsOf(results: readonly WantResult[] | undefined): string[] {
+  const out = new Set<string>();
+  for (const r of results ?? []) {
+    if (r.private && r.status === 'cant_check' && r.card && CARD_QUESTIONS.has(`card:${r.card}`)) out.add(`card:${r.card}`);
+  }
+  return [...out];
+}
 
 /**
  * Whose agent said "I don't know", and to which question, in one pair's meeting. Pure.
@@ -66,7 +97,7 @@ export async function recordUnknowns(
 ): Promise<void> {
   for (const r of rows) {
     for (const q of r.questionIds) {
-      if (!SHEET_IDS.has(q)) continue;
+      if (!QUESTION_IDS.has(q)) continue;
       await c.query('INSERT INTO unknown_asks (tenant_id, user_id, question_id) VALUES ($1,$2,$3)', [r.tenantId, r.userId, q]);
     }
   }
@@ -74,10 +105,12 @@ export async function recordUnknowns(
 
 export interface DailyQuestion {
   id: string;
-  /** The question, as the bank asks it. */
+  /** The question, as the bank -- or the card -- asks it. */
   ask: string;
   /** How many times other agents asked it lately. Never who. */
   count: number;
+  /** On a card topic: the card to open, instead of a text box. */
+  card?: { id: string; topic: string };
 }
 
 /**
@@ -90,6 +123,14 @@ export async function questionOfDay(who: { tenantId: string; userId: string }): 
   const sheet = await readOwnSheet(who);
   const known = new Set(sheet.filter((q) => q.answer !== null).map((q) => q.id));
   return tenantSession(who, async (c) => {
+    // A card is known when it holds an answer with a value -- a "prefer not to say" is
+    // exactly the gap a want could not check.
+    const { rows: cards } = await c.query<{ predicate: string }>(
+      `SELECT DISTINCT predicate FROM facts
+        WHERE user_id = $1 AND predicate = ANY($2) AND status = 'active' AND valid_to IS NULL
+          AND object_value IS NOT NULL AND object_value <> 'null'::jsonb`,
+      [who.userId, [...CARD_QUESTIONS.values()].map((q) => q.predicate)]);
+    for (const r of cards) known.add(`card:${r.predicate}`);
     const { rows: today } = await c.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM question_prompts WHERE user_id = $1 AND day = CURRENT_DATE', [who.userId]);
     if ((today[0]?.n ?? 0) >= DAILY_QUESTIONS) return null;
@@ -103,11 +144,13 @@ export async function questionOfDay(who: { tenantId: string; userId: string }): 
         GROUP BY question_id`, [who.userId, WINDOW_DAYS]);
     const n = new Map(counts.map((r) => [r.question_id, r.n]));
     let best: DailyQuestion | null = null;
-    for (const q of SHEET) {
-      const count = n.get(q.id) ?? 0;
-      if (!count || known.has(q.id) || quiet.has(q.id)) continue;
-      if (!best || count > best.count) best = { id: q.id, ask: q.ask, count };
-    }
+    const offer = (id: string, ask: string, card?: DailyQuestion['card']) => {
+      const count = n.get(id) ?? 0;
+      if (!count || known.has(id) || quiet.has(id)) return;
+      if (!best || count > best.count) best = { id, ask, count, ...(card ? { card } : {}) };
+    };
+    for (const q of SHEET) offer(q.id, q.ask);
+    for (const [id, q] of CARD_QUESTIONS) offer(id, q.text, { id: q.questionId, topic: q.topic });
     return best;
   });
 }
@@ -151,4 +194,26 @@ export async function skipDailyQuestion(who: { tenantId: string; userId: string 
     `INSERT INTO question_prompts (user_id, tenant_id, question_id, outcome) VALUES ($1,$2,$3,'skipped')
      ON CONFLICT (user_id, question_id, day) DO NOTHING`,
     [who.userId, who.tenantId, questionId]));
+}
+
+/**
+ * A card question of the day, answered THROUGH THE CARD (POST /v1/interview/answer): this
+ * only records that it was, once the card's own answer is on file from the last hour.
+ * False when it is not -- the card was never opened, or the answer did not save.
+ */
+export async function markCardAnswered(who: { tenantId: string; userId: string }, id: string): Promise<boolean> {
+  const card = CARD_QUESTIONS.get(id);
+  if (!card) return false;
+  return tenantSession(who, async (c) => {
+    const { rows } = await c.query(
+      `SELECT 1 FROM question_answers
+        WHERE user_id = $1 AND question_id = $2 AND answered_at > now() - interval '1 hour'`,
+      [who.userId, card.questionId]);
+    if (!rows.length) return false;
+    await c.query(
+      `INSERT INTO question_prompts (user_id, tenant_id, question_id, outcome) VALUES ($1,$2,$3,'answered')
+       ON CONFLICT (user_id, question_id, day) DO UPDATE SET outcome = 'answered', at = now()`,
+      [who.userId, who.tenantId, id]);
+    return true;
+  });
 }
