@@ -218,6 +218,18 @@ describe("the founder's list ranks instead of excluding", () => {
     await fact(local, 'nationality_origin', 'India');
     await tenantSession(local, (c) => rebuildMatchProfile(c, local));
 
+    // EACH OF THEM WANTS ONE THING HE HAS, the same thing. Without it both scored
+    // EXACTLY ZERO: the scorer takes the smaller of the two directions' `common`, and
+    // a candidate who stated no preferences has none -- so the order below was the
+    // order Postgres returned two tied rows in. It passed for months by insertion luck
+    // and failed two runs in three once the suite moved to its own database (item 13).
+    // Now the backward direction is equal for both, and only his wants separate them.
+    for (const who of [ideal, local]) {
+      await tenantSession(who, (c) => setPreference(c, who, {
+        predicate: 'diet', operator: 'in', value: ['omnivore'], strength: 'strong',
+      }));
+    }
+
     const ids = await matchSession((c) => candidateIds(c, me.userId));
     // THE POINT: the local woman is not deleted for being local, or for not working
     // in AI, or for not going to the gym.

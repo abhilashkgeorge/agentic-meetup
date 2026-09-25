@@ -68,8 +68,14 @@ test that returned `[]` under the wrong role, an ordering test that passed by in
 luck). When behaviour cannot be observed — query counts, a dropped term — assert the
 source shape with comments stripped, and say why in the test.
 
+- The server suite runs on its own database, `clone_test` (since 2026-09-25):
+  `vitest.config.ts` points every `*_DATABASE_URL` there and `tests/support/global-setup.ts`
+  creates and migrates it. Never the dev database -- the dev server's workers no longer
+  race the tests. A test about the real ledger's history reads the dev DB read-only.
 - Fixtures are inserted through an owner `Pool`; the code under test runs through the real
-  role session. Isolate scenes with a unique `intent` tag; clean up tenants in `afterAll`.
+  role session. Isolate scenes with a unique `intent` tag and keep fixtures out of the pool
+  unless the test needs them in it (an empty intent matches anybody); clean up tenants in
+  `afterAll`. Test files still run in parallel on one database: never assert a global count.
 - Round tests call `converse()`, which sleeps between runs: `vi.setConfig({ testTimeout })`.
 - Numbers in a report come from a query run now, not from memory of a previous run.
 

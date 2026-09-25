@@ -23,11 +23,18 @@ import { pool } from '../src/db/client.js';
 import { env } from '../src/env.js';
 import { computeCost } from '../src/llm/port.js';
 import { capabilities } from '../src/llm/caps.js';
+import { devEnv } from './support/test-db.js';
 
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
+// THE HISTORY IS THE DEVELOPMENT DATABASE'S. The suite runs on its own database now
+// (tests/support/test-db.ts), which has no past; the rows this file guards are the
+// real ledger's, so 'the history' reads that one -- and only reads it.
+const devUrl = devEnv().MIGRATION_DATABASE_URL;
+const history = devUrl ? new Pool({ connectionString: devUrl, max: 1 }) : null;
 
 afterAll(async () => {
   await owner.end();
+  await history?.end();
   await pool.end();
 });
 
@@ -99,9 +106,9 @@ describe('the database', () => {
   });
 });
 
-describe('the history', () => {
+describe.skipIf(!history)('the history', () => {
   it('has every phantom row marked, and none left counted as spend', async () => {
-    const { rows } = await owner.query<{ unmarked: string }>(
+    const { rows } = await history!.query<{ unmarked: string }>(
       `SELECT count(*) AS unmarked FROM llm_calls
         WHERE cost_usd > 0 AND NOT estimated
           AND input_tokens + output_tokens + cached_read_tokens + cache_write_tokens = 0`);
@@ -111,7 +118,7 @@ describe('the history', () => {
   it('kept the rows rather than deleting them', async () => {
     // A guess that was recorded is part of how this project was built. The fix is to
     // stop it being counted as money, not to pretend it never happened.
-    const { rows } = await owner.query<{ n: string }>(
+    const { rows } = await history!.query<{ n: string }>(
       'SELECT count(*) AS n FROM llm_calls WHERE estimated');
     expect(Number(rows[0]!.n)).toBeGreaterThan(1000);
   });
