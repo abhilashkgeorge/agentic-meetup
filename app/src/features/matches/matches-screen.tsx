@@ -38,6 +38,7 @@ import { CharacterAvatar } from '../look/character-avatar';
 import { chatRows, exchangeRows, sayOnCard, sharedSaid, wantRowsView, type Said } from './exchange';
 import { SafetySheet } from '../safety/safety-sheet';
 import { fade } from './fade';
+import { recapLines } from './recap';
 
 /**
  * What the agents said, on the card: the date idea first -- the one useful thing a
@@ -149,11 +150,12 @@ export default function MatchesScreen() {
           ? 'Something went wrong while your agent was out. Try again.'
           : round.skipped
             ? round.skipped
-            : round.met === 0
-              ? 'It found nobody new to meet.'
-              : round.met === 1
-                ? 'Your agent found one person. Their card is below.'
-                : `Your agent found ${round.met} people. Their cards are below.`,
+            // The recap card says what happened (item 11), in words and without a count.
+            : round.recap
+              ? null
+              : round.met === 0
+                ? 'It found nobody new to meet.'
+                : 'Your agent found someone. Their card is below.',
     );
   }, [round, active]);
 
@@ -260,6 +262,23 @@ export default function MatchesScreen() {
             {said}
           </Text>
         )}
+
+        {/* WHAT YOUR AGENT DID (item 11): after each round, in templates and the
+            person's own shareable words -- no verdict, no count, nothing invented. */}
+        {round?.status === 'done' && round.recap && (() => {
+          const r = recapLines(round.recap);
+          return (
+            <Card label="WHAT YOUR AGENT DID">
+              <Text style={[type.body, { color: p.text }]}>{r.went}</Text>
+              {r.saidIntro && <Text style={[type.callout, { color: p.textSecondary }]}>{r.saidIntro}</Text>}
+              {r.said.map((s) => (
+                <Text key={s} style={[type.body, { color: p.text }]}>“{s}”</Text>
+              ))}
+              {r.topics && <Text style={[type.callout, { color: p.textSecondary }]}>{r.topics}</Text>}
+              {r.unsure && <Text style={[type.callout, { color: p.textTertiary }]}>{r.unsure}</Text>}
+            </Card>
+          );
+        })()}
 
         {matches.length === 0 ? (
           <Empty

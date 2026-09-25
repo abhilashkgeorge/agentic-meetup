@@ -576,6 +576,17 @@ never offered.
 
 ---
 
+## 7d2. The recap after a round
+
+Once a round is done, Matches opens on WHAT YOUR AGENT DID (`matching/recap.ts`, sent
+with the round on `GET /v1/matches`). Every word is a template -- "Your agent went out
+and met someone new." -- or the person's own sentence that their agent used for them in
+that round's cards, verbatim, and only while it is still shareable (public, current,
+passing the contact-detail block). Then what the agents talked about (question labels)
+and what the agent had to answer "I don't know" to, as things to tell it. Never the other
+person's words, never the date idea (a model wrote it), never a count or a verdict. The
+old "Your agent found 3 people" lost its number.
+
 ## 7e. The founder's numbers
 
 Settings → "Numbers", for the reviewer only (`GET /v1/admin/funnel`, 404 to anybody

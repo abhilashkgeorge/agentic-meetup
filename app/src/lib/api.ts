@@ -721,6 +721,8 @@ export interface RoundState {
   skipped: string | null;
   met: number;
   error: string | null;
+  /** What the agent did, once the round is done: templates and your own words (server recap.ts). */
+  recap?: import('../features/matches/recap').Recap | null;
 }
 
 export const getMatches = (token: string) =>

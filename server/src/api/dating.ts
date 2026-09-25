@@ -18,6 +18,7 @@ import { DailyRoundsExceeded, DailyTargetsExceeded, enqueueRound, latestRound } 
 import { resolveAgentRef } from '../matching/world.js';
 import { liveCard, plainCard, readBrief, sentenceKey } from '../matching/brief.js';
 import { expireDue } from '../matching/expiry.js';
+import { roundRecap } from '../matching/recap.js';
 import { lookOf, looksFor } from '../looks/store.js';
 import { award } from '../points/ledger.js';
 import { ANSWERS, WHY_NOT, checkinQuestions, type CheckinQuestion, type Shown } from '../checkin/questions.js';
@@ -539,6 +540,9 @@ export const datingRoutes = new Hono()
       return rows;
     });
     const round = await tenantSession(ctx, (db) => latestRound(db, ctx.userId));
+    // What the agent did while it was out (matching/recap.ts): templates and the
+    // person's own shareable words only. Once the round is done.
+    const recap = round?.status === 'done' ? await roundRecap(ctx, round) : null;
     // WHAT EACH OTHER PERSON STILL SHOWS, read now (brief.ts liveCard): their public,
     // active, current sentences -- the only view the matchmaker has of anybody -- so a
     // sentence they hid since a card was written comes off that card as it is shown.
@@ -568,6 +572,7 @@ export const datingRoutes = new Hono()
         skipped: round.result?.skipped ?? null,
         met: round.result?.metAll.length ?? 0,
         error: round.error,
+        recap,
       } : null,
       matches: rows
         // A card this person has already answered is gone. Answered yes and waiting is

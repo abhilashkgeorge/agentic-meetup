@@ -133,10 +133,13 @@ describe('the funnel', () => {
     await pair(a, await person('never_signed_in'), { introduced: true, messages: 1 });
 
     const after = await funnel(rev);
-    expect(delta(before, after)).toEqual({
-      people: 4,            // a-d; never the invented, the fixture or the never-signed-in
-      matches: 5, both_yes: 3, first_message: 2, date_proposed: 1, met: 2, expired: 1,
-    });
+    // NOT `people`: other suites make and delete real-looking accounts through the real
+    // doors (invites, phone sign-in) while this runs, so the global count of people
+    // moved by one in a full run. No other suite makes a pair between two such people,
+    // so the steps below are this scene's alone; the real-person rule is tested through
+    // them -- the invented, fixture and never-signed-in pairs must not move any of them.
+    const { people: _people, ...steps } = delta(before, after);
+    expect(steps).toEqual({ matches: 5, both_yes: 3, first_message: 2, date_proposed: 1, met: 2, expired: 1 });
   });
 
   it('only a reviewer sees it', async () => {
