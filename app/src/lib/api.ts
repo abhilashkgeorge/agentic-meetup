@@ -847,6 +847,8 @@ export interface ConversationRow {
   lastAt: string | null;
   lastFromMe: boolean;
   unread: number;
+  /** The one gentle nudge is due: quiet for two days since the match (server 0068). */
+  quiet?: boolean;
 }
 
 export const getConversations = (token: string) =>
@@ -884,7 +886,11 @@ export const reportUser = (
  * the server each time -- and whether either of you has proposed it yet.
  */
 export const getDateIdea = (token: string, rendezvousId: string) =>
-  get<{ idea: string | null; proposed: boolean }>(`/v1/conversations/${rendezvousId}/date`, token);
+  get<{ idea: string | null; proposed: boolean; quiet?: boolean }>(`/v1/conversations/${rendezvousId}/date`, token);
+
+/** The quiet nudge was on screen: the server never shows it again for this match. */
+export const nudgeSeen = (token: string, rendezvousId: string) =>
+  post<{ ok: boolean }>(`/v1/conversations/${rendezvousId}/nudge`, token, {});
 
 /**
  * "Propose this date". Sends only the message's own id: the server writes the words,

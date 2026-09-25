@@ -13,6 +13,7 @@ import { lookOf, looksFor } from '../looks/store.js';
 import type { Look } from '@clone/shared';
 import * as messages from '../messaging/store.js';
 import { log } from '../log.js';
+import { QUIET_DUE } from './date-idea.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
   try {
@@ -59,7 +60,7 @@ export const messageRoutes = new Hono()
     const rows = await tenantSession(ctx, async (db) => {
       const { rows } = await db.query<{
         id: string; other_id: string; last_text: string | null;
-        last_at: Date | null; last_sender: string | null; unread: string;
+        last_at: Date | null; last_sender: string | null; unread: string; quiet: boolean | null;
       }>(
         `SELECT r.id,
                 CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END AS other_id,
@@ -74,8 +75,11 @@ export const messageRoutes = new Hono()
                 m.sender_id     AS last_sender,
                 (SELECT count(*) FROM messages u
                   WHERE u.rendezvous_id = r.id AND u.sender_id <> $1 AND u.read_at IS NULL
-                ) AS unread
+                ) AS unread,
+                -- The one gentle nudge (0068), the same rule the chat asks.
+                (${QUIET_DUE}) AS quiet
            FROM rendezvous r
+           LEFT JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $1
            -- The most recent message in each conversation, or none.
            LEFT JOIN LATERAL (
              SELECT body, sent_at, sender_id FROM messages
@@ -144,6 +148,7 @@ export const messageRoutes = new Hono()
         lastAt: r.last_at ? r.last_at.toISOString() : null,
         lastFromMe: r.last_sender === ctx.userId,
         unread: Number(r.unread),
+        quiet: r.quiet === true,
       })),
     });
   })

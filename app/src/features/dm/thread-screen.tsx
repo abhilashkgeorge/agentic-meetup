@@ -20,9 +20,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardPad } from '../../lib/keyboard';
-import { getDateIdea, getMessages, proposeDate, type Look } from '../../lib/api';
+import { getDateIdea, getMessages, nudgeSeen, proposeDate, type Look } from '../../lib/api';
 import * as Crypto from 'expo-crypto';
-import { showDateIdea, type DateIdeaState } from './date-idea';
+import { chatCard, type DateIdeaState } from './date-idea';
 import { SafetySheet } from '../safety/safety-sheet';
 import { PersonAvatar } from '../look/person-avatar';
 import { Checkin } from './checkin';
@@ -176,6 +176,12 @@ export default function ThreadScreen() {
     if (!token) return;
     void getDateIdea(token, rendezvousId).then(setDateIdea);
   }, [token, rendezvousId]);
+  // The quiet nudge is shown once per match: the moment it is on screen, the server is
+  // told, and it never comes back (server 0068).
+  const card = chatCard(dateIdea);
+  useEffect(() => {
+    if (card?.nudge && token) void nudgeSeen(token, rendezvousId);
+  }, [card?.nudge, token, rendezvousId]);
   const propose = async () => {
     if (!token || proposing) return;
     setProposing(true);
@@ -183,7 +189,7 @@ export default function ThreadScreen() {
     setProposing(false);
     if (!r) return; // offline or refused: the button stays, nothing was sent
     useDm.getState().received(r.message);
-    setDateIdea((d) => (d ? { ...d, proposed: true } : d));
+    setDateIdea((d) => (d ? { ...d, proposed: true, quiet: false } : d));
   };
 
   // Newest at the bottom without measuring anything: render the list upside down and
@@ -236,15 +242,19 @@ export default function ThreadScreen() {
                  otherName={conversation?.name ?? 'them'} />
       )}
 
-      {showDateIdea(dateIdea) && (
+      {card && (
         <Surface depth="sunken" radius={radius.lg}
                  style={{ marginHorizontal: space.screen, marginBottom: space.sm, padding: space.md, gap: space.sm }}>
-          <Text style={[type.label, { color: p.textSecondary }]}>YOUR AGENTS' DATE IDEA</Text>
-          <Text style={[type.body, { color: p.text }]}>{dateIdea.idea}</Text>
-          <Button label="Propose this date" variant="primary" loading={proposing} onPress={() => void propose()} />
-          <Text style={[type.callout, { color: p.textTertiary }]}>
-            It goes as a message from you. You two pick the day.
-          </Text>
+          <Text style={[type.label, { color: p.textSecondary }]}>{card.title}</Text>
+          <Text style={[type.body, { color: p.text }]}>{card.line}</Text>
+          {card.propose && (
+            <>
+              <Button label="Propose this date" variant="primary" loading={proposing} onPress={() => void propose()} />
+              <Text style={[type.callout, { color: p.textTertiary }]}>
+                It goes as a message from you. You two pick the day.
+              </Text>
+            </>
+          )}
         </Surface>
       )}
 

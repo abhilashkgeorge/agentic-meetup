@@ -16,6 +16,7 @@ import { PersonAvatar } from '../look/person-avatar';
 import { ago } from '../../lib/ago';
 import { useSession } from '../../store/session';
 import { useDm } from '../../store/dm';
+import { QUIET_LINE } from './date-idea';
 import {
   Crease, Empty, Row, Screen, ScreenTitle, Surface,
   radius, space, type, usePalette,
@@ -84,9 +85,13 @@ export default function ConversationsScreen() {
                   }
                   title={c.name || 'Someone'}
                   subtitle={
-                    c.lastMessage
-                      ? `${c.lastFromMe ? 'You: ' : ''}${c.lastMessage}`
-                      : 'Say something'
+                    // The one gentle nudge (server 0068): shown here until the chat
+                    // itself has shown it, then never again for this match.
+                    c.quiet
+                      ? QUIET_LINE
+                      : c.lastMessage
+                        ? `${c.lastFromMe ? 'You: ' : ''}${c.lastMessage}`
+                        : 'Say something'
                   }
                   value={ago(c.lastAt)}
                   onPress={() => router.push(`/dm/${c.id}`)}

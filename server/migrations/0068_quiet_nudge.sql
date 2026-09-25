@@ -1,0 +1,15 @@
+-- 0068: one gentle nudge when a new conversation goes quiet.
+--
+-- WHAT WAS MISSING. Two people say yes, the conversation opens, and often nothing
+-- happens: nobody goes first. Nothing in the app noticed. The founder's item 8: one
+-- gentle nudge if the chat is quiet two days after the match, mentioning the date
+-- idea, once per match -- in the app for now, no push.
+-- HOW IT WAS FOUND: nothing read rendezvous.introduced_at after the introduction
+-- except the check-in three days later (checkin/).
+--
+-- WHY THIS SHAPE. On the reader's own brief, not the match: each of the two gets one
+-- nudge, on their own screen, and the row is already theirs under the briefs_mine
+-- policy, and already erased with them. Set when the nudge is SEEN, not when it falls
+-- due, so a person who never opened the app is not counted as nudged. After that it
+-- never comes back for this match, however quiet it gets again.
+ALTER TABLE rendezvous_briefs ADD COLUMN nudged_at timestamptz;

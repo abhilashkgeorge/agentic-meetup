@@ -29,6 +29,34 @@ import { log } from '../log.js';
 /** The message a proposal sends. The idea, framed as a question -- nothing added. */
 export const proposalText = (idea: string): string => `How about this: ${idea}?`;
 
+/**
+ * THE QUIET NUDGE (0068, the founder's item 8). Due for a reader when the two were
+ * introduced at least two days ago, nobody has written in the last two days (or ever),
+ * and this reader has not been nudged about this match before. Written as SQL over
+ * `r` (rendezvous), `b` (the reader's brief), so the chat and the list ask the same.
+ * No brief, no nudge: without the row there is nowhere to remember it was seen, and it
+ * would come back every time.
+ */
+export const QUIET_DAYS = 2;
+export const QUIET_DUE = `r.status = 'introduced'
+  AND r.introduced_at <= now() - interval '${QUIET_DAYS} days'
+  AND b.for_user IS NOT NULL AND b.nudged_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM messages q
+                   WHERE q.rendezvous_id = r.id AND q.sent_at > now() - interval '${QUIET_DAYS} days')`;
+
+async function quiet(ctx: TenantCtx, rendezvousId: string): Promise<boolean> {
+  return tenantSession(ctx, async (db) => {
+    const { rows } = await db.query<{ due: boolean }>(
+      `SELECT (${QUIET_DUE}) AS due
+         FROM rendezvous r
+         JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $2
+        WHERE r.id = $1 AND (r.user_a = $2 OR r.user_b = $2)
+          AND NOT apart($2, CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END)`,
+      [rendezvousId, ctx.userId]);
+    return rows[0]?.due ?? false;
+  });
+}
+
 /** This conversation's date idea for the caller, checked now, or null. */
 async function liveIdea(ctx: TenantCtx, rendezvousId: string): Promise<{ idea: string; otherId: string } | null> {
   const row = await tenantSession(ctx, async (db) => {
@@ -80,14 +108,33 @@ async function ctxOf(header: string | undefined): Promise<TenantCtx | null> {
 const Id = z.uuid();
 
 export const dateIdeaRoutes = new Hono()
-  /** The idea, and whether either of them has proposed it yet. */
+  /**
+   * The idea, whether either of them has proposed it yet, and whether the quiet nudge
+   * is due for the caller -- which mentions the idea when there is one.
+   */
   .get('/v1/conversations/:id/date', async (c) => {
     const ctx = await ctxOf(c.req.header('authorization'));
     if (!ctx) return c.json({ error: 'unauthorized' }, 401);
     const id = Id.safeParse(c.req.param('id'));
     if (!id.success) return c.json({ error: 'not found' }, 404);
     const idea = await liveIdea(ctx, id.data);
-    return c.json({ idea: idea?.idea ?? null, proposed: idea ? await proposed(ctx, id.data) : false });
+    return c.json({
+      idea: idea?.idea ?? null,
+      proposed: idea ? await proposed(ctx, id.data) : false,
+      quiet: await quiet(ctx, id.data),
+    });
+  })
+
+  /** The nudge was on the caller's screen: it never comes back for this match. */
+  .post('/v1/conversations/:id/nudge', async (c) => {
+    const ctx = await ctxOf(c.req.header('authorization'));
+    if (!ctx) return c.json({ error: 'unauthorized' }, 401);
+    const id = Id.safeParse(c.req.param('id'));
+    if (!id.success) return c.json({ error: 'not found' }, 404);
+    await tenantSession(ctx, (db) => db.query(
+      `UPDATE rendezvous_briefs SET nudged_at = now()
+        WHERE rendezvous_id = $1 AND for_user = $2 AND nudged_at IS NULL`, [id.data, ctx.userId]));
+    return c.json({ ok: true });
   })
 
   /**

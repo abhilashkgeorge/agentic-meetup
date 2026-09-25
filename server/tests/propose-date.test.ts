@@ -120,7 +120,7 @@ async function scene(status = 'introduced') {
 const H = (p: P) => ({ Authorization: `Bearer ${p.token}`, 'Content-Type': 'application/json' });
 const look = async (p: P, id: string) =>
   (await (await dateIdeaRoutes.request(`/v1/conversations/${id}/date`, { headers: H(p) })).json()) as
-    { idea: string | null; proposed: boolean };
+    { idea: string | null; proposed: boolean; quiet: boolean };
 const propose = (p: P, id: string, extra: Record<string, unknown> = {}, messageId: string = crypto.randomUUID()) =>
   dateIdeaRoutes.request(`/v1/conversations/${id}/date`, {
     method: 'POST', headers: H(p), body: JSON.stringify({ messageId, ...extra }) });
@@ -131,7 +131,7 @@ const thread = async (p: P, id: string) =>
 describe('Propose this date', () => {
   it('sends the idea as a message from me, with nothing added, and both see it proposed', async () => {
     const { her, him, id } = await scene();
-    expect(await look(her, id)).toEqual({ idea: IDEA, proposed: false });
+    expect(await look(her, id)).toEqual({ idea: IDEA, proposed: false, quiet: false });
 
     // A phone that sends words of its own has them ignored.
     const res = await propose(her, id, { text: 'Saturday 7pm at my place', body: 'x' });
@@ -148,8 +148,8 @@ describe('Propose this date', () => {
       'SELECT kind, sender_id FROM messages WHERE rendezvous_id = $1', [id]);
     expect(rows).toEqual([{ kind: 'date_idea', sender_id: her.userId }]);
 
-    expect(await look(her, id)).toEqual({ idea: IDEA, proposed: true });
-    expect(await look(him, id)).toEqual({ idea: IDEA, proposed: true });
+    expect(await look(her, id)).toEqual({ idea: IDEA, proposed: true, quiet: false });
+    expect(await look(him, id)).toEqual({ idea: IDEA, proposed: true, quiet: false });
   });
 
   it('one proposal per conversation, and a retry of it is not a second', async () => {
@@ -165,13 +165,13 @@ describe('Propose this date', () => {
   it('is withdrawn once the other person hides the sentence it stands on', async () => {
     const { her, id, hisFact } = await scene();
     await owner.query(`UPDATE facts SET disclosure = 'private' WHERE id = $1`, [hisFact]);
-    expect(await look(her, id)).toEqual({ idea: null, proposed: false });
+    expect(await look(her, id)).toEqual({ idea: null, proposed: false, quiet: false });
     expect((await propose(her, id)).status).toBe(404);
   });
 
   it('is nothing before the introduction, and nothing across a block', async () => {
     const early = await scene('decided');
-    expect(await look(early.her, early.id)).toEqual({ idea: null, proposed: false });
+    expect(await look(early.her, early.id)).toEqual({ idea: null, proposed: false, quiet: false });
     expect((await propose(early.her, early.id)).status).toBe(404);
 
     const blocked = await scene();

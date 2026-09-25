@@ -45,6 +45,8 @@ export interface Conversation {
   lastAt: string | null;
   lastFromMe: boolean;
   unread: number;
+  /** Quiet for two days since the match: the list says so, once (server 0068). */
+  quiet?: boolean;
 }
 
 interface DmStore {

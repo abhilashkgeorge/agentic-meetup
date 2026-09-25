@@ -101,7 +101,11 @@ async function account(on?: string): Promise<Person> {
     `INSERT INTO app_users (tenant_id, email, phone_hmac, phone_verified_at) VALUES ($1,$2,$3, now()) RETURNING id`,
     [tenantId, `bs-${run}-${n++}@example.test`, phoneHmac(phone)]);
   const userId = u.rows[0]!.id;
-  await owner.query(`INSERT INTO match_profile (user_id, tenant_id, age, in_pool) VALUES ($1,$2,30,true)`, [userId, tenantId]);
+  // OUT OF THE POOL, WITH ITS OWN INTENT TAG. These people only need a profile for the
+  // ban to hide; in the pool with no intent they matched ANYBODY (an empty intent
+  // overlaps every other, candidates.ts), so round tests running alongside met them.
+  await owner.query(`INSERT INTO match_profile (user_id, tenant_id, age, in_pool, intent) VALUES ($1,$2,30,false,$3)`,
+    [userId, tenantId, [`bs-${run}`]]);
   return { tenantId, userId, phone, token: await session({ tenantId, userId }, on) };
 }
 async function session(p: { tenantId: string; userId: string }, on?: string): Promise<string> {

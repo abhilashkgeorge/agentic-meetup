@@ -494,6 +494,13 @@ through the contact-detail block again). Nothing the phone sends rides along, th
 schedules nothing, and there is one proposal per conversation. The message is marked
 `kind = 'date_idea'`, which is how the funnel counts "date proposed".
 
+**One gentle nudge** (0068, since 2026-09-25). Two days after the introduction, if
+nobody has written for two days, the chat opens on "It has been quiet for two days" --
+with the agents' date idea and its button when there is one, "Say hello?" when there is
+not -- and the Chats list says "Quiet for two days". In the app only, no push. Each
+person gets it once per match: the chat tells the server it was seen
+(`rendezvous_briefs.nudged_at`), and it never comes back, however quiet it gets again.
+
 ## 7c. What you asked for -- evidence, never a verdict
 
 `server/src/matching/wants.ts` · asked for by the founder on 2026-09-25
