@@ -259,6 +259,34 @@ export const adminRoutes = new Hono()
   })
 
   /**
+   * The founder's funnel (0070, item 10): matches -> both said yes -> first message ->
+   * date proposed -> met, between real people only. Counts, never rows: nothing here
+   * names anybody.
+   */
+  .get('/v1/admin/funnel', async (c) => {
+    const ctx = await reviewer(c.req.header('authorization'));
+    if (!ctx) return c.json({ error: 'not found' }, 404);
+    const f = await matchmakerSession(async (db) => {
+      const { rows } = await db.query<{
+        people: number; matches: number; both_yes: number; first_message: number;
+        date_proposed: number; met: number; expired: number;
+      }>('SELECT * FROM founder_funnel()');
+      return rows[0]!;
+    });
+    return c.json({
+      people: f.people,
+      steps: [
+        { step: 'matches', n: f.matches },
+        { step: 'both_yes', n: f.both_yes },
+        { step: 'first_message', n: f.first_message },
+        { step: 'date_proposed', n: f.date_proposed },
+        { step: 'met', n: f.met },
+      ],
+      expired: f.expired,
+    });
+  })
+
+  /**
    * Put somebody's photographs back.
    *
    * A moderation decision that cannot be undone is a decision nobody will dare make

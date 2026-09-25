@@ -925,6 +925,9 @@ export interface AdminReport {
   context: { reportsAgainstThem: number; distinctReporters: number; photos: number; photosHidden: number };
 }
 export const isAdmin = (token: string) => get<{ admin: boolean }>('/v1/admin/me', token);
+/** The founder's funnel: counts between real people (server 0070). Null for non-reviewers. */
+export const getFunnel = (token: string) =>
+  get<import('../features/admin/funnel').Funnel>('/v1/admin/funnel', token);
 export const getAdminReports = (token: string, all = false) =>
   get<{ open: number; reports: AdminReport[] }>(`/v1/admin/reports${all ? '?all=1' : ''}`, token);
 export const decideReport = (token: string, id: string, outcome: 'no_action' | 'photos_hidden' | 'banned', note = '') =>

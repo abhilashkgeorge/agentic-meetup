@@ -261,8 +261,12 @@ export default function SettingsScreen() {
           <Row title="Contact support" subtitle={SUPPORT_EMAIL}
                onPress={() => void Linking.openURL(supportMailto())} last={!admin} />
           {admin && (
-            <Row title="Reports to review" value={admin.open ? String(admin.open) : ''}
-                 onPress={() => router.push('/admin')} last />
+            <>
+              <Row title="Reports to review" value={admin.open ? String(admin.open) : ''}
+                   onPress={() => router.push('/admin')} />
+              <Row title="Numbers" subtitle="How far matches get, real people only"
+                   onPress={() => router.push('/funnel')} last />
+            </>
           )}
         </Card>
 

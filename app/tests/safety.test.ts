@@ -104,6 +104,7 @@ describe('the reviewer\'s queue', () => {
     // server's 404 to everybody else is the real gate (server tests/block-report-ban).
     const settings = code('features/settings/settings-screen.tsx');
     expect(settings).toMatch(/isAdmin\(token\)/);
-    expect(settings).toMatch(/\{admin && \(\s*<Row title="Reports to review"/);
+    // A fragment may hold it with the Numbers row (item 10); the gate is what matters.
+    expect(settings).toMatch(/\{admin && \(\s*(<>\s*)?<Row title="Reports to review"/);
   });
 });

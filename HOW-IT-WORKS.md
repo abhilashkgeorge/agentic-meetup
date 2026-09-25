@@ -576,6 +576,15 @@ never offered.
 
 ---
 
+## 7e. The founder's numbers
+
+Settings → "Numbers", for the reviewer only (`GET /v1/admin/funnel`, 404 to anybody
+else): matches → both said yes → first message → date proposed → met, plus people and
+expired. Counts, never names, from one database function (`founder_funnel()`, 0070). A
+pair counts only when both people are REAL: not invented, signed in on a phone at least
+once, and not a test fixture (an `@example.test` address). "Met" is either check-in:
+"did you meet" or the after-date one.
+
 ## 8. The scorers, measured against each other
 
 What each pair carries before any human looks:
