@@ -48,6 +48,21 @@ export function phoneHmac(e164: string): string {
 }
 
 /**
+ * The lookup key for a handset, from the X-Device-Id header the app sends at the doors
+ * (app/src/lib/device.ts): ANDROID_ID, or a keychain id on iPhone. Same pepper as the
+ * numbers and for the same reason -- a column of raw device ids is a list of phones.
+ * A ban holds against it (0065), so a new SIM in the same phone is still turned away.
+ *
+ * Null for a missing header or one that is not an id. Lower-cased, because ANDROID_ID
+ * is hex and a hash that changed with its case would be a way round a ban.
+ */
+export function deviceMark(header: string | null | undefined): string | null {
+  const id = (header ?? '').trim().toLowerCase();
+  if (!/^[a-z0-9-]{8,64}$/.test(id)) return null;
+  return createHmac('sha256', PEPPER).update(`device.v1:${id}`).digest('base64url');
+}
+
+/**
  * The stored form of a one-time code, bound to the challenge it belongs to.
  *
  * The id is inside the HMAC rather than beside it. Without that binding, two

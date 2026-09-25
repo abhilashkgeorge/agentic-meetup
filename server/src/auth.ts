@@ -50,7 +50,7 @@ async function fromLegacy(userId: string): Promise<TenantCtx | null> {
   if (!env.ALLOW_LEGACY_TOKENS) return null;
   const row = await authLookup(userId, async (c) => {
     const { rows } = await c.query<{ id: string; tenant_id: string }>(
-      'SELECT id, tenant_id FROM app_users WHERE id = $1',
+      'SELECT id, tenant_id FROM app_users WHERE id = $1 AND NOT is_banned(id)',
       [userId],
     );
     return rows[0];

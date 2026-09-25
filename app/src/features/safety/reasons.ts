@@ -7,8 +7,12 @@
  * fails if the two lists drift apart.
  *
  * THE SUPPORT ADDRESS is in the app because Apple requires, for apps where people talk
- * to each other, a way to report, a way to block, and a way to reach a person.
+ * to each other, a way to report, a way to block, and a way to reach a person. It lives
+ * in shared, so the server's "account closed" answer names the same one.
  */
+import { SUPPORT_EMAIL } from '@clone/shared';
+
+export { SUPPORT_EMAIL };
 export const REPORT_REASONS = [
   { id: 'harassment', label: 'Harassment or threats' },
   { id: 'inappropriate', label: 'Inappropriate messages or photos' },
@@ -19,8 +23,6 @@ export const REPORT_REASONS = [
   { id: 'other', label: 'Something else' },
 ] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number]['id'];
-
-export const SUPPORT_EMAIL = 'abhilash@dabba.com';
 
 /** A mailto link with a subject, for the support line. */
 export const supportMailto = (subject = 'Help with the app'): string =>

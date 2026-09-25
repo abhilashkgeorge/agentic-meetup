@@ -10,7 +10,7 @@
  * device keeps a signed session in the keychain, and that is the whole of it. The
  * account is the device until there is a reason for it not to be.
  */
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { LIMITS, rateLimit, take, callerIp } from '../ratelimit.js';
 import { z } from 'zod';
 import {
@@ -20,10 +20,10 @@ import { resolveCtx, Unauthorized, isLegacyToken } from '../auth.js';
 import { env } from '../env.js';
 import { log } from '../log.js';
 import { mintInviteCode, mintToken, normaliseInviteCode, newSessionId, verifyToken } from '../tokens.js';
-import { codeHmac, hashesMatch, newCode, phoneHmac } from '../phone.js';
+import { codeHmac, deviceMark, hashesMatch, newCode, phoneHmac } from '../phone.js';
 import { sendCode } from '../sms.js';
 import {
-  OTP_MAX_ATTEMPTS, OTP_TTL_SEC, TICKET_TTL_SEC,
+  OTP_MAX_ATTEMPTS, OTP_TTL_SEC, SUPPORT_EMAIL, TICKET_TTL_SEC,
   maskPhone, normalisePhone,
 } from '@clone/shared';
 
@@ -48,6 +48,8 @@ async function provision(
    * second account with the number that was supposed to stop them.
    */
   phone?: string,
+  /** The handset, as deviceMark() keys it: what a ban will hold against (0065). */
+  device?: string | null,
 ): Promise<{ token: string; userId: string; tenantId: string }> {
   // The id is generated HERE, not with RETURNING, for the same reason the app_users
   // insert below does it -- and now for a second reason as well.
@@ -76,13 +78,53 @@ async function provision(
       [userId, tenantId, `${tenantId}@device.local`, phone ?? null],
     );
     await db.query(
-      `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at)
-       VALUES ($1,$2,$3,$4, now() + ($5 || ' days')::interval)`,
-      [sessionId, tenantId, userId, label.slice(0, 64), String(env.SESSION_TTL_DAYS)],
+      `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at, device_hmac)
+       VALUES ($1,$2,$3,$4, now() + ($5 || ' days')::interval, $6)`,
+      [sessionId, tenantId, userId, label.slice(0, 64), String(env.SESSION_TTL_DAYS), device ?? null],
     );
   });
 
   return { token: mintToken(sessionId), userId, tenantId };
+}
+
+/**
+ * WHO MAY NOT COME BACK (0065). Asked at every door that makes an account or a
+ * session, before anything is spent: is this phone number, or this handset, held by a
+ * ban? A new SIM in a banned phone is a new number on a banned handset, and is turned
+ * away here -- as is the old number on a new phone, and either after the account was
+ * erased.
+ *
+ * IN PRODUCTION A DOOR WITH NO HANDSET ID IS REFUSED TOO. An app that sends none was
+ * built before bans could stick, and letting it in would be the way round them. In
+ * development it is let through, so a build from before the rebuild still signs in.
+ *
+ * Returns the refusal to send, or null to carry on, with the handset's mark either way
+ * so the session made next can record it.
+ */
+async function atTheDoor(
+  c: Context, phone: string | null,
+): Promise<{ refused: Response; device: null } | { refused: null; device: string | null }> {
+  const device = deviceMark(c.req.header('x-device-id'));
+  if (!device && env.NODE_ENV === 'production') {
+    return {
+      refused: c.json({ error: 'update_app', message: 'Update the app to sign in.' }, 400), device: null,
+    };
+  }
+  const banned = await adminSession(async (db) => {
+    const { rows } = await db.query<{ banned: boolean }>(
+      `SELECT mark_banned('phone', $1) OR mark_banned('device', $2) AS banned`, [phone, device]);
+    return rows[0]?.banned ?? false;
+  });
+  if (!banned) return { refused: null, device };
+  // Nothing that names them: the marks are hashes, and the number is not in the log.
+  log.warn({}, 'a banned number or phone was turned away');
+  return {
+    refused: c.json({
+      error: 'closed',
+      message: `This account was closed after a report. If you think that is a mistake, write to ${SUPPORT_EMAIL}.`,
+    }, 403),
+    device: null,
+  };
 }
 
 const Redeem = z.object({
@@ -157,6 +199,11 @@ export const authRoutes = new Hono()
       }
     }
 
+    // Before the invite is claimed, for the same reason as the number: a code somebody
+    // handed out is not burned on a person who was never getting in.
+    const door = await atTheDoor(c, phone);
+    if (door.refused) return door.refused;
+
     // Reserved BEFORE the account exists, so two devices racing on one code cannot
     // both win -- the conditional UPDATE decides it, not whoever is faster. The id is
     // minted here for that reason, and `reserved_for` is deliberately not a foreign
@@ -198,7 +245,7 @@ export const authRoutes = new Hono()
 
     let provisioned;
     try {
-      provisioned = await provision(body.data.label ?? 'device', userId, phone ?? undefined);
+      provisioned = await provision(body.data.label ?? 'device', userId, phone ?? undefined, door.device);
     } catch (err) {
       // Release it. A failed provision must not silently eat somebody's only invite.
       // Nothing to release for a reusable code: it was never claimed.
@@ -266,12 +313,14 @@ export const authRoutes = new Hono()
       throw err;
     }
 
+    const door = await atTheDoor(c, null);
+    if (door.refused) return door.refused;
     const sessionId = newSessionId();
     await tenantSession(ctx, (db) =>
       db.query(
-        `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at)
-         VALUES ($1,$2,$3,'upgraded device', now() + ($4 || ' days')::interval)`,
-        [sessionId, ctx.tenantId, ctx.userId, String(env.SESSION_TTL_DAYS)],
+        `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at, device_hmac)
+         VALUES ($1,$2,$3,'upgraded device', now() + ($4 || ' days')::interval, $5)`,
+        [sessionId, ctx.tenantId, ctx.userId, String(env.SESSION_TTL_DAYS), door.device],
       ),
     );
 
@@ -488,6 +537,13 @@ export const authRoutes = new Hono()
 
     const label = body.data.label ?? 'device';
 
+    // The number is proven now, so it can be told it is banned: this is no oracle,
+    // the caller holds the phone. Asked before every case -- attaching a banned
+    // number to another account, signing into the banned account, and starting a new
+    // one with it are all ways back in.
+    const door = await atTheDoor(c, row.phone_hmac);
+    if (door.refused) return door.refused;
+
     // CASE 1: already signed in. Attach the number to the account in hand.
     const header = c.req.header('authorization');
     if (header) {
@@ -544,9 +600,9 @@ export const authRoutes = new Hono()
       });
       await tenantSession(ctx, (db) =>
         db.query(
-          `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at)
-           VALUES ($1,$2,$3,$4, now() + ($5 || ' days')::interval)`,
-          [sessionId, ctx.tenantId, ctx.userId, label.slice(0, 64), String(env.SESSION_TTL_DAYS)],
+          `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at, device_hmac)
+           VALUES ($1,$2,$3,$4, now() + ($5 || ' days')::interval, $6)`,
+          [sessionId, ctx.tenantId, ctx.userId, label.slice(0, 64), String(env.SESSION_TTL_DAYS), door.device],
         ));
       await phoneSession((db) => spendTicket(db, challengeId));
       log.info({ userId: owner.id }, 'signed in by phone');
@@ -641,7 +697,9 @@ export const authRoutes = new Hono()
       return c.json({ error: 'invite required', message: 'You need an invite code.' }, 403);
     }
     const body = (await c.req.json().catch(() => ({}))) as { label?: string };
-    const provisioned = await provision(body.label ?? 'device');
+    const door = await atTheDoor(c, null);
+    if (door.refused) return door.refused;
+    const provisioned = await provision(body.label ?? 'device', undefined, undefined, door.device);
     log.info({ userId: provisioned.userId }, 'device self-provisioned');
     return c.json({ token: provisioned.token, tenantId: provisioned.tenantId });
   });

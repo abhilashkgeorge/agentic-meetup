@@ -750,6 +750,19 @@ photos, or Ban. Settings → "Contact support" writes to abhilash@dabba.com (App
 for report, block and a contact in any app where people talk). A ban outlives erasure
 by design.
 
+**A ban sticks to the number and the phone** (0065). The app sends which phone it is
+at the four doors -- phone verify, invite redeem, device signup, token upgrade -- as
+`X-Device-Id` (`app/src/lib/device.ts`: ANDROID_ID, or a keychain id on iPhone; both
+survive a new SIM and deleting the app). The server keeps only a keyed hash of it
+(`deviceMark`, same pepper as phone numbers) on the session it makes. A ban copies the
+person's number and every phone their sessions were made on into `ban_marks`, and
+every door asks `mark_banned()` before spending anything: a new SIM in a banned phone,
+or the banned number on a new phone, gets "This account was closed after a report".
+The reviewer's own phones are never marked. In production a door with no phone id is
+refused ("Update the app"); in development it is let through. The limit: the id is
+what the app says it is, so somebody who rewrites the app can send another --
+attestation (Play Integrity) is the step after this.
+
 ---
 
 ## 12. Known-open, with the fix

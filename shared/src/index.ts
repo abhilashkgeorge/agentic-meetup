@@ -11,3 +11,4 @@ export * from './map-check.js';
 export * from './whereabouts.js';
 export * from './areas.js';
 export * from './contact.js';
+export * from './support.js';

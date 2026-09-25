@@ -47,6 +47,9 @@ const NATIVE = [
   'expo-sharing',
   'expo-media-library',
   'expo-location',
+  // The handset id for bans that stick (lib/device.ts), added 2026-09-25: a build made
+  // before it must still start.
+  'expo-application',
   // The 3D renderer. The GL view and the fiber renderer on top of it are native shims
   // like the rest; a static import on the Home tab root would be exactly the eager
   // startup this file exists to prevent.

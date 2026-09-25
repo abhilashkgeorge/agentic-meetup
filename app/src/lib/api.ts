@@ -1,5 +1,6 @@
 import type { ImportPromptsResponse, Look } from '@clone/shared';
 import { getApiBase } from './env';
+import { deviceHeader } from './device';
 
 export type ChatGuide = ImportPromptsResponse['chatGuide'];
 
@@ -80,7 +81,9 @@ export async function upgradeToken(legacy: string): Promise<string | null> {
   try {
     const res = await fetch(`${getApiBase()}/v1/auth/upgrade`, {
       method: 'POST',
-      headers: { ...BASE_HEADERS, 'Content-Type': 'application/json', Authorization: `Bearer ${legacy}` },
+      headers: {
+        ...BASE_HEADERS, ...(await deviceHeader()), 'Content-Type': 'application/json', Authorization: `Bearer ${legacy}`,
+      },
     });
     if (!res.ok) return null;
     return ((await res.json()) as { token?: string }).token ?? null;
@@ -99,7 +102,8 @@ export async function redeemInvite(
   try {
     const res = await fetch(`${getApiBase()}/v1/auth/redeem`, {
       method: 'POST',
-      headers: { ...BASE_HEADERS, 'Content-Type': 'application/json' },
+      // Which phone this is: a ban holds against the handset as well as the number.
+      headers: { ...BASE_HEADERS, ...(await deviceHeader()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, label, ...(ticket ? { ticket } : {}) }),
     });
     const body = (await res.json()) as { token?: string; note?: string; message?: string };
@@ -170,6 +174,7 @@ export async function verifyPhone(
       method: 'POST',
       headers: {
         ...BASE_HEADERS,
+        ...(await deviceHeader()),
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
@@ -270,7 +275,7 @@ export async function provisionDevice(label: string): Promise<string | null> {
   try {
     const res = await fetch(`${getApiBase()}/v1/auth/device`, {
       method: 'POST',
-      headers: { ...BASE_HEADERS, 'Content-Type': 'application/json' },
+      headers: { ...BASE_HEADERS, ...(await deviceHeader()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ label }),
     });
     if (!res.ok) return null;
