@@ -25,6 +25,8 @@ import {
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
 import { SafetySheet } from '../safety/safety-sheet';
+import { BothYesMoment } from './both-yes-moment';
+import { useWorld } from '../world/store';
 
 /** A photo fills the screen, less the margins on both sides. */
 const CARD_W = Dimensions.get('window').width - space.screen * 2;
@@ -40,6 +42,8 @@ export default function RevealScreen() {
   const [introduced, setIntroduced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [safety, setSafety] = useState(false);
+  // The person's own character, if the town has loaded it: for the moment below.
+  const myLook = useWorld((s) => s.world?.me.look ?? null);
 
   useEffect(() => {
     void (async () => {
@@ -93,20 +97,12 @@ export default function RevealScreen() {
       );
     }
     if (introduced) {
+      // A MOMENT, NOT A NOTICE (item 12): the two characters meet, then the words. No
+      // new data -- their look and name from the reveal, the person's own from the town.
       return (
-        <Screen
-          center
-          footer={
-            <Button label="Say hello" variant="primary"
-                    onPress={() => router.replace(`/dm/${String(id)}`)} />
-          }
-        >
-          <Text style={[type.display, { color: p.text, textAlign: 'center' }]}>
-            You both said yes
-          </Text>
-          <Text style={[type.body, { color: p.textSecondary, textAlign: 'center' }]}>
-            {them?.name ?? 'They'} can message you now, and nobody else can.
-          </Text>
+        <Screen center>
+          <BothYesMoment name={them?.name} theirLook={them?.look} myLook={myLook}
+                         onHello={() => router.replace(`/dm/${String(id)}`)} />
         </Screen>
       );
     }

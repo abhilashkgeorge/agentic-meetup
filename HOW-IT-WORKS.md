@@ -587,6 +587,13 @@ and what the agent had to answer "I don't know" to, as things to tell it. Never 
 person's words, never the date idea (a model wrote it), never a count or a verdict. The
 old "Your agent found 3 people" lost its number.
 
+**The moment** (item 12, design only). When the second yes lands, the reveal no longer
+shows a notice: the two characters slide in from the edges and meet, pop once over the
+"connecting" animation, and "You both said yes" and "Say hello" rise
+(`features/matches/both-yes-moment.tsx`). No new data -- their name and character from
+the reveal, the person's own character from the town -- the same words for everybody,
+and with the phone's reduce-motion setting on it is simply there.
+
 ## 7e. The founder's numbers
 
 Settings → "Numbers", for the reviewer only (`GET /v1/admin/funnel`, 404 to anybody
