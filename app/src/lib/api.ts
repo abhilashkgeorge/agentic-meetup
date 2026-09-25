@@ -263,8 +263,9 @@ export async function exportAccount(token: string): Promise<string | null> {
 
 export interface Invite { code: string; note: string; used: boolean; expires_at: string }
 
+/** `remaining` is null for the reviewer, who has no limit. */
 export const getInvites = (token: string) =>
-  get<{ invites: Invite[]; remaining: number }>('/v1/invites', token);
+  get<{ invites: Invite[]; remaining: number | null; perPerson?: number }>('/v1/invites', token);
 
 export async function createInvite(token: string, note: string) {
   return post<{ code: string; expiresInDays: number }>('/v1/invites', token, { note });

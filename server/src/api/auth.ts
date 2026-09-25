@@ -17,6 +17,7 @@ import {
   adminSession, provisioningSession, tenantSession, authLookup, phoneSession,
 } from '../db/client.js';
 import { resolveCtx, Unauthorized, isLegacyToken } from '../auth.js';
+import { isReviewer } from './admin.js';
 import { env } from '../env.js';
 import { log } from '../log.js';
 import { mintInviteCode, mintToken, normaliseInviteCode, newSessionId, verifyToken } from '../tokens.js';
@@ -704,7 +705,20 @@ export const authRoutes = new Hono()
     return c.json({ token: provisioned.token, tenantId: provisioned.tenantId });
   });
 
-/** Invites a signed-in person can hand out. Scarce on purpose. */
+/**
+ * How many of a person's invites are spent: used, or open and still in date. A
+ * reusable development code is nobody's (0046). One that ran out unused is not spent,
+ * because it brought nobody in -- so it comes back.
+ */
+const SPENT_INVITES = `SELECT count(*)::int AS n FROM invites
+  WHERE created_by = $1 AND NOT reusable AND (reserved_for IS NOT NULL OR expires_at > now())`;
+
+/**
+ * Invites a signed-in person can hand out: INVITES_PER_USER in all (3), and none for a
+ * reviewer, who is how the first people arrive. Who invited whom is the invite row
+ * itself: `created_by`, and `reserved_for` -- written before the account exists, in
+ * the same statement that claims the code, so it cannot be lost -- then `used_by`.
+ */
 export const inviteRoutes = new Hono()
   .get('/v1/invites', async (c) => {
     let ctx;
@@ -719,15 +733,18 @@ export const inviteRoutes = new Hono()
     // someone who is not yet anybody. The WHERE clause is the boundary, and it is
     // the only place this table is read by creator. The app role can read, mint
     // and claim; it cannot delete (0053).
-    const rows = await adminSession(async (db) => {
+    const { rows, spent } = await adminSession(async (db) => {
       const r = await db.query(
         `SELECT code, note, created_at, expires_at, (reserved_for IS NOT NULL) AS used
            FROM invites WHERE created_by = $1 ORDER BY created_at DESC LIMIT 50`,
         [ctx.userId],
       );
-      return r.rows;
+      const s = await db.query<{ n: number }>(SPENT_INVITES, [ctx.userId]);
+      return { rows: r.rows, spent: s.rows[0]!.n };
     });
-    return c.json({ invites: rows, remaining: Math.max(0, env.INVITES_PER_USER - rows.filter((r) => !r.used).length) });
+    // null is "no limit": the reviewer.
+    const remaining = isReviewer(ctx.userId) ? null : Math.max(0, env.INVITES_PER_USER - spent);
+    return c.json({ invites: rows, remaining, perPerson: env.INVITES_PER_USER });
   })
 
   .post('/v1/invites', async (c) => {
@@ -741,12 +758,12 @@ export const inviteRoutes = new Hono()
     const body = (await c.req.json().catch(() => ({}))) as { note?: string };
 
     const result = await adminSession(async (db) => {
-      const { rows: open } = await db.query<{ n: string }>(
-        `SELECT count(*) AS n FROM invites
-          WHERE created_by = $1 AND reserved_for IS NULL AND expires_at > now()`,
-        [ctx.userId],
-      );
-      if (Number(open[0]!.n) >= env.INVITES_PER_USER) return null;
+      // ONE AT A TIME PER PERSON. Counting and then inserting let two taps that
+      // arrived together both see two spent and both make a third -- a fourth invite
+      // out of three. The lock is per person and ends with the transaction.
+      await db.query(`SELECT pg_advisory_xact_lock(hashtext('invites:' || $1))`, [ctx.userId]);
+      const { rows: spent } = await db.query<{ n: number }>(SPENT_INVITES, [ctx.userId]);
+      if (!isReviewer(ctx.userId) && spent[0]!.n >= env.INVITES_PER_USER) return null;
 
       const code = mintInviteCode();
       await db.query(
@@ -760,7 +777,7 @@ export const inviteRoutes = new Hono()
     if (!result) {
       return c.json({
         error: 'no invites left',
-        message: `You can have ${env.INVITES_PER_USER} out at a time. Wait for one to be used.`,
+        message: `You have used all ${env.INVITES_PER_USER} of your invites. One that runs out unused comes back.`,
       }, 429);
     }
     return c.json({ code: result, expiresInDays: env.INVITE_TTL_DAYS });

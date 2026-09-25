@@ -16,6 +16,7 @@ import {
   createInvite, eraseAccount, exportAccount, getAdminReports, getInvites, isAdmin, type Invite, logout, phoneLinked,
 } from '../../lib/api';
 import { SUPPORT_EMAIL, supportMailto } from '../safety/reasons';
+import { inviteCard } from './invites';
 import { clearToken, getFps30, getGlFuse, setFps30, setGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { useTheme } from '../../store/theme';
@@ -39,7 +40,8 @@ export default function SettingsScreen() {
   const token = useSession((s) => s.token);
   const setToken = useSession((s) => s.setToken);
   const [invites, setInvites] = useState<Invite[]>([]);
-  const [remaining, setRemaining] = useState(0);
+  const [remaining, setRemaining] = useState<number | null>(0);
+  const [perPerson, setPerPerson] = useState(3);
   const [busy, setBusy] = useState(false);
   const [town, setTown] = useState<'trying' | 'off' | null>(null);
   const [fps30, setFps30State] = useState(false);
@@ -52,7 +54,8 @@ export default function SettingsScreen() {
     if (!token) return;
     const r = await getInvites(token);
     setInvites(r?.invites ?? []);
-    setRemaining(r?.remaining ?? 0);
+    setRemaining(r ? r.remaining : 0);
+    if (r?.perPerson) setPerPerson(r.perPerson);
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
@@ -177,9 +180,9 @@ export default function SettingsScreen() {
       <ScreenTitle title="Settings" />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
-        <Card label={`Invites · ${remaining} left`}>
+        <Card label={inviteCard(remaining, perPerson).label}>
           <Text style={[type.callout, { color: p.textSecondary }]}>
-            We keep it small. You can have a few out at a time.
+            {inviteCard(remaining, perPerson).line}
           </Text>
           {invites.map((i) => (
             <Row key={i.code} title={i.code}
@@ -187,7 +190,7 @@ export default function SettingsScreen() {
                  value={i.used ? '✓' : ''} />
           ))}
           <Button label="Make an invite" variant="primary" onPress={() => void invite()}
-                  disabled={remaining === 0} loading={busy} />
+                  disabled={!inviteCard(remaining, perPerson).canMake} loading={busy} />
         </Card>
 
         {/* Appearance first: it is the setting people come here to change, and it is

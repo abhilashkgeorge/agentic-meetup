@@ -28,6 +28,9 @@ import { log } from '../log.js';
 const admins = (): Set<string> =>
   new Set(env.ADMIN_USER_IDS.split(',').map((s) => s.trim()).filter(Boolean));
 
+/** Whether this person is a reviewer. Their invites are not rationed (auth.ts). */
+export const isReviewer = (userId: string): boolean => admins().has(userId);
+
 /**
  * Resolve the caller and require that they are a reviewer.
  *

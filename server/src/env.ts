@@ -194,8 +194,13 @@ const Env = z.object({
   SESSION_TTL_DAYS: z.coerce.number().default(180),
   /** Days an unredeemed invite code stays live. */
   INVITE_TTL_DAYS: z.coerce.number().default(14),
-  /** How many invites one person may have outstanding. Scarcity is the point. */
-  INVITES_PER_USER: z.coerce.number().default(5),
+  /**
+   * How many people one person may bring in, in all (the founder's item 5: "3 per
+   * user"). Used invites count, and so do open ones still in date; one that ran out
+   * unused comes back, because it brought nobody. The reviewer has no limit -- in
+   * production they are how the first people arrive. Scarcity is the point.
+   */
+  INVITES_PER_USER: z.coerce.number().default(3),
 
   /**
    * Phone identity.
@@ -347,6 +352,15 @@ if (env.NODE_ENV === 'production' && env.SMS_DEV_ECHO) {
 
 // A provider that texts nobody is the right default and the wrong production
 // setting: every code would sit in the log and no phone would ever ring.
+// Every account has a verified number: it is what makes one person one account, and
+// what a ban holds against (0065). Skipping it is for a laptop with no SMS account.
+if (env.NODE_ENV === 'production' && env.ALLOW_UNVERIFIED_SIGNUP) {
+  throw new Error(
+    'ALLOW_UNVERIFIED_SIGNUP must be false in production: an account with no verified '
+    + 'number is a second account for anybody, and a ban has nothing to hold on to.',
+  );
+}
+
 if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {
   throw new Error('SMS_PROVIDER must be a real provider in production, not "console".');
 }

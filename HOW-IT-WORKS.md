@@ -40,11 +40,18 @@ and are **off by default** (§6).
 
 `app/src/features/auth/*`, `server/src/api/auth.ts`, `server/src/phone.ts`
 
-Phone number, six digits by SMS, a session token. `SMS_PROVIDER=console` prints the code
-to the server log — that is a **release blocker**, see `CLAUDE.md`.
+Phone number, six digits by SMS, a session token, and an invite: **invite-only**. Each
+person can bring in three people in all (`INVITES_PER_USER`): used invites count, open
+ones count, one that runs out unused comes back; the reviewer has no limit. Who invited
+whom is the invite's own row -- `created_by`, and `reserved_for`, written in the same
+statement that claims the code, before the account exists.
 
-There is a reusable dev invite (`KNOX-1010`) that makes unlimited accounts. Deleting it
-and its machinery is also a release blocker.
+Two testing shortcuts stay, **development-only** (the founder, 2026-09-25: keep them,
+do not delete them): the reusable invite `KNOX-1010` (`ALLOW_REUSABLE_INVITES`) and
+console SMS (`SMS_PROVIDER=console` prints the code to the server log; `SMS_DEV_ECHO`
+puts it in the reply). A production server refuses to start with any of them on, or
+with `ALLOW_UNVERIFIED_SIGNUP` -- `server/tests/boot-refusals.test.ts` starts it for
+real to prove it. A reusable row restored into a real database is dead there.
 
 ---
 

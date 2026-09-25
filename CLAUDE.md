@@ -102,7 +102,9 @@ messages from `64f549e` to `c373d30`; the redesign of 2026-09-23 and its evidenc
 
 1. Rotate every key per `server/ROTATION.md` §5 — only AFTER both phones have a number
    attached (Settings → "Add your phone number"), because rotation logs them out.
-2. Delete the reusable dev invite `KNOX-1010` and all its machinery: `scripts/dev-invite.ts`,
-   the `reusable` column and row, `ALLOW_REUSABLE_INVITES`, the redeem branch, its test.
+2. Keep `KNOX-1010` and console SMS -- they are development-only, not deleted (founder,
+   2026-09-25). A production server refuses to start with `ALLOW_REUSABLE_INVITES`,
+   `SMS_PROVIDER=console`, `SMS_DEV_ECHO` or `ALLOW_UNVERIFIED_SIGNUP` on
+   (`tests/boot-refusals.test.ts`); on the real host, leave them off.
 3. Move `phoneSession` / `discoverySession` off the superuser onto a dedicated owner role.
-4. Set a real `SMS_PROVIDER`; `console` prints codes to the server log.
+4. Set a real `SMS_PROVIDER` on the real host (it will not start with `console`).
