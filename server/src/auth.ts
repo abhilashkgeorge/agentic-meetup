@@ -27,8 +27,10 @@ const bare = (bearer: string) => bearer.replace(/^Bearer\s+/i, '').trim();
 async function fromSession(sessionId: string): Promise<TenantCtx | null> {
   const row = await authLookup(sessionId, async (c) => {
     const { rows } = await c.query<{ user_id: string; tenant_id: string }>(
+      // A BANNED PERSON IS SIGNED OUT, whatever their sessions say (0064). ban_user
+      // revokes the sessions too; this is the check that holds if one is ever missed.
       `SELECT user_id, tenant_id FROM device_sessions
-        WHERE id = $1 AND revoked_at IS NULL AND expires_at > now()`,
+        WHERE id = $1 AND revoked_at IS NULL AND expires_at > now() AND NOT is_banned(user_id)`,
       [sessionId],
     );
     return rows[0];

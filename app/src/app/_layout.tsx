@@ -224,6 +224,7 @@ export default function RootLayout() {
         <Stack.Screen name="stories" options={{ headerShown: false }} />
         <Stack.Screen name="question" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
+        <Stack.Screen name="admin" options={{ headerShown: false }} />
         <Stack.Screen name="character" options={{ headerShown: false }} />
         <Stack.Screen name="selfie" options={{ headerShown: false }} />
         {/* Hidden: the 3D frame-rate check, reached from Settings. Draws its own header. */}

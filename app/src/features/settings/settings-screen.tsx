@@ -10,11 +10,12 @@
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, Share, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, Share, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import {
-  createInvite, eraseAccount, exportAccount, getInvites, type Invite, logout, phoneLinked,
+  createInvite, eraseAccount, exportAccount, getAdminReports, getInvites, isAdmin, type Invite, logout, phoneLinked,
 } from '../../lib/api';
+import { SUPPORT_EMAIL, supportMailto } from '../safety/reasons';
 import { clearToken, getFps30, getGlFuse, setFps30, setGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { useTheme } from '../../store/theme';
@@ -55,6 +56,18 @@ export default function SettingsScreen() {
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // The reviewer's row, and how many reports wait. `isAdmin` is a 404 -- null -- for
+  // everybody else, so for them the row simply is not there.
+  const [admin, setAdmin] = useState<{ open: number } | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    void (async () => {
+      if (!(await isAdmin(token))?.admin) return;
+      const r = await getAdminReports(token);
+      setAdmin({ open: r?.open ?? 0 });
+    })();
+  }, [token]);
 
   const invite = useCallback(async () => {
     if (!token) return;
@@ -237,6 +250,18 @@ export default function SettingsScreen() {
             />
           </Card>
         )}
+
+        {/* Apple asks every app where people talk to each other for three things:
+            report, block, and a way to reach a person. Report and block are on every
+            card, profile and chat; this is the third. */}
+        <Card label="Help and safety">
+          <Row title="Contact support" subtitle={SUPPORT_EMAIL}
+               onPress={() => void Linking.openURL(supportMailto())} last={!admin} />
+          {admin && (
+            <Row title="Reports to review" value={admin.open ? String(admin.open) : ''}
+                 onPress={() => router.push('/admin')} last />
+          )}
+        </Card>
 
         <Card label="Connection">
           <Row title="Server" value={getApiBase().replace(/^https?:\/\//, '')}

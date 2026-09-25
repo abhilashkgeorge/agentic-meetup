@@ -24,7 +24,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { setupRoute } from '../profile/fields';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import {
   decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep, type RoundState, type Talk,
 } from '../../lib/api';
@@ -36,6 +36,7 @@ import {
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
 import { chatRows, exchangeRows, sayOnCard, sharedSaid, wantRowsView, type Said } from './exchange';
+import { SafetySheet } from '../safety/safety-sheet';
 
 /**
  * What the agents said, on the card: the date idea first -- the one useful thing a
@@ -107,6 +108,9 @@ export default function MatchesScreen() {
   // they arrived is not re-announced as news.
   const announced = useRef<string | null>(null);
   const [pool, setPool] = useState<{ total: number | null; steps: PoolStep[]; inPool: boolean; missing: string[]; need: string[] } | null>(null);
+  // The card whose Block-or-report sheet is open. A card names the match, never a
+  // person: the server works out who the other half is.
+  const [safetyFor, setSafetyFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -379,10 +383,23 @@ export default function MatchesScreen() {
                     : 'You said yes. You will hear nothing either way until they look.'}
                 </Text>
               )}
+
+              {/* On every card, answered or not: somebody's own words can be the thing
+                  that needs reporting, before anybody has said yes. */}
+              <Pressable onPress={() => setSafetyFor(m.id)} accessibilityRole="button"
+                         accessibilityLabel="Block or report" hitSlop={8}>
+                <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>Block or report</Text>
+              </Pressable>
             </Surface>
           ))
         )}
       </View>
+
+      {safetyFor && (
+        <SafetySheet target={{ rendezvousId: safetyFor }}
+                     onClose={() => setSafetyFor(null)}
+                     onDone={() => { setMatches((ms) => ms.filter((m) => m.id !== safetyFor)); void load(); }} />
+      )}
     </Screen>
   );
 }

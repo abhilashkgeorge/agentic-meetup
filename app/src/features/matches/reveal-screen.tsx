@@ -24,6 +24,7 @@ import {
   radius, space, type, usePalette,
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
+import { SafetySheet } from '../safety/safety-sheet';
 
 /** A photo fills the screen, less the margins on both sides. */
 const CARD_W = Dimensions.get('window').width - space.screen * 2;
@@ -38,6 +39,7 @@ export default function RevealScreen() {
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [introduced, setIntroduced] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [safety, setSafety] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -155,7 +157,13 @@ export default function RevealScreen() {
         </>
       }
     >
-      <Header onBack={() => router.back()} />
+      {/* Always in reach on a profile, the same as in a chat. */}
+      <Header onBack={() => router.back()}
+              right={{ glyph: '⋯', label: 'Block or report', onPress: () => setSafety(true) }} />
+      {safety && id && (
+        <SafetySheet target={{ rendezvousId: String(id) }} name={them?.name ?? undefined}
+                     onClose={() => setSafety(false)} onDone={() => router.back()} />
+      )}
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
         {/* THE FIRST THING ON THE SCREEN, above the face. A person deciding whether to

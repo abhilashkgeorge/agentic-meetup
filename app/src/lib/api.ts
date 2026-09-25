@@ -873,6 +873,28 @@ export const reportUser = (
   args: { userId: string; rendezvousId?: string; reason: string; detail?: string },
 ) => post<{ ok: boolean }>('/v1/report', token, args);
 
+/**
+ * Block or report from a card or a profile: by MATCH, since neither carries anybody's
+ * id -- the server works out the other half, and only of a match you are half of.
+ */
+export const blockMatch = (token: string, rendezvousId: string) =>
+  post<{ ok: boolean }>('/v1/block', token, { rendezvousId });
+export const reportMatch = (token: string, args: { rendezvousId: string; reason: string; detail?: string }) =>
+  post<{ ok: boolean }>('/v1/report', token, args);
+
+/** The reviewer's desk. `isAdmin` is null for everybody who is not the reviewer. */
+export interface AdminReport {
+  id: string; reason: string; detail: string; at: string; reportedId: string; reporterKnown: boolean;
+  reportedName: string | null; banned: boolean;
+  reviewed: string | null; outcome: string | null; note: string;
+  context: { reportsAgainstThem: number; distinctReporters: number; photos: number; photosHidden: number };
+}
+export const isAdmin = (token: string) => get<{ admin: boolean }>('/v1/admin/me', token);
+export const getAdminReports = (token: string, all = false) =>
+  get<{ open: number; reports: AdminReport[] }>(`/v1/admin/reports${all ? '?all=1' : ''}`, token);
+export const decideReport = (token: string, id: string, outcome: 'no_action' | 'photos_hidden' | 'banned', note = '') =>
+  post<{ ok: boolean }>(`/v1/admin/reports/${id}`, token, { outcome, note });
+
 /** Who they are. Only once it is this person's turn to look. */
 export interface Reveal {
   waiting: boolean;

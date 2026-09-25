@@ -14,11 +14,15 @@
  * no agreement to show.
  */
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { WorldAgent } from '../../lib/api';
 import { Button, Surface, radius, space, type, usePalette } from '../../components/ui';
 import { areaName } from './map';
+import { useWorld } from './store';
+import { useSession } from '../../store/session';
+import { SafetySheet } from '../safety/safety-sheet';
 
 export function AgentSheet({ agent, onClose, visits, onSendOver }: {
   agent: WorldAgent;
@@ -30,6 +34,8 @@ export function AgentSheet({ agent, onClose, visits, onSendOver }: {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const met = agent.kind === 'met';
+  const token = useSession((s) => s.token);
+  const [safety, setSafety] = useState(false);
 
   const title = met ? (agent.name ?? 'Someone your agent met') : 'Someone in the square';
   const line = !met
@@ -84,9 +90,22 @@ export function AgentSheet({ agent, onClose, visits, onSendOver }: {
             <Button label={agent.yourTurn ? 'See the card' : 'See your matches'} variant="primary"
                     onPress={() => { onClose(); router.push('/matches'); }} />
           )}
+          {/* Somebody you have met can be blocked or reported from here too, the same
+              as from their card. A stranger in the square has no match to name. */}
+          {met && agent.rendezvousId && (
+            <Pressable onPress={() => setSafety(true)} accessibilityRole="button"
+                       accessibilityLabel="Block or report" hitSlop={8}>
+              <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>Block or report</Text>
+            </Pressable>
+          )}
           <Button label="Close" variant="ghost" onPress={onClose} />
         </Surface>
       </Pressable>
+      {safety && agent.rendezvousId && (
+        <SafetySheet target={{ rendezvousId: agent.rendezvousId }} name={agent.name ?? undefined}
+                     onClose={() => setSafety(false)}
+                     onDone={() => { onClose(); if (token) void useWorld.getState().load(token); }} />
+      )}
     </Pressable>
   );
 }

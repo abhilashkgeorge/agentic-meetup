@@ -62,7 +62,8 @@ export class Blocked extends Error {
  */
 export async function isBlocked(c: PoolClient, a: string, b: string): Promise<boolean> {
   const { rows } = await c.query<{ blocked: boolean }>(
-    'SELECT block_exists($1, $2) AS blocked', [a, b],
+    // Blocked either way -- or `b` banned (0064): nobody can write to a banned person.
+    'SELECT apart($1, $2) AS blocked', [a, b],
   );
   return rows[0]!.blocked;
 }

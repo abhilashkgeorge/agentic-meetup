@@ -735,6 +735,21 @@ or building named in words; "How you appear" lists every sentence that can be re
 `clone_app` reads and writes only its own row, `clone_matchmaker` reads every row, and
 the words behind each id still come through the matchmaker's public-facts policy.
 
+**Block, report, ban** (0064, since 2026-09-25). Every card, profile, chat, and the
+town sheet of somebody you met has "Block or report" (`app/src/features/safety`). A
+card names the match, never a person; the server works out the other half, and only of
+a match you are half of. A report is one of seven fixed reasons (`REPORT_REASONS` in
+`api/messages.ts`, mirrored in the app and checked by `app/tests/safety.test.ts`) and
+blocks too. One database function, `apart(me, other)` = a block either way OR the
+other is banned, is asked by every place two people meet: the matches list, the profile,
+the yes/no, the town, the chat list and every message. A ban (`bans`, `ban_user()`)
+revokes every session, takes the person out of the pool and hides them from everybody;
+`auth.ts` refuses any session of a banned person, even one minted after. Reports wait
+in Settings → "Reports to review", shown only to `ADMIN_USER_IDS`: No action, Hide
+photos, or Ban. Settings → "Contact support" writes to abhilash@dabba.com (Apple asks
+for report, block and a contact in any app where people talk). A ban outlives erasure
+by design.
+
 ---
 
 ## 12. Known-open, with the fix

@@ -513,6 +513,9 @@ export const datingRoutes = new Hono()
            JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $1
           WHERE (r.user_a = $1 OR r.user_b = $1)
             AND r.status <> 'lapsed'
+            -- KEPT APART (0064): blocked either way, or the other person banned. A card
+            -- made before the block is gone from both screens, not only new ones.
+            AND NOT apart($1, CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END)
           -- THE QUEUE. Newest round first, and within a round an order that means
           -- nothing: a hash of the id. A person sees the head of this and says yes
           -- or not-for-me; a no lapses the row and the next one is already here.
@@ -621,7 +624,10 @@ export const datingRoutes = new Hono()
         `SELECT r.first_mover, r.status,
                 rendezvous_other_said_yes(r.id, $2) AS other_said_yes,
                 rendezvous_other_is_synthetic(r.id, $2) AS other_is_synthetic
-           FROM rendezvous r WHERE r.id = $1`,
+           FROM rendezvous r
+          WHERE r.id = $1
+            -- Kept apart (0064): the profile does not open, the same as no match.
+            AND NOT apart($2, CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END)`,
         [id, ctx.userId],
       );
       return rows[0] ?? null;
@@ -759,7 +765,8 @@ export const datingRoutes = new Hono()
     // does the write can see every rendezvous, so the check has to happen here.
     const member = await tenantSession(ctx, async (db) => {
       const { rowCount } = await db.query(
-        'SELECT id FROM rendezvous WHERE id = $1', [id]);
+        `SELECT id FROM rendezvous
+          WHERE id = $1 AND NOT apart($2, CASE WHEN user_a = $2 THEN user_b ELSE user_a END)`, [id, ctx.userId]);
       return Boolean(rowCount);
     });
     if (!member) return c.json({ error: 'not found' }, 404);

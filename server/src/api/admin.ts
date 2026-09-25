@@ -58,6 +58,8 @@ interface ReportRow {
   distinct_reporters: number;
   photos: number;
   hidden_photos: number;
+  reported_name: string | null;
+  banned: boolean;
 }
 
 export const adminRoutes = new Hono()
@@ -117,7 +119,12 @@ export const adminRoutes = new Hono()
                   WHERE p.user_id = r.reported_id)                      AS photos,
                 (SELECT count(*)::int FROM photos p
                   WHERE p.user_id = r.reported_id
-                    AND p.hidden_at IS NOT NULL)                        AS hidden_photos
+                    AND p.hidden_at IS NOT NULL)                        AS hidden_photos,
+                -- Who, in words, and whether a ban already stands: the queue on a
+                -- phone reads a name, not a uuid.
+                (SELECT mp.display_name FROM match_profile mp
+                  WHERE mp.user_id = r.reported_id)                     AS reported_name,
+                is_banned(r.reported_id)                                AS banned
            FROM reports r
           WHERE ($1::bool OR r.reviewed_at IS NULL)
           ORDER BY r.reviewed_at NULLS FIRST, r.created_at DESC
@@ -135,6 +142,8 @@ export const adminRoutes = new Hono()
         detail: r.detail,
         at: new Date(r.created_at).toISOString(),
         reportedId: r.reported_id,
+        reportedName: r.reported_name,
+        banned: r.banned,
         // An anonymised reporter stays anonymous to the reviewer as well. Knowing
         // WHETHER it was reported by a person or by the system is enough to act.
         reporterKnown: r.reporter_id !== null,
@@ -167,7 +176,8 @@ export const adminRoutes = new Hono()
 
     const body = z
       .object({
-        outcome: z.enum(['no_action', 'photos_hidden', 'account_blocked']),
+        // 'banned' (0064): signed out, out of the pool, hidden from everybody, for good.
+        outcome: z.enum(['no_action', 'photos_hidden', 'account_blocked', 'banned']),
         note: z.string().max(2000).default(''),
       })
       .safeParse(await c.req.json().catch(() => null));
@@ -182,8 +192,12 @@ export const adminRoutes = new Hono()
     if (!target) return c.json({ error: 'not found' }, 404);
 
     let photosHidden = 0;
-    if (outcome === 'photos_hidden' || outcome === 'account_blocked') {
+    if (outcome === 'photos_hidden' || outcome === 'account_blocked' || outcome === 'banned') {
       photosHidden = await hide(target, `report ${id}: ${outcome}`);
+    }
+    if (outcome === 'banned') {
+      await matchmakerSession((db) => db.query('SELECT ban_user($1, $2, $3, $4)',
+        [target, ctx.userId, note || `report ${id}`, id]));
     }
 
     if (outcome === 'account_blocked') {
@@ -212,6 +226,33 @@ export const adminRoutes = new Hono()
 
     log.warn({ reportId: id, by: ctx.userId, outcome, photosHidden }, 'report reviewed');
     return c.json({ ok: true, outcome, photosHidden });
+  })
+
+  /**
+   * Ban somebody directly -- from the flags, say, with no report behind it. The same one
+   * function a report's 'banned' outcome calls (0064 ban_user).
+   */
+  .post('/v1/admin/users/:id/ban', async (c) => {
+    const ctx = await reviewer(c.req.header('authorization'));
+    if (!ctx) return c.json({ error: 'not found' }, 404);
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
+    const body = z.object({ reason: z.string().min(1).max(2000) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: 'bad request' }, 400);
+    await hide(id, `ban: ${body.data.reason}`);
+    await matchmakerSession((db) => db.query('SELECT ban_user($1, $2, $3, NULL)', [id, ctx.userId, body.data.reason]));
+    log.warn({ userId: id, by: ctx.userId }, 'banned');
+    return c.json({ ok: true });
+  })
+
+  /**
+   * Whether the caller reviews. The app asks, to show the queue's row on the You tab;
+   * anybody else gets the same 404 as every other route here.
+   */
+  .get('/v1/admin/me', async (c) => {
+    const ctx = await reviewer(c.req.header('authorization'));
+    if (!ctx) return c.json({ error: 'not found' }, 404);
+    return c.json({ admin: true });
   })
 
   /**

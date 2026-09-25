@@ -17,10 +17,11 @@
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardPad } from '../../lib/keyboard';
-import { blockUser, getMessages, reportUser, type Look } from '../../lib/api';
+import { getMessages, type Look } from '../../lib/api';
+import { SafetySheet } from '../safety/safety-sheet';
 import { PersonAvatar } from '../look/person-avatar';
 import { Checkin } from './checkin';
 import { readDm, sendDm, sendTyping } from '../../lib/socket';
@@ -158,30 +159,11 @@ export default function ThreadScreen() {
     sendTyping(rendezvousId, false);
   };
 
-  const stop = () => {
-    const other = conversation?.otherId || who?.id;
-    if (!other || !token) return;
-    Alert.alert(
-      `Stop hearing from ${conversation?.name ?? 'them'}?`,
-      'They are never told. Their messages stop arriving and this conversation disappears for both of you.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: () => { void blockUser(token, other).then(() => router.back()); },
-        },
-        {
-          text: 'Block and report',
-          style: 'destructive',
-          onPress: () => {
-            void reportUser(token, { userId: other, rendezvousId, reason: 'other' })
-              .then(() => router.back());
-          },
-        },
-      ],
-    );
-  };
+  // Block, or report with one of the fixed reasons: the same sheet as on every card
+  // and profile (features/safety). A chat knows who the other person is.
+  const [safety, setSafety] = useState(false);
+  const other = conversation?.otherId || who?.id;
+  const stop = () => { if (other && token) setSafety(true); };
 
   // Newest at the bottom without measuring anything: render the list upside down and
   // feed it the messages in reverse.
@@ -293,6 +275,11 @@ export default function ThreadScreen() {
             comes back, so there is no reason to stop somebody typing it. */}
         <Button label="Send" variant="primary" onPress={submit} disabled={!draft.trim()} />
       </View>
+
+      {safety && other && (
+        <SafetySheet target={{ rendezvousId, userId: other }} name={conversation?.name}
+                     onClose={() => setSafety(false)} onDone={() => router.back()} />
+      )}
     </View>
   );
 }

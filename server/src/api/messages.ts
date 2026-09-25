@@ -23,6 +23,28 @@ async function ctxOr401(c: { req: { header: (k: string) => string | undefined } 
   }
 }
 
+/** The reasons a report may give: fixed, so the reviewer's queue reads the same every time. */
+export const REPORT_REASONS = [
+  'harassment', 'inappropriate', 'fake_profile', 'underage', 'spam', 'felt_unsafe', 'other',
+] as const;
+
+/**
+ * Who a block or report is about: the person named, or the other half of the named
+ * match -- which the caller must be half of (their session reads only their own
+ * rendezvous rows), or it is nobody.
+ */
+async function otherPerson(
+  ctx: { tenantId: string; userId: string },
+  by: { userId?: string | undefined; rendezvousId?: string | undefined },
+): Promise<string | null> {
+  if (by.userId) return by.userId === ctx.userId ? null : by.userId;
+  if (!by.rendezvousId) return null;
+  const { rows } = await tenantSession(ctx, (db) => db.query<{ other: string }>(
+    `SELECT CASE WHEN user_a = $2 THEN user_b ELSE user_a END AS other
+       FROM rendezvous WHERE id = $1 AND (user_a = $2 OR user_b = $2)`, [by.rendezvousId, ctx.userId]));
+  return rows[0]?.other ?? null;
+}
+
 export const messageRoutes = new Hono()
   /**
    * Every conversation, newest activity first, with unread counts.
@@ -70,7 +92,8 @@ export const messageRoutes = new Hono()
             -- in their inbox. Same cause as the bug where their messages kept
             -- arriving -- asking the yes/no question needs permission that reading the
             -- table must not carry.
-            AND NOT block_exists($1, CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END)
+            -- apart() is block_exists either way, or the other person banned (0064).
+            AND NOT apart($1, CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END)
           ORDER BY m.sent_at DESC NULLS LAST, r.decided_at DESC`,
         [ctx.userId],
       );
@@ -197,11 +220,15 @@ export const messageRoutes = new Hono()
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
 
-    const body = z.object({ userId: z.string().uuid() })
+    // By person (a conversation knows who), or by MATCH: a card never carries anybody's
+    // id, so from a card or a profile the match names them, and only for its own two.
+    const body = z.object({ userId: z.string().uuid().optional(), rendezvousId: z.string().uuid().optional() })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'bad request' }, 400);
+    const other = await otherPerson(ctx, body.data);
+    if (!other) return c.json({ error: 'not found' }, 404);
 
-    await tenantSession(ctx, (db) => messages.block(db, ctx.userId, body.data.userId));
+    await tenantSession(ctx, (db) => messages.block(db, ctx.userId, other));
     log.info({ userId: ctx.userId }, 'blocked someone');
     return c.json({ ok: true });
   })
@@ -219,20 +246,21 @@ export const messageRoutes = new Hono()
 
     const body = z
       .object({
-        userId: z.string().uuid(),
+        userId: z.string().uuid().optional(),
         rendezvousId: z.string().uuid().nullable().default(null),
-        reason: z.enum([
-          'harassment', 'inappropriate', 'fake_profile', 'underage', 'spam', 'felt_unsafe', 'other',
-        ]),
+        // THE FIXED REASONS -- the app offers these and nothing else (REPORT_REASONS).
+        reason: z.enum(REPORT_REASONS),
         detail: z.string().max(2000).default(''),
       })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'bad request' }, 400);
+    const other = await otherPerson(ctx, { userId: body.data.userId, rendezvousId: body.data.rendezvousId ?? undefined });
+    if (!other) return c.json({ error: 'not found' }, 404);
 
     await tenantSession(ctx, (db) =>
       messages.report(db, {
         reporterId: ctx.userId,
-        reportedId: body.data.userId,
+        reportedId: other,
         rendezvousId: body.data.rendezvousId,
         reason: body.data.reason,
         detail: body.data.detail,
