@@ -12,3 +12,4 @@ export * from './whereabouts.js';
 export * from './areas.js';
 export * from './contact.js';
 export * from './support.js';
+export * from './identifying.js';

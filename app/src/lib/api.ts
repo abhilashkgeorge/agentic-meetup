@@ -409,7 +409,11 @@ export interface Appearance {
   line: string;
   /** Interests that show on a card when the other person shares them. */
   tags: string[];
-  quotes: { factId: string; text: string; hidden: boolean; shown: boolean }[];
+  /**
+   * `names`: the sentence names a company, a college or a building (server, shared
+   * identifying.ts). The screen asks "Hide this?"; nothing is hidden for you.
+   */
+  quotes: { factId: string; text: string; hidden: boolean; shown: boolean; names?: NamedPlace | null }[];
   /**
    * What your agent says when another agent asks it something: every question in the
    * bank, in order, with the sentence of yours it answers with -- or null, which it says
@@ -430,8 +434,9 @@ export interface SheetEntry {
   ask: string;
   /** Its label on a card: "Weekends". */
   short: string;
-  answer: { factId: string; text: string } | null;
+  answer: { factId: string; text: string; names?: NamedPlace | null } | null;
 }
+export type NamedPlace = 'company' | 'college' | 'building';
 export const getAppearance = (token: string) => get<Appearance>('/v1/me/appearance', token);
 
 /** Your own rules, read back in words. A template over what you tapped, not a model. */

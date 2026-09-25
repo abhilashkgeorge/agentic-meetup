@@ -791,8 +791,12 @@ dot com"), an @handle or a platform id, a link, an off-app invitation ("dm me on
 insta") or a street-level address ("12th Main", "flat 302", a pincode) is never repeated
 to anybody: `loadQuotes` -- the one door every card, answer sheet, talk and want check
 reads through -- drops it, so no model is even shown it, and every later step checks
-again (`mayRepeat`). People swap those in chat after both say yes. Not caught: a company
-or building named in words; "How you appear" lists every sentence that can be repeated. The answer sheets (0061) hold fact ids, not words:
+again (`mayRepeat`). People swap those in chat after both say yes. A company, college or
+building named in words is not blocked -- it is ASKED about (`shared/src/identifying.ts`,
+since 2026-09-25): on "How you appear", every sentence that could leave, quotes and the
+agent's answers alike, that names one ("at Razorpay", "IIT Madras", "Manyata Tech Park")
+carries "This names a company. Hide this?" beside its Hide. Code, not a model; a product,
+a park or a street ("Google Maps", "Cubbon Park", "Brigade Road") is left alone. The answer sheets (0061) hold fact ids, not words:
 `clone_app` reads and writes only its own row, `clone_matchmaker` reads every row, and
 the words behind each id still come through the matchmaker's public-facts policy.
 

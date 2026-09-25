@@ -32,7 +32,7 @@ import { useSession } from '../../store/session';
 import {
   Button, Card, Chip, ChipGroup, Crease, Header, Screen, ScreenTitle, Skeleton, space, type, usePalette,
 } from '../../components/ui';
-import { sheetView, withHidden, withShared } from './appearance-state';
+import { hideAsk, sheetView, withHidden, withShared } from './appearance-state';
 
 export default function AppearanceScreen() {
   const p = usePalette();
@@ -136,6 +136,10 @@ export default function AppearanceScreen() {
                       <Text style={[type.body, { color: q.hidden ? p.textTertiary : p.text, fontStyle: 'italic' }]}>
                         “{q.text}”
                       </Text>
+                      {/* Names where they work, studied or live (item 14): ask, never hide for them. */}
+                      {!q.hidden && hideAsk(q.names) && (
+                        <Text style={[type.callout, { color: p.textSecondary }]}>{hideAsk(q.names)}</Text>
+                      )}
                       <ChipGroup>
                         <Chip
                           label={q.hidden ? 'Hidden' : q.shown ? 'On your card' : 'Not on a card now'}
@@ -213,6 +217,9 @@ function SheetAnswers({ look, busy, onToggle }: {
         <View key={q.id} style={{ gap: space.xs }}>
           <Text style={[type.callout, { color: p.textTertiary }]}>{q.ask}</Text>
           <Text style={[type.body, { color: p.text, fontStyle: 'italic' }]}>“{q.answer.text}”</Text>
+          {hideAsk(q.answer.names) && (
+            <Text style={[type.callout, { color: p.textSecondary }]}>{hideAsk(q.answer.names)}</Text>
+          )}
           <ChipGroup>
             <Chip label="Hide" selected={false} disabled={busy === q.answer.factId}
                   onPress={() => onToggle(q.answer.factId, true)} />

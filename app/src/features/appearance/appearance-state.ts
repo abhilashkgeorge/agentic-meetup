@@ -63,3 +63,10 @@ export function sheetView(sheet: readonly SheetEntry[] | undefined): {
 export function withShared(a: Appearance, factId: string): Appearance {
   return { ...a, learned: (a.learned ?? []).filter((l) => l.factId !== factId) };
 }
+
+/**
+ * The question under a sentence that names a company, a college or a building (item 14).
+ * A suggestion: the Hide beside it is the person's to tap, or not.
+ */
+export const hideAsk = (names: 'company' | 'college' | 'building' | null | undefined): string | null =>
+  names ? `This names a ${names}. Hide this?` : null;

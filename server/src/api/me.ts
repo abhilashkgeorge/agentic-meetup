@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { NEVER_PUBLIC } from '@clone/shared';
+import { NEVER_PUBLIC, namesPlace } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { tenantSession } from '../db/client.js';
 import { eraseUser, exportUser } from '../memory/erasure.js';
@@ -92,7 +92,9 @@ export const meRoutes = new Hono()
       seen.add(key);
       const shown = !q.hidden && fresh && onCard < QUOTES_ON_A_CARD;
       if (shown) onCard++;
-      return { factId: q.id, text: q.text, hidden: Boolean(q.hidden), shown };
+      // NAMES A COMPANY, A COLLEGE OR A BUILDING (item 14, shared/identifying.ts): the
+      // screen asks "Hide this?". A suggestion, never a block -- the person decides.
+      return { factId: q.id, text: q.text, hidden: Boolean(q.hidden), shown, names: namesPlace(q.text) };
     });
 
     // SO A HIDE ON THE SHEET CAN BE UNDONE THERE. Hiding an answer takes it out of the
@@ -111,7 +113,9 @@ export const meRoutes = new Hono()
     const learned = (await loadQuotes(ctx, { disclosures: ['matchable_only'], predicates: SHEET_SOURCES, limit: MAX_SENTENCES }))
       .map((q) => ({ factId: q.id, text: q.text }));
 
-    return c.json({ headline: headlineOf(card), line: BRIEF_LINE, tags, quotes, sheet, hidden, learned });
+    // The same question on every answer the agent gives another agent.
+    const sheetAsks = sheet.map((e) => (e.answer ? { ...e, answer: { ...e.answer, names: namesPlace(e.answer.text) } } : e));
+    return c.json({ headline: headlineOf(card), line: BRIEF_LINE, tags, quotes, sheet: sheetAsks, hidden, learned });
   })
 
   /** The person's own rules, read back in words. A template, not a model (readback.ts). */
