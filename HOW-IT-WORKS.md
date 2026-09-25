@@ -450,8 +450,11 @@ four, pairs of sentences that show something shared, and one date idea citing on
 sentence from each side. `checkTalk` keeps only valid pointers -- in range, from the
 speaker's own list, never a sentence twice -- and builds every word shown from the bank,
 the reactions or the sentence lists. The date idea is the only text the model writes;
-`safeIdea` refuses one that names a person, makes a claim ("loves ..."), or touches a
-private card, and it is shown with the two sentences it is built on.
+`safeIdea` refuses one that names a person, makes a claim ("loves ..."), judges the pair
+("a perfect match", `VERDICT`), or touches a private card -- and `ungrounded` refuses one
+with any word that is in neither of the two sentences it is built on nor a short list of
+plain going-out words and the city's public places. So it states nothing about anybody
+that is not in their own words, and it is shown with those two sentences.
 
 **What it reads:** each side's sentences that pass the quote check (public, typed word
 for word, not the interview, no core value), 20 at most. A practice profile's are the

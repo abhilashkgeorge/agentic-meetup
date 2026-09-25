@@ -121,6 +121,67 @@ const PERSON = /\b(i|me|my|mine|we|us|our|ours|you|your|yours|he|him|his|she|her
 const CLAIM = /\b(loves?|likes?|enjoys?|hates?|prefers?|adores?|fan of|into)\b/i;
 
 /**
+ * WORDS THAT JUDGE A PAIR. Nothing the agents' talk shows a person may say how well two
+ * people fit (the founder: no score, no verdict -- OkCupid 2014, the number changes
+ * behaviour more than it predicts it). Every fixed line the talk can say is written
+ * without them (tests/talk-verdicts.test.ts), and the date idea -- the one thing a model
+ * writes -- is refused when it uses one. Ambiguous words ("match", "chemistry") are
+ * refused too: a date idea can do without them.
+ */
+export const VERDICT = /\b(match(es|ed|ing)?|compatib\w*|chemistry|clicks?|clicked|soul ?mates?|perfect (pair|couple|fit)|great fit|good fit|meant to be|made for each other|scores?|percent|red flags?|green flags?|deal ?breakers?|verdict|get on|got on|worth it)\b|%/i;
+
+/**
+ * THE DATE IDEA STATES NOTHING NOT IN THEIR OWN WORDS (the founder, 2026-09-25). Every
+ * content word of it must come from one of the two sentences it is built on -- the ones
+ * the card shows beside it -- or from this list: plain words for going out, and the
+ * city's public places. Nothing here is a fact about anybody; "salsa", "pottery", "a
+ * rooftop bar" are, when neither person said them.
+ */
+const DATE_WORDS = new Set([
+  // what two people might do
+  'walk', 'stroll', 'hike', 'trek', 'ride', 'cycle', 'drive', 'run', 'swim', 'picnic', 'visit',
+  'explore', 'class', 'workshop', 'show', 'gig', 'concert', 'market', 'museum', 'gallery',
+  'bookshop', 'bookstore', 'library', 'park', 'lake', 'garden', 'cafe', 'café', 'bakery',
+  'darshini', 'beach', 'hill', 'hills', 'view', 'viewpoint', 'spot', 'place', 'trip', 'tour',
+  'play', 'game', 'games', 'board', 'quiz', 'cook', 'cooking', 'bake', 'baking', 'tasting', 'try',
+  'film', 'movie', 'cinema', 'screening', 'stars', 'stargazing', 'shopping', 'flea', 'art',
+  'music', 'live', 'dance', 'food', 'street', 'stall', 'stalls', 'meal', 'eat', 'together',
+  'breakfast', 'brunch', 'lunch', 'dinner', 'snack', 'snacks', 'dessert', 'coffee', 'filter',
+  'chai', 'tea', 'dosa', 'idli', 'juice', 'ice', 'cream', 'sweets',
+  // when
+  'sunrise', 'sunset', 'morning', 'evening', 'night', 'afternoon', 'noon', 'weekend', 'day',
+  'saturday', 'sunday', 'early', 'late', 'slow', 'quiet', 'long', 'short', 'easy', 'little',
+  'small', 'local', 'old', 'new', 'first', 'next', 'followed', 'afterwards', 'city', 'town',
+  // the city's public places
+  'bengaluru', 'bangalore', 'cubbon', 'lalbagh', 'ulsoor', 'nandi', 'hebbal', 'sankey',
+  'bannerghatta', 'turahalli', 'church', 'commercial', 'road', 'palace', 'koramangala',
+  'indiranagar', 'jayanagar', 'whitefield', 'malleshwaram', 'basavanagudi', 'rajajinagar',
+  'yelahanka', 'jp', 'nagar', 'btm', 'hsr', 'layout', 'mg', 'frazer', 'sadashivanagar',
+]);
+const STOP = new Set([
+  'a', 'an', 'the', 'and', 'or', 'then', 'at', 'in', 'on', 'to', 'of', 'for', 'with', 'by',
+  'near', 'around', 'out', 'up', 'over', 'after', 'before', 'from', 'into', 'some', 'plus',
+  'off', 'down', 'along', 'across', 'through', 'via', 'its', 'one', 'two', 'maybe',
+]);
+const stem = (w: string): string => {
+  let s = w.toLowerCase();
+  if (s.length > 5 && s.endsWith('ing')) s = s.slice(0, -3);
+  else if (s.length > 4 && s.endsWith('ed')) s = s.slice(0, -2);
+  else if (s.length > 4 && s.endsWith('es')) s = s.slice(0, -2);
+  else if (s.length > 3 && s.endsWith('s')) s = s.slice(0, -1);
+  if (s.length > 3 && s.endsWith('e')) s = s.slice(0, -1);
+  return s;
+};
+const words = (t: string): string[] => t.toLowerCase().match(/[\p{L}]+/gu) ?? [];
+const DATE_STEMS = new Set([...DATE_WORDS].map(stem));
+
+/** The idea's words that neither sentence nor the plain list accounts for. Pure. */
+export function ungrounded(idea: string, sentences: readonly string[]): string[] {
+  const theirs = new Set(sentences.flatMap(words).map(stem));
+  return words(idea).filter((w) => !STOP.has(w) && !DATE_STEMS.has(stem(w)) && !theirs.has(stem(w)));
+}
+
+/**
  * A date idea may be shown only if it is a suggestion, not a statement about somebody:
  * short, no person in it, no claim verb, nothing that names a private card, and no
  * contact detail or street address (mayRepeat).
@@ -129,7 +190,7 @@ export function safeIdea(raw: string): string | null {
   const idea = raw.replace(/\s+/g, ' ').trim().replace(/[.!]+$/, '');
   if (idea.length < 8 || idea.length > 80) return null;
   if (idea.split(' ').length > 14) return null;
-  if (PERSON.test(idea) || CLAIM.test(idea) || !mayRepeat(idea)) return null;
+  if (PERSON.test(idea) || CLAIM.test(idea) || VERDICT.test(idea) || !mayRepeat(idea)) return null;
   if (/["“”]/.test(idea)) return null;
   return idea;
 }
@@ -211,7 +272,8 @@ export function checkTalk(
     const idea = safeIdea(d.idea);
     const sa = pick(a, d.a);
     const sb = pick(b, d.b);
-    if (idea && sa && sb) {
+    // And nothing in it that is not in the two sentences it is built on.
+    if (idea && sa && sb && ungrounded(idea, [sa.text, sb.text]).length === 0) {
       date = { idea, a: sa.text, b: sb.text, ...(sa.practice || sb.practice ? { practice: true } : {}) };
     }
   }
