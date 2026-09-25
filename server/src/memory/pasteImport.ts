@@ -185,6 +185,8 @@ export async function importPastedText(
       // 'untrusted' regardless of source. A user's assistant is not this user, and
       // gate G3 will exclude untrusted facts from prompt assembly structurally.
       originClass: 'untrusted',
+      // Learned, not shared: match-only until "OK to share" (extract.ts says why).
+      ...(TAPPED_PREDICATES.has(f.predicate) ? {} : { disclosure: 'matchable_only' as const }),
       extractorModel: modelIdOf(model),
       extractorVersion: EXTRACTOR_VERSION,
       promptVersion: `${PASTE_PROMPT_VERSION}:${source}`,
@@ -329,6 +331,8 @@ export async function confirmStagedFact(
     sourceQuote: row.source_quote,
     sourceEpisodeIds: [],
     originClass: 'owner',
+    // "Yes, that's true" is not "OK to share": a confirmed import stays match-only.
+    ...(TAPPED_PREDICATES.has(row.predicate) ? {} : { disclosure: 'matchable_only' as const }),
     extractorModel: 'user-confirmed',
     extractorVersion: EXTRACTOR_VERSION,
     promptVersion: PASTE_PROMPT_VERSION,

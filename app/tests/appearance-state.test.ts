@@ -14,9 +14,10 @@
  *   - markShown not counting identical words once   -> "the same words" fails
  *   - withHidden leaving the sheet alone             -> "leaves the sheet" fails
  *   - withHidden listing a quote a second time       -> "listed once" fails
+ *   - withShared leaving the sentence in the list    -> "leaves the learned list" fails
  */
 import { describe, expect, it } from 'vitest';
-import { markShown, sheetView, withHidden } from '../src/features/appearance/appearance-state';
+import { markShown, sheetView, withHidden, withShared } from '../src/features/appearance/appearance-state';
 
 const q = (factId: string, text: string, hidden = false) => ({ factId, text, hidden, shown: false });
 const base = {
@@ -71,5 +72,13 @@ describe('the answer sheet', () => {
     expect(after.sheet!.find((q) => q.id === 'weekends')!.answer).toBeNull();
     expect(after.quotes.find((x) => x.factId === 'b')).toMatchObject({ hidden: true, shown: false });
     expect(after.hidden, 'listed twice: under its quote and in the hidden list').toEqual([]);
+  });
+});
+
+describe('what the clone learned in chat', () => {
+  it('"OK to share" leaves the learned list at once', () => {
+    const a = { ...base, learned: [{ factId: 'l1', text: 'I have been learning the tabla' }, { factId: 'l2', text: 'x' }] };
+    expect(withShared(a, 'l1').learned).toEqual([{ factId: 'l2', text: 'x' }]);
+    expect(withShared({ ...base }, 'l1').learned).toEqual([]);
   });
 });

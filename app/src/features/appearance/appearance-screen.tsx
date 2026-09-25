@@ -32,7 +32,7 @@ import { useSession } from '../../store/session';
 import {
   Button, Card, Chip, ChipGroup, Crease, Header, Screen, ScreenTitle, Skeleton, space, type, usePalette,
 } from '../../components/ui';
-import { sheetView, withHidden } from './appearance-state';
+import { sheetView, withHidden, withShared } from './appearance-state';
 
 export default function AppearanceScreen() {
   const p = usePalette();
@@ -62,6 +62,19 @@ export default function AppearanceScreen() {
     const ok = await setQuoteHidden(token, factId, hidden);
     setBusy(null);
     // Put it back rather than show a card that is not what strangers see.
+    if (!ok) { setLook(before); setNote('That did not save. Check your connection and try again.'); return; }
+    void load();
+  }, [token, look, load]);
+
+  /** "OK to share": one learned sentence becomes something your agent may say. */
+  const share = useCallback(async (factId: string) => {
+    if (!token || !look) return;
+    const before = look;
+    setBusy(factId);
+    setNote(null);
+    setLook(withShared(look, factId));
+    const ok = await setQuoteHidden(token, factId, false);
+    setBusy(null);
     if (!ok) { setLook(before); setNote('That did not save. Check your connection and try again.'); return; }
     void load();
   }, [token, look, load]);
@@ -153,6 +166,25 @@ export default function AppearanceScreen() {
             ) : (
               <SheetAnswers look={look} busy={busy} onToggle={(id, hidden) => void toggle(id, hidden)} />
             )}
+          </Card>
+        )}
+
+        {/* LEARNED IN CHAT, NOT SHARED (2026-09-25): used for matching, said nowhere
+            until the person says so, one sentence at a time. */}
+        {look && (look.learned ?? []).length > 0 && (
+          <Card label="Learned in chat">
+            <Text style={[type.callout, { color: p.textSecondary }]}>
+              Only you see these. Your agent uses them to find people, but never says them until you tap OK to share.
+            </Text>
+            {(look.learned ?? []).map((l) => (
+              <View key={l.factId} style={{ gap: space.xs }}>
+                <Text style={[type.body, { color: p.text, fontStyle: 'italic' }]}>“{l.text}”</Text>
+                <ChipGroup>
+                  <Chip label="OK to share" selected={false} disabled={busy === l.factId}
+                        onPress={() => void share(l.factId)} />
+                </ChipGroup>
+              </View>
+            ))}
           </Card>
         )}
 

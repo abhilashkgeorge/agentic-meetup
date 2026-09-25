@@ -226,6 +226,14 @@ export async function extractSessionFacts(
     // wrong. (Facts from anywhere else entirely -- another user's agent -- are
     // 'untrusted' too.)
     originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',
+    // LEARNED IS NOT SHARED (the founder, 2026-09-25). What the clone picks up in chat
+    // or "tell" is the person's, and their agent may use it for matching -- but it is
+    // never quoted on a card or said in the agents' talk until they tap "OK to share"
+    // on "How you appear". So it starts match-only. Only answers they wrote on purpose
+    // for sharing -- the five set questions (stories.ts), and a question of the day they
+    // save and share -- start shareable. A tapped field keeps its own default: it is
+    // never quoted either way.
+    ...(TAPPED_PREDICATES.has(f.predicate) ? {} : { disclosure: 'matchable_only' as const }),
     extractorModel: modelIdOf(model),
     extractorVersion: EXTRACTOR_VERSION,
     promptVersion: PROMPT_VERSION,

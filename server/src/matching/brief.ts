@@ -216,7 +216,15 @@ export async function loadQuotes(
    * a few more kinds of sentence than a card quotes -- through exactly this check, so
    * there is one definition of "something this person actually said", not two.
    */
-  opts: { includeHidden?: boolean; predicates?: readonly string[]; limit?: number } = {},
+  opts: {
+    includeHidden?: boolean; predicates?: readonly string[]; limit?: number;
+    /**
+     * Which disclosures to read, overriding `includeHidden`. Only "How you appear" asks
+     * for ['matchable_only']: the sentences the clone learned and the person has not yet
+     * said may be shared (extract.ts), listed there with "OK to share".
+     */
+    disclosures?: readonly ('public' | 'private' | 'matchable_only')[];
+  } = {},
 ): Promise<Quote[]> {
   const rows = await tenantSession(who, async (c) => {
     const { rows } = await c.query<{
@@ -245,7 +253,8 @@ export async function loadQuotes(
         LIMIT $4`,
       // 'private' is only ever set by the person hiding a quote (POST
       // /v1/facts/:id/disclosure); the defaults are 'public' and 'matchable_only'.
-      [who.userId, [...(opts.predicates ?? QUOTABLE)], opts.includeHidden ? ['public', 'private'] : ['public'],
+      [who.userId, [...(opts.predicates ?? QUOTABLE)],
+       opts.disclosures ? [...opts.disclosures] : opts.includeHidden ? ['public', 'private'] : ['public'],
        opts.limit ?? 20],
     );
     return rows;

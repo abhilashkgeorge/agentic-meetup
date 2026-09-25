@@ -54,3 +54,12 @@ export function sheetView(sheet: readonly SheetEntry[] | undefined): {
   const answered = (sheet ?? []).filter((q): q is SheetEntry & { answer: NonNullable<SheetEntry['answer']> } => q.answer !== null);
   return { answered, unknown: (sheet ?? []).filter((q) => q.answer === null).map((q) => q.short) };
 }
+
+/**
+ * "OK to share" on something the clone learned in chat: it leaves the learned list at
+ * once. Where it lands -- on a card, on the sheet -- is the server's to say on the next
+ * load, since that depends on every other sentence too.
+ */
+export function withShared(a: Appearance, factId: string): Appearance {
+  return { ...a, learned: (a.learned ?? []).filter((l) => l.factId !== factId) };
+}

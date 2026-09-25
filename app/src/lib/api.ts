@@ -412,6 +412,11 @@ export interface Appearance {
   sheet?: SheetEntry[];
   /** Sentences of yours the sheet could use that you hid, each with its own Show. */
   hidden?: { factId: string; text: string }[];
+  /**
+   * What your clone learned in chat and nobody hears yet: your agent uses it for
+   * matching, but it is quoted nowhere until you tap "OK to share".
+   */
+  learned?: { factId: string; text: string }[];
 }
 export interface SheetEntry {
   id: string;

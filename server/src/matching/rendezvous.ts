@@ -361,10 +361,16 @@ export async function buildDossier(c: PoolClient, userId: string): Promise<strin
 /**
  * The other person, as a stranger would see them: their public tags, nothing else.
  *
- * Built from match_profile.attribute_tags, filtered to predicates this person has
- * marked public, so `religion_importance:high` cannot reach the other agent through
- * the tags even though the ranker is allowed to use it. An invented profile has no
- * facts and no disclosure rows, so its tags are taken as-is.
+ * Built from match_profile.attribute_tags, keeping a tag only when a PUBLIC fact of
+ * theirs makes it -- `predicate:value`, exactly as the profile builder writes a tag
+ * (profile.ts). So `religion_importance:high` cannot reach the other agent through the
+ * tags even though the ranker is allowed to use it -- and neither can an interest the
+ * clone learned in chat, which starts match-only (extract.ts).
+ *
+ * PER FACT, NOT PER KIND (2026-09-25). This used to keep every tag of a kind the person
+ * had ANY public fact of: one shared interest made all their interests public, the
+ * ones learned in chat included. An invented profile has no facts and no disclosure
+ * rows, so its tags are taken as-is.
  */
 export async function publicTags(c: PoolClient, userId: string): Promise<string[]> {
   const { rows } = await c.query<{ attribute_tags: string[]; is_synthetic: boolean }>(
@@ -372,12 +378,13 @@ export async function publicTags(c: PoolClient, userId: string): Promise<string[
   const row = rows[0];
   if (!row) return [];
   if (row.is_synthetic) return row.attribute_tags;
-  const { rows: allowed } = await c.query<{ predicate: string }>(
-    `SELECT DISTINCT predicate FROM facts
-      WHERE user_id = $1 AND status = 'active' AND valid_to IS NULL AND disclosure = 'public'`,
+  const { rows: shared } = await c.query<{ tag: string }>(
+    `SELECT DISTINCT predicate || ':' || (object_value #>> '{}') AS tag FROM facts
+      WHERE user_id = $1 AND status = 'active' AND valid_to IS NULL AND disclosure = 'public'
+        AND jsonb_typeof(object_value) = 'string'`,
     [userId]);
-  const ok = new Set(allowed.map((r) => r.predicate));
-  return row.attribute_tags.filter((t) => ok.has(t.split(':')[0] ?? ''));
+  const ok = new Set(shared.map((r) => r.tag));
+  return row.attribute_tags.filter((t) => ok.has(t));
 }
 
 /** One line per public tag, or a plain statement that there is nothing. */

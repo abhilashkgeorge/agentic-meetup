@@ -97,7 +97,9 @@ export default function QuestionScreen() {
                    multiline minHeight={90} maxLength={limits.max} />
             {short && <Text style={[type.callout, { color: p.textTertiary }]}>{short}</Text>}
             {contact && <Text style={[type.callout, { color: p.warning }]}>{contact}</Text>}
-            <Button label="Save" variant="primary" loading={busy}
+            {/* Saving here IS the "OK to share": this answer is written for other
+                agents to hear, and the button says so. */}
+            <Button label="Save and share" variant="primary" loading={busy}
                     disabled={!canSave(draft, null, limits.min, limits.max)} onPress={() => void save()} />
             <Button label="Not now" variant="ghost" onPress={() => void skip()} />
           </Card>

@@ -104,7 +104,14 @@ export const meRoutes = new Hono()
       .filter((q) => q.hidden && !listed.has(q.id))
       .map((q) => ({ factId: q.id, text: q.text }));
 
-    return c.json({ headline: headlineOf(card), line: BRIEF_LINE, tags, quotes, sheet, hidden });
+    // LEARNED, NOT YET SHARED (extract.ts, 2026-09-25): what the clone picked up in chat
+    // that passes every check but the person's say-so. Their agent uses it for matching;
+    // it is quoted nowhere until they tap "OK to share", which writes 'public' through
+    // the disclosure route below.
+    const learned = (await loadQuotes(ctx, { disclosures: ['matchable_only'], predicates: SHEET_SOURCES, limit: MAX_SENTENCES }))
+      .map((q) => ({ factId: q.id, text: q.text }));
+
+    return c.json({ headline: headlineOf(card), line: BRIEF_LINE, tags, quotes, sheet, hidden, learned });
   })
 
   /** The person's own rules, read back in words. A template, not a model (readback.ts). */

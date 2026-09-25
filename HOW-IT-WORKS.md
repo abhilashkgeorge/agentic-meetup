@@ -345,6 +345,16 @@ answer, opener -- must still be among their public, active, current sentences, a
 today's rules, when `GET /v1/matches` serves it. A sentence they hid, took back or
 replaced comes off every card already written; the want it stood beside stays listed.
 
+**Learned is not shared** (2026-09-25). What the clone picks up in chat, "tell" or a
+pasted memory starts match-only (extract.ts, pasteImport.ts): the agent uses it for
+matching -- it is in the profile's traits and tags -- but it is quoted on no card, said in
+no talk, answers no sheet and makes no "You both like" tag, until the person taps **OK to
+share** under "Learned in chat" on "How you appear". Only answers written on purpose for
+sharing start shareable: the five set questions (stories), and a question of the day,
+whose button says "Save and share". Tags shown to others are chosen per fact, not per
+kind (rendezvous.ts publicTags). Migration 0063 made the learned sentences already
+there match-only too (29 on real accounts; nothing deleted, each change in memory_audit).
+
 **Whoever has the larger inbox decides first** (`busierSide`). Dating apps run heavily
 one-sided; without this the flooded side is flooded again here.
 
