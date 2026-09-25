@@ -45,6 +45,7 @@ import { modelIdOf } from '../llm/caps.js';
 import { currentState } from '../memory/facts.js';
 import { env } from '../env.js';
 import { log } from '../log.js';
+import { ANSWER_BY } from './expiry.js';
 
 /**
  * How many conversations a pair gets. ZERO BY DEFAULT: a round holds no conversation.
@@ -636,10 +637,11 @@ export async function recordRuns(
     );
   }
 
+  // The cards are out: three days for the first answer (0069, matching/expiry.ts).
   await c.query(
     `UPDATE rendezvous
         SET runs_done = $2, both_yes = $3, cost_usd = $4,
-            status = 'decided', decided_at = now()
+            status = 'decided', decided_at = now(), answer_by = ${ANSWER_BY}
       WHERE id = $1`,
     [rendezvousId, out.counted, out.bothYes, out.costUsd],
   );

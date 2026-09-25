@@ -57,6 +57,7 @@ import { cantCheck, cardAnswers, checkShortlist, checkWants, demote, loadWants, 
 import { recordUnknowns, unknownCardsOf, unknownsOf } from './unknowns.js';
 import { voiceText } from '../memory/profile.js';
 import { agentRef, notify } from './world.js';
+import { ANSWER_BY, expireDue } from './expiry.js';
 
 /**
  * What a pair "said" when no conversation was held -- the default. Zero runs, zero
@@ -531,9 +532,15 @@ export async function decide(
   yes: boolean,
 ): Promise<{ introduced: boolean }> {
   return matchmakerSession(async (c) => {
+    // TIME IS UP FIRST (0069). A card past its three days is expired before anything
+    // is written, and an expired card takes no answer -- not a yes that would introduce
+    // two people after the other had been told nothing for days, and not a no that
+    // would turn the record of silence into a rejection.
+    await expireDue(c);
     const { rowCount } = await c.query(
       `UPDATE rendezvous_briefs SET human_says_yes = $3, decided_at = now()
-        WHERE rendezvous_id = $1 AND for_user = $2 AND human_says_yes IS NULL`,
+        WHERE rendezvous_id = $1 AND for_user = $2 AND human_says_yes IS NULL
+          AND EXISTS (SELECT 1 FROM rendezvous WHERE id = $1 AND status <> 'expired')`,
       [rendezvousId, userId, yes],
     );
     if (!rowCount) return { introduced: false };
@@ -571,7 +578,13 @@ export async function decide(
         notify(userId, { type: 'match.introduced', rendezvousId, agent: agentRef(userId, other) });
         notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });
       }
-    } else if (other && seat[0]?.first_mover === userId) {
+    } else {
+      // A yes that did not introduce hands the turn on: the other person gets their
+      // own three days from now.
+      await c.query(
+        `UPDATE rendezvous SET answer_by = ${ANSWER_BY} WHERE id = $1 AND status = 'decided'`, [rendezvousId]);
+    }
+    if (!rows.length && other && seat[0]?.first_mover === userId) {
       // The first mover said yes: it is the other person's turn to look. This is the
       // one moment a yes is visible to the other side -- as it must be, since their
       // reveal opens on it -- and it says nothing they could not already see there.

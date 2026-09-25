@@ -33,6 +33,7 @@ import { consentRoutes } from './api/consent.js';
 import { log } from './log.js';
 import { LIMITS, callerIp, take } from './ratelimit.js';
 import { SESSION_IDLE_MS, sweepOnce } from './memory/session.js';
+import { expireMatches } from './matching/expiry.js';
 import { consolidateAll } from './memory/consolidate.js';
 
 // Fail at boot, not at 3am on an invoice: refuses to start on a routed model with
@@ -179,6 +180,13 @@ const consolidator = setInterval(() => {
   void consolidateAll().catch((err: unknown) => log.error({ err }, 'consolidation sweep failed'));
 }, 60 * 60 * 1000);
 consolidator.unref();
+
+// Cards nobody answered in three days (0069). Every read and answer of a card expires
+// what is due first; this records it for the people who never open the app.
+const expirer = setInterval(() => {
+  void expireMatches().catch((err: unknown) => log.error({ err }, 'match expiry failed'));
+}, 10 * 60 * 1000);
+expirer.unref();
 
 log.info({ port: env.PORT }, 'clone-agent server listening');
 

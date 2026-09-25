@@ -146,6 +146,8 @@ export const worldRoutes = new Hono()
            LEFT JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $1
           WHERE (r.user_a = $1 OR r.user_b = $1)
             AND (r.status <> 'lapsed' OR b.decided_at > now() - interval '1 day')
+            -- A card nobody answered in three days (0069) leaves the town with it.
+            AND r.status <> 'expired'
             -- Kept apart (0064): nobody blocked or banned stands in your town.
             AND NOT apart($1, CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END)
             AND (r.status <> 'running' OR r.created_at > now() - interval '30 minutes')

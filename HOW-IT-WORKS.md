@@ -494,6 +494,16 @@ through the contact-detail block again). Nothing the phone sends rides along, th
 schedules nothing, and there is one proposal per conversation. The message is marked
 `kind = 'date_idea'`, which is how the funnel counts "date proposed".
 
+**Three days to answer** (0069, since 2026-09-25). Whoever's turn it is has three days
+(`rendezvous.answer_by`): from when the cards go out for the first mover, and again from
+the first mover's yes for the other person. On its second day the card is paler and
+says "Fades tomorrow", on its last "Fades today". Then it is `expired` -- its own
+status, not `lapsed` (a no): both answers stay empty, and compare-scorers leaves it out
+rather than counting silence as a rejection. It goes from both lists, the profile and
+the town, and takes no answer. Every read and answer of a card expires what is due
+first; a ten-minute timer records it for people who never open the app. Cards already
+out when this shipped got a fresh three days.
+
 **One gentle nudge** (0068, since 2026-09-25). Two days after the introduction, if
 nobody has written for two days, the chat opens on "It has been quiet for two days" --
 with the agents' date idea and its button when there is one, "Say hello?" when there is

@@ -653,6 +653,11 @@ export interface Talk {
  */
 export interface MatchCard {
   id: string;
+  /**
+   * When this card fades out if you do not answer: three days on your turn (server
+   * 0069). Null when it is not your turn. Optional only so an older server's card draws.
+   */
+  fadesAt?: string | null;
   /** Intent, age, area. "Your agent met someone" when there is nothing to say. */
   headline: string;
   /** The same words on every card: "Passes your rules both ways, on everything they've answered". */

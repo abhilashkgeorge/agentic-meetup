@@ -43,6 +43,8 @@ interface Row {
   met: boolean | null;
   synthetic: boolean;
   introduced: boolean;
+  /** 'expired' (0069): nobody answered in three days. Never a label -- see below. */
+  status: string;
 }
 
 const { rows } = await owner.query<Row>(`
@@ -50,7 +52,8 @@ const { rows } = await owner.query<Row>(`
          ba.human_says_yes AS a_yes, bb.human_says_yes AS b_yes,
          (coalesce(ba.met, false) OR coalesce(bb.met, false)) AS met,
          (pa.is_synthetic OR pb.is_synthetic) AS synthetic,
-         (r.introduced_at IS NOT NULL) AS introduced
+         (r.introduced_at IS NOT NULL) AS introduced,
+         r.status
     FROM rendezvous r
     JOIN rendezvous_briefs ba ON ba.rendezvous_id = r.id AND ba.for_user = r.user_a
     JOIN rendezvous_briefs bb ON bb.rendezvous_id = r.id AND bb.for_user = r.user_b
@@ -73,6 +76,9 @@ const labelled = pairs.filter((r) => pairOutcome(r.a_yes, r.b_yes) !== null);
 console.log(`pairs with briefs on both sides : ${pairs.length}${includeSynthetic ? ' (including invented)' : ' (real only)'}`);
 console.log(`  decided (both answered, or a no): ${labelled.length}`);
 console.log(`  both said yes                 : ${labelled.filter((r) => pairOutcome(r.a_yes, r.b_yes) === 'yes').length}`);
+// Silence is not a no. An expired pair keeps its empty answers, so pairOutcome leaves
+// it unlabelled; it is counted here so it is seen, and nowhere else.
+console.log(`  expired, nobody answered      : ${pairs.filter((r) => r.status === 'expired').length} (left out: silence is not a no)`);
 console.log(`  reported meeting              : ${labelled.filter((r) => r.met).length}`);
 console.log();
 

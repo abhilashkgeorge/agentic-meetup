@@ -17,6 +17,7 @@ import { decide, runRound } from '../matching/orchestrator.js';
 import { DailyRoundsExceeded, DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
 import { resolveAgentRef } from '../matching/world.js';
 import { liveCard, plainCard, readBrief, sentenceKey } from '../matching/brief.js';
+import { expireDue } from '../matching/expiry.js';
 import { lookOf, looksFor } from '../looks/store.js';
 import { award } from '../points/ledger.js';
 import { ANSWERS, WHY_NOT, checkinQuestions, type CheckinQuestion, type Shown } from '../checkin/questions.js';
@@ -485,6 +486,8 @@ export const datingRoutes = new Hono()
     if (!ctx) return c.json({ error: res }, 401);
     // Looking at your matches is being here. See touchActive.
     await tenantSession(ctx, (db) => touchActive(db, ctx.userId));
+    // A card whose three days are up is expired before it is shown (0069).
+    await matchmakerSession(expireDue);
 
     // Own brief only, and the policy enforces it -- the other side's brief is the
     // other agent's private assessment of this person, and is never readable here.
@@ -495,10 +498,10 @@ export const datingRoutes = new Hono()
         id: string; headline: string; overlap_quotes: unknown;
         questions: unknown; human_says_yes: boolean | null; first_mover: string | null;
         status: string; other_decided: boolean | null; other_is_synthetic: boolean | null;
-        other_id: string;
+        other_id: string; answer_by: Date | null;
       }>(
         `SELECT r.id, b.headline, b.overlap_quotes, b.questions,
-                b.human_says_yes, r.first_mover, r.status,
+                b.human_says_yes, r.first_mover, r.status, r.answer_by,
                 CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END AS other_id,
                 -- Same shape and same reason as other_decided below: the caller's own
                 -- session cannot read the other person's match_profile, and a card
@@ -512,7 +515,9 @@ export const datingRoutes = new Hono()
            FROM rendezvous r
            JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $1
           WHERE (r.user_a = $1 OR r.user_b = $1)
-            AND r.status <> 'lapsed'
+            -- A no ('lapsed') and a card nobody answered in three days ('expired',
+            -- 0069) are both gone -- recorded apart, shown alike: as nothing.
+            AND r.status NOT IN ('lapsed', 'expired')
             -- KEPT APART (0064): blocked either way, or the other person banned. A card
             -- made before the block is gone from both screens, not only new ones.
             AND NOT apart($1, CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END)
@@ -590,6 +595,10 @@ export const datingRoutes = new Hono()
             // person's turn.
             ...(myTurn ? liveCard(readBrief(r), liveBy.get(r.other_id) ?? null) : plainCard()),
             waitingOnYou: r.human_says_yes === null && myTurn,
+            // When the card fades out if this person does not answer (0069): only on
+            // their turn, and only while it is open. The phone fades it toward this.
+            fadesAt: r.human_says_yes === null && myTurn && r.status === 'decided' && r.answer_by
+              ? new Date(r.answer_by).toISOString() : null,
             // Never a hint about what they will say -- only that they have not looked.
             // A no is silent, so this state is also what a no looks like, for ever.
             waitingOnThem: r.human_says_yes === true || !myTurn,
@@ -615,7 +624,9 @@ export const datingRoutes = new Hono()
     if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
 
     // Membership is checked under RLS first: a rendezvous this person is not half of
-    // returns nothing, which is the same answer as one that does not exist.
+    // returns nothing, which is the same answer as one that does not exist. An expired
+    // card (0069) is the same: its time is up, and its profile does not open.
+    await matchmakerSession(expireDue);
     const seat = await tenantSession(ctx, async (db) => {
       const { rows } = await db.query<{
         first_mover: string | null; status: string; other_said_yes: boolean | null;
@@ -625,7 +636,7 @@ export const datingRoutes = new Hono()
                 rendezvous_other_said_yes(r.id, $2) AS other_said_yes,
                 rendezvous_other_is_synthetic(r.id, $2) AS other_is_synthetic
            FROM rendezvous r
-          WHERE r.id = $1
+          WHERE r.id = $1 AND r.status <> 'expired'
             -- Kept apart (0064): the profile does not open, the same as no match.
             AND NOT apart($2, CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END)`,
         [id, ctx.userId],
@@ -762,11 +773,14 @@ export const datingRoutes = new Hono()
     if (!body.success) return c.json({ error: 'bad request' }, 400);
 
     // Membership under RLS before anything is written. The matchmaker session that
-    // does the write can see every rendezvous, so the check has to happen here.
+    // does the write can see every rendezvous, so the check has to happen here. A card
+    // whose three days are up takes no answer (0069): expired first, then not found.
+    await matchmakerSession(expireDue);
     const member = await tenantSession(ctx, async (db) => {
       const { rowCount } = await db.query(
         `SELECT id FROM rendezvous
-          WHERE id = $1 AND NOT apart($2, CASE WHEN user_a = $2 THEN user_b ELSE user_a END)`, [id, ctx.userId]);
+          WHERE id = $1 AND status <> 'expired'
+            AND NOT apart($2, CASE WHEN user_a = $2 THEN user_b ELSE user_a END)`, [id, ctx.userId]);
       return Boolean(rowCount);
     });
     if (!member) return c.json({ error: 'not found' }, 404);

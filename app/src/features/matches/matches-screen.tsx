@@ -37,6 +37,7 @@ import {
 import { CharacterAvatar } from '../look/character-avatar';
 import { chatRows, exchangeRows, sayOnCard, sharedSaid, wantRowsView, type Said } from './exchange';
 import { SafetySheet } from '../safety/safety-sheet';
+import { fade } from './fade';
 
 /**
  * What the agents said, on the card: the date idea first -- the one useful thing a
@@ -281,7 +282,9 @@ export default function MatchesScreen() {
           // answered and waiting on the other side sit underneath, quietly.
           [...matches.filter((m) => m.waitingOnYou).slice(0, 1),
            ...matches.filter((m) => !m.waitingOnYou)].map((m) => (
-            <Surface key={m.id} radius={radius.lg} style={{ padding: space.screen, gap: space.md }}>
+            // THE CARD FADES toward the end of its three days (server 0069).
+            <Surface key={m.id} radius={radius.lg}
+                     style={{ padding: space.screen, gap: space.md, opacity: fade(m.fadesAt).opacity }}>
               {/* Their character: who this is before the reveal shows a photo. */}
               {m.look && <CharacterAvatar look={m.look} size={40} />}
               <Text style={[type.label, { color: p.textSecondary }]}>
@@ -364,6 +367,10 @@ export default function MatchesScreen() {
                   <Crease />
                   <Text style={[type.callout, { color: p.textSecondary }]}>{m.opener}</Text>
                 </>
+              )}
+
+              {fade(m.fadesAt).line && (
+                <Text style={[type.callout, { color: p.textTertiary }]}>{fade(m.fadesAt).line}</Text>
               )}
 
               {m.waitingOnYou ? (
