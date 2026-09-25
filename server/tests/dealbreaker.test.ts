@@ -1,25 +1,35 @@
 /**
  * "Who could you absolutely not spend time with?"
  *
- * The only answer in the product allowed to remove people from somebody's pool, which
- * is why the mapping from a sentence to a rule is the careful part. What is pinned
+ * One of two answers in the product that can remove people from somebody's pool -- the
+ * other is a narrowed Who's-fine row on a core card -- and the only one a model reads,
+ * which is why the mapping from a sentence to a rule is the careful part. What is pinned
  * here is mostly RESTRAINT: a vague sentence must map to nothing, an invented value
  * must be dropped, and a failure must still keep the sentence.
  */
 import { describe, expect, it, vi } from 'vitest';
 
-const stub = vi.hoisted(() => ({ parsed: {} as unknown }));
+const stub = vi.hoisted(() => ({ parsed: {} as unknown, instructions: '' }));
 
 vi.mock('../src/llm/index.js', () => ({
   modelFor: () => 'google:gemini-3.5-flash-lite',
+  // The prose path, which is what this file is about. `null` is also the default:
+  // the typed model is off until somebody sets DECIDE_MODEL, and this pins that
+  // turning it off returns the behaviour below exactly. See dealbreaker-typed.test.ts
+  // for the other path.
+  decideModel: () => null,
   llm: {
-    complete: async () => ({
-      text: '', parsed: stub.parsed,
-      usage: {
-        inputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0,
-        reasoningTokens: 0, provider: 'google', modelId: 'x', costUsd: 0, latencyMs: 0,
-      },
-    }),
+    complete: async (req: { instructions: string }) => {
+      // Kept so a test can read the prompt the mapper actually sent.
+      stub.instructions = req.instructions;
+      return {
+        text: '', parsed: stub.parsed,
+        usage: {
+          inputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0,
+          reasoningTokens: 0, provider: 'google', modelId: 'x', costUsd: 0, latencyMs: 0,
+        },
+      };
+    },
   },
 }));
 
@@ -73,18 +83,114 @@ describe('mapping a sentence to a filter', () => {
   });
 });
 
+describe('"no smokers", and every other sentence that names a frequency', () => {
+  // (h). THE BUG: the prompt's own worked example taught "Someone who smokes" as
+  // {often, sometimes}, so a model that followed it wrote `smoking not_in [often,
+  // sometimes]` -- and daily smokers, the most smoking anybody does, passed "no
+  // smokers". Two fixes, and both are pinned: the example now names every level of
+  // smoking, and code closes whatever the model says upward, because a prompt line is
+  // not a guard.
+  it('teaches "someone who smokes" as rarely, sometimes, often and daily', async () => {
+    stub.parsed = { predicate: null, excludes: [], because: 'x' };
+    await mapDealbreaker(ctx, 'No smokers.');
+    expect(stub.instructions).toContain('"Someone who smokes" is smoking: exclude rarely, sometimes, often, daily.');
+  });
+
+  it('closes a level upward: "rarely" means every smoker', async () => {
+    stub.parsed = { predicate: 'smoking', excludes: ['rarely'], because: 'x' };
+    const m = await mapDealbreaker(ctx, 'No smokers.');
+    expect(m.excludes).toEqual(['rarely', 'sometimes', 'often', 'daily']);
+  });
+
+  it('no longer lets a daily smoker through the old example\'s answer', async () => {
+    stub.parsed = { predicate: 'smoking', excludes: ['often', 'sometimes'], because: 'x' };
+    const m = await mapDealbreaker(ctx, 'Someone who smokes.');
+    expect(m.excludes).toEqual(['sometimes', 'often', 'daily']);
+  });
+
+  it('closes drinking the same way', async () => {
+    stub.parsed = { predicate: 'drinking', excludes: ['often'], because: 'x' };
+    const m = await mapDealbreaker(ctx, 'Heavy drinkers.');
+    expect(m.excludes).toEqual(['often', 'daily']);
+  });
+
+  it('does not close "never" upward: not doing it is not a level of doing it', async () => {
+    // "I couldn't be with someone who doesn't drink" is a real rule and a narrow one.
+    // Closed upward it would exclude everybody who answered.
+    stub.parsed = { predicate: 'drinking', excludes: ['never'], because: 'x' };
+    const m = await mapDealbreaker(ctx, 'A teetotaller.');
+    expect(m.predicate).toBe('drinking');
+    expect(m.excludes).toEqual(['never']);
+  });
+
+  it('refuses a reading that closes up to every value', async () => {
+    stub.parsed = { predicate: 'smoking', excludes: ['never', 'rarely'], because: 'x' };
+    const m = await mapDealbreaker(ctx, 'anybody, really');
+    expect(m.predicate).toBeNull();
+    expect(m.excludes).toEqual([]);
+  });
+});
+
+describe('what a sentence may land on', () => {
+  it('only the five core card fields, whatever the model says', async () => {
+    // A rule on a field nobody is asked passes nearly everybody as unknown and removes
+    // the few who happened to mention it. These three are matchable and are not cards.
+    for (const predicate of ['drugs', 'exercise_habit', 'relationship_intent']) {
+      stub.parsed = { predicate, excludes: ['daily', 'casual'], because: 'x' };
+      const m = await mapDealbreaker(ctx, 'whatever');
+      expect(m.predicate, `${predicate} became a rule`).toBeNull();
+      expect(m.excludes).toEqual([]);
+    }
+  });
+
+  it('shows the model only those five', async () => {
+    stub.parsed = { predicate: null, excludes: [], because: 'x' };
+    await mapDealbreaker(ctx, 'whatever');
+    const fields = [...stub.instructions.matchAll(/^- (\w+):/gm)].map((m) => m[1]);
+    expect(fields.sort()).toEqual(['diet', 'drinking', 'monogamy_stance', 'smoking', 'wants_children']);
+  });
+});
+
 describe('the question itself', () => {
-  it('is asked last, and asks for a sentence', async () => {
-    // Last on purpose: it is the only question in the flow that asks for effort, and
-    // effort is cheap once somebody has answered five things and watched the number of
-    // people move. First is where a blank box makes people leave.
-    const { QUESTIONS } = await import('../src/onboarding/questions.js');
+  it('is asked straight after the cards, and asks for a sentence', async () => {
+    // After the core on purpose: it is the only question in the flow that asks for
+    // effort, and effort is cheap once somebody has answered eight things. First is
+    // where a blank box makes people leave. Before the optional chips, because the
+    // only rule it can write is on one of the cards just answered. Since 2026-09-25
+    // "the cards" are the five and then the optional faith card.
+    const { CORE, GATING, OPTIONAL_CARDS, QUESTIONS } = await import('../src/onboarding/questions.js');
+    const { nextQuestion } = await import('../src/onboarding/next-question.js');
     const free = QUESTIONS.filter((q) => q.kind === 'free');
 
     expect(free).toHaveLength(1);
     expect(free[0]!.id).toBe('q-dealbreaker');
-    expect(QUESTIONS[QUESTIONS.length - 1]!.id).toBe('q-dealbreaker');
+    expect(free[0]!.tier).toBe('free');
     expect(free[0]!.options).toEqual([]);
+
+    const fakeDb = { query: async () => ({ rows: [], rowCount: 0 }) } as never;
+    expect((await nextQuestion(fakeDb, 'u', new Set([...GATING, ...CORE]), []))?.question.id).toBe('card-faith');
+    const next = await nextQuestion(fakeDb, 'u', new Set([...GATING, ...CORE, ...OPTIONAL_CARDS]), []);
+    expect(next?.question.id).toBe('q-dealbreaker');
+  });
+
+  it('comes before the optional chips even when a pool can score them', async () => {
+    // The test above cannot see this order. With an empty pool every chip scores 0,
+    // so the OLD order -- scored chips first, the sentence as the fallback -- also
+    // returned the sentence. Here there are candidates, and every optional field
+    // splits them evenly (splits = 1, well over the 0.15 bar), so a chip is a real
+    // contender and only the order can put the sentence first.
+    const { CORE, GATING, OPTIONAL_CARDS } = await import('../src/onboarding/questions.js');
+    const { nextQuestion } = await import('../src/onboarding/next-question.js');
+    const evenSplit = { query: async () => ({ rows: [{ v: 'x', n: '5' }, { v: 'y', n: '5' }], rowCount: 2 }) } as never;
+
+    const next = await nextQuestion(evenSplit, 'u', new Set([...GATING, ...CORE, ...OPTIONAL_CARDS]), ['a', 'b']);
+    expect(next?.question.id, 'an optional chip jumped the sentence').toBe('q-dealbreaker');
+
+    // And the pool really does score them: with the sentence answered, a chip comes
+    // next, chosen by its split -- so the assertion above was not passing on nulls.
+    const after = await nextQuestion(evenSplit, 'u', new Set([...GATING, ...CORE, ...OPTIONAL_CARDS, 'q-dealbreaker']), ['a', 'b']);
+    expect(after?.question.tier).toBe('optional');
+    expect(after?.splits).toBe(1);
   });
 
   it('is never one of the questions that gate the pool', async () => {

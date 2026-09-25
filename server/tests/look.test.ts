@@ -2,13 +2,14 @@
  * A character is saved only as the catalog allows, and read only as the catalog says.
  *
  * WHAT IS BEING GUARDED. The shop's rule -- nothing unpaid is worn -- lives on the
- * server, not in the builder; a look is eight small integers and nothing else; a
+ * server, not in the builder; a look is a fixed set of small integers and nothing
+ * else; a
  * person with no row still has a whole, stable character; the match role may read
  * looks (the roster) but not what anybody bought.
  *
  * Negative controls, run by hand and recorded in the commit: drop the `lockedIn`
  * check in PUT -> the 402 test saves a paid hat for free; return the whole row from
- * GET -> the "eight keys" test fails.
+ * GET -> the "one key per part" test fails.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
@@ -63,8 +64,8 @@ describe('a character', () => {
     expect(o.look).not.toEqual(a.look);
   });
 
-  it('is saved as sent, and read back as exactly eight numbers', async () => {
-    const look: Look = { ...STARTER, skin: 6, hair: 2, outfitColor: 5 };
+  it('is saved as sent, and read back as one number per part and nothing else', async () => {
+    const look: Look = { ...STARTER, skin: 6, head: 2, legs: 2, outfitColor: 5 };
     const res = await call(me, 'PUT', { look });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ look, first: true });
@@ -78,15 +79,15 @@ describe('a character', () => {
 
   it('refuses anything unpaid, and keeps what was saved', async () => {
     const before = await (await call(me, 'GET')).json() as { look: Look };
-    const res = await call(me, 'PUT', { look: { ...STARTER, hair: 6 } });   // Mohawk: 80 points
+    const res = await call(me, 'PUT', { look: { ...STARTER, top: 8 } });   // the suit jacket: 120 points
     expect(res.status).toBe(402);
-    expect(await res.json()).toEqual({ error: 'locked', items: ['hair:6'] });
+    expect(await res.json()).toEqual({ error: 'locked', items: ['top:8'] });
     const after = await (await call(me, 'GET')).json() as { look: Look };
     expect(after.look).toEqual(before.look);
   });
 
   it('refuses what the catalog does not have', async () => {
-    expect((await call(me, 'PUT', { look: { ...STARTER, hair: 8 } })).status).toBe(400);
+    expect((await call(me, 'PUT', { look: { ...STARTER, top: 10 } })).status).toBe(400);
     expect((await call(me, 'PUT', { look: { ...STARTER, hat: 1 } })).status).toBe(400);
     expect((await call(me, 'PUT', { look: { ...STARTER, skin: 1.5 } })).status).toBe(400);
     expect((await call(me, 'PUT', { nope: true })).status).toBe(400);

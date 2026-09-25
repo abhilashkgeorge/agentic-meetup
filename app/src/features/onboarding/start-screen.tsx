@@ -103,9 +103,13 @@ export default function StartScreen() {
       >
         <Animation mood="orbit" height={160} opacity={0.5} />
         <Text style={[type.display, { color: p.text }]}>Now it asks you some things</Text>
+        {/* It used to say "it will not make you fill in a form". Setup now asks the
+            basics and five cards, each about you AND about who you would be fine
+            with, and that is a form, however it is laid out. The copy says what it is,
+            and never a number: a count is a promise the flow then has to keep. */}
         <Text style={[type.body, { color: p.textSecondary }]}>
-          Short questions, one at a time. It stops when it has enough — it will not make
-          you fill in a form.
+          A few quick questions, one at a time. Some are about you, and some are about
+          who you would be fine with.
         </Text>
         <Card label="Faster, if you want">
           <Text style={[type.body, { color: p.text }]}>
@@ -138,8 +142,13 @@ export default function StartScreen() {
         </Text>
       </View>
 
+      {/* NO autoFocus. It opened the keyboard before the screen had been read, which
+          scrolled the headline off the top and left a new person looking at the tail
+          of a sentence -- the literal first words in the app were "start." with
+          nothing before them. The examples below are tappable, so the box does not
+          need to be the first thing in focus; it needs to be the first thing SEEN. */}
       <Field value={text} onChangeText={(t) => { setText(t); setNote(null); }}
-             placeholder={EXAMPLES[0]} multiline autoFocus minHeight={120}
+             placeholder={EXAMPLES[0]} multiline minHeight={120}
              error={note} />
 
       {/* A blank box is where setup flows die, and "anything about you" is not

@@ -1,0 +1,733 @@
+{
+  "built": "2026-09-22",
+  "source": "Quaternius, Ultimate Modular Men and Women (CC0 1.0)",
+  "bones": 22,
+  "dropped": [
+    "m_suit:Pistol",
+    "m_suit:Pistol",
+    "m_suit:Pistol"
+  ],
+  "facial": [
+    "m_casual_2_h2",
+    "m_worker_h4"
+  ],
+  "clips": [
+    "walk",
+    "idle"
+  ],
+  "bytes": 3839876,
+  "beards": [
+    "beard_stubble",
+    "beard_moustache",
+    "beard_goatee",
+    "beard_full"
+  ],
+  "looks": {
+    "m_beach": {
+      "tris": 6638,
+      "feet": [
+        {
+          "mesh": "m_beach_b1",
+          "role": "skin",
+          "from": "Beach_Feet"
+        },
+        {
+          "mesh": "m_beach_b2",
+          "role": "plain",
+          "from": "Beach_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "m_beach_b3",
+          "role": "skin",
+          "from": "Beach_Legs"
+        },
+        {
+          "mesh": "m_beach_b4",
+          "role": "plain",
+          "from": "Beach_Legs"
+        },
+        {
+          "mesh": "m_beach_b5",
+          "role": "plain",
+          "from": "Beach_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "m_beach_b6",
+          "role": "skin",
+          "from": "Beach_Body"
+        },
+        {
+          "mesh": "m_beach_b7",
+          "role": "top",
+          "from": "Beach_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "m_beach_h1",
+          "role": "skin",
+          "from": "Beach_Head"
+        },
+        {
+          "mesh": "m_beach_h2",
+          "role": "plain",
+          "from": "Beach_Head"
+        },
+        {
+          "mesh": "m_beach_h3",
+          "role": "plain",
+          "from": "Beach_Head"
+        },
+        {
+          "mesh": "m_beach_h4",
+          "role": "hair",
+          "from": "Beach_Head"
+        },
+        {
+          "mesh": "m_beach_h5",
+          "role": "plain",
+          "from": "Beach_Head"
+        }
+      ]
+    },
+    "m_casual_2": {
+      "tris": 5914,
+      "feet": [
+        {
+          "mesh": "m_casual_2_b1",
+          "role": "plain",
+          "from": "Casual2_Feet"
+        },
+        {
+          "mesh": "m_casual_2_b2",
+          "role": "plain",
+          "from": "Casual2_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "m_casual_2_b3",
+          "role": "plain",
+          "from": "Casual2_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "m_casual_2_b4",
+          "role": "skin",
+          "from": "Casual2_Body"
+        },
+        {
+          "mesh": "m_casual_2_b5",
+          "role": "top",
+          "from": "Casual2_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "m_casual_2_h1",
+          "role": "skin",
+          "from": "Casual2_Head"
+        },
+        {
+          "mesh": "m_casual_2_h3",
+          "role": "plain",
+          "from": "Casual2_Head"
+        },
+        {
+          "mesh": "m_casual_2_h4",
+          "role": "hair",
+          "from": "Casual2_Head"
+        },
+        {
+          "mesh": "m_casual_2_h5",
+          "role": "plain",
+          "from": "Casual2_Head"
+        }
+      ]
+    },
+    "m_casual_hoodie": {
+      "tris": 6248,
+      "feet": [
+        {
+          "mesh": "m_casual_hoodie_b1",
+          "role": "plain",
+          "from": "Casual_Feet"
+        },
+        {
+          "mesh": "m_casual_hoodie_b2",
+          "role": "plain",
+          "from": "Casual_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "m_casual_hoodie_b3",
+          "role": "skin",
+          "from": "Casual_Legs"
+        },
+        {
+          "mesh": "m_casual_hoodie_b4",
+          "role": "plain",
+          "from": "Casual_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "m_casual_hoodie_b5",
+          "role": "skin",
+          "from": "Casual_Body"
+        },
+        {
+          "mesh": "m_casual_hoodie_b6",
+          "role": "top",
+          "from": "Casual_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "m_casual_hoodie_h1",
+          "role": "skin",
+          "from": "Casual_Head"
+        },
+        {
+          "mesh": "m_casual_hoodie_h2",
+          "role": "plain",
+          "from": "Casual_Head"
+        },
+        {
+          "mesh": "m_casual_hoodie_h3",
+          "role": "plain",
+          "from": "Casual_Head"
+        },
+        {
+          "mesh": "m_casual_hoodie_h4",
+          "role": "hair",
+          "from": "Casual_Head"
+        }
+      ]
+    },
+    "m_punk": {
+      "tris": 5644,
+      "feet": [
+        {
+          "mesh": "m_punk_b1",
+          "role": "skin",
+          "from": "Punk_Feet"
+        },
+        {
+          "mesh": "m_punk_b2",
+          "role": "plain",
+          "from": "Punk_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "m_punk_b3",
+          "role": "skin",
+          "from": "Punk_Legs"
+        },
+        {
+          "mesh": "m_punk_b4",
+          "role": "plain",
+          "from": "Punk_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "m_punk_b5",
+          "role": "skin",
+          "from": "Punk_Body"
+        },
+        {
+          "mesh": "m_punk_b6",
+          "role": "plain",
+          "from": "Punk_Body"
+        },
+        {
+          "mesh": "m_punk_b7",
+          "role": "top",
+          "from": "Punk_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "m_punk_h1",
+          "role": "skin",
+          "from": "Punk_Head"
+        },
+        {
+          "mesh": "m_punk_h2",
+          "role": "plain",
+          "from": "Punk_Head"
+        },
+        {
+          "mesh": "m_punk_h3",
+          "role": "plain",
+          "from": "Punk_Head"
+        },
+        {
+          "mesh": "m_punk_h4",
+          "role": "plain",
+          "from": "Punk_Head"
+        },
+        {
+          "mesh": "m_punk_h5",
+          "role": "hair",
+          "from": "Punk_Head"
+        },
+        {
+          "mesh": "m_punk_h6",
+          "role": "plain",
+          "from": "Punk_Head"
+        }
+      ]
+    },
+    "m_suit": {
+      "tris": 6694,
+      "feet": [
+        {
+          "mesh": "m_suit_b1",
+          "role": "plain",
+          "from": "Suit_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "m_suit_b2",
+          "role": "plain",
+          "from": "Suit_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "m_suit_b3",
+          "role": "skin",
+          "from": "Suit_Body"
+        },
+        {
+          "mesh": "m_suit_b4",
+          "role": "plain",
+          "from": "Suit_Body"
+        },
+        {
+          "mesh": "m_suit_b5",
+          "role": "top",
+          "from": "Suit_Body"
+        },
+        {
+          "mesh": "m_suit_b6",
+          "role": "plain",
+          "from": "Suit_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "m_suit_h1",
+          "role": "skin",
+          "from": "Suit_Head"
+        },
+        {
+          "mesh": "m_suit_h2",
+          "role": "plain",
+          "from": "Suit_Head"
+        },
+        {
+          "mesh": "m_suit_h3",
+          "role": "hair",
+          "from": "Suit_Head"
+        },
+        {
+          "mesh": "m_suit_h4",
+          "role": "plain",
+          "from": "Suit_Head"
+        }
+      ]
+    },
+    "m_worker": {
+      "tris": 5384,
+      "feet": [
+        {
+          "mesh": "m_worker_b1",
+          "role": "plain",
+          "from": "Worker_Feet"
+        },
+        {
+          "mesh": "m_worker_b2",
+          "role": "plain",
+          "from": "Worker_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "m_worker_b3",
+          "role": "plain",
+          "from": "Worker_Legs"
+        },
+        {
+          "mesh": "m_worker_b4",
+          "role": "plain",
+          "from": "Worker_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "m_worker_b5",
+          "role": "skin",
+          "from": "Worker_Body"
+        },
+        {
+          "mesh": "m_worker_b6",
+          "role": "plain",
+          "from": "Worker_Body"
+        },
+        {
+          "mesh": "m_worker_b7",
+          "role": "plain",
+          "from": "Worker_Body"
+        },
+        {
+          "mesh": "m_worker_b8",
+          "role": "top",
+          "from": "Worker_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "m_worker_h1",
+          "role": "skin",
+          "from": "Worker_Head"
+        },
+        {
+          "mesh": "m_worker_h2",
+          "role": "plain",
+          "from": "Worker_Head"
+        },
+        {
+          "mesh": "m_worker_h3",
+          "role": "plain",
+          "from": "Worker_Head"
+        },
+        {
+          "mesh": "m_worker_h5",
+          "role": "plain",
+          "from": "Worker_Head"
+        }
+      ]
+    },
+    "w_casual": {
+      "tris": 6604,
+      "feet": [
+        {
+          "mesh": "w_casual_b1",
+          "role": "skin",
+          "from": "Casual_Feet"
+        },
+        {
+          "mesh": "w_casual_b2",
+          "role": "plain",
+          "from": "Casual_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "w_casual_b3",
+          "role": "plain",
+          "from": "Casual_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "w_casual_b4",
+          "role": "skin",
+          "from": "Casual_Body"
+        },
+        {
+          "mesh": "w_casual_b5",
+          "role": "top",
+          "from": "Casual_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "w_casual_h1",
+          "role": "skin",
+          "from": "Casual_Head"
+        },
+        {
+          "mesh": "w_casual_h2",
+          "role": "plain",
+          "from": "Casual_Head"
+        },
+        {
+          "mesh": "w_casual_h3",
+          "role": "plain",
+          "from": "Casual_Head"
+        },
+        {
+          "mesh": "w_casual_h4",
+          "role": "hair",
+          "from": "Casual_Head"
+        }
+      ]
+    },
+    "w_formal": {
+      "tris": 6324,
+      "feet": [
+        {
+          "mesh": "w_formal_b1",
+          "role": "skin",
+          "from": "Formal_Feet"
+        },
+        {
+          "mesh": "w_formal_b2",
+          "role": "plain",
+          "from": "Formal_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "w_formal_b3",
+          "role": "skin",
+          "from": "Formal_Legs"
+        },
+        {
+          "mesh": "w_formal_b4",
+          "role": "plain",
+          "from": "Formal_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "w_formal_b5",
+          "role": "skin",
+          "from": "Formal_Body"
+        },
+        {
+          "mesh": "w_formal_b6",
+          "role": "top",
+          "from": "Formal_Body"
+        },
+        {
+          "mesh": "w_formal_b7",
+          "role": "plain",
+          "from": "Formal_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "w_formal_h1",
+          "role": "skin",
+          "from": "Formad_Head"
+        },
+        {
+          "mesh": "w_formal_h2",
+          "role": "plain",
+          "from": "Formad_Head"
+        },
+        {
+          "mesh": "w_formal_h3",
+          "role": "hair",
+          "from": "Formad_Head"
+        }
+      ]
+    },
+    "w_suit": {
+      "tris": 6662,
+      "feet": [
+        {
+          "mesh": "w_suit_b1",
+          "role": "skin",
+          "from": "Suit_Feet"
+        },
+        {
+          "mesh": "w_suit_b2",
+          "role": "plain",
+          "from": "Suit_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "w_suit_b3",
+          "role": "plain",
+          "from": "Suit_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "w_suit_b4",
+          "role": "skin",
+          "from": "Suit_Body"
+        },
+        {
+          "mesh": "w_suit_b5",
+          "role": "top",
+          "from": "Suit_Body"
+        },
+        {
+          "mesh": "w_suit_b6",
+          "role": "plain",
+          "from": "Suit_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "w_suit_h1",
+          "role": "skin",
+          "from": "Suit_Head"
+        },
+        {
+          "mesh": "w_suit_h2",
+          "role": "plain",
+          "from": "Suit_Head"
+        },
+        {
+          "mesh": "w_suit_h3",
+          "role": "plain",
+          "from": "Suit_Head"
+        },
+        {
+          "mesh": "w_suit_h4",
+          "role": "hair",
+          "from": "Suit_Head"
+        }
+      ]
+    },
+    "w_worker": {
+      "tris": 6340,
+      "feet": [
+        {
+          "mesh": "w_worker_b1",
+          "role": "skin",
+          "from": "Worker_Feet"
+        },
+        {
+          "mesh": "w_worker_b2",
+          "role": "plain",
+          "from": "Worker_Feet"
+        }
+      ],
+      "legs": [
+        {
+          "mesh": "w_worker_b3",
+          "role": "plain",
+          "from": "Worker_Legs"
+        },
+        {
+          "mesh": "w_worker_b4",
+          "role": "plain",
+          "from": "Worker_Legs"
+        }
+      ],
+      "top": [
+        {
+          "mesh": "w_worker_b5",
+          "role": "skin",
+          "from": "Worker_Body"
+        },
+        {
+          "mesh": "w_worker_b6",
+          "role": "plain",
+          "from": "Worker_Body"
+        },
+        {
+          "mesh": "w_worker_b7",
+          "role": "top",
+          "from": "Worker_Body"
+        },
+        {
+          "mesh": "w_worker_b8",
+          "role": "plain",
+          "from": "Worker_Body"
+        }
+      ],
+      "head": [
+        {
+          "mesh": "w_worker_h1",
+          "role": "skin",
+          "from": "Worker_Head"
+        },
+        {
+          "mesh": "w_worker_h2",
+          "role": "hair",
+          "from": "Worker_Head"
+        },
+        {
+          "mesh": "w_worker_h3",
+          "role": "plain",
+          "from": "Worker_Head"
+        },
+        {
+          "mesh": "w_worker_h4",
+          "role": "plain",
+          "from": "Worker_Head"
+        }
+      ]
+    }
+  },
+  "thumbs": {
+    "tile": 128,
+    "cols": 8,
+    "rows": 7,
+    "index": {
+      "m_beach:head": 0,
+      "m_beach:top": 1,
+      "m_beach:legs": 2,
+      "m_beach:feet": 3,
+      "m_casual_2:head": 4,
+      "m_casual_2:top": 5,
+      "m_casual_2:legs": 6,
+      "m_casual_2:feet": 7,
+      "m_casual_hoodie:head": 8,
+      "m_casual_hoodie:top": 9,
+      "m_casual_hoodie:legs": 10,
+      "m_casual_hoodie:feet": 11,
+      "m_punk:head": 12,
+      "m_punk:top": 13,
+      "m_punk:legs": 14,
+      "m_punk:feet": 15,
+      "m_suit:head": 16,
+      "m_suit:top": 17,
+      "m_suit:legs": 18,
+      "m_suit:feet": 19,
+      "m_worker:head": 20,
+      "m_worker:top": 21,
+      "m_worker:legs": 22,
+      "m_worker:feet": 23,
+      "w_casual:head": 24,
+      "w_casual:top": 25,
+      "w_casual:legs": 26,
+      "w_casual:feet": 27,
+      "w_formal:head": 28,
+      "w_formal:top": 29,
+      "w_formal:legs": 30,
+      "w_formal:feet": 31,
+      "w_suit:head": 32,
+      "w_suit:top": 33,
+      "w_suit:legs": 34,
+      "w_suit:feet": 35,
+      "w_worker:head": 36,
+      "w_worker:top": 37,
+      "w_worker:legs": 38,
+      "w_worker:feet": 39,
+      "m_beach:bald": 40,
+      "m_casual_2:bald": 41,
+      "m_casual_hoodie:bald": 42,
+      "m_punk:bald": 43,
+      "m_suit:bald": 44,
+      "m_worker:bald": 45,
+      "w_casual:bald": 46,
+      "w_formal:bald": 47,
+      "w_suit:bald": 48,
+      "w_worker:bald": 49,
+      "beard:beard_stubble": 50,
+      "beard:beard_moustache": 51,
+      "beard:beard_goatee": 52,
+      "beard:beard_full": 53
+    }
+  }
+}

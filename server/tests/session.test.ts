@@ -27,6 +27,7 @@ const { pool, tenantSession } = await import('../src/db/client.js');
 const { env } = await import('../src/env.js');
 const { extractSession } = await import('../src/memory/session.js');
 const { commit, currentState, history } = await import('../src/memory/facts.js');
+const { confirmStagedFact, pendingConfirmation } = await import('../src/memory/pasteImport.js');
 
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
 let ctx = { tenantId: '', userId: '' };
@@ -83,10 +84,14 @@ describe('session extraction', () => {
     };
 
     const s = await extractSession(ctx, sessionId);
-    expect(s?.asserted).toBe(2);
+    // `lives_in` is a field the person TAPS (TAPPED_PREDICATES): a sentence about it
+    // is staged for a Yes rather than written over the answer they gave. `works_at` is
+    // not one, and is learned straight away, as every sentence used to be.
+    expect(s?.asserted).toBe(1);
+    expect(s?.staged).toBe(1);
 
     const facts = await tenantSession(ctx, (c) => currentState(c, ctx.userId));
-    expect(facts.map((f) => f.objectText).sort()).toEqual(['Acme', 'Berlin']);
+    expect(facts.map((f) => f.objectText).sort()).toEqual(['Acme']);
   });
 
   it('is idempotent — re-running with no new turns does nothing', async () => {
@@ -102,7 +107,7 @@ describe('session extraction', () => {
     expect(await extractSession(ctx, sessionId)).toBeNull();
   });
 
-  it('supersedes through the real commit path when the person moves', async () => {
+  it('when the person moves, waits for a Yes, then supersedes through the real commit path', async () => {
     await tenantSession(ctx, (c) =>
       commit(c, ctx, {
         predicate: 'lives_in', objectText: 'London', stance: 'asserted',
@@ -118,12 +123,21 @@ describe('session extraction', () => {
       intents: [],
     };
 
+    // The city is a field the person taps (TAPPED_PREDICATES), and it moves their whole
+    // pool: a sentence stages the move, and London stands until they say yes.
     const s = await extractSession(ctx, sessionId);
-    expect(s?.superseded).toBe(1);
+    expect(s?.superseded).toBe(0);
+    expect(s?.staged).toBe(1);
+    expect((await tenantSession(ctx, (c) => currentState(c, ctx.userId)))
+      .filter((f) => f.predicate === 'lives_in').map((f) => f.objectText)).toEqual(['London']);
 
+    // The Yes is one tap, asked on its own -- and then it is the real supersession.
+    const [asked] = await tenantSession(ctx, (c) => pendingConfirmation(c, ctx.userId, 1));
+    expect(asked?.objectText).toBe('Berlin');
+    await tenantSession(ctx, (c) => confirmStagedFact(c, ctx, asked!.id));
     const lineage = await tenantSession(ctx, (c) => history(c, ctx.userId, 'lives_in'));
-    expect(lineage).toHaveLength(2);
-    expect(lineage.filter((f) => f.status === 'active')).toHaveLength(1);
+    expect(lineage.filter((f) => f.status === 'active').map((f) => f.objectText)).toEqual(['Berlin']);
+    expect(lineage.some((f) => f.objectText === 'London' && f.status === 'superseded')).toBe(true);
   });
 
   it('a hedged statement is staged, and the old fact survives', async () => {

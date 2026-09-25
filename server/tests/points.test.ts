@@ -86,7 +86,7 @@ describe('points', () => {
   it('refuse a purchase when short, charge once when not, and then let the item be worn', async () => {
     const me = await person('me');
     await look(me, 'PUT', { look: STARTER });                                          // +20
-    const short = await buyItem(me, 'face:3');                                          // costs 30
+    const short = await buyItem(me, 'beard:2');                                         // costs 30
     expect(short.status).toBe(409);
     expect(await short.json()).toEqual({ error: 'not_enough', balance: 20 });
     expect((await owner.query('SELECT 1 FROM look_items WHERE user_id = $1', [me.userId])).rowCount).toBe(0);
@@ -96,16 +96,16 @@ describe('points', () => {
       `INSERT INTO points_ledger (tenant_id, user_id, reason, ref, amount) VALUES ($1, $2, 'checkin', $3, 50)`,
       [me.tenantId, me.userId, '00000000-0000-0000-0000-000000000001']);
     // Two taps at once: one purchase.
-    const [a, b] = await Promise.all([buyItem(me, 'face:3'), buyItem(me, 'face:3')]);
+    const [a, b] = await Promise.all([buyItem(me, 'beard:2'), buyItem(me, 'beard:2')]);
     expect([a.status, b.status]).toEqual([200, 200]);
     const { rows } = await owner.query<{ n: string }>(
       `SELECT count(*) AS n FROM points_ledger WHERE user_id = $1 AND reason = 'buy'`, [me.userId]);
     expect(rows[0]!.n).toBe('1');
     const state = await (await look(me, 'GET')).json() as { owned: string[]; balance: number };
-    expect(state.owned).toEqual(['face:3']);
+    expect(state.owned).toEqual(['beard:2']);
     expect(state.balance).toBe(40);
     // Wearing it saves now.
-    expect((await look(me, 'PUT', { look: { ...STARTER, face: 3 } as Look })).status).toBe(200);
+    expect((await look(me, 'PUT', { look: { ...STARTER, beard: 2 } as Look })).status).toBe(200);
     // Starter and unknown items are not for sale.
     expect((await buyItem(me, 'skin:0')).status).toBe(404);
     expect((await buyItem(me, 'hat:9')).status).toBe(404);

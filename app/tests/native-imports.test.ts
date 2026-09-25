@@ -60,7 +60,13 @@ const NATIVE = [
  * statically in turn: they are reached only through a dynamic `import()` behind a try
  * (features/world/r3f.ts). The second test below is what keeps that true.
  */
-const LAZY_ONLY = ['features/world/canvas.tsx', 'features/world/map-mesh.ts', 'features/world/garden-mesh.ts'];
+const LAZY_ONLY = [
+  'features/world/canvas.tsx',
+  'features/world/map-mesh.ts',
+  'features/world/garden-mesh.ts',
+  'features/world/character-mesh.ts',
+  'features/world/venue-mesh.ts',
+];
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

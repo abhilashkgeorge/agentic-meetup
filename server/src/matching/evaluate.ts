@@ -43,3 +43,41 @@ export function aucStandardError(positives: number, negatives: number, a = 0.5):
     / (positives * negatives);
   return Math.sqrt(Math.max(v, 0));
 }
+
+/**
+ * What a pair counts as, for measuring the scorers: yes, no, or not decided yet.
+ *
+ * A NO FROM EITHER SIDE DECIDES IT. The busier side is asked first, and a first-mover
+ * "no" lapses the pair -- the second person is never asked (orchestrator.ts). The report
+ * used to label a pair only once BOTH had answered, so every first-mover no fell out of
+ * the measurement: a whole class of negatives, dropped, which makes every scorer look
+ * better at telling yeses from noes than it is. A no from the first mover is exactly as
+ * much "not a match" as two noes.
+ */
+export function pairOutcome(aYes: boolean | null, bYes: boolean | null): 'yes' | 'no' | null {
+  if (aYes === false || bYes === false) return 'no';
+  if (aYes === true && bYes === true) return 'yes';
+  return null;
+}
+
+/**
+ * Whether an introduced pair would see each other again -- in four buckets, not two.
+ *
+ * The check-in's own helper (checkin_mutual_again, 0058) answers "did both say again?"
+ * and so counts SILENCE as no: a pair nobody reported on reads the same as a pair who
+ * met and did not like it. For the one outcome this product is judged on, that is the
+ * difference between "our introductions do not work" and "people do not fill in forms".
+ * So no response is its own bucket, and the rate is reported over all introduced pairs
+ * with the response rate beside it.
+ *
+ *   again         both answered, both would
+ *   not_again     at least one said they would not (one no settles it)
+ *   unsure        both answered, but at least one was not sure or did not meet
+ *   no_response   fewer than two answers, and nobody said no
+ */
+export type SeeAgain = 'again' | 'not_again' | 'unsure' | 'no_response';
+export function seeAgainOutcome(checkins: readonly { met: boolean; seeAgain: boolean | null }[]): SeeAgain {
+  if (checkins.some((c) => c.seeAgain === false)) return 'not_again';
+  if (checkins.length < 2) return 'no_response';
+  return checkins.every((c) => c.met && c.seeAgain === true) ? 'again' : 'unsure';
+}

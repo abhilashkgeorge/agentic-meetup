@@ -8,7 +8,7 @@ import { useRenderer } from '../world/use-renderer';
 import { CharacterAvatar } from './character-avatar';
 import { useLook } from './store';
 
-export function Preview() {
+export function Preview({ height }: { height?: number }) {
   const p = usePalette();
   const look = useLook((s) => s.look);
   const renderer = useRenderer();
@@ -18,5 +18,5 @@ export function Preview() {
     warning: p.warning, accent: p.accent, night: false,
   }), [p]);
   if (!renderer) return <CharacterAvatar look={look} size={200} />;
-  return <renderer.CharacterCanvas look={look} colors={colors} height={260} />;
+  return <renderer.CharacterCanvas look={look} colors={colors} height={height} />;
 }

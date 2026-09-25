@@ -49,7 +49,7 @@ const toContents = (messages: readonly Message[]) =>
  * than intended. A structured-output schema that is quietly wrong produces plausible
  * objects with missing fields, which is the worst failure available here.
  */
-function toGeminiSchema(schema: z.ZodTypeAny): Record<string, unknown> {
+export function toGeminiSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   const def = (schema as { _def?: { typeName?: string } })._def;
   const typeName = def?.typeName ?? (schema as { type?: string }).type;
 
@@ -65,7 +65,15 @@ function toGeminiSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   }
   // Wrappers. zod v4's generic parameters do not survive a direct cast, so the
   // unwrap goes through `unknown` -- the runtime shape is what matters here.
-  if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
+  // NULLABLE MEANS THE MODEL MAY ANSWER NOTHING, and Gemini's schema says so with
+  // `nullable`. It used to be unwrapped like an optional and then listed as required,
+  // so the answer sheet's `sentence` -- a number, or null for "I don't know" -- could
+  // only ever be a number: the one answer its prompt calls always safe could not be
+  // given, and a model forced to pick one picks a sentence that does not answer.
+  if (schema instanceof z.ZodNullable) {
+    return { ...toGeminiSchema((schema as unknown as { unwrap: () => z.ZodTypeAny }).unwrap()), nullable: true };
+  }
+  if (schema instanceof z.ZodOptional) {
     return toGeminiSchema((schema as unknown as { unwrap: () => z.ZodTypeAny }).unwrap());
   }
   if (schema instanceof z.ZodDefault) {

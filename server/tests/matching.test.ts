@@ -71,6 +71,22 @@ async function consentTo(ctx: { tenantId: string; userId: string }) {
   }
 }
 
+/**
+ * The five core cards, done and "anyone": no fact, no rule. They are a pool condition
+ * (profile.ts) exactly as consent is, and "anyone" leaves every assertion below about
+ * the rules each test sets itself.
+ */
+async function cardsDone(ctx: { tenantId: string; userId: string }) {
+  const { CORE } = await import('../src/onboarding/questions.js');
+  for (const id of CORE) {
+    await owner.query(
+      `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)
+       VALUES ($1,$2,$3,'{"values":[],"whoFine":{"anyone":true}}'::jsonb, true)
+       ON CONFLICT DO NOTHING`,
+      [ctx.tenantId, ctx.userId, id]);
+  }
+}
+
 async function optOutOfSyntheticPool(ctx: { tenantId: string; userId: string }) {
   await owner.query(
     `INSERT INTO match_profile (user_id, tenant_id, in_pool, sees_synthetic)
@@ -94,6 +110,7 @@ async function baseProfile(
   // about the two people it constructs.
   await optOutOfSyntheticPool(ctx);
   await consentTo(ctx);
+  await cardsDone(ctx);
   await fact(ctx, 'gender', o.gender);
   await fact(ctx, 'seeking_gender', o.seeking);
   await fact(ctx, 'relationship_intent', o.intent ?? 'long term');

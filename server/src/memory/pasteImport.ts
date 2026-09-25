@@ -19,6 +19,7 @@ import { llm, modelFor } from '../llm/index.js';
 import { modelIdOf } from '../llm/caps.js';
 import { commit, type FactCandidate } from './facts.js';
 import { EXTRACTOR_VERSION } from './extract.js';
+import { TAPPED_PREDICATES } from '../onboarding/questions.js';
 
 export const PASTE_PROMPT_VERSION = '2026-09-09.paste.2';
 
@@ -254,10 +255,14 @@ export async function pendingConfirmation(
        FROM facts f
        JOIN predicates p ON p.name = f.predicate
       WHERE f.user_id = $1 AND f.status = 'staged' AND f.origin_class = 'untrusted'
-        AND p.durability = 'hard'
+        AND (p.durability = 'hard' OR f.predicate = ANY($3))
       ORDER BY f.recorded_at
       LIMIT $2`,
-    [userId, limit],
+    // A TAPPED field is asked about on its own even when its predicate is 'soft':
+    // smoking, drinking and distance are soft, and the pile below is kept unless the
+    // person strikes it out -- one "keep the rest" would turn a sentence into a card
+    // answer every other person's rule is then tested against.
+    [userId, limit, [...TAPPED_PREDICATES]],
   );
   return rows.map(toStaged);
 }
@@ -273,10 +278,10 @@ export async function reviewable(
        FROM facts f
        JOIN predicates p ON p.name = f.predicate
       WHERE f.user_id = $1 AND f.status = 'staged' AND f.origin_class = 'untrusted'
-        AND p.durability = 'soft'
+        AND p.durability = 'soft' AND NOT (f.predicate = ANY($3))
       ORDER BY f.predicate, f.recorded_at
       LIMIT $2`,
-    [userId, limit],
+    [userId, limit, [...TAPPED_PREDICATES]],
   );
   return rows.map(toStaged);
 }

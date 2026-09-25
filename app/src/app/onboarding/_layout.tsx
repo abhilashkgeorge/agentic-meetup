@@ -26,6 +26,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="essentials" />
       <Stack.Screen name="voice" />
       <Stack.Screen name="test" />
+      <Stack.Screen name="stories" />
       <Stack.Screen name="character" />
       <Stack.Screen name="photos" />
     </Stack>

@@ -70,12 +70,18 @@ export default function ConnectScreen() {
       </View>
 
       <Card label="Server address">
+        {/* MULTILINE so the whole address is on screen. A tunnel address is longer
+            than the box, and a single-line input scrolls to the END of its value --
+            which showed `/0a70-....ngrok-free.app`, a leading slash and no scheme,
+            reading exactly like a malformed address somebody needed to repair. The
+            value was always correct; only the view of it was not. */}
         <Field
           value={url}
           onChangeText={(t) => { setUrl(t); setNote(null); }}
           placeholder="192.168.1.20:8000 or your-tunnel.ngrok-free.app"
           autoCapitalize="none"
           keyboardType="url"
+          multiline
           hint={note ?? undefined}
           onSubmitEditing={() => void save()}
         />

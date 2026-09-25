@@ -9,8 +9,8 @@
  * only what CHANGED -- so a poll every eight seconds does not restart a walk-over
  * that is already under way.
  */
-import { lookFor, type Look } from '@clone/shared';
-import type { AgreementWords, World, WorldAgent } from '../../lib/api';
+import { clampLook, lookFor, type Look } from '@clone/shared';
+import type { World, WorldAgent } from '../../lib/api';
 import type { AgentKind } from './sim';
 
 /** `area`: the neighbourhood tile to stand in; null is the central one. */
@@ -34,11 +34,20 @@ export const metSpec = (ref: string, practice = false): AgentSpec =>
   // says which character and which neighbourhood.
   ({ ref, kind: 'met', seed: seedOf(ref), ghost: practice, look: lookFor(seedOf(ref)), area: null });
 
-/** Everybody the sim should hold, you first. */
+/**
+ * Everybody the sim should hold, you first.
+ *
+ * Every look is clamped as it lands. The roster is the one place a character arrives
+ * from somewhere else -- sixty of them, from a server that may be older than this app
+ * -- and the frame loop that draws them has nowhere to put an error.
+ */
 export function fromRoster(world: World): AgentSpec[] {
   return [
-    { ref: YOU, kind: 'you', seed: 7, ghost: false, look: world.me.look, area: world.me.area ?? null },
-    ...world.agents.map((a) => ({ ref: a.ref, kind: a.kind, seed: a.seed, ghost: a.practice, look: a.look, area: a.area ?? null })),
+    { ref: YOU, kind: 'you', seed: 7, ghost: false, look: clampLook(world.me.look), area: world.me.area ?? null },
+    ...world.agents.map((a) => ({
+      ref: a.ref, kind: a.kind, seed: a.seed, ghost: a.practice,
+      look: clampLook(a.look), area: a.area ?? null,
+    })),
   ];
 }
 
@@ -48,7 +57,12 @@ export type Transition =
    * `practice`: not a real person, so drawn as a ghost if the square has to make them.
    */
   | { op: 'meet'; ref: string; theyCame?: boolean; practice?: boolean }
-  | { op: 'verdict'; ref: string; words: AgreementWords }
+  /**
+   * They met and the card is written. The same small moment for every pair: it used
+   * to be `verdict`, carrying got_on / did_not_click, drawn as a tick or a cross over
+   * both heads -- a judgement of a person, in the square, before either human looked.
+   */
+  | { op: 'parted'; ref: string }
   | { op: 'introduced'; ref: string }
   | { op: 'pass'; ref: string }
   | { op: 'settle'; ref: string }
@@ -67,7 +81,7 @@ export type TownEvent =
   | { type: 'round.queued'; roundId: string }
   | { type: 'round.met'; roundId: string | null; rendezvousId: string; agent: string; practice: boolean }
   | { type: 'round.talking'; roundId: string | null; rendezvousId: string; agent: string }
-  | { type: 'round.decided'; roundId: string | null; rendezvousId: string; agent: string; agreement: AgreementWords }
+  | { type: 'round.decided'; roundId: string | null; rendezvousId: string; agent: string }
   | { type: 'round.done'; roundId: string; met: number; skipped: string | null; error: string | null }
   | { type: 'match.turn'; rendezvousId: string; agent: string }
   | { type: 'match.introduced'; rendezvousId: string; agent: string };
@@ -80,7 +94,8 @@ export function eventTransitions(ev: TownEvent): Transition[] {
       ...(ev.roundId === null ? { theyCame: true } : {}),
       ...(ev.practice ? { practice: true } : {}),
     }];
-    case 'round.decided': return [{ op: 'verdict', ref: ev.agent, words: ev.agreement }];
+    // Whatever an older server might still send alongside it, nothing is read but the ref.
+    case 'round.decided': return [{ op: 'parted', ref: ev.agent }];
     case 'match.introduced': return [{ op: 'introduced', ref: ev.agent }];
     // Whatever it says -- met three, met nobody, the day's cap -- nobody else is
     // about to be visited. A failed round used to leave the agent talking for ever.

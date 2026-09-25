@@ -393,6 +393,62 @@ export interface Knowledge {
 
 export const getKnowledge = (token: string) => get<Knowledge>('/v1/knowledge', token);
 
+/**
+ * "How you appear": exactly what a card about you shows somebody else -- built by the
+ * same code a brief is. Every sentence that could reach a card is listed, the two on a
+ * card now marked `shown`, and any you hid marked `hidden` so it can be undone.
+ */
+export interface Appearance {
+  headline: string;
+  line: string;
+  /** Interests that show on a card when the other person shares them. */
+  tags: string[];
+  quotes: { factId: string; text: string; hidden: boolean; shown: boolean }[];
+  /**
+   * What your agent says when another agent asks it something: every question in the
+   * bank, in order, with the sentence of yours it answers with -- or null, which it says
+   * as "I don't know". Optional only so an older server's screen still draws.
+   */
+  sheet?: SheetEntry[];
+  /** Sentences of yours the sheet could use that you hid, each with its own Show. */
+  hidden?: { factId: string; text: string }[];
+}
+export interface SheetEntry {
+  id: string;
+  /** The question as the other agent asks it. */
+  ask: string;
+  /** Its label on a card: "Weekends". */
+  short: string;
+  answer: { factId: string; text: string } | null;
+}
+export const getAppearance = (token: string) => get<Appearance>('/v1/me/appearance', token);
+
+/** Your own rules, read back in words. A template over what you tapped, not a model. */
+export interface Readback { lines: string[]; footer: string; sentence: string }
+export const getReadback = (token: string) => get<Readback>('/v1/me/readback', token);
+
+/** Hide one of your own sentences from every card, or show it again. */
+export const setQuoteHidden = (token: string, factId: string, hidden: boolean) =>
+  post<{ ok: boolean }>(`/v1/facts/${factId}/disclosure`, token, { hidden });
+
+/** One of the open questions that give your agent something true to say. */
+export interface Story {
+  id: string;
+  text: string;
+  hint: string | null;
+  /** A want: only you and your agent see it; it is never repeated to anybody. */
+  forYou?: boolean;
+  /**
+   * Your answer. `private` when it names one of the five cards, `contact` when it holds
+   * a phone number, email, handle, link or address: kept, and never repeated.
+   */
+  answer: { factId: string; text: string; private: boolean; contact?: boolean } | null;
+}
+export const getStories = (token: string) =>
+  get<{ stories: Story[]; min: number; max: number }>('/v1/stories', token);
+export const saveStory = (token: string, id: string, text: string) =>
+  post<{ ok: boolean; factId: string }>('/v1/stories', token, { id, text });
+
 export interface HistoryEntry {
   value: string;
   status: string;
@@ -465,7 +521,8 @@ export const setEssential = (
     '/v1/essentials', token, { predicate, value, ...(place ? { place } : {}) },
   );
 
-export interface PoolStep { step: string; remaining: number; cost: number }
+/** Rounded to ten, or null for "under 20" -- see lib/counts.ts. */
+export interface PoolStep { step: string; remaining: number | null; cost: number | null }
 
 /**
  * What each filter costs. Makes over-filtering visible instead of silent.
@@ -474,7 +531,7 @@ export interface PoolStep { step: string; remaining: number; cost: number }
  * keys, so the setup wizard can ask only what is still missing.
  */
 export const getPool = (token: string) =>
-  get<{ total: number; steps: PoolStep[]; inPool: boolean; missing: string[]; need: string[] }>(
+  get<{ total: number | null; steps: PoolStep[]; inPool: boolean; missing: string[]; need: string[] }>(
     '/v1/pool', token,
   );
 
@@ -483,7 +540,6 @@ export const getPool = (token: string) =>
  * little on purpose: a stranger is a ref, a kind, a seed and one practice bit. A name
  * arrives only for a met person the reveal would already name.
  */
-export type AgreementWords = 'got_on' | 'unsure' | 'did_not_click' | 'could_not_tell';
 export interface WorldAgent {
   ref: string;
   kind: 'stranger' | 'practice' | 'met';
@@ -496,44 +552,122 @@ export interface WorldAgent {
   state: 'idle' | 'talking' | 'briefed' | 'waiting' | 'introduced' | 'passed';
   rendezvousId?: string;
   name?: string;
-  agreement?: AgreementWords;
+  // No `agreement`: the square no longer says how the agents got on. See
+  // server/src/api/world.ts.
   yourTurn?: boolean;
 }
 export interface World {
   square: { city: string | null; area?: string };
   me: { inPool: boolean; knows: number; missing: string[]; need: string[]; look: Look; area?: string | null };
-  pool: { total: number };
+  /** Rounded to ten, or null for "under 20". */
+  pool: { total: number | null };
   round: RoundState | null;
   targetsLeftToday: number;
   agents: WorldAgent[];
 }
 export const getWorld = (token: string) => get<World>('/v1/world', token);
 
+/**
+ * One question the two agents asked each other, and what each could answer: that
+ * person's own words, or null for "I don't know". The question is from a fixed bank on
+ * the server (matching/answer-sheet.ts); no model writes any of it.
+ */
+export interface QaLine {
+  /** Its label: "Weekends". */
+  q: string;
+  /** The question as one agent asks it: "What do you do on weekends?". */
+  ask: string;
+  theirs: string | null;
+  mine: string | null;
+  /** Their answer is a practice profile's template, not a person's words. */
+  practice?: boolean;
+}
+
+/**
+ * One line of the agents' talk (server/src/matching/talk.ts). `say` is a sentence the
+ * speaker's person typed, verbatim; `ask` a question from a fixed bank; `react` one of a
+ * fixed few; `dunno` is "I don't know." The model only chose which; it wrote none.
+ */
+export interface TalkLine {
+  who: 'you' | 'them';
+  kind: 'ask' | 'say' | 'dunno' | 'react';
+  text: string;
+  /** On an ask: the question's label, "Weekends". */
+  q?: string;
+  /** A practice profile's template line, not a person's words. */
+  practice?: boolean;
+}
+
+/** The agents' talk as you see it: the lines, what you share, and a first-date idea. */
+export interface Talk {
+  lines: TalkLine[];
+  /** One sentence of each of you that shows something you share. */
+  shared: { mine: string; theirs: string; practice?: boolean }[];
+  /** The one thing a model wrote -- a suggestion, checked to say nothing about anybody. */
+  date: { idea: string; mine: string; theirs: string; practice?: boolean } | null;
+}
+
+/**
+ * A brief, as the server writes it: code, never a model (server/src/matching/brief.ts).
+ *
+ * No concern, no verdict, no agreement, no number. Every field is either the same on
+ * every card (`line`), a fact the other person gave (`headline`: intent, age, area),
+ * something both carry (`shared`), or their own words, checked as theirs (`quotes`).
+ */
 export interface MatchCard {
   id: string;
+  /** Intent, age, area. "Your agent met someone" when there is nothing to say. */
   headline: string;
-  overlaps: { quoteA: string; dateA: string; quoteB: string; dateB: string; shared?: string }[];
-  concern: string;
-  questions: string[];
+  /** The same words on every card: "Passes your rules both ways, on everything they've answered". */
+  line: string;
+  /** Interests and tastes you both carry, as words: "You both like ...". */
+  shared: string[];
+  /**
+   * The field you both work in, as words: "You both work in ...". Kept apart from
+   * `shared` because "You both like finance" is not true of two people in finance.
+   * Optional only so an older server's card still draws.
+   */
+  work?: string[];
+  /** Up to two of their own sentences, each found word for word in something they typed. */
+  quotes: { text: string; when: string }[];
+  /** "Ask them about: ..." around a shared tag or a quote, or nothing. */
+  opener: string | null;
+  /**
+   * What the two agents asked each other. Empty on the plain card -- the second mover
+   * sees nothing about the first until they have said yes. Optional only so an older
+   * server's card still draws.
+   */
+  qa?: QaLine[];
+  /**
+   * What the two agents said to each other, or null when they did not talk -- and on
+   * the plain card, which the second mover gets until the first says yes.
+   */
+  talk?: Talk | null;
+  /**
+   * What you asked for, each beside the sentence of theirs that bears on it -- or null
+   * when nothing they said does (server matching/wants.ts). Never a verdict: the server
+   * keeps whether it was met to itself, and you judge from their words.
+   */
+  wants?: {
+    want: string; kind: 'wants' | 'not'; theirs: string | null;
+    /**
+     * Only for a want about a private topic (kids, drinking, faith...), checked against a
+     * card and never quoted: matches or not. And for any want nothing could check yet.
+     */
+    check?: 'matches' | 'doesnt_match' | 'cant_check';
+    practice?: boolean;
+  }[];
   waitingOnYou: boolean;
   /** You said yes and they have not looked yet. Never a hint about what they will say. */
   waitingOnThem?: boolean;
   /**
    * The other side is an invented profile, not a person.
    *
-   * The pool is synthetic until there are users. The agents really did meet and the
-   * brief is really what they made of each other -- but there is nobody on the far
-   * side to answer, and the screen has to say so before anybody spends a feeling on
-   * it.
+   * The pool is synthetic until there are users. The card is built the same way as
+   * any other -- but there is nobody on the far side to answer, and the screen has to
+   * say so before anybody spends a feeling on it.
    */
   practice?: boolean;
-  /**
-   * How the agents got on: the share of conversations that ended in a mutual yes.
-   * Rendered as WORDS, never as a percentage -- a number here reads as compatibility,
-   * and pre-date self-report predicts attraction badly enough that it would be a lie
-   * with a decimal point. null when no conversation was conclusive.
-   */
-  agreement: number | null;
   /** Their character, shown on the card until the reveal shows a photo. */
   look?: Look;
 }
@@ -564,7 +698,17 @@ export const getPreferences = (token: string) =>
 
 /** Moving something between must-have and want is the main lever on pool size. */
 export const setPreferenceStrength = (token: string, id: string, strength: string) =>
-  post<{ ok: boolean; total: number }>('/v1/preferences/strength', token, { id, strength });
+  post<{ ok: boolean; total: number | null }>('/v1/preferences/strength', token, { id, strength });
+
+/**
+ * The second row of a core card: who you would be fine with.
+ *
+ * `anyone` writes no rule, but it IS stored, as a choice -- "anyone is fine" and
+ * "never answered" are different things and the server keeps them apart. `only` lists
+ * the options you accept; everything you left out becomes a hard rule, and it applies
+ * both ways. People who have not answered the card themselves still pass it.
+ */
+export type WhoFine = { anyone: true } | { only: string[] };
 
 export interface InterviewQuestion {
   id: string;
@@ -576,6 +720,25 @@ export interface InterviewQuestion {
   kind: 'fact' | 'preference' | 'free';
   /** Cannot be skipped: the agent cannot go out without it. */
   required?: boolean;
+  /**
+   * Where the question sits in the interview, which the server now asks in a FIXED
+   * order: the basics (gender, who you want to meet, what you are after), then the
+   * five core cards -- kids, one person or open, smoking, drinking, food -- then the
+   * optional sentence, then optional chips. A `core` card is the only kind drawn with
+   * two rows, and the agent cannot go out until all five have an answer.
+   */
+  tier: 'basics' | 'core' | 'optional' | 'free';
+  /** Offers "Prefer not to say" on the You row. Declining is an answer, not a gap. */
+  declinable: boolean;
+  /**
+   * Core cards only: the "Who's fine" row, over the same values as the card. Nothing
+   * in it is pre-ticked -- see features/onboarding/core-card.ts for why.
+   */
+  whoFine?: { text: string; options: { value: string; label: string }[] };
+  /** Core cards only: the short title of the card's screen ("Smoking"). */
+  topic?: string;
+  /** A card that may be skipped whole (faith): "Skip this one" is offered. */
+  optional?: boolean;
 }
 
 export interface InterviewState {
@@ -585,7 +748,8 @@ export interface InterviewState {
   /** Can the agent go out yet. The only thing the person actually wants to know. */
   ready: boolean;
   missing: string[];
-  poolSize: number;
+  /** Rounded to ten, or null for "under 20". */
+  poolSize: number | null;
 }
 
 export const getNextQuestion = (token: string) =>
@@ -593,11 +757,43 @@ export const getNextQuestion = (token: string) =>
 
 /** An empty `values` array means skipped, which is recorded rather than inferred. */
 /** `text` carries the answer to a free question; `values` carries chip answers. */
+/**
+ * `whoFine` is REQUIRED for a core card -- the server answers 400 `who_fine_required`
+ * without it -- and absent for everything else. On a core card an empty `values` means
+ * "Prefer not to say" for the You row only; the Who's-fine choice still applies.
+ */
+/**
+ * What a mapped sentence would change on one of the five cards, for the person to
+ * confirm. The server writes nothing until they do (setWhoFine).
+ */
+export interface SentenceProposal {
+  questionId: string;
+  /** The card's own question, e.g. "Do you smoke?". */
+  card: string;
+  /** The Who's-fine row's wording. */
+  text: string;
+  options: { value: string; label: string }[];
+  /** The options the card would keep, in card order. */
+  accept: string[];
+}
+
 export const answerQuestion = (
-  token: string, questionId: string, values: string[], text?: string,
+  token: string, questionId: string, values: string[], text?: string, whoFine?: WhoFine,
 ) =>
-  post<{ ok: boolean; ready: boolean; missing: string[]; mapped: { predicate: string | null } | null }>(
-    '/v1/interview/answer', token, { questionId, values, text },
+  post<{
+    ok: boolean; ready: boolean; missing: string[];
+    mapped: { predicate: string | null; excludes?: string[]; proposal?: SentenceProposal | null } | null;
+  }>(
+    '/v1/interview/answer', token, { questionId, values, text, ...(whoFine ? { whoFine } : {}) },
+  );
+
+/**
+ * Change who's fine on a card already answered, and nothing else. How a proposal from
+ * the sentence becomes a rule -- the only way it ever does.
+ */
+export const setWhoFine = (token: string, questionId: string, whoFine: WhoFine) =>
+  post<{ ok: boolean; ready: boolean; missing: string[] }>(
+    '/v1/interview/who-fine', token, { questionId, whoFine },
   );
 
 // ── people you matched with ─────────────────────────────────────────────────
@@ -712,7 +908,6 @@ export interface RoundResult {
   skipped?: string;
 }
 
-/** Sends the agent out once. Minutes, not seconds -- it is five conversations. */
 /**
  * Ask for a round. Answers at once with a queued round; the matches list carries its
  * state from then on. It used to await the whole thing -- several minutes of model

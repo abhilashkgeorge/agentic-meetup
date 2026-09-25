@@ -20,6 +20,7 @@ import { CORE_PREDICATES, INTENTS, OPEN_PREDICATES } from '@clone/shared';
 import { llm, modelFor } from '../llm/index.js';
 import { modelIdOf } from '../llm/caps.js';
 import type { FactCandidate } from './facts.js';
+import { TAPPED_PREDICATES } from '../onboarding/questions.js';
 
 /** Bumped on any change below. Recorded on every fact, so a bad prompt is findable
  *  and reversible after the fact rather than merely regrettable. */
@@ -218,9 +219,13 @@ export async function extractSessionFacts(
     hedgeSpan: f.hedge_span || undefined,
     sourceQuote: f.source_quote,
     sourceEpisodeIds,
-    // The person said it about themselves. Facts arriving from anywhere else --
-    // notably another user's agent in the matchmaking phase -- are 'untrusted'.
-    originClass: 'owner',
+    // The person said it about themselves -- but ON A FIELD THEY TAP, a sentence is a
+    // proposal, not an answer. 'untrusted' stages it (facts.ts passesStanceGate): it
+    // cannot supersede the card or the basic, and waits for a Yes. Everywhere else the
+    // person's own words are 'owner', as before. See TAPPED_PREDICATES for what went
+    // wrong. (Facts from anywhere else entirely -- another user's agent -- are
+    // 'untrusted' too.)
+    originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',
     extractorModel: modelIdOf(model),
     extractorVersion: EXTRACTOR_VERSION,
     promptVersion: PROMPT_VERSION,

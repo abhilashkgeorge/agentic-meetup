@@ -4,8 +4,8 @@
  * Every agent's position, heading and state lives here in plain numbers, and the only
  * thing a renderer does is read them once a frame and draw. That split is deliberate:
  * if the 3D path fails on a phone (see features/dev/gl-bench.tsx), a 2D renderer over
- * this same file is two days, not a rewrite -- and the choreography (walk over, talk,
- * verdict, walk away, walk off the edge) is testable with no GL in the room.
+ * this same file is two days, not a rewrite -- and the choreography (walk over, meet,
+ * part, walk away, walk off the edge) is testable with no GL in the room.
  *
  * Seeded, like AliveRig in features/avatar/animation.ts: a run is reproducible, so a
  * test can assert where somebody ends up. Nothing here imports three.
@@ -22,9 +22,14 @@ import { lookFor, pointInPolygon, type Look } from '@clone/shared';
 
 export type AgentKind = 'you' | 'stranger' | 'practice' | 'met';
 export type AgentState =
-  | 'idle' | 'walking' | 'approaching' | 'talking' | 'verdict' | 'leaving' | 'introduced' | 'gone';
-export type Verdict = 'got_on' | 'unsure' | 'did_not_click' | 'could_not_tell';
-export type Bubble = 'dots' | Verdict | null;
+  | 'idle' | 'walking' | 'approaching' | 'talking' | 'parting' | 'leaving' | 'introduced' | 'gone';
+/**
+ * What floats over a head. `dots` while two agents are together; `met` for a moment
+ * after, the same mark for every pair. There is no verdict to draw: the tick, the
+ * cross and the two coloured dots it replaced were a judgement of a person, shown in
+ * the square before either human had looked.
+ */
+export type Bubble = 'dots' | 'met' | null;
 
 export type Pt = readonly [number, number];
 /**
@@ -39,7 +44,21 @@ export interface MapArea { home: Pt; centre: Pt; radius: number; spots: readonly
  * a lens riding above the roofs is not blocked by them, and a camera that pulls in
  * for every low building in a city of them is a camera that never stops lurching.
  */
-export interface Solid { x: number; z: number; r: number; h: number }
+export interface Solid {
+  x: number; z: number; r: number; h: number;
+  /**
+   * True when this thing hides what is behind it, so the shoulder camera has to pull
+   * in past it. A wall does. A TREE TRUNK DOES NOT, and that distinction is the whole
+   * reason this field exists: the trunk collider is half a metre across, and while
+   * nobody could get within six metres of a tree nobody ever found out what the camera
+   * did about one. Once you could walk up and touch the bark, standing against a trunk
+   * pulled the lens all the way in and swung it overhead, so the view of the park
+   * became a view of the top of your own head (on the phone, 2026-09-23).
+   *
+   * Undefined means opaque, because everything that was here before this field was.
+   */
+  seeThrough?: boolean;
+}
 
 export interface MapSpots {
   central: string;
@@ -138,6 +157,9 @@ class Ground {
     const k = cellKey(x, z);
     for (const s of this.solids.get(k) ?? []) {
       if (s.h <= above) continue;
+      // `wet` is false only when the question is about the LENS rather than the feet,
+      // and a lens can see past the things a body cannot walk through.
+      if (!wet && s.seeThrough) continue;
       const d = s.r + pad;
       if ((x - s.x) ** 2 + (z - s.z) ** 2 < d * d) return true;
     }
@@ -202,23 +224,66 @@ export const PLAZA = 8;
 const FOUNTAIN = 2.2;
 /** Where YOUR agent stands with no map: front of the fountain, nearest the camera. */
 export const HOME: readonly [number, number] = [0, PLAZA * 0.55];
-// A person is about 0.24 units tall (PERSON in canvas.tsx), so these are a pace and
-// a hurry in person-heights per second rather than the 1.6 units -- nearly a
-// kilometre a second -- that looked fine only while the people were giants.
-const WALK = 0.45;
-const HURRY = 0.75;
-/** No trip takes longer than this, however far: Koramangala to Whitefield is ~25 units. */
-const TRIP_SECS = 4;
+/**
+ * HOW FAST A PERSON GOES, in scene units a second, against an agent drawn about 0.24
+ * units tall (PERSON in canvas.tsx). A real person is 1.7 m and walks 1.4 m/s, which
+ * is 0.8 of their own height a second -- so a stroll here is 0.2, and everything else
+ * is a multiple of that.
+ *
+ * All three were far too quick. A stroll ran at eleven kilometres an hour, and the
+ * trip cap below turned a long wander into a hundred and sixty: "why are all the
+ * agents speedrunning . they are walking at around 200kmph" (2026-09-22).
+ */
+const WALK = 0.2;
+const HURRY = 0.38;
+/** The fastest anybody moves: a run, not a car. */
+const RUN_MAX = 0.84;
+/**
+ * A VISIT has a deadline and a wander does not.
+ *
+ * When a round sends your agent to meet somebody the picture has to keep up with the
+ * conversation, so a long approach is hurried -- but only up to a run. Wandering is
+ * just wandering: it takes as long as it takes, and capping it by distance is what
+ * had everybody sprinting between the far corners of a park.
+ */
+const TRIP_SECS = 10;
 const ARRIVE = 0.08;
 /** How far apart two agents stand to talk: close enough to be talking. */
 const TOGETHER = 0.3;
-/** How wide a person is on the ground, for walking around things. */
-const FOOT = 0.09;
+/** As far as anybody wanders in one go before standing about again. */
+const STROLL = 7;
+/**
+ * How wide a person is on the ground, for walking around things.
+ *
+ * A PERSON, NOT A CAR. This was 0.09 when a unit was a couple of metres and it was
+ * never looked at again; in Cubbon Park a unit is 8.1 m, so it quietly meant a radius
+ * of 73 cm -- a person a metre and a half across, barging round the park inside an
+ * invisible barrel. Stacked on a bush's own oversized collider it closed gaps you
+ * could plainly see through: the founder stood between a tree and a bush, with a
+ * metre of daylight on the screen, and could not walk between them (2026-09-23).
+ *
+ * The agents are 1.70 m tall here and about 50 cm across the shoulders, so the radius
+ * is 25 cm; this is 28, which leaves a couple of centimetres so nobody's elbow enters
+ * a wall. Exported because the guards measure against it, and a constant the tests
+ * copy by hand is a constant that drifts.
+ */
+export const FOOT = 0.035;
 /** How far off the straight line an agent will look for a way past, in radians. */
 const DETOURS = [0.4, 0.85, 1.35, 1.9, 2.4] as const;
 /** How long an agent keeps going round a building the same way once it has committed. */
 const DODGE_SECS = 1.6;
-const VERDICT_SECS = 3;
+const PARTING_SECS = 3;
+/**
+ * How long two agents stand together, dots over their heads, before they part.
+ *
+ * It used to be however long the conversation took on the server -- minutes -- and
+ * the sim simply waited for the verdict. A round holds no conversation now and its
+ * cues arrive within a second, often before your agent has reached the first person,
+ * so the square keeps its own clock for the moment itself.
+ */
+const TOGETHER_SECS = 2;
+/** The two agents of a meeting, in either order. */
+const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
 /**
  * A spot is a place, not a pixel: two people sent to the same one do not overlap.
  *
@@ -249,6 +314,12 @@ export class WorldSim {
   private readonly order: string[] = [];
   /** Visits a visitor has been asked to make while already on one, in order. */
   private readonly visits = new Map<string, string[]>();
+  /**
+   * Meetings the server has finished (the card is written) that the square has not
+   * played out yet. A pair in here parts as soon as it has stood together for
+   * TOGETHER_SECS -- however far along the walk it was when the cue arrived.
+   */
+  private readonly metPairs = new Set<string>();
   /** How many people have been placed in each tile, so the next one goes somewhere new. */
   private readonly placed = new Map<string, number>();
   private map: MapSpots | null = null;
@@ -354,6 +425,7 @@ export class WorldSim {
   remove(ref: string): void {
     if (!this.byRef.delete(ref)) return;
     this.visits.delete(ref);
+    for (const k of [...this.metPairs]) if (k.split('|').includes(ref)) this.metPairs.delete(k);
     const i = this.order.indexOf(ref);
     if (i >= 0) this.order.splice(i, 1);
   }
@@ -370,14 +442,14 @@ export class WorldSim {
    * chosen them, and then talks to them in turn; the first cut took all three cues
    * at once, so your agent set off for the last one named and the other two stood
    * about "approaching" nobody. A visitor already on a visit queues the rest and
-   * calls on them in order, each after the verdict on the one before.
+   * calls on them in order, each after parting from the one before.
    */
   meet(a: string, b: string): void {
     const A = this.byRef.get(a);
     const B = this.byRef.get(b);
     if (!A || !B) return;
     if (A.partner === b) return;
-    if (A.state === 'approaching' || A.state === 'talking' || A.state === 'verdict') {
+    if (A.state === 'approaching' || A.state === 'talking' || A.state === 'parting') {
       const q = this.visits.get(a) ?? [];
       if (!q.includes(b)) q.push(b);
       this.visits.set(a, q);
@@ -390,7 +462,7 @@ export class WorldSim {
     const dx = A.x - B.x;
     const dz = A.z - B.z;
     const len = Math.hypot(dx, dz) || 1;
-    this.setTarget(A, B.x + (dx / len) * TOGETHER, B.z + (dz / len) * TOGETHER, HURRY);
+    this.setTarget(A, B.x + (dx / len) * TOGETHER, B.z + (dz / len) * TOGETHER, HURRY, true);
     B.tx = B.x; B.tz = B.z;
     for (const p of [A, B]) {
       p.state = 'approaching'; p.bubble = null; p.ring = false;
@@ -408,13 +480,15 @@ export class WorldSim {
     return false;
   }
 
-  /** How the conversation went, shown over this agent for a few seconds. */
-  verdict(ref: string, words: Verdict): void {
-    const a = this.byRef.get(ref);
-    if (!a) return;
-    a.state = 'verdict';
-    a.bubble = words;
-    a.wait = VERDICT_SECS;
+  /**
+   * `a` and `b` have met: their card is written. Recorded, not acted on at once --
+   * the pair parts once it has actually stood together (see `talking` in stepOne),
+   * and then both show the same small mark for a few seconds. The same for every
+   * pair: there is nothing about how it went to show.
+   */
+  parted(a: string, b: string): void {
+    if (!this.byRef.has(a) || !this.byRef.has(b)) return;
+    this.metPairs.add(pairKey(a, b));
   }
 
   /** Both humans said yes: a ring at both their feet, and they stay together a while. */
@@ -426,7 +500,7 @@ export class WorldSim {
     }
   }
 
-  /** The roster stopped saying they were talking, with no verdict: just stand down. */
+  /** The roster stopped saying they were talking, with no cue: just stand down. */
   settle(ref: string): void {
     const a = this.byRef.get(ref);
     if (!a) return;
@@ -440,12 +514,21 @@ export class WorldSim {
   }
 
   /**
-   * The round is over, however it ended: nobody else is to be visited. The queue is
-   * dropped and whoever `ref` was with is left to wander. A round that failed used
-   * to leave your agent standing in a conversation for ever, dots and all.
+   * The round is over, however it ended: nobody else is to be visited. Whoever `ref`
+   * was with is left to wander. A round that failed used to leave your agent standing
+   * in a conversation for ever, dots and all.
+   *
+   * EXCEPT MEETINGS THAT HAPPENED. A round finishes in about a second now, so its
+   * `done` arrives while your agent is still walking to the first of the people it
+   * met. Those meetings are real -- their cards exist -- so the visits to them are
+   * kept and played out; only visits nobody finished are dropped.
    */
   recall(ref: string): void {
-    this.visits.delete(ref);
+    const kept = (this.visits.get(ref) ?? []).filter((b) => this.metPairs.has(pairKey(ref, b)));
+    if (kept.length) this.visits.set(ref, kept); else this.visits.delete(ref);
+    const a = this.byRef.get(ref);
+    if (a?.state === 'parting') return;
+    if (a?.partner && this.metPairs.has(pairKey(ref, a.partner))) return;
     this.settle(ref);
   }
 
@@ -490,16 +573,23 @@ export class WorldSim {
         if (!p) { this.lost(a); break; }
         const arrived = this.moveToward(a, dt);
         if (arrived && Math.hypot(p.x - a.x, p.z - a.z) <= TOGETHER + ARRIVE) {
-          a.state = 'talking'; a.bubble = 'dots';
+          a.state = 'talking'; a.bubble = 'dots'; a.wait = TOGETHER_SECS;
           a.facing = Math.atan2(p.x - a.x, p.z - a.z);
         }
         break;
       }
-      case 'talking':
-        // Held until verdict() is called; the bench's autoplay does that itself.
-        if (a.partner && !this.byRef.get(a.partner)) this.lost(a);
+      case 'talking': {
+        // Held until the pair's meeting is over on the server (parted()) AND they have
+        // stood together a moment; the bench's autoplay calls parted() itself.
+        const p = a.partner ? this.byRef.get(a.partner) : undefined;
+        if (a.partner && !p) { this.lost(a); break; }
+        a.wait -= dt;
+        if (p && a.wait <= 0 && this.metPairs.delete(pairKey(a.ref, p.ref))) {
+          for (const x of [a, p]) { x.state = 'parting'; x.bubble = 'met'; x.wait = PARTING_SECS; }
+        }
         break;
-      case 'verdict':
+      }
+      case 'parting':
         a.wait -= dt;
         if (a.wait <= 0) {
           a.bubble = null; a.partner = null;
@@ -549,16 +639,27 @@ export class WorldSim {
     if (out) { a.x += out[0] * Math.hypot(dx, dz); a.z += out[1] * Math.hypot(dx, dz); }
   }
 
-  /** Somewhere in their own neighbourhood: you go home, everybody else to a spot. */
+  /**
+   * Somewhere in their own neighbourhood: you go home, everybody else to a spot --
+   * and by preference a spot within strolling distance, because a park is somewhere
+   * you drift about in rather than march from one end of to the other.
+   */
   private wander(a: SimAgent): void {
-    const [tx, tz] = a.kind === 'you' ? this.home(a.area) : this.spot(a.area);
-    this.setTarget(a, tx, tz, WALK);
+    if (a.kind === 'you') { const [hx, hz] = this.home(a.area); this.setTarget(a, hx, hz, WALK); return; }
+    let pick = this.spot(a.area);
+    for (let i = 0; i < 3 && Math.hypot(pick[0] - a.x, pick[1] - a.z) > STROLL; i++) pick = this.spot(a.area);
+    this.setTarget(a, pick[0], pick[1], WALK);
   }
 
-  /** Aim at a point; a long trip is hurried so it still takes about TRIP_SECS. */
-  private setTarget(a: SimAgent, tx: number, tz: number, base: number): void {
+  /**
+   * Aim at a point. `hurried` is for a visit, which has somewhere to be: the further
+   * it is the quicker they go, up to a run. Everything else keeps its own pace.
+   */
+  private setTarget(a: SimAgent, tx: number, tz: number, base: number, hurried = false): void {
     a.tx = tx; a.tz = tz;
-    a.speed = Math.max(base, Math.hypot(tx - a.x, tz - a.z) / TRIP_SECS);
+    a.speed = hurried
+      ? Math.min(RUN_MAX, Math.max(base, Math.hypot(tx - a.x, tz - a.z) / TRIP_SECS))
+      : base;
   }
 
   /**
@@ -681,8 +782,8 @@ export class WorldSim {
 
   /**
    * A town of `n` for the frame-rate bench: you, strangers, every fourth one a practice
-   * ghost, and conversations starting and ending by themselves so bubbles and verdict
-   * glyphs are on screen at a realistic rate. On a map the town is spread over the
+   * ghost, and meetings starting and ending by themselves so the bubbles are on
+   * screen at a realistic rate. On a map the town is spread over the
    * neighbourhoods in turn, you in the central one. Real rounds drive all of this
    * from events instead; nothing here is used outside the bench.
    */
@@ -717,11 +818,10 @@ export class WorldSim {
     const talking = all.filter((a) => a.state === 'talking');
     if (talking.length && this.rnd() < 0.5) {
       const a = talking[Math.floor(this.rnd() * talking.length)]!;
-      const words: Verdict[] = ['got_on', 'unsure', 'did_not_click', 'could_not_tell'];
-      const w = words[Math.floor(this.rnd() * words.length)]!;
-      this.verdict(a.ref, w);
-      if (a.partner) this.verdict(a.partner, w);
-      if (w === 'got_on' && this.rnd() < 0.3 && a.partner) this.introduced(a.ref, a.partner);
+      // About one in thirteen ends in the ring, as it did when a quarter "got on" and
+      // three in ten of those were introduced -- so the bench keeps drawing rings.
+      if (a.partner && this.rnd() < 0.075) this.introduced(a.ref, a.partner);
+      else if (a.partner) this.parted(a.ref, a.partner);
       return;
     }
     // Start one, keeping roughly a fifth of the town in conversation.

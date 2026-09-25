@@ -7,4 +7,7 @@ export * from './places.js';
 export * from './phone.js';
 export * from './look.js';
 export * from './geo.js';
+export * from './map-check.js';
+export * from './whereabouts.js';
 export * from './areas.js';
+export * from './contact.js';

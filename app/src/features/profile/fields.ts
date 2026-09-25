@@ -11,7 +11,8 @@
  */
 import { AREAS, DIETS, GENDERS, RELATIONSHIP_INTENTS } from '@clone/shared';
 
-export type FieldKind = 'one' | 'many' | 'number' | 'text';
+/** `range` is a pair of numbers, from and to: today only the ages you would meet. */
+export type FieldKind = 'one' | 'many' | 'number' | 'text' | 'range';
 
 export interface Field {
   key: string;
@@ -34,7 +35,17 @@ const HUMAN: Record<string, string> = {
   pescatarian: 'Pescatarian', vegetarian: 'Vegetarian', vegan: 'Vegan',
 };
 
-export const label = (v: string): string => HUMAN[v] ?? v.replace(/_/g, ' ');
+/**
+ * The words a person reads, for a value stored as a tag.
+ *
+ * Neighbourhoods are looked up rather than listed, because there are thirty of them
+ * and they already carry their own names. Without that branch "What it knows" showed
+ * the raw id -- `mg-road` -- sitting in a list where every other line said something
+ * like "Bengaluru" or "Something long-term". The profile screen and the person sheet
+ * in the town both got this right; only this helper did not.
+ */
+export const label = (v: string): string =>
+  HUMAN[v] ?? AREAS.find((a) => a.id === v)?.name ?? v.replace(/_/g, ' ');
 
 export const FIELDS: Field[] = [
   { key: 'birth_date', title: 'What year were you born?', kind: 'number',
@@ -43,6 +54,14 @@ export const FIELDS: Field[] = [
     options: GENDERS.map((g) => ({ value: g, label: label(g) })) },
   { key: 'seeking_gender', title: 'You want to meet…', kind: 'many', essential: true,
     options: GENDERS.map((g) => ({ value: g, label: label(g) })) },
+  // THE AGE FILTER'S OTHER HALF. The candidate query tests ages both ways, and until
+  // this step nothing wrote a real person's range -- see age-range.ts. Pre-filled from
+  // the person's own age, shown, editable. Not one of the pool's required fields, so
+  // the wizard asks it by a rule of its own (`essentialSteps`) rather than waiting for
+  // the server to list it as missing.
+  { key: 'age_range_sought', title: 'Who would you like to meet?', kind: 'range', essential: true,
+    rowLabel: "Ages you'd meet",
+    hint: 'Their age, from and to. We started from yours. Change it if you like.' },
   { key: 'relationship_intent', title: 'What are you after?', kind: 'one', essential: true,
     rowLabel: 'Here for',
     options: RELATIONSHIP_INTENTS.map((i) => ({ value: i, label: label(i) })) },
@@ -91,6 +110,13 @@ const MISSING_NOUN: Record<string, string> = {
   lives_in: 'Where you live',
   area: 'Which part of town',
   max_distance_km: 'How far you would travel',
+  // The five core cards. Each is two answers on one screen -- yours, and who you would
+  // be fine with -- so the noun names the card, not a single field.
+  wants_children: 'Whether you want kids',
+  monogamy_stance: 'One person, or open',
+  smoking: 'Whether you smoke',
+  drinking: 'Whether you drink',
+  diet: 'How you eat',
 };
 
 export const missingLabel = (key: string): string =>
@@ -103,6 +129,31 @@ export const missingLabel = (key: string): string =>
 export const ESSENTIAL_FIELDS = FIELDS.filter((f) => f.essential);
 
 /**
+ * The steps the setup wizard asks on this visit.
+ *
+ * `need` is the server's list of what is still worth asking (missing required fields,
+ * plus area and distance while they are open). The age range is not on it -- it gates
+ * nothing, so the pool never reports it missing -- and a wizard that only filtered on
+ * `need` would never ask it, which is exactly how nothing came to write it. So it is
+ * asked whenever "What it knows" holds no range yet: once for a new person, and once
+ * for everybody who set up before it existed.
+ */
+export function essentialSteps(need: readonly string[], hasAgeRange: boolean): Field[] {
+  return ESSENTIAL_FIELDS.filter((f) =>
+    need.includes(f.key) || (f.key === 'age_range_sought' && !hasAgeRange));
+}
+
+/**
+ * The five core cards, by the predicate each one answers.
+ *
+ * A card counts as done when it has an answer row, answered or declined, and the
+ * server names the predicate on the pool's missing list for every card that is not.
+ * Until all five are done the agent is not in the pool: it is not sent out and it is
+ * nobody's candidate. They are asked by the interview, not the essentials wizard.
+ */
+export const CARD_PREDICATES = ['wants_children', 'monogamy_stance', 'smoking', 'drinking', 'diet'] as const;
+
+/**
  * Where "Finish setup" should actually go.
  *
  * THE BUG THIS FIXES, found on a real phone. The card lists what is missing -- and
@@ -113,8 +164,19 @@ export const ESSENTIAL_FIELDS = FIELDS.filter((f) => f.essential);
  *
  * Consent first, because it is the one the server will not let you past and the one
  * that is three taps rather than six questions.
+ *
+ * THE CARDS NEXT, AND TO THE INTERVIEW. When the five core cards joined the pool's
+ * requirements, every person who had set up before them dropped out of the pool --
+ * including both of the founder's phones -- and "Finish setting it up" still opened
+ * the essentials wizard, which cannot ask a card. The button would have led to a
+ * screen with nothing on it for the one thing the card said was missing. The interview
+ * asks the cards; when it is done it hands on to the essentials wizard for anything
+ * else still missing (see the interview's `done`).
  */
 export function setupRoute(missing: readonly string[]) {
   if (missing.includes('consent')) return '/consent' as const;
+  if (missing.some((m) => (CARD_PREDICATES as readonly string[]).includes(m))) {
+    return '/onboarding/interview' as const;
+  }
   return '/onboarding/essentials' as const;
 }

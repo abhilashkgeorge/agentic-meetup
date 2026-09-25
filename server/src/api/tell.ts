@@ -24,6 +24,7 @@ import { extractSessionFacts } from '../memory/extract.js';
 import { commit, currentState } from '../memory/facts.js';
 import * as episodes from '../memory/episodes.js';
 import { log } from '../log.js';
+import { ensureSheet } from '../matching/answer-sheet.js';
 
 const Body = z.object({
   text: z.string().min(2).max(2000),
@@ -76,23 +77,34 @@ export const tellRoutes = new Hono().post('/v1/tell', async (c) => {
     throw err;
   }
 
-  const learned = await tenantSession(ctx, async (db) => {
+  // LEARNED IS WHAT IT NOW BELIEVES. A staged fact is not that: on a field the person
+  // taps (a card, a basic) a sentence only proposes, and waits for a Yes on the You
+  // screen -- so it is counted apart and said apart, not reported as learned.
+  const { learned, toConfirm } = await tenantSession(ctx, async (db) => {
     let n = 0;
+    let staged = 0;
     for (const cand of out.candidates) {
       const r = await commit(db, ctx, cand);
-      if (r.outcome !== 'rejected') n++;
+      if (r.outcome === 'staged') staged++;
+      else if (r.outcome !== 'rejected') n++;
     }
-    return n;
+    return { learned: n, toConfirm: staged };
   });
 
-  log.info({ userId: ctx.userId, learned }, 'told');
+  log.info({ userId: ctx.userId, learned, toConfirm }, 'told');
+  // Something new about them may be an answer another agent will ask for. Only when
+  // something was actually learned; a no-op when no sentence it could point at changed.
+  if (learned > 0) await ensureSheet(ctx);
   return c.json({
     learned,
+    toConfirm,
     facts: out.candidates.map((f) => ({
       label: f.predicate.replace(/_/g, ' '),
       value: f.objectText,
     })),
-    message: learned
+    message: toConfirm
+      ? `${learned ? `Got it. ${learned} thing${learned === 1 ? '' : 's'} learned, and ` : 'Got it. '}${toConfirm} to check on the You screen before it changes an answer you gave.`
+      : learned
       ? `Got it. ${learned} thing${learned === 1 ? '' : 's'} learned.`
       // NOT "nothing solid in that". The extractor returns what is NEW, so a sentence
       // it already knows produces nothing -- and the first thing somebody typed, which

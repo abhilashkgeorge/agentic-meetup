@@ -38,6 +38,16 @@ export const FREQUENCY = ['never', 'rarely', 'sometimes', 'often', 'daily'] as c
 export const IMPORTANCE = ['none', 'low', 'medium', 'high'] as const;
 /** Diet ordered from least to most restrictive, so "at least as permissive as" is a compare. */
 export const DIETS = ['omnivore', 'no_beef', 'no_pork', 'pescatarian', 'vegetarian', 'vegan'] as const;
+/**
+ * The faith card's answers (2026-09-25). A faith, or none -- and deliberately NOT a
+ * caste, a sect or a community: those are how a filter becomes a wall, and the founder
+ * ruled them out. "Zoroastrian", not "Parsi", for the same reason: the faith, not the
+ * community.
+ */
+export const FAITHS = [
+  'hindu', 'muslim', 'christian', 'sikh', 'jain', 'buddhist', 'jewish', 'zoroastrian',
+  'spiritual', 'not_religious', 'other',
+] as const;
 export const EDUCATION = ['school', 'some_college', 'bachelors', 'masters', 'doctorate'] as const;
 export const BODY_TYPES = ['slim', 'average', 'athletic', 'curvy', 'large'] as const;
 
@@ -121,6 +131,9 @@ export const VALUE_SHAPES = {
   education_level: Enum(EDUCATION),
   body_type: Enum(BODY_TYPES),
   religion_importance: Enum(IMPORTANCE),
+  // The faith card's value (questions.ts card-faith): never public (NEVER_PUBLIC), never
+  // quoted, and only ever used to test a rule both ways.
+  religion: Enum(FAITHS),
   politics_importance: Enum(IMPORTANCE),
   smoking: Enum(FREQUENCY),
   drinking: Enum(FREQUENCY),

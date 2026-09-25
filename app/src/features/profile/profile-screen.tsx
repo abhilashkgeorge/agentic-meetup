@@ -9,19 +9,22 @@
  * words, three numbers, then everything else behind rows. Here the numbers are the
  * honest ones — what it knows, what it refuses to guess, how many people it can reach.
  */
-import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import {
-  getKnowledge, getMyPhotos, getPool, getProfile,
+  getKnowledge, getMyPhotos, getPool, getProfile, judgeFact,
   type Knowledge, type Photo, type Profile,
 } from '../../lib/api';
+import { countLabel } from '../../lib/counts';
 import { usePhoto } from '../photos/photo';
 import { CharacterAvatar } from '../look/character-avatar';
 import { useLook } from '../look/store';
 import { useSession } from '../../store/session';
 import { AREAS } from '@clone/shared';
+import { PHOTO_SLOTS } from '../photos/photos-screen';
 import { label, setupRoute } from './fields';
+import { rangeFromText, rangeLabel } from './age-range';
 import {
   Avatar, Button, Card, Chip, ChipGroup, Crease, PhotoSlot, Row, Screen, ScreenTitle,
   Skeleton, SkeletonCard, Stats, space, type, usePalette,
@@ -66,9 +69,10 @@ export default function ProfileScreen() {
   const token = useSession((s) => s.token);
   const [k, setK] = useState<Knowledge | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [pool, setPool] = useState<{ total: number; inPool: boolean; missing: string[]; need: string[] } | null>(null);
+  const [pool, setPool] = useState<{ total: number | null; inPool: boolean; missing: string[]; need: string[] } | null>(null);
   const [pics, setPics] = useState<{ me: string | null; photos: Photo[] }>({ me: null, photos: [] });
   const [loading, setLoading] = useState(true);
+  const [judging, setJudging] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -85,7 +89,22 @@ export default function ProfileScreen() {
     setLoading(false);
   }, [token]);
 
-  useEffect(() => { void load(); }, [load]);
+  // Every focus, not once on mount: the tab stays mounted, and its Finish setup card
+  // would otherwise outlive the setup it sends people to (as matches-screen.tsx).
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  /**
+   * Yes or No on something the agent heard in chat about a field you tapped. It waits
+   * here, not on your card: a sentence never changes a card answer by itself
+   * (server: TAPPED_PREDICATES). Asked where you already look, one at a time.
+   */
+  const judge = useCallback(async (verdict: 'yes' | 'no') => {
+    if (!token || !k?.confirm) return;
+    setJudging(true);
+    await judgeFact(token, k.confirm.factId, verdict);
+    setJudging(false);
+    void load();
+  }, [token, k, load]);
 
   const look = useLook((s) => s.look);
   const lookSaved = useLook((s) => s.saved);
@@ -101,6 +120,22 @@ export default function ProfileScreen() {
       <ScreenTitle title={name ?? 'You'} subtitle={[city, work].filter(Boolean).join(' · ') || undefined} />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
+        {k?.confirm && (
+          <Card label="Your agent heard something">
+            <Text style={[type.bodyStrong, { color: p.text }]}>{k.confirm.claim}</Text>
+            {k.confirm.from ? (
+              <Text style={[type.callout, { color: p.textTertiary, fontStyle: 'italic' }]}>“{k.confirm.from}”</Text>
+            ) : null}
+            <Text style={[type.callout, { color: p.textSecondary }]}>
+              Is that right? Nothing changes until you say so.
+            </Text>
+            <ChipGroup>
+              <Chip label="Yes, that's right" selected={false} disabled={judging} onPress={() => void judge('yes')} />
+              <Chip label="No" selected={false} disabled={judging} onPress={() => void judge('no')} />
+            </ChipGroup>
+          </Card>
+        )}
+
         {/* The honest three. Not followers — what it knows, what it won't invent,
             and how many people it can actually reach. */}
         <Card>
@@ -108,7 +143,7 @@ export default function ProfileScreen() {
             items={[
               { value: loading ? '—' : String(k?.knows.length ?? 0), label: 'Known' },
               { value: loading ? '—' : String(k?.wontGuess.length ?? 0), label: "Won't guess" },
-              { value: loading ? '—' : String(pool?.total ?? 0), label: 'Can reach' },
+              { value: loading ? '—' : countLabel(pool?.total), label: 'Can reach' },
             ]}
           />
         </Card>
@@ -128,10 +163,15 @@ export default function ProfileScreen() {
               </View>
             </View>
           </Pressable>
+          {/* The three wells above are a PREVIEW, not the allowance -- the photos
+              screen offers six. Left unsaid, three empty boxes read as the limit, and
+              somebody stops at three. */}
           <Text style={[type.callout, { color: p.textTertiary }]}>
             {pics.photos.length
-              ? 'Shown only after you have both said yes. Never used to match you.'
-              : 'Add one — it is what somebody sees when they decide whether to meet you.'}
+              ? `Shown only after you have both said yes. Never used to match you. ${
+                  pics.photos.length < PHOTO_SLOTS ? `Room for ${PHOTO_SLOTS} in all.` : ''
+                }`.trim()
+              : `Add one — it is what somebody sees when they decide whether to meet you. Room for ${PHOTO_SLOTS}.`}
           </Text>
         </Card>
 
@@ -200,6 +240,9 @@ export default function ProfileScreen() {
               <Row title="Here for"
                    value={(() => { const v = valueOf(k, 'relationship_intent'); return v ? label(v) : 'Not set'; })()}
                    onPress={() => router.push('/edit/relationship_intent')} />
+              {/* Set once during setup from a pre-fill; this is where it is changed. */}
+              <Row title="Ages you'd meet" value={rangeLabel(rangeFromText(valueOf(k, 'age_range_sought')))}
+                   onPress={() => router.push('/edit/age_range_sought')} />
               <Row title="Height" value={valueOf(k, 'height_cm') ?? 'Not set'}
                    onPress={() => router.push('/edit/height_cm')} />
               <Row title="Diet"
@@ -224,6 +267,10 @@ export default function ProfileScreen() {
                onPress={() => router.push('/you')} />
           <Row title="What you're looking for" subtitle="Your filters, and what each one costs"
                onPress={() => router.push('/preferences')} />
+          <Row title="How you appear" subtitle="Your rules in words, and what others see"
+               onPress={() => router.push('/appearance')} />
+          <Row title="Things to talk about" subtitle="What your agent can say when it meets someone's"
+               onPress={() => router.push('/stories')} />
           <Row title="Settings" onPress={() => router.push('/settings')} last />
         </Card>
 

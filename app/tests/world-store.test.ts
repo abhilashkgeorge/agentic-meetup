@@ -66,10 +66,24 @@ describe('eventTransitions', () => {
   it('turns a live event into the one motion it means', () => {
     expect(eventTransitions({ type: 'round.met', roundId: 'r', rendezvousId: 'z', agent: 'a', practice: false }))
       .toEqual([{ op: 'meet', ref: 'a' }]);
-    expect(eventTransitions({ type: 'round.decided', roundId: 'r', rendezvousId: 'z', agent: 'a', agreement: 'unsure' }))
-      .toEqual([{ op: 'verdict', ref: 'a', words: 'unsure' }]);
+    expect(eventTransitions({ type: 'round.decided', roundId: 'r', rendezvousId: 'z', agent: 'a' }))
+      .toEqual([{ op: 'parted', ref: 'a' }]);
     expect(eventTransitions({ type: 'match.introduced', rendezvousId: 'z', agent: 'a' }))
       .toEqual([{ op: 'introduced', ref: 'a' }]);
+  });
+
+  /**
+   * "They met" is the whole of it. The event used to carry how the agents got on and
+   * the square drew it as a tick or a cross; now there is nothing to carry, and even
+   * a server old enough to send it has it dropped here rather than drawn.
+   *
+   * Negative control: pass `words: ev.agreement` through again -> this fails.
+   */
+  it('turns "they met" into the same motion for every pair, whatever else arrives with it', () => {
+    const old = { type: 'round.decided', roundId: 'r', rendezvousId: 'z', agent: 'a', agreement: 'did_not_click' };
+    const t = eventTransitions(old as Parameters<typeof eventTransitions>[0]);
+    expect(t).toEqual([{ op: 'parted', ref: 'a' }]);
+    expect(JSON.stringify(t)).not.toMatch(/got_on|unsure|did_not_click|could_not_tell|words/);
   });
 
   it('carries "practice" so a ghost the square has to make is drawn as one', () => {
@@ -98,7 +112,7 @@ describe('eventTransitions', () => {
 
   it('records what the roster will say, so the next poll does not replay the motion', () => {
     expect(stateAfter({ op: 'meet', ref: 'a' })).toBe('talking');
-    expect(stateAfter({ op: 'verdict', ref: 'a', words: 'got_on' })).toBe('briefed');
+    expect(stateAfter({ op: 'parted', ref: 'a' })).toBe('briefed');
     expect(planTransitions(new Map([['a', stateAfter({ op: 'meet', ref: 'a' })]]), [
       { ref: 'a', kind: 'met', practice: false, seed: 1, state: 'talking', look: STARTER },
     ])).toEqual([]);

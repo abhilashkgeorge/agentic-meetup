@@ -17,13 +17,17 @@ export default function BuilderScreen() {
   const load = useLook((s) => s.load);
   useEffect(() => { if (token) void load(token); }, [token, load]);
 
+  // NOT A SCROLLING PAGE. It was, and the builder is shorter than a phone, so the
+  // bottom third of the screen was empty grey while the character stood in a letterbox
+  // at the top. Now the stage takes whatever height is left over and the character
+  // gets all of it; the only things that scroll are the two rails.
   return (
-    <Screen scroll>
+    <Screen scroll={false}>
       <Header title="Your character" onBack={() => router.back()} />
       <Text style={[type.body, { color: p.textSecondary }]}>
         This is you in the square, and what people see on your card until you have both said yes.
       </Text>
-      <CharacterBuilder preview={<Preview />} onSaved={() => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)/profile'); }} />
+      <CharacterBuilder fill preview={<Preview />} onSaved={() => { if (router.canGoBack()) router.back(); else router.replace("/(tabs)/profile"); }} />
     </Screen>
   );
 }

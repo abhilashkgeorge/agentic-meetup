@@ -45,11 +45,12 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Used once to fill in your city. Only the city is kept \u2014 never your exact position, and never in the background.",
+          "locationWhenInUsePermission": "Used once to fill in your city. Only the city is kept — never your exact position, and never in the background.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

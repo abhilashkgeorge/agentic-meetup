@@ -53,7 +53,9 @@ export default function ConversationsScreen() {
             <Text style={[type.label, { color: p.textSecondary }]}>WAITING ON YOU</Text>
             <Row
               title={waiting === 1 ? 'One person to look at' : `${waiting} people to look at`}
-              subtitle="Your agent met them and thinks it is worth it"
+              // NOT "thinks it is worth it". No agent judges anybody (server
+              // matching/brief.ts); it met them, and the card is theirs to read.
+              subtitle={waiting === 1 ? 'Your agent met them. Their card is waiting.' : 'Your agent met them. Their cards are waiting.'}
               onPress={() => router.push('/(tabs)/matches')}
               last
             />

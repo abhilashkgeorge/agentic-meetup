@@ -2,9 +2,11 @@
  * What the town hears while a round runs, and when.
  *
  * The order is the choreography: queued, then one `met` per person the agent will
- * visit (all before a single model call, because the pairs are claimed by then),
- * then `talking` and `decided` for each in turn, then `done`. Every `agent` is a
- * per-viewer ref, never an id; nothing in any frame is a name.
+ * visit (all before anything else, because the pairs are claimed by then), then
+ * `talking` and `decided` for each in turn, then `done`. Every `agent` is a
+ * per-viewer ref, never an id; nothing in any frame is a name -- and, since
+ * 2026-09-23, nothing in any frame is a verdict: `decided` used to carry how the
+ * agents got on, drawn as a tick or a cross over two heads.
  *
  * THE DURABILITY ASSERTION is the reason the write moved inside the loop: when the
  * `decided` frame for the first pair arrives, that pair's row already says so in the
@@ -21,6 +23,11 @@ const stub = vi.hoisted(() => ({ calls: 0 }));
 
 vi.mock('../src/llm/index.js', () => ({
   modelFor: () => 'google:gemini-3.5-flash-lite',
+  // Off, as it is by default. Without it every round's jevFileScore threw vitest's
+  // "no decideModel export" and the orchestrator's catch swallowed it, so a zero call
+  // count here passed partly through an error. brief-code-only.test.ts guards the
+  // real default.
+  decideModel: () => null,
   llm: {
     complete: async (req: { outputSchema?: unknown; outputSchemaName?: string }) => {
       stub.calls++;
@@ -113,11 +120,16 @@ describe('a round, as the town hears it', () => {
     }
     expect(JSON.stringify(frames)).not.toContain(them.userId);
     expect(JSON.stringify(frames)).not.toContain('"name"');
-    expect(frames.find((f) => f.type === 'round.decided')?.agreement).toBe('got_on');   // the stub always says yes
+    // "They met", and not a word about how it went -- whatever a model would have said.
+    const decided = frames.find((f) => f.type === 'round.decided');
+    expect(decided).not.toHaveProperty('agreement');
+    expect(JSON.stringify(frames)).not.toMatch(/got_on|unsure|did_not_click|could_not_tell/);
     expect(frames.at(-1)).toMatchObject({ type: 'round.done', roundId: round.id, met: 1, error: null });
 
     // Durable before it was announced.
     expect(await Promise.all(rowAtDecided)).toEqual(['decided']);
-    expect(stub.calls).toBeGreaterThan(0);
+    // And the whole choreography cost nothing: no conversation, no file score, no
+    // model-written brief.
+    expect(stub.calls).toBe(0);
   });
 });

@@ -11,9 +11,15 @@
  * scale zero when that person does not wear it. Practice profiles get a translucent
  * twin of every part. Sixty-four slots, no textures, no shadows, Lambert lighting;
  * about forty draw calls at worst against sixteen measured at 116 fps, and the bench
- * (features/dev/gl-bench.tsx) is what says whether that holds. The city under them
- * (./map-mesh.ts) is thirteen more draw calls and thirty-two thousand triangles,
- * built once and never touched per frame except the water's opacity.
+ * (features/dev/gl-bench.tsx) is what says whether that holds. The modernised city
+ * under them (./map-mesh.ts) is seventeen meshes and 42–48 K triangles, built once
+ * and never touched per frame except the water's opacity.
+ *
+ * On top of that, the nearest RIGS people are drawn instead as real rigged characters
+ * with a walk cycle (./character-mesh.ts) -- one draw call and about five thousand
+ * triangles each, because a person with bones cannot be instanced. Those people get
+ * their capsule hidden for the frame. Everything that says who somebody IS -- the disc
+ * at their feet, the speech bubble, the ring -- keeps running for all sixty-four.
  *
  * The camera follows your agent, softly, so a walk to Whitefield is a walk you watch,
  * until a finger takes over: drag to pan, pinch to zoom, tap a tile to fly there, and
@@ -32,14 +38,19 @@ import * as THREE from 'three';
 import { CENTRAL_AREA, HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
   CITY_BAND, FLY_SECS, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget, driveVector,
-  elevationFor, eyeOffset, flyAt, followPose, pan, pinch, tileZoom, turnToward, verticalOf,
+  rigsFor,
+  elevationFor, eyeOffset, flyAt, followPose, orthographicBounds, pan, pinch, tileZoom, turnToward, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
 } from './camera';
-import { makeGarden, gardenSpots } from './garden';
+import { loadCrowd, type Crowd, type CrowdAgent } from './character-mesh';
+import { hairOf, skirtOf, topOf } from '../look/silhouette';
 import { buildGarden, skyFollow } from './garden-mesh';
 import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
+import { Viewport, visible } from './visible';
+import { CUBBON_PARK, venueGarden, type Venue } from './venue';
+import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
 
 export interface WorldColors {
   bg: string;
@@ -97,18 +108,36 @@ export interface WorldCanvasProps {
   stick?: MutableRefObject<{ x: number; y: number }>;
   /** Told when walking starts and stops, so the HUD can show the stick. */
   onWalking?: (on: boolean) => void;
+  /** Controlled realm state, so a GL remount returns to the venue it was showing. */
+  inVenue?: boolean;
+  /** A real date-place marker was tapped on the overview map. */
+  onTapVenue?: (venueId: string) => void;
   /**
    * The other world. The map is the city -- who is where, and where to send your
-   * agent; walking opens a garden instead, and this is the town that lives in it.
+   * agent; entering a real venue opens its own local world.
    * Given both, the frame loop steps whichever one you are actually in.
    */
-  gardenSim?: WorldSim;
-  /** Which neighbourhood's garden. One seed, one garden, every time. */
-  gardenOf?: string;
+  venueSim?: WorldSim;
+  /** The real place represented by the local walkable world. */
+  venue?: Venue;
 }
 
-/** How fast your own agent walks when the stick is all the way over, units a second. */
-const WALK_SPEED = 0.62;
+/**
+ * How fast your own agent walks with the stick all the way over. A shade brisker than
+ * the strollers around you, because you are the one going somewhere -- but still a
+ * walk: at 0.62 it was sixteen kilometres an hour.
+ */
+/**
+ * How fast the stick moves you, in a 26-unit garden.
+ *
+ * SCALED BY THE PLACE. Cubbon Park is 170 units corner to corner, and at this speed
+ * that is eleven minutes of holding a thumb down -- which is about what the real walk
+ * takes and is nobody's idea of a good time. `walkSpeedFor` gives the real park a
+ * brisk walk instead, so crossing it is about five minutes and the landmarks are one
+ * to two minutes apart. The seeded gardens are unchanged.
+ */
+const WALK_SPEED = 0.26;
+const walkSpeedFor = (radius: number) => WALK_SPEED * Math.min(2.2, Math.max(1, radius / 26));
 /** How quickly the camera swings round behind them: 1 - e^(-k·dt) a frame. */
 const TURN = 5;
 /** Radians of camera swing per pixel dragged sideways while walking. */
@@ -276,11 +305,31 @@ interface PartSet {
   all: Part[];
 }
 
+/**
+ * A sphere big enough to hold any world we draw, pinned onto every instanced mesh.
+ *
+ * THE BUG THIS EXISTS FOR. three computes an InstancedMesh's bounding sphere lazily,
+ * ONCE, from instances 0..count-1, and never invalidates it -- not when the matrices
+ * change, not when `count` does. `raycast()` then rejects any ray that misses it. That
+ * was harmless while count was always 64 and the slots spanned the whole city, but
+ * `setCounts` now makes count follow what is on screen, so the first touch anywhere
+ * would freeze the sphere around whatever was visible at that instant and every later
+ * tap outside it would miss. Worse, a first touch while `solids === 0` -- routine in a
+ * town where forty of forty-one people are practice ghosts -- freezes an EMPTY sphere
+ * with radius -1, and those meshes are untappable for the life of the canvas.
+ *
+ * Setting it up front stops three ever computing one. Nothing is lost: these meshes
+ * have `frustumCulled = false`, so the sphere is only ever used to decide whether a
+ * ray is worth testing, and a ray that gets tested still honours `count`.
+ */
+const worldSphere = () => new THREE.Sphere(new THREE.Vector3(0, 0, 0), 500);
+
 function buildParts(g: Geometry, material: THREE.Material): PartSet {
   const mk = (geo: THREE.BufferGeometry, per = 1): Part => {
     const mesh = new THREE.InstancedMesh(geo, material, SLOTS * per);
     mesh.count = SLOTS * per;
     mesh.frustumCulled = false;
+    mesh.boundingSphere = worldSphere();
     return { mesh, per };
   };
   const set = {
@@ -291,15 +340,17 @@ function buildParts(g: Geometry, material: THREE.Material): PartSet {
   return { ...set, all: Object.values(set) };
 }
 
-/** Eye spacing, size and tilt per face preset. Same order as shared/look.ts LOOK_LABELS.face. */
-const FACE = [
-  { gap: 0.14, eye: 1, dy: 0.02, tilt: 0 },        // Calm
-  { gap: 0.16, eye: 1.15, dy: 0.03, tilt: -0.15 }, // Bright
-  { gap: 0.14, eye: 0.8, dy: 0.0, tilt: 0.1 },     // Sleepy
-  { gap: 0.17, eye: 1.3, dy: 0.03, tilt: -0.05 },  // Wide-eyed
-  { gap: 0.13, eye: 1, dy: 0.02, tilt: 0.3 },      // Wry (one brow up)
-  { gap: 0.14, eye: 0.9, dy: 0.01, tilt: 0.2 },    // Serious
-] as const;
+/**
+ * Eye spacing, size and tilt. ONE FACE, not six.
+ *
+ * There used to be a face preset in the catalog -- Calm, Bright, Sleepy and three more
+ * at thirty points each -- and this table had a row per preset. It moved the eyes on
+ * the capsule and on the flat avatar and did NOTHING on the rigged body, which is what
+ * the town actually draws: these heads carry no morph targets and their eyes are a
+ * twenty-four-triangle mesh baked in. So it was sold and it changed nothing, and it is
+ * gone. This is the old "Calm" row, which everybody had by default.
+ */
+const FACE = { gap: 0.14, eye: 1, dy: 0.02, tilt: 0 } as const;
 const BODY_SCALE = [[0.85, 1, 0.85], [1, 1, 1], [1.2, 1, 1.15]] as const;
 
 /** Colour tables, built once so the frame loop allocates nothing. */
@@ -350,53 +401,49 @@ function poseAgent(set: PartSet, i: number, a: Posed, bob: number, dummy: THREE.
 
   // hair
   const hair = col.hair[look.hairColor] ?? col.hair[0]!;
-  const h = look.hair;
-  if (h === 7) hide(set.cap);
+  const h = hairOf(look);
+  if (h === 'bald') hide(set.cap);
   else {
-    const sy = h === 1 ? 0.45 : h === 2 ? 1.25 : 0.95;
-    const sxz = h === 2 ? 1.2 : 1;
+    const sy = h === 'buzz' ? 0.45 : h === 'curly' ? 1.25 : 0.95;
+    const sxz = h === 'curly' ? 1.2 : 1;
     place(set.cap, 0, a.x, headY + 0.02, a.z, sxz, sy, sxz);
     tint(set.cap, 0, hair);
   }
-  if (h === 3 || h === 5) {
-    const narrow = h === 5 ? 0.5 : 1;
+  if (h === 'long' || h === 'ponytail') {
+    const narrow = h === 'ponytail' ? 0.5 : 1;
     place(set.back, 0, a.x - fx * 0.12, headY - 0.2, a.z - fz * 0.12, narrow, 1, narrow);
     tint(set.back, 0, hair);
   } else hide(set.back);
-  if (h === 4) { place(set.knob, 0, a.x - fx * 0.08, headY + 0.26, a.z - fz * 0.08, 1.1, 1.1, 1.1); tint(set.knob, 0, hair); }
-  else if (h === 5) { place(set.knob, 0, a.x - fx * 0.24, headY - 0.1, a.z - fz * 0.24); tint(set.knob, 0, hair); }
-  else if (h === 6) { place(set.knob, 0, a.x, headY + 0.24, a.z, 0.35, 2.2, 1.1); tint(set.knob, 0, hair); }
+  if (h === 'bun') { place(set.knob, 0, a.x - fx * 0.08, headY + 0.26, a.z - fz * 0.08, 1.1, 1.1, 1.1); tint(set.knob, 0, hair); }
+  else if (h === 'ponytail') { place(set.knob, 0, a.x - fx * 0.24, headY - 0.1, a.z - fz * 0.24); tint(set.knob, 0, hair); }
+  else if (h === 'mohawk') { place(set.knob, 0, a.x, headY + 0.24, a.z, 0.35, 2.2, 1.1); tint(set.knob, 0, hair); }
   else hide(set.knob);
 
   // face
-  const face = FACE[look.face] ?? FACE[0];
   for (let k = 0; k < 2; k++) {
     const side = k === 0 ? -1 : 1;
-    const ex = a.x + fx * 0.19 + rx * face.gap * 0.5 * side;
-    const ez = a.z + fz * 0.19 + rz * face.gap * 0.5 * side;
-    place(set.eyes, k, ex, headY + face.dy, ez, face.eye, face.eye, face.eye);
+    const ex = a.x + fx * 0.19 + rx * FACE.gap * 0.5 * side;
+    const ez = a.z + fz * 0.19 + rz * FACE.gap * 0.5 * side;
+    place(set.eyes, k, ex, headY + FACE.dy, ez, FACE.eye, FACE.eye, FACE.eye);
     tint(set.eyes, k, col.eye);
-    const tilt = k === 0 ? face.tilt : (look.face === 4 ? 0 : -face.tilt);
-    place(set.brows, k, ex, headY + face.dy + 0.07, ez, 1, 1, 1, 0, f, tilt);
+    place(set.brows, k, ex, headY + FACE.dy + 0.07, ez, 1, 1, 1, 0, f, k === 0 ? FACE.tilt : -FACE.tilt);
     tint(set.brows, k, col.hairDim[look.hairColor] ?? col.hairDim[0]!);
   }
 
-  // outfit
-  const o = look.outfit;
+  // what they are wearing: the neck comes off the top they picked, the skirt off
+  // their legs, which since the wardrobe was split are two separate answers.
+  const o = topOf(look);
   const outfitDim = col.outfitDim[look.outfitColor] ?? col.outfitDim[0]!;
-  if (o === 1 || o === 2 || o === 5 || o === 6) {
+  if (o === 'collar') {
     place(set.collar, 0, a.x, 0.9 + bob, a.z, 1, 1, 1, Math.PI / 2, f, 0);
     tint(set.collar, 0, outfitDim);
   } else hide(set.collar, 0);
-  if (o === 2 || o === 3 || o === 4) {
-    const short = o === 2 ? 0.6 : 1;
-    place(set.skirt, 0, a.x, 0.22 + bob, a.z, bx, short, bz);
+  if (skirtOf(look)) {
+    place(set.skirt, 0, a.x, 0.22 + bob, a.z, bx, 1, bz);
     tint(set.skirt, 0, col.outfit[look.outfitColor] ?? col.outfit[0]!);
   } else hide(set.skirt);
-  if (o === 4) { place(set.trim, 0, a.x + fx * 0.29, 0.72 + bob, a.z + fz * 0.29, 1, 1.6, 1, 0, f, 0.7); tint(set.trim, 0, outfitDim); }
-  else if (o === 5) { place(set.trim, 0, a.x + fx * 0.29 + rx * 0.08, 0.7 + bob, a.z + fz * 0.29 + rz * 0.08, 1, 1, 1, 0, f, 0); tint(set.trim, 0, outfitDim); }
-  else if (o === 6) { place(set.trim, 0, a.x + fx * 0.29, 0.68 + bob, a.z + fz * 0.29, 0.5, 1, 1, 0, f, 0); tint(set.trim, 0, col.eye); }
-  else if (o === 7) { place(set.trim, 0, a.x + fx * 0.29, 0.6 + bob, a.z + fz * 0.29, 1, 1.6, 1, 0, f, Math.PI / 2); tint(set.trim, 0, col.white); }
+  if (o === 'straps') { place(set.trim, 0, a.x + fx * 0.29, 0.72 + bob, a.z + fz * 0.29, 1, 1.6, 1, 0, f, 0.7); tint(set.trim, 0, outfitDim); }
+  else if (o === 'open') { place(set.trim, 0, a.x + fx * 0.29, 0.68 + bob, a.z + fz * 0.29, 0.5, 1, 1, 0, f, 0); tint(set.trim, 0, col.eye); }
   else hide(set.trim);
 
   // extra
@@ -404,7 +451,7 @@ function poseAgent(set: PartSet, i: number, a: Posed, bob: number, dummy: THREE.
   if (x === 1) {
     for (let k = 0; k < 2; k++) {
       const side = k === 0 ? -1 : 1;
-      place(set.glasses, k, a.x + fx * 0.21 + rx * face.gap * 0.5 * side, headY + face.dy, a.z + fz * 0.21 + rz * face.gap * 0.5 * side, 1, 1, 1, 0, f, 0);
+      place(set.glasses, k, a.x + fx * 0.21 + rx * FACE.gap * 0.5 * side, headY + FACE.dy, a.z + fz * 0.21 + rz * FACE.gap * 0.5 * side, 1, 1, 1, 0, f, 0);
       tint(set.glasses, k, col.prop);
     }
   } else { hide(set.glasses, 0); hide(set.glasses, 1); }
@@ -418,6 +465,36 @@ function poseAgent(set: PartSet, i: number, a: Posed, bob: number, dummy: THREE.
   } else { hide(set.studs, 0); hide(set.studs, 1); }
   if (x === 4) { place(set.collar, 1, a.x, 0.88 + bob, a.z, 1.15, 1.15, 1.3, Math.PI / 2, f, 0); tint(set.collar, 1, col.outfit[(look.outfitColor + 6) % 12]!); }
   else hide(set.collar, 1);
+}
+
+/** The instanced meshes a crowd is drawn from. */
+interface Meshes {
+  solid: PartSet; ghost: PartSet;
+  discs: THREE.InstancedMesh; dots: THREE.InstancedMesh;
+  bars: THREE.InstancedMesh; rings: THREE.InstancedMesh;
+}
+
+/**
+ * Tell every instanced mesh how many slots are actually in use this frame.
+ *
+ * WITHOUT THIS, THE WHOLE THING IS POINTLESS. An InstancedMesh draws `count`
+ * instances whatever their matrices say, so hiding somebody by scaling them to zero
+ * still costs a full pass over their vertices. The town drew sixty-four people every
+ * frame no matter how many there were: benchmarked at forty-eight people and at
+ * sixty-four, the numbers came out identical to the digit.
+ */
+function setCounts(m: Meshes, used: number, solids: number) {
+  // An instanced mesh draws slots 0..count-1, so the smaller of the two crowds is
+  // packed at the front and only has to reach as far as its own last member. The
+  // other one still has to span everybody, but that is one set spanning the crowd
+  // instead of two. In the founder's town forty of forty-one people are practice
+  // profiles, so this is very nearly a halving.
+  for (const p of m.solid.all) p.mesh.count = solids * p.per;
+  for (const p of m.ghost.all) p.mesh.count = used * p.per;
+  m.discs.count = used;
+  m.rings.count = used;
+  m.dots.count = used * DOTS_PER;
+  m.bars.count = used * BARS_PER;
 }
 
 function hideAgent(set: PartSet, i: number, hidden: THREE.Matrix4) {
@@ -434,7 +511,7 @@ function flag(parts: PartSet) {
 // ── the town ─────────────────────────────────────────────────────────────────
 
 export function WorldCanvas(props: WorldCanvasProps) {
-  const { cap30 = false, active = true, sim, control, frame = DEFAULT_FRAME } = props;
+  const { cap30 = false, active = true, sim, venueSim, control, frame = DEFAULT_FRAME } = props;
   const cam = useRef<CamState | null>(null);
   if (!cam.current) {
     const [hx, hz] = sim.homeOf('you');
@@ -502,14 +579,23 @@ export function WorldCanvas(props: WorldCanvasProps) {
         c.walking = on;
         c.fly = null;
         if (on) {
-          const me = sim.get('you');
+          const me = (venueSim ?? sim).get('you');
           c.yaw = me?.facing ?? 0; c.back = WALK_BACK;
           c.at = me ? [me.x, me.z] : null;
           c.follow = false;
         }
-        else { c.follow = true; sim.drive('you', 0, 0); }
+        else {
+          c.follow = true; c.at = null;
+          sim.drive('you', 0, 0);
+          venueSim?.drive('you', 0, 0);
+        }
       },
       flyTo: (id) => { c.walking = false; sim.drive('you', 0, 0); flyToArea(c, id, false); },
+      flyToPoint: (x, z, zoom = 42) => {
+        c.walking = false;
+        sim.drive('you', 0, 0);
+        startFly(c, { tx: x, tz: z, zoom }, false);
+      },
       flyHome: () => {
         c.walking = false; sim.drive('you', 0, 0);
         const you = sim.get('you');
@@ -519,14 +605,30 @@ export function WorldCanvas(props: WorldCanvasProps) {
       flyCity: () => { c.walking = false; sim.drive('you', 0, 0); startFly(c, c.city, false); },
     };
     return () => { control.current = null; };
-  }, [control, c, sim]);
+  }, [control, c, sim, venueSim]);
+
+  // App backgrounding remounts the GL canvas. The screen owns the realm, so restore
+  // it instead of silently returning to the city with a venue HUD over it.
+  useEffect(() => {
+    if (props.inVenue === undefined || c.walking === props.inVenue) return;
+    c.walking = props.inVenue;
+    c.fly = null;
+    if (props.inVenue) {
+      const me = (venueSim ?? sim).get('you');
+      c.yaw = me?.facing ?? 0;
+      c.back = WALK_BACK;
+      c.at = me ? [me.x, me.z] : null;
+      c.follow = false;
+    } else {
+      c.at = null;
+      c.follow = true;
+      venueSim?.drive('you', 0, 0);
+    }
+  }, [props.inVenue, c, sim, venueSim]);
 
   return (
     <View style={{ flex: 1 }} onLayout={onLayout} {...responder.panHandlers}>
       <Canvas
-        // Perspective, but a long lens: see MAP_FOV. The frame loop owns everything
-        // about this camera from the first frame, so the prop only has to be harmless.
-        camera={{ fov: MAP_FOV, position: eyeOffset(elevationFor(ZOOM_START, 7), MAP_DIST), near: 1, far: 4000 }}
         // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
         // else, and the native Canvas type says so by leaving it out.
         gl={{ antialias: false }}
@@ -549,6 +651,43 @@ export function WorldCanvas(props: WorldCanvasProps) {
  * shortest building is twice their height and a street is three of them across.
  */
 const PERSON = 0.16;
+/**
+ * How many people get a real body with legs, rather than a capsule -- and it is not
+ * the same number in the two worlds.
+ *
+ * MEASURED, not chosen. Pixel 6a, `gl-bench.tsx`, one run each, about two minutes
+ * apiece. The city is 64 people seen from above; the park is 24 people over your
+ * shoulder.
+ *
+ *     world  people  rigs   fps   verdict    draws  triangles
+ *     city     64     12    58.4  PASS         49     79,092
+ *     city     64     24    58.6  PASS         56    139,380
+ *     city     64     40    49.4  MARGINAL     54    119,178
+ *     park     24     12    59.8  PASS         63    175,578
+ *     park     24     24    49.4  MARGINAL     64    184,530
+ *
+ * The city takes 24 and still holds 60, so that is what it gets: at this zoom about
+ * that many people are on screen, and the founder looked at both and said the little
+ * walking figures read better than capsules even at thirteen pixels tall (2026-09-23).
+ * The park cannot afford 24, because in the park far more of the crowd is genuinely
+ * in front of you and each one is 331 pixels tall rather than 13.
+ *
+ * One trap already paid for: a SPARE rig used to cost as much as a used one, because
+ * three walks every bone in the scene each frame whether it is visible or not. That is
+ * why the park at 24 rigs read 30.1 fps before unused rigs were detached from the
+ * scene rather than merely hidden, and 49.4 after.
+ */
+const RIGS_CITY = 24;
+const RIGS_PARK = 12;
+const RIGS = Math.max(RIGS_CITY, RIGS_PARK);
+/**
+ * How big a bubble around somebody counts as "on screen".
+ *
+ * Bigger than a person on purpose: it has to cover the disc at their feet and the
+ * speech bubble over their head, and the slack is what stops somebody popping into
+ * existence at the edge of the screen as they walk in.
+ */
+const SEEN_R = 0.4;
 
 /**
  * How far the camera stands from what it looks at. Orthographic, so the distance
@@ -561,52 +700,105 @@ const PERSON = 0.16;
 const EYE = 220;
 
 /**
- * ONE CAMERA, TWO LENSES, and no swapping.
- *
- * The map wants an orthographic camera and walking wants a perspective one, and the
- * obvious answer -- keep both and tell r3f which is current -- does not hold: the
- * Canvas declares its camera as a prop, so r3f reconfigures it on the very next
- * render and quietly puts the map's camera back. The walk mode then ran with its
- * camera positioned and never drawn; the chip said "Stop walking" over a map
- * (on the phone, 2026-09-22).
- *
- * So there is one perspective camera throughout. For the map it is a long lens six
- * degrees wide, sixteen hundred units out, which is orthographic to within about two
- * per cent across the whole city -- a few pixels on a label, and every screen/ground
- * conversion in ./camera.ts stays true. For walking it becomes a normal lens a step
- * behind the shoulder. Near and far move with the lens: one pair covering both would
- * span five orders of magnitude and z-fight.
+ * Two worlds, two real lenses. The Canvas declares no camera prop, so r3f has nothing
+ * to re-apply over these on a React render; Town owns both and swaps the active one
+ * only at a realm boundary.
  */
-const MAP_FOV = 6;
-const MAP_DIST = 1600;
-/** The camera zoom that makes one world unit cover `zoom` pixels, at this lens. */
-const zoomFor = (zoom: number, fovDeg: number, dist: number, heightPx: number): number =>
-  (zoom * 2 * dist * Math.tan((fovDeg * Math.PI) / 360)) / Math.max(1, heightPx);
 /** How fast the camera catches up with your agent: 1 - e^(-k·dt) per frame. */
 const FOLLOW = 3;
 
-function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, onWalking, stick, gardenSim, gardenOf, cam }: WorldCanvasProps & { cam: CamState }) {
-  const { gl, scene, camera, invalidate, size } = useThree();
+function Town({
+  sim, colors, cap30, onStats, onTapAgent, onTapVenue, onFirstFrame, onBand, onWalking,
+  stick, venueSim, venue = CUBBON_PARK, cam,
+}: WorldCanvasProps & { cam: CamState }) {
+  const { gl, scene, invalidate, size, set } = useThree();
+  const mapCamera = useMemo(() => new THREE.OrthographicCamera(), []);
+  const walkCamera = useMemo(() => new THREE.PerspectiveCamera(WALK_FOV, 1, 0.08, 90), []);
 
   const mode = useRef<'map' | 'walk' | null>(null);
-  /** The last projection this camera was given, so it is rebuilt only when it changes. */
+  /** The last projection each camera was given, so it is rebuilt only when needed. */
   const lens = useRef('');
 
   useEffect(() => {
     scene.background = new THREE.Color(colors.bg);
   }, [scene, colors.bg]);
+  useEffect(() => {
+    gl.outputColorSpace = THREE.SRGBColorSpace;
+    gl.toneMapping = THREE.ACESFilmicToneMapping;
+    gl.toneMappingExposure = colors.night ? 0.92 : 1.05;
+  }, [gl, colors.night]);
 
   // The city, built once per palette; the theme toggle rebuilds it (lamps, windows).
   const map = useMemo(() => buildMap(MAP, colors), [colors]);
   useEffect(() => () => map.dispose(), [map]);
 
-  // The garden, built once per neighbourhood and palette. Only one of the two worlds
-  // is ever visible, so the other costs nothing but the memory it is holding.
+  // The real venue's local layout. Its coordinates never leak onto the city map.
+  const layout = useMemo(() => venueGarden(venue), [venue]);
   const garden = useMemo(
-    () => buildGarden(makeGarden(gardenOf ?? 'garden'), { night: colors.night, accent: colors.accent }),
-    [gardenOf, colors.night, colors.accent],
+    () => buildGarden(layout, { night: colors.night, accent: colors.accent }, { assetFurniture: true }),
+    [layout, colors.night, colors.accent],
   );
   useEffect(() => () => garden.dispose(), [garden]);
+
+  // Detailed CC0 furniture loads after the world is already visible. If the bundle
+  // ever fails, terrain and people remain usable; only the authored props are absent.
+  const furnitureHolder = useMemo(() => new THREE.Group(), []);
+  const furniture = useRef<BuiltVenueFurniture | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let made: BuiltVenueFurniture | null = null;
+    loadVenueFurniture(layout).then((built) => {
+      if (!alive) { built.dispose(); return; }
+      made = built;
+      furniture.current = built;
+      furnitureHolder.add(built.group);
+    }).catch((e: unknown) => {
+      console.warn('[world] no venue furniture, using the procedural park:', e);
+    });
+    return () => {
+      alive = false;
+      furniture.current = null;
+      furnitureHolder.clear();
+      made?.dispose();
+    };
+  }, [layout, furnitureHolder]);
+
+  /**
+   * The rigged people, read off disk after the canvas is already up.
+   *
+   * Until it arrives -- and for ever, if it fails -- everybody is a capsule, which is
+   * the same renderer that shipped before this and is a real fallback rather than a
+   * blank screen. The town must never depend on a 3.5 MB file having loaded.
+   */
+  const crowdHolder = useMemo(() => new THREE.Group(), []);
+  const crowd = useRef<Crowd | null>(null);
+  const crowdList = useMemo<CrowdAgent[]>(() => [], []);
+  /** What the camera can see, and the people it can see, both reused every frame. */
+  const view = useMemo(() => new Viewport(), []);
+  const shown = useMemo<SimAgent[]>(() => [], []);
+  /**
+   * The point on the ground the screen is centred on, which is NOT where the camera
+   * is. On the map the camera sits 1,600 units away behind a 6-degree lens, so sorting
+   * people by distance to it ranks them by how far up the screen they are rather than
+   * how central, and the dozen who got a real body were scattered off the edges. This
+   * is what the camera is LOOKING AT, which is what the person holding the phone means.
+   */
+  const focus = useMemo(() => new THREE.Vector3(), []);
+  useEffect(() => {
+    let alive = true;
+    let made: Crowd | null = null;
+    loadCrowd(RIGS)
+      .then((c) => {
+        if (!alive) { c.dispose(); return; }
+        made = c;
+        crowd.current = c;
+        crowdHolder.add(c.group);
+      })
+      .catch((e: unknown) => {
+        console.warn('[world] no rigged people, falling back to capsules:', e);
+      });
+    return () => { alive = false; crowd.current = null; crowdHolder.clear(); made?.dispose(); };
+  }, [crowdHolder]);
   // Null, not false: the first frame has to apply the choice, not skip it as a no-op.
   const inGarden = useRef<boolean | null>(null);
   const appliedGarden = useRef<unknown>(null);
@@ -631,6 +823,7 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       const im = new THREE.InstancedMesh(geo, solid, n);
       im.count = n;
       im.frustumCulled = false;
+      im.boundingSphere = worldSphere();   // see worldSphere: count now varies
       return im;
     };
     return {
@@ -675,20 +868,23 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
     elapsed.current += clamped;
     const t = elapsed.current;
 
-    // WHICH WORLD. Walking puts you in the garden with the same people; the map is
-    // the city. Only the one you are in is stepped, drawn, or asked about collision.
-    const walking = cam.walking && !!gardenSim;
-    const live = walking ? gardenSim! : sim;
+    // WHICH WORLD. Venue coordinates are local and live in their own sim; city
+    // coordinates never get copied into it.
+    const walking = cam.walking && !!venueSim;
+    const live = walking ? venueSim! : sim;
     // Set every frame, not only when it changes: two boolean writes cost nothing, and
     // a rule that only fires on a transition loses its grip the moment either world
     // is rebuilt -- a theme change or a reload left the garden drawn over the city,
     // and then the city drawn over the garden (on the phone, 2026-09-22).
     map.group.visible = !walking;
     garden.group.visible = walking;
+    furnitureHolder.visible = walking;
     if (walking !== inGarden.current || appliedGarden.current !== garden) {
       inGarden.current = walking;
       appliedGarden.current = garden;
-      scene.fog = walking ? new THREE.Fog(garden.horizon, 18, 92) : null;
+      scene.fog = walking
+        ? new THREE.Fog(garden.horizon, 18, 92)
+        : new THREE.Fog(colors.bg, EYE * 0.82, EYE * 1.42);
       scene.background = new THREE.Color(walking ? garden.horizon : colors.bg);
       onWalking?.(walking);
     }
@@ -710,7 +906,8 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       if (push > 0.08) {
         const [dx, dz] = driveVector(jx, jy, cam.yaw);
         const len = Math.hypot(dx, dz) || 1;
-        live.drive('you', (dx / len) * WALK_SPEED * push, (dz / len) * WALK_SPEED * push);
+        const pace = walkSpeedFor(walking ? layout.radius : 26);
+        live.drive('you', (dx / len) * pace * push, (dz / len) * pace * push);
       } else live.drive('you', 0, 0);
     }
 
@@ -725,9 +922,11 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       cam.pose = clampTarget({ tx: cam.pose.tx + (you.x - cam.pose.tx) * k, tz: cam.pose.tz + (you.z - cam.pose.tz) * k, zoom: cam.pose.zoom }, BOUNDS);
     }
     const want = cam.walking && you ? 'walk' : 'map';
+    const camera = want === 'walk' ? walkCamera : mapCamera;
     if (want !== mode.current) {
       const was = mode.current;
       mode.current = want;
+      set({ camera });
       onWalking?.(want === 'walk');
       // Leaving: the map picks up where the walk left off, over your agent.
       if (was !== null && want === 'map' && you) { cam.pose = { tx: you.x, tz: you.z, zoom: ZOOM_START }; cam.follow = true; }
@@ -738,21 +937,28 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       : `m:${cam.pose.zoom.toFixed(3)}:${size.width}:${size.height}`;
     if (lensNow !== lens.current) {
       lens.current = lensNow;
-      const p = camera as THREE.PerspectiveCamera;
-      p.aspect = Math.max(0.1, size.width / Math.max(1, size.height));
       // NEAR AND FAR DECIDE WHETHER THE GROUND HOLDS TOGETHER. A depth buffer spends
       // its precision near the camera, so 0.02 to 400 -- twenty thousand to one --
       // left almost none for ground thirty units away, and the roads, parks and tiles
       // lying a centimetre apart tore into each other. It looked like half a render
       // (the founder's words, 2026-09-22). The lens can only see about forty units
       // down a street anyway, so the range is the one it actually uses.
-      if (want === 'walk') { p.fov = WALK_FOV; p.zoom = 1; p.near = 0.08; p.far = 90; }
-      else {
-        p.fov = MAP_FOV;
-        p.zoom = zoomFor(cam.pose.zoom, MAP_FOV, MAP_DIST, size.height);
-        p.near = MAP_DIST * 0.4; p.far = MAP_DIST * 2.2;
+      if (want === 'walk') {
+        walkCamera.aspect = Math.max(0.1, size.width / Math.max(1, size.height));
+        walkCamera.fov = WALK_FOV; walkCamera.zoom = 1; walkCamera.near = 0.08; walkCamera.far = 90;
+        walkCamera.updateProjectionMatrix();
       }
-      p.updateProjectionMatrix();
+      else {
+        const bounds = orthographicBounds(size, cam.pose.zoom);
+        mapCamera.left = bounds.left;
+        mapCamera.right = bounds.right;
+        mapCamera.top = bounds.top;
+        mapCamera.bottom = bounds.bottom;
+        mapCamera.zoom = bounds.zoom;
+        mapCamera.near = 1;
+        mapCamera.far = EYE * 3;
+        mapCamera.updateProjectionMatrix();
+      }
     }
 
     if (want === 'walk' && you) {
@@ -774,13 +980,15 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
       const { eye, look } = followPose(ax, az, cam.yaw, back, riseFor(back), aimFor(back));
       camera.position.set(eye[0], eye[1], eye[2]);
       camera.lookAt(look[0], look[1], look[2]);
+      focus.set(look[0], 0, look[2]);
       skyFollow(garden, eye[0], 0, eye[2]);
     } else {
       // The angle follows the zoom: a map seen from above out at the city, a game
       // camera looking along the street once you are down in it.
-      const [ex, ey, ez] = eyeOffset(elevationFor(cam.pose.zoom, cam.city.zoom), MAP_DIST);
+      const [ex, ey, ez] = eyeOffset(elevationFor(cam.pose.zoom, cam.city.zoom), EYE);
       camera.position.set(cam.pose.tx + ex, ey, cam.pose.tz + ez);
       camera.lookAt(cam.pose.tx, 0, cam.pose.tz);
+      focus.set(cam.pose.tx, 0, cam.pose.tz);
       if (!cam.fly) {
         const band = bandOf(cam.pose.zoom, cam.city.zoom);
         if (band !== cam.band) { cam.band = band; onBand?.(band); }
@@ -793,29 +1001,82 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
     if (colors.night) map.water.emissiveIntensity = 0.25 + 0.2 * breath;
 
     const { solid, ghost, discs, dots, bars, rings } = meshes;
-    const agents = live.agents();
-    const n = Math.min(agents.length, SLOTS);
-    refAt.current.length = n;
+    // ONLY THE PEOPLE ON SCREEN, and only as many slots as they need.
+    //
+    // The town used to draw sixty-four people every frame whatever was happening --
+    // measured identical at forty-eight and at sixty-four, 205,044 triangles both
+    // times, of which the city itself was only 41,972. Everyone else was empty slots
+    // and people standing behind the camera. Now the frustum decides, the nearest to
+    // the middle of the screen win when there are more than there are slots, and the
+    // meshes are told how many slots that came to. A park with two hundred people in
+    // it costs whatever the fifteen in front of you cost.
+    view.update(camera);
+    const used = visible(live.agents(), view, shown, {
+      limit: SLOTS,
+      radius: SEEN_R,
+      fx: focus.x,
+      fz: focus.z,
+      keep: (a) => a.state !== 'gone',
+    });
+    // Solid people first, ghosts after, so the two sets do not each have to span the
+    // whole crowd. `sort` on an array this size is nothing next to what it saves.
+    shown.sort((a, b) => Number(a.ghost) - Number(b.ghost));
+    let solids = 0;
+    while (solids < used && !shown[solids]!.ghost) solids++;
+    refAt.current.length = used;
+    setCounts(meshes, used, solids);
 
-    for (let i = 0; i < SLOTS; i++) {
-      const a = i < n ? (agents[i] as SimAgent) : null;
-      if (!a || a.state === 'gone') {
-        hideAgent(solid, i, hidden); hideAgent(ghost, i, hidden);
-        discs.setMatrixAt(i, hidden); rings.setMatrixAt(i, hidden);
-        for (let k = 0; k < DOTS_PER; k++) dots.setMatrixAt(i * DOTS_PER + k, hidden);
-        for (let k = 0; k < BARS_PER; k++) bars.setMatrixAt(i * BARS_PER + k, hidden);
-        continue;
+    // Real bodies for the nearest handful, capsules for everybody else. Practice
+    // profiles are included and drawn see-through, exactly as their capsules were:
+    // leaving them out meant forty of the forty-one people in the founder's town kept
+    // their capsule and only his own agent ever grew legs.
+    // RIGGED BODIES EVERYWHERE, INCLUDING THE CITY.
+    //
+    // They were park-only for a while, on my reasoning that a person is thirteen
+    // pixels tall on the city map against three hundred and thirty in the park, so a
+    // skeleton there buys nothing you can see. The founder looked at both on the phone
+    // and disagreed: the little walking figures read better than capsules even at that
+    // size (2026-09-23). He is the one holding the phone, and the measurement backs
+    // him -- the city holds 58.4 fps with all twelve, which is the same 16.6 ms frame
+    // as with none of them, because both sit against the 60 fps ceiling. The bone cut
+    // is what made them cheap enough for this to be a free choice.
+    const bodies = crowd.current;
+    if (bodies) {
+      crowdList.length = 0;
+      for (const a of shown) {
+        crowdList.push({
+          ref: a.ref, x: a.x, z: a.z, facing: a.facing, look: a.look, seed: a.seed, ghost: a.ghost,
+          moving: a.state === 'walking' || a.state === 'approaching' || a.state === 'leaving',
+        });
       }
+      // Walking the park you are among them and every rig earns its keep; on the map
+      // the budget falls with the zoom, because at city scale they are pixels.
+      bodies.pose(crowdList, focus, clamped, PERSON,
+        walking ? RIGS_PARK : rigsFor(cam.pose.zoom, RIGS_CITY));
+    }
+
+    for (let i = 0; i < used; i++) {
+      const a = shown[i]!;
       refAt.current[i] = a.ref;
       const moving = a.state === 'walking' || a.state === 'approaching' || a.state === 'leaving';
       const bob = Math.sin(t * (moving ? 9 : 2) + a.seed) * (moving ? 0.06 : 0.03);
       const set = a.ghost ? ghost : solid;
       hideAgent(a.ghost ? solid : ghost, i, hidden);
-      poseAgent(set, i, a, bob, dummy, hidden, col, PERSON);
+      // The discs, bubbles and rings below still run for everybody: they say who a
+      // person is to you, and that is true whether they have legs this frame or not.
+      if (bodies?.drawn.has(a.ref)) hideAgent(set, i, hidden);
+      else poseAgent(set, i, a, bob, dummy, hidden, col, PERSON);
 
       // Who they are to you: a disc at the feet. You in the accent, people you have
       // met in the secondary grey, strangers nothing. The body no longer says it.
-      if (a.kind === 'you' || a.kind === 'met') {
+      //
+      // NOT YOUR OWN DISC WHILE YOU WALK. It exists to pick you out of sixty-four
+      // people seen from above; behind your own head it is a purple plate you appear
+      // to be standing on, and the founder asked what it was before he asked for it
+      // to go (2026-09-23). Other people keep theirs -- that is how you spot someone
+      // you have already met across the grass.
+      const wearsDisc = a.kind === 'met' || (a.kind === 'you' && !cam.walking);
+      if (wearsDisc) {
         dummy.position.set(a.x, 0.02 * PERSON, a.z);
         dummy.rotation.set(0, 0, 0);
         dummy.scale.setScalar(PERSON);
@@ -824,7 +1085,9 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
         discs.setColorAt(i, a.kind === 'you' ? col.you : col.met);
       } else discs.setMatrixAt(i, hidden);
 
-      // Bubbles. Dots while talking; a tick, a cross or a single dot for the verdict.
+      // Bubbles. Dots while two agents are together; then one still dot, the same for
+      // every pair. It used to be a tick, a cross or a coloured dot -- a verdict on a
+      // person, drawn over their head before either human had looked.
       const top = (1.55 + bob) * PERSON;
       if (a.bubble === 'dots') {
         for (let k = 0; k < DOTS_PER; k++) {
@@ -837,26 +1100,13 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
           dots.setColorAt(i * DOTS_PER + k, col.prop);
         }
         for (let k = 0; k < BARS_PER; k++) bars.setMatrixAt(i * BARS_PER + k, hidden);
-      } else if (a.bubble === 'got_on' || a.bubble === 'did_not_click') {
-        const ok = a.bubble === 'got_on';
-        const colour = ok ? col.success : col.danger;
-        // A tick is a short bar and a long bar at 45°; a cross is two equal bars.
-        for (let k = 0; k < BARS_PER; k++) {
-          dummy.position.set(a.x + (ok && k === 0 ? -0.12 * PERSON : 0), top + 0.05 * PERSON, a.z);
-          dummy.rotation.set(0, Math.PI / 4, k === 0 ? Math.PI / 4 : -Math.PI / 4);
-          dummy.scale.set((ok && k === 0 ? 0.55 : 1) * PERSON, PERSON, PERSON);
-          dummy.updateMatrix();
-          bars.setMatrixAt(i * BARS_PER + k, dummy.matrix);
-          bars.setColorAt(i * BARS_PER + k, colour);
-        }
-        for (let k = 0; k < DOTS_PER; k++) dots.setMatrixAt(i * DOTS_PER + k, hidden);
-      } else if (a.bubble === 'unsure' || a.bubble === 'could_not_tell') {
+      } else if (a.bubble === 'met') {
         dummy.position.set(a.x, top + 0.05 * PERSON, a.z);
         dummy.rotation.set(0, 0, 0);
         dummy.scale.setScalar(1.3 * PERSON);
         dummy.updateMatrix();
         dots.setMatrixAt(i * DOTS_PER, dummy.matrix);
-        dots.setColorAt(i * DOTS_PER, a.bubble === 'unsure' ? col.warning : col.grey);
+        dots.setColorAt(i * DOTS_PER, col.prop);
         for (let k = 1; k < DOTS_PER; k++) dots.setMatrixAt(i * DOTS_PER + k, hidden);
         for (let k = 0; k < BARS_PER; k++) bars.setMatrixAt(i * BARS_PER + k, hidden);
       } else {
@@ -919,6 +1169,11 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
   /** A tap on a tile, when the tiles are the unit: fly there. Close in, taps are for people. */
   const tapTile = (e: { point: { x: number; z: number }; stopPropagation(): void }) => {
     if (cam.band === 'near' || cam.fly) return;
+    if (Math.hypot(e.point.x - venue.mapAt[0], e.point.z - venue.mapAt[1]) < 0.7 && onTapVenue) {
+      e.stopPropagation();
+      onTapVenue(venue.id);
+      return;
+    }
     const hit = MAP.areas.find((a) => pointInPolygon([e.point.x, e.point.z], a.polygon));
     if (!hit) return;
     e.stopPropagation();
@@ -940,6 +1195,17 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
 
       <primitive object={map.group} onClick={tapTile} />
       <primitive object={garden.group} />
+      <primitive object={furnitureHolder} />
+      {/* Rigged bodies are tapped through the group: their capsule is hidden, so the
+          slot-indexed tap map below cannot see them. `e.object` is the body that was
+          actually hit and carries its own ref. */}
+      <primitive
+        object={crowdHolder}
+        onClick={(e: { object?: { userData?: { ref?: string | null } }; stopPropagation(): void }) => {
+          const ref = e.object?.userData?.ref;
+          if (ref && onTapAgent) { e.stopPropagation(); onTapAgent(ref); }
+        }}
+      />
 
       {/* Taps land on bodies and heads, solid or ghost; the smaller parts pass through. */}
       <primitive object={meshes.solid.body.mesh} onClick={tap} />
@@ -961,6 +1227,7 @@ function Town({ sim, colors, cap30, onStats, onTapAgent, onFirstFrame, onBand, o
 export interface CharacterCanvasProps {
   look: Look;
   colors: WorldColors;
+  /** A fixed height, or nothing at all to fill whatever box it is put in. */
   height?: number;
 }
 
@@ -968,17 +1235,44 @@ export interface CharacterCanvasProps {
  * The builder's preview: the same parts, the same pose code, one slot, turning slowly.
  * Preview equals town by construction.
  */
-export function CharacterCanvas({ look, colors, height = 260 }: CharacterCanvasProps) {
+export function CharacterCanvas({ look, colors, height }: CharacterCanvasProps) {
   return (
-    <Canvas style={{ height }} camera={{ position: [0, 1.0, 3.1], fov: 32 }} gl={{ antialias: false }} frameloop="always">
+    // `alignSelf: 'stretch'` IS THE WHOLE PREVIEW. The builder centres whatever it is
+    // given (`alignItems: 'center'`), and a View with a height but no width shrinks to
+    // its content -- and a GL canvas has no content to measure. So this was laid out
+    // zero pixels wide, expo-gl never got a surface, the frame loop never started, and
+    // the builder showed a person-shaped hole. Nothing logged, because nothing failed.
+    <Canvas
+      style={height === undefined ? { flex: 1, alignSelf: 'stretch' } : { height, alignSelf: 'stretch' }}
+      camera={{ position: [0, 1.0, 3.1], fov: 32 }}
+      gl={{ antialias: false }}
+      frameloop="always"
+    >
       <Figure look={look} colors={colors} />
     </Canvas>
   );
 }
 
 function Figure({ look, colors }: { look: Look; colors: WorldColors }) {
-  const { scene } = useThree();
+  const { scene, camera } = useThree();
   useEffect(() => { scene.background = new THREE.Color(colors.bg); }, [scene, colors.bg]);
+  /**
+   * Frame the whole person, head included.
+   *
+   * The old framing pointed at the floor, which was fine while the preview was a
+   * capsule nobody could see anyway; with a real body it cut the head off at the
+   * collar. Aiming at chest height and standing back a little puts a 1.35-unit figure
+   * inside a window with room above the tallest hair in the pack.
+   */
+  useEffect(() => {
+    // Framed for a TALL, NARROW window: the builder's rails leave the preview about
+    // a third of the screen wide, so the camera stands back and aims at the middle of
+    // a 1.33-unit person rather than at their chest. Aimed higher, their boots were
+    // cut off by the bottom edge.
+    camera.position.set(0, 0.78, 3.8);
+    camera.lookAt(0, 0.66, 0);
+    camera.updateProjectionMatrix();
+  }, [camera]);
   const g = useMemo(() => buildGeometry(), []);
   const set = useMemo(() => buildParts(g, new THREE.MeshLambertMaterial({ color: '#ffffff' })), [g]);
   useEffect(() => () => { for (const geo of Object.values(g)) geo.dispose(); }, [g]);
@@ -989,11 +1283,46 @@ function Figure({ look, colors }: { look: Look; colors: WorldColors }) {
   useEffect(() => { lookRef.current = look; }, [look]);
   const t = useRef(0);
 
+  /**
+   * The same rigged body the town draws, so what you are choosing is what you get.
+   *
+   * One rig, because this is one person. Until it loads -- and for ever if it fails --
+   * the capsule below is what shows, which is what the builder looked like before any
+   * of this and is a real preview rather than an empty box.
+   */
+  const holder = useMemo(() => new THREE.Group(), []);
+  const crowd = useRef<Crowd | null>(null);
+  const one = useMemo<CrowdAgent[]>(() => [], []);
+  const origin = useMemo(() => new THREE.Vector3(), []);
+  useEffect(() => {
+    let alive = true;
+    let made: Crowd | null = null;
+    loadCrowd(1)
+      .then((c) => {
+        if (!alive) { c.dispose(); return; }
+        made = c; crowd.current = c; holder.add(c.group);
+      })
+      .catch((e: unknown) => console.warn('[world] preview falling back to a capsule:', e));
+    return () => { alive = false; crowd.current = null; holder.clear(); made?.dispose(); };
+  }, [holder]);
+
   useFrame((_, dt) => {
-    t.current += Math.min(dt, 0.1);
-    for (let i = 1; i < SLOTS; i++) hideAgent(set, i, hidden);
-    poseAgent(set, 0, { x: 0, z: 0, facing: Math.sin(t.current * 0.5) * 0.7, look: lookRef.current },
-      Math.sin(t.current * 2) * 0.02, dummy, hidden, col);
+    const step = Math.min(dt, 0.1);
+    t.current += step;
+    const facing = Math.sin(t.current * 0.5) * 0.7;
+    const body = crowd.current;
+    let rigged = false;
+    if (body) {
+      one.length = 0;
+      one.push({ ref: 'you', x: 0, z: 0, facing, look: lookRef.current, moving: false, ghost: false, seed: 7 });
+      body.pose(one, origin, step, 1);
+      rigged = body.drawn.size > 0;
+    }
+    for (let i = rigged ? 0 : 1; i < SLOTS; i++) hideAgent(set, i, hidden);
+    if (!rigged) {
+      poseAgent(set, 0, { x: 0, z: 0, facing, look: lookRef.current },
+        Math.sin(t.current * 2) * 0.02, dummy, hidden, col);
+    }
     flag(set);
   });
 
@@ -1001,10 +1330,12 @@ function Figure({ look, colors }: { look: Look; colors: WorldColors }) {
     <>
       <hemisphereLight args={['#ffffff', '#8a94a6', 0.95]} />
       <directionalLight position={[3, 6, 4]} intensity={0.8} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
-        <circleGeometry args={[1.1, 24]} />
-        <meshLambertMaterial color={colors.ground} />
-      </mesh>
+      {/* NO FLOOR. There used to be a disc to stand on, and it was fine while the
+          preview was the width of the screen. The builder now puts a rail down each
+          side, so the view is a third as wide and the camera is nearly level with the
+          ground -- at which point a disc is not read as a disc at all, it is a grey
+          box behind somebody's shins, clipped square by the edges of the canvas. */}
+      <primitive object={holder} />
       {set.all.map((p, i) => <primitive key={i} object={p.mesh} />)}
     </>
   );

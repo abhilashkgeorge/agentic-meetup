@@ -3,11 +3,11 @@
  *
  * Reached only from ./canvas.tsx (tests/native-imports.test.ts lists both as the files
  * allowed to import three). Everything is built once from the map asset and merged
- * into THIRTEEN meshes -- one draw call each -- so the frame loop has nothing to do
- * but breathe the water:
+ * or instanced into seventeen meshes, so the frame loop has nothing to do but
+ * breathe the water:
  *
- *   plate · skirt · tiles · your tile · roads · water · parks · trees · blocks ·
- *   landmarks · lamp posts · bulbs · windows (dark theme only; count 0 in light)
+ *   plate · skirt · tiles · your tile · roads · water · parks · trunks · trees ·
+ *   building shadows · blocks · roofs · landmarks · venue marker · posts · bulbs · windows
  *
  * The look is the app's own rule from components/ui/theme.ts: one colour, and depth
  * by a soft bevel and a shadow to the bottom-right, never a differently filled box.
@@ -15,13 +15,14 @@
  * shadow grey, offset so it shows to the bottom-right; roads are the highlight white
  * drawn as ribbons; lakes and parks are faint tints. The tile top is y = 0, which is
  * where the people stand, so nothing in canvas.tsx moved when the square became a
- * city. Budget: 32 K triangles in either theme (tests/map-mesh.test.ts holds the line
- * at 60 K and thirteen draw calls), on top of the town's forty calls at worst.
+ * city. Budget: 42 K day / 48 K evening (tests/map-mesh.test.ts holds the line at
+ * 70 K and seventeen draw calls), on top of the town's people.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { TREE, type MapAreaAsset, type MapAsset } from './map';
 import type { Pt } from './sim';
+import { CUBBON_PARK } from './venue';
 
 export interface MapColors {
   /** The page colour: tiles. */
@@ -42,8 +43,8 @@ export interface MapColors {
 export interface BuiltMap {
   group: THREE.Group;
   /** Breathe on this in the frame loop: opacity and, at night, emissiveIntensity. */
-  water: THREE.MeshLambertMaterial;
-  bulbs: THREE.MeshLambertMaterial;
+  water: THREE.MeshStandardMaterial;
+  bulbs: THREE.MeshStandardMaterial;
   /** Lift one tile toward the accent; null puts it back. Rebuilds two meshes, rarely. */
   setYourTile(id: string | null): void;
   /** For the budget test: triangles counted from the geometries, instances included. */
@@ -83,8 +84,13 @@ const ROAD_WIDTH: Record<string, number> = { trunk: 0.52, primary: 0.38, seconda
 const MAX_WINDOWS = 900;
 
 const mix = (a: string | THREE.Color, b: string | THREE.Color, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), t);
-const lambert = (color: THREE.Color | string, extra: THREE.MeshLambertMaterialParameters = {}) =>
-  new THREE.MeshLambertMaterial({ color, ...extra });
+/**
+ * Rough PBR surfaces cost no extra draws and react much more gently than Lambert's
+ * flat plastic. Texture detail is reserved for close venue props; the city keeps its
+ * colour-per-instance batching.
+ */
+const surface = (color: THREE.Color | string, extra: THREE.MeshStandardMaterialParameters = {}) =>
+  new THREE.MeshStandardMaterial({ color, roughness: 0.82, metalness: 0.02, ...extra });
 
 /** A ring in x/z as a three Shape. The y flip pairs with the -90° X rotation below. */
 function shapeOf(ring: readonly Pt[]): THREE.Shape {
@@ -278,24 +284,34 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   const dummy = new THREE.Object3D();
   const night = colors.night;
 
-  // Plate: the sunken grey under everything, larger than the outline.
+  // Plate: the sunken grey under everything, a little larger than the outline.
+  //
+  // A LITTLE. It used to be forty units larger on each side, which on a city sixty-three
+  // units across is a plate nearly three times the city's area -- so pulling out to the
+  // whole city framed a small island of streets in the middle of an enormous grey
+  // diamond, and the city read as far away when the camera was as close as it can get
+  // (the founder, 2026-09-23: "it zooms out too much"). The camera fits the OUTLINE, so
+  // everything past it is margin nobody asked for. Six units is about three kilometres:
+  // enough that the edge of the world is never a hard line at street level, and little
+  // enough that the city is what fills the screen.
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (const [x, z] of map.outline) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
-  const plate = new THREE.PlaneGeometry(maxX - minX + 40, maxZ - minZ + 40);
+  const PLATE_MARGIN = 6;
+  const plate = new THREE.PlaneGeometry(maxX - minX + PLATE_MARGIN * 2, maxZ - minZ + PLATE_MARGIN * 2);
   flatten(plate, PLATE_Y, (minX + maxX) / 2, (minZ + maxZ) / 2);
-  add(plate, lambert(colors.ground), 'plate');
+  add(plate, surface(colors.ground, { roughness: 1 }), 'plate');
 
   // Skirt: every tile flat in the shadow grey, offset to the bottom-right.
   add(flatRings(map.areas.map((a) => a.polygon), SKIRT_Y, SKIRT_OFFSET, SKIRT_OFFSET),
-    lambert(colors.prop, { transparent: true, opacity: 0.3, depthWrite: false }), 'skirt');
+    surface(colors.prop, { transparent: true, opacity: 0.3, depthWrite: false, roughness: 1 }), 'skirt');
 
   // Tiles, and your tile: the same extrusion, one of them lifted toward the accent.
-  const tileMaterial = lambert(colors.bg);
+  const tileMaterial = surface(colors.bg, { roughness: 0.95 });
   // Your neighbourhood, plainly -- but only as plainly as it needs to be. At 22 % the
   // tint vanished under the buildings when the whole tile was in view; at 42 % it was
   // a lavender floor once the camera came down into the streets. This reads at both
   // (on the phone, 2026-09-22).
-  const yoursMaterial = lambert(mix(colors.bg, colors.accent, 0.3));
+  const yoursMaterial = surface(mix(colors.bg, colors.accent, 0.3), { roughness: 0.9 });
   const tiles = new THREE.Mesh(new THREE.BufferGeometry(), tileMaterial);
   const yours = new THREE.Mesh(new THREE.BufferGeometry(), yoursMaterial);
   for (const m of [tiles, yours]) { m.frustumCulled = false; group.add(m); meshes.push(m); }
@@ -321,39 +337,50 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   // A road is now a shade darker than the ground it cuts through, which is what makes
   // the grid readable from any height. The highlight edge that the design system asks
   // for is still there -- it is the tile's own bevel, catching the light top-left.
-  add(ribbons(map.roads), lambert(mix(colors.bg, colors.prop, night ? 0.55 : 0.72), { ...DECAL }), 'roads');
+  add(ribbons(map.roads), surface(mix(colors.bg, colors.prop, night ? 0.55 : 0.72), { ...DECAL, roughness: 0.98 }), 'roads');
 
   // Lakes: a lavender that breathes (canvas.tsx animates the material).
   // Lakes at 15 % accent were grey with a rumour of purple in them; a lake has to read
   // as water from across the city or the map is one flat grey (seen on the phone,
   // 2026-09-22). Same for the parks and their trees below.
   const waterColour = mix(colors.ground, colors.accent, night ? 0.45 : 0.4);
-  const water = lambert(waterColour, {
+  const water = surface(waterColour, {
     transparent: true, opacity: 0.85, depthWrite: false, ...DECAL,
-    emissive: waterColour, emissiveIntensity: night ? 0.35 : 0,
+    emissive: waterColour, emissiveIntensity: night ? 0.35 : 0, roughness: 0.28, metalness: 0.08,
   });
   add(flatRings(map.water.map((w) => w.polygon), FLAT_Y + 0.004), water, 'water');
 
   // Parks, with sparse tree domes.
-  add(flatRings(map.parks.map((p) => p.polygon), FLAT_Y), lambert(mix(colors.bg, colors.success, 0.34), { ...DECAL }), 'parks');
+  add(flatRings(map.parks.map((p) => p.polygon), FLAT_Y), surface(mix(colors.bg, colors.success, 0.34), { ...DECAL, roughness: 1 }), 'parks');
   const treeList = map.parks.flatMap((p) => p.trees);
   if (treeList.length) {
     const treeColour = mix(colors.bg, colors.success, 0.62);
     // A canopy, not a hill. At 0.34 they were wider than the buildings beside them
     // (on the phone, 2026-09-22); TREE is shared with map.ts, which blocks walking
     // through the same circle.
-    const trees = new THREE.InstancedMesh(new THREE.SphereGeometry(TREE, 6, 4), lambert('#ffffff'), treeList.length);
+    const trees = new THREE.InstancedMesh(new THREE.SphereGeometry(TREE, 6, 4), surface('#ffffff', { roughness: 1 }), treeList.length);
+    const trunks = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(TREE * 0.16, TREE * 0.22, TREE * 1.45, 5),
+      surface(night ? '#514436' : '#80664c', { roughness: 1 }),
+      treeList.length,
+    );
     const shade = new THREE.Color();
     treeList.forEach((t, i) => {
       const s = t[2] ?? 1;
       dummy.position.set(t[0]!, TREE * 0.85 * s, t[1]!); dummy.rotation.set(0, 0, 0); dummy.scale.set(s, s * 0.9, s);
       dummy.updateMatrix(); trees.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(t[0]!, TREE * 0.46 * s, t[1]!);
+      dummy.scale.set(s, s, s);
+      dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
       // A wood, not a stamp: each tree a shade off its neighbour. Instance colours are
       // free -- same mesh, same draw call.
       trees.setColorAt(i, shade.copy(treeColour).multiplyScalar(0.86 + ((i * 37) % 11) / 39));
     });
-    trees.name = 'trees'; trees.frustumCulled = false;
-    group.add(trees); meshes.push(trees); disposables.push(trees.geometry, trees.material as THREE.Material);
+    trees.name = 'trees'; trunks.name = 'tree-trunks';
+    for (const m of [trunks, trees]) {
+      m.frustumCulled = false;
+      group.add(m); meshes.push(m); disposables.push(m.geometry, m.material as THREE.Material);
+    }
   }
 
   // Blocks: a density, not a footprint. Plain boxes: a rounded box is 300 triangles
@@ -364,30 +391,72 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   // is right for a card and reads as concrete over a whole city; a few percent toward
   // a warm off-white is sunlight on a building, not a second colour in the app.
   const blockColour = night ? mix(colors.bg, colors.light, 0.5) : mix(mix(colors.light, colors.bg, 0.06), '#FFF6E8', 0.22);
-  const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), lambert('#ffffff'), blockList.length);
+  const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), surface('#ffffff', { roughness: 0.78 }), blockList.length);
+  const roofs = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    surface('#ffffff', { roughness: 0.92 }),
+    blockList.length,
+  );
+  const shadows = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      color: night ? '#05070a' : '#59616f', transparent: true, opacity: night ? 0.2 : 0.12,
+      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2,
+    }),
+    blockList.length,
+  );
   const wall = new THREE.Color();
   blockList.forEach((b, i) => {
     const [x, z, w, d, h, rot] = b as [number, number, number, number, number, number];
     dummy.position.set(x, h / 2, z); dummy.rotation.set(0, rot, 0); dummy.scale.set(w, h, d);
     dummy.updateMatrix(); blocks.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(x, h + 0.014, z); dummy.scale.set(w * 0.94, 0.028, d * 0.94);
+    dummy.updateMatrix(); roofs.setMatrixAt(i, dummy.matrix);
+    // One soft, baked-looking contact patch. It gives the block weight without a
+    // shadow map, which would render the city again from the sun every frame.
+    dummy.position.set(x + 0.07, 0.006, z + 0.07);
+    dummy.rotation.set(-Math.PI / 2, 0, rot);
+    dummy.scale.set(w * 1.08, d * 1.08, 1);
+    dummy.updateMatrix(); shadows.setMatrixAt(i, dummy.matrix);
     // Seven hundred buildings in one colour are a texture; a few percent apart, they
     // are a skyline. The taller ones go a shade darker, as distance does.
     blocks.setColorAt(i, wall.copy(blockColour).multiplyScalar(0.92 + ((i * 53) % 13) / 78 - Math.min(0.08, h * 0.03)));
+    roofs.setColorAt(i, wall.copy(blockColour).multiplyScalar(night ? 0.72 : 0.86 + ((i * 29) % 7) / 100));
   });
-  blocks.name = 'blocks'; blocks.frustumCulled = false;
-  group.add(blocks); meshes.push(blocks); disposables.push(blocks.geometry, blocks.material as THREE.Material);
+  blocks.name = 'blocks'; roofs.name = 'roofs'; shadows.name = 'building-shadows';
+  for (const m of [shadows, blocks, roofs]) {
+    m.frustumCulled = false;
+    group.add(m); meshes.push(m); disposables.push(m.geometry, m.material as THREE.Material);
+  }
 
   // Landmarks: eight icons in the shadow grey.
-  add(landmarksGeometry(map), lambert(colors.prop), 'landmarks');
+  add(landmarksGeometry(map), surface(colors.prop, { roughness: 0.7 }), 'landmarks');
+
+  // The first date place is a real point on the real map, not a generic "walk"
+  // button. A low ring and stem remain legible at city and neighbourhood zooms.
+  {
+    const base = new THREE.TorusGeometry(0.22, 0.04, 6, 18);
+    base.rotateX(-Math.PI / 2);
+    base.translate(CUBBON_PARK.mapAt[0], 0.045, CUBBON_PARK.mapAt[1]);
+    const stem = new THREE.CylinderGeometry(0.025, 0.045, 0.34, 7);
+    stem.translate(CUBBON_PARK.mapAt[0], 0.2, CUBBON_PARK.mapAt[1]);
+    const crown = new THREE.SphereGeometry(0.1, 8, 6);
+    crown.translate(CUBBON_PARK.mapAt[0], 0.42, CUBBON_PARK.mapAt[1]);
+    const marker = mergeGeometries([base, stem, crown], false)!;
+    base.dispose(); stem.dispose(); crown.dispose();
+    add(marker, surface(colors.accent, {
+      emissive: colors.accent, emissiveIntensity: night ? 0.45 : 0.08, roughness: 0.45,
+    }), 'venue-marker');
+  }
 
   // LAMPS ARE AN EVENING THING. Lit, they are what carries the dark theme. In
   // daylight a hundred posts with orange tips read as map pins dropped over the whole
   // city -- the single noisiest thing on the screen (on the phone, 2026-09-22) -- and
-  // an unlit lamp post says nothing a building does not. So: count 0 by day, exactly
-  // as the windows do, and no draw call for either.
+  // an unlit lamp post says nothing a building does not. Posts and bulbs count 0 by
+  // day; windows remain, subdued, to give the blocks scale.
   const lampCount = night ? map.lamps.length : 0;
-  const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.045, 1.1, 5), lambert(colors.prop), Math.max(1, map.lamps.length));
-  const bulbs = lambert(colors.warning, { emissive: colors.warning, emissiveIntensity: night ? 0.9 : 0.15 });
+  const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.045, 1.1, 5), surface(colors.prop, { roughness: 0.7 }), Math.max(1, map.lamps.length));
+  const bulbs = surface(colors.warning, { emissive: colors.warning, emissiveIntensity: night ? 0.9 : 0.15, roughness: 0.3 });
   const bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 6, 4), bulbs, Math.max(1, map.lamps.length));
   posts.count = lampCount; bulbMesh.count = lampCount;
   map.lamps.forEach(([x, z], i) => {
@@ -399,8 +468,10 @@ export function buildMap(map: MapAsset, colors: MapColors): BuiltMap {
   for (const m of [posts, bulbMesh]) { m.frustumCulled = false; group.add(m); meshes.push(m); disposables.push(m.geometry, m.material as THREE.Material); }
 
   // Windows: warm dots on the two faces the camera sees, evening only.
-  const windowCount = night ? countWindows(blockList) : 0;
-  const windows = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.07, 0.09), new THREE.MeshBasicMaterial({ color: '#FFD59A' }), Math.max(1, windowCount));
+  const windowCount = countWindows(blockList);
+  const windows = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.07, 0.09), new THREE.MeshBasicMaterial({
+    color: night ? '#FFD59A' : '#61758a', transparent: true, opacity: night ? 1 : 0.42,
+  }), Math.max(1, windowCount));
   windows.count = windowCount;
   if (windowCount) placeWindows(blockList, windows, dummy);
   windows.name = 'windows'; windows.frustumCulled = false;

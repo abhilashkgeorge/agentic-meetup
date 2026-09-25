@@ -264,6 +264,12 @@ export default function SettingsScreen() {
         <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
           Map data © OpenStreetMap contributors
         </Text>
+        {/* The people are Quaternius' free modular characters, which are CC0 and ask
+            for nothing (app/assets/characters/LICENCE.txt). Credited anyway: one
+            person gives this away so that apps like this one can exist. */}
+        <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
+          Characters by Quaternius
+        </Text>
         {/* Five taps on the version opens the hidden 3D frame-rate check. A developer
             door that is not a menu item, because it is not for anybody else. */}
         <Pressable onPress={tapVersion} accessibilityLabel="Version">

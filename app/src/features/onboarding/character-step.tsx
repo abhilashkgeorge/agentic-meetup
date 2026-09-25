@@ -31,7 +31,7 @@ export default function CharacterStep() {
           This is you in the square, and what people see of you until you have both said yes. Photos come next.
         </Text>
       </View>
-      <CharacterBuilder preview={<Preview />} onSaved={next} onSkip={next} />
+      <CharacterBuilder preview={<Preview height={330} />} onSaved={next} onSkip={next} />
     </Screen>
   );
 }

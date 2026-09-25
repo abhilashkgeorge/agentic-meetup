@@ -16,6 +16,7 @@
 export interface Size { width: number; height: number }
 export interface Pose { tx: number; tz: number; zoom: number }
 export interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number }
+export interface OrthographicBounds { left: number; right: number; top: number; bottom: number; zoom: number }
 export type Band = 'city' | 'mid' | 'near';
 
 /**
@@ -96,6 +97,8 @@ export function turnToward(from: number, to: number, t: number): number {
 export interface WorldControl {
   /** Fly to a neighbourhood and stay there (the camera stops following your agent). */
   flyTo(areaId: string): void;
+  /** Frame a point of interest before an explicit transition enters it. */
+  flyToPoint(x: number, z: number, zoom?: number): void;
   /** Fly to your own neighbourhood and follow your agent again. */
   flyHome(): void;
   /** Pull out to the whole city. */
@@ -105,6 +108,20 @@ export interface WorldControl {
 }
 
 const SQ2 = Math.SQRT2;
+
+/**
+ * A pixel-sized base frustum makes Three's orthographic `zoom` use the same contract
+ * as every pure camera function here: one world unit covers `zoom` screen pixels.
+ */
+export function orthographicBounds(size: Size, zoom: number): OrthographicBounds {
+  return {
+    left: -size.width / 2,
+    right: size.width / 2,
+    top: size.height / 2,
+    bottom: -size.height / 2,
+    zoom,
+  };
+}
 
 /**
  * HOW FAR ABOVE THE GROUND THE CAMERA SITS, in radians above the horizon.
@@ -243,6 +260,42 @@ export function bandOf(zoom: number, cityZoom: number): Band {
   if (zoom <= cityZoom * CITY_BAND) return 'city';
   if (zoom >= ZOOM_NEAR) return 'near';
   return 'mid';
+}
+
+/** How tall a person is on the ground, in world units: 1.5 x the 0.16 body scale. */
+const PERSON_UNITS = 0.24;
+/** Below this many pixels tall, a rig is indistinguishable from a capsule. */
+const RIG_FLOOR_PX = 4;
+/** ...and by this many it is worth every triangle. */
+const RIG_FULL_PX = 18;
+
+/**
+ * How many people are worth drawing as real rigged characters at this zoom.
+ *
+ * A RIG IS NOT FREE AND IT IS NOT SMALL: one draw call and about five thousand
+ * triangles each, plus a walk up its whole bone tree every frame, because a person
+ * with bones cannot be instanced. Twenty-four of them is a hundred and twenty thousand
+ * triangles and twenty-four draw calls -- and on expo-gl a draw call is not a GPU cost
+ * at all, it is a pile of commands marshalled across the JS/native bridge. That is why
+ * the city view sat at 29 fps with a p95 of 38 ms and 14% of frames janky while
+ * `dumpsys gfxinfo` had the UI thread idle at 11 ms: the phone was not drawing, it was
+ * talking (Pixel 6a, 2026-09-23 -- 89 draw calls, 242 K triangles).
+ *
+ * THE MEASURE IS HOW BIG A PERSON IS ON THE SCREEN, not which zoom band we are in.
+ * Bands are three steps and the step landed in the wrong place: the default street
+ * view sits at zoom 55, which is `mid`, so a banded budget quietly halved the quality
+ * of the view people actually use. Pixels are the thing that decides whether a rig can
+ * be told from a capsule, so pixels are what this counts. Pulled out to the whole city
+ * a person is a pixel and a half and gets nothing.
+ *
+ * Everyone is still there whatever this returns: the instanced capsules draw all
+ * sixty-four in one call, and the discs, rings and bubbles never stopped.
+ */
+export function rigsFor(zoom: number, max = 24): number {
+  const px = PERSON_UNITS * zoom;
+  if (px < RIG_FLOOR_PX) return 0;
+  const t = (px - RIG_FLOOR_PX) / (RIG_FULL_PX - RIG_FLOOR_PX);
+  return Math.max(1, Math.min(max, Math.round(max * t)));
 }
 
 export interface Fly { from: Pose; to: Pose; start: number; secs: number }

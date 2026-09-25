@@ -7,21 +7,23 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { MIN_AGE, deriveValue, findArea, findPlace, isAdult, canFilterOn, type Look } from '@clone/shared';
+import { MIN_AGE, ageFromYear, deriveValue, findArea, findPlace, isAdult, canFilterOn, type Look } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { commit } from '../memory/facts.js';
-import { rebuildMatchProfile, shouldAskArea, touchActive } from '../matching/profile.js';
-import { candidateCount, poolBreakdown } from '../matching/candidates.js';
+import { poolNow, rebuildMatchProfile, shouldAskArea, touchActive } from '../matching/profile.js';
+import { candidateCount, poolBreakdown, shownBreakdown, shownCount } from '../matching/candidates.js';
 import { decide, runRound } from '../matching/orchestrator.js';
-import { DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
+import { DailyRoundsExceeded, DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
 import { resolveAgentRef } from '../matching/world.js';
+import { liveCard, plainCard, readBrief, sentenceKey } from '../matching/brief.js';
 import { lookOf, looksFor } from '../looks/store.js';
 import { award } from '../points/ledger.js';
 import { ANSWERS, WHY_NOT, checkinQuestions, type CheckinQuestion, type Shown } from '../checkin/questions.js';
 import type { PoolClient } from 'pg';
 import { BudgetExceeded, checkBudget } from '../metering.js';
 import { log } from '../log.js';
+import { ensureSheet } from '../matching/answer-sheet.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
   try {
@@ -31,6 +33,11 @@ async function ctxOr401(c: { req: { header: (k: string) => string | undefined } 
     throw err;
   }
 }
+
+/** The app's age-range pre-fill: own age, this many years either side ... */
+const PREFILL_SPREAD = 5;
+/** ... and never above this. The floor is MIN_AGE. Mirrors app/src/features/profile/age-range.ts. */
+const PREFILL_CEIL = 99;
 
 const Essential = z.object({
   predicate: z.string().min(1).max(64),
@@ -216,6 +223,32 @@ export const datingRoutes = new Hono()
       }
     }
 
+    // THE AGE RANGE THEY WANT, and until now nothing could write it. The candidate
+    // query tests age BOTH ways -- my age inside your range, your age inside mine --
+    // and every real user's side of that was NULL, which passes everybody. So the age
+    // filter ran one way only: a 25-year-old could be sent to somebody whose range was
+    // 30-40, and nothing on their own side stopped a 60-year-old reaching them.
+    // rebuildMatchProfile already reads the fact (profile.ts); only this door was shut:
+    // a {min,max} arrived here, went through String(), and committed as the text
+    // "[object Object]" with no value.
+    //
+    // Checked here rather than left to VALUE_SHAPES, because a range that fails the
+    // shape would still commit as a fact with no value -- stored, and silently useless.
+    let ageRange: { min: number; max: number } | null = null;
+    if (predicate === 'age_range_sought' && value !== null && value !== '') {
+      const r = z.object({
+        min: z.number().int().min(MIN_AGE).max(120),
+        max: z.number().int().min(MIN_AGE).max(120),
+      }).strict().safeParse(value);
+      if (!r.success || r.data.min > r.data.max) {
+        return c.json({
+          error: 'bad_age_range',
+          message: `Pick two ages between ${MIN_AGE} and 120, youngest first.`,
+        }, 400);
+      }
+      ageRange = r.data;
+    }
+
     // A neighbourhood is typed or picked by name; what is stored is the id from the
     // public list of thirty. A name the list does not know is a 400 with a sentence,
     // not a silently dropped fact.
@@ -225,6 +258,9 @@ export const datingRoutes = new Hono()
         return c.json({ error: 'unknown_area', message: 'That part of town is not on the map yet. Pick the nearest one.' }, 400);
       }
     }
+
+    // Whether the age range that arrived is the one the app pre-filled. See below.
+    let ageRangeKept: boolean | undefined;
 
     const out = await tenantSession(ctx, async (db) => {
       if (value === null || value === '') {
@@ -238,9 +274,31 @@ export const datingRoutes = new Hono()
         return rebuildMatchProfile(db, ctx);
       }
 
+      // HOW OFTEN THE PRE-FILL IS KEPT UNCHANGED, which the spec asks to measure: a
+      // default that sticks is a rule nobody chose, and the rate says whether this one
+      // does. The app offers own age ±5, clamped to 18..99
+      // (app/src/features/profile/age-range.ts), and posts only the two numbers, so
+      // whether the person changed them is worked out here from their own birth year
+      // with the same arithmetic. One yes/no on the log line, never the ages. Unknown
+      // (no birth year on file) is left off rather than guessed.
+      if (ageRange) {
+        const { rows: born } = await db.query<{ v: { year?: number } | null }>(
+          `SELECT object_value AS v FROM facts
+            WHERE user_id = $1 AND predicate = 'birth_date' AND status = 'active' AND valid_to IS NULL
+            ORDER BY recorded_at DESC LIMIT 1`, [ctx.userId]);
+        const year = born[0]?.v?.year;
+        if (year) {
+          const age = ageFromYear(year);
+          const clamp = (n: number) => Math.min(PREFILL_CEIL, Math.max(MIN_AGE, n));
+          ageRangeKept = ageRange.min === clamp(age - PREFILL_SPREAD) && ageRange.max === clamp(age + PREFILL_SPREAD);
+        }
+      }
+
       // Several answers to one question (who you want to meet) become several facts,
-      // because the predicate is multi-valued and each value stands alone.
-      const values = Array.isArray(value) ? value : [value];
+      // because the predicate is multi-valued and each value stands alone. An age
+      // range is ONE answer that happens to be an object, and is stored as its words
+      // ("26-34") with the checked {min,max} as the value.
+      const values = ageRange ? [`${ageRange.min}-${ageRange.max}`] : Array.isArray(value) ? value : [value];
       for (const v of values) {
         const text = String(v);
         // The two that cannot be derived from the words alone.
@@ -253,7 +311,9 @@ export const datingRoutes = new Hono()
                 ? Number(text)
                 : predicate === 'area'
                   ? findArea(text)!.id
-                  : (deriveValue(predicate, text) ?? undefined);
+                  : ageRange
+                    ? ageRange
+                    : (deriveValue(predicate, text) ?? undefined);
 
         await commit(db, ctx, {
           predicate,
@@ -281,7 +341,7 @@ export const datingRoutes = new Hono()
       return rebuildMatchProfile(db, ctx);
     });
 
-    log.info({ userId: ctx.userId, predicate, declined: value === null }, 'essential set');
+    log.info({ userId: ctx.userId, predicate, declined: value === null, ageRangeKept }, 'essential set');
     return c.json({ ok: true, inPool: out.inPool, missing: out.missing });
   })
 
@@ -321,7 +381,7 @@ export const datingRoutes = new Hono()
       // is left instead of all six.
       const need = [...state.missing, ...(askArea ? ['area'] : []), ...(askDistance ? ['max_distance_km'] : [])];
       return c.json({
-        total: 0, steps: [], inPool: false,
+        total: null, steps: [], inPool: false,
         missing: friendly(state.missing), need,
       });
     }
@@ -333,7 +393,11 @@ export const datingRoutes = new Hono()
     ]);
 
     // In the pool, the only open question is the neighbourhood: the Home's chip asks it.
-    return c.json({ total, steps, inPool: true, missing: [], need: askArea ? ['area'] : [] });
+    // Every count through shownCount: rounded to ten, nothing under twenty.
+    return c.json({
+      total: shownCount(total), steps: shownBreakdown(steps), inPool: true, missing: [],
+      need: askArea ? ['area'] : [],
+    });
   })
 
   /**
@@ -404,8 +468,10 @@ export const datingRoutes = new Hono()
 
     // The new count comes straight back, so the screen can show the consequence of
     // the change rather than the change alone.
+    // Rounded like every other count (shownCount): an exact total here, before and after
+    // one toggle, is how many people that one rule removes.
     const total = await matchSession((db) => candidateCount(db, ctx.userId)).catch(() => 0);
-    return c.json({ ok: true, total });
+    return c.json({ ok: true, total: shownCount(total) });
   })
 
   /**
@@ -422,15 +488,17 @@ export const datingRoutes = new Hono()
 
     // Own brief only, and the policy enforces it -- the other side's brief is the
     // other agent's private assessment of this person, and is never readable here.
+    // `concern` and `agreement` are not even selected: nothing a conversation
+    // produced may reach this response, whatever is in the row.
     const rows = await tenantSession(ctx, async (db) => {
       const { rows } = await db.query<{
-        id: string; headline: string; overlap_quotes: unknown; concern: string;
+        id: string; headline: string; overlap_quotes: unknown;
         questions: unknown; human_says_yes: boolean | null; first_mover: string | null;
         status: string; other_decided: boolean | null; other_is_synthetic: boolean | null;
-        agreement: number | null; other_id: string;
+        other_id: string;
       }>(
-        `SELECT r.id, b.headline, b.overlap_quotes, b.concern, b.questions,
-                b.human_says_yes, r.first_mover, r.status, r.agreement,
+        `SELECT r.id, b.headline, b.overlap_quotes, b.questions,
+                b.human_says_yes, r.first_mover, r.status,
                 CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END AS other_id,
                 -- Same shape and same reason as other_decided below: the caller's own
                 -- session cannot read the other person's match_profile, and a card
@@ -445,18 +513,38 @@ export const datingRoutes = new Hono()
            JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $1
           WHERE (r.user_a = $1 OR r.user_b = $1)
             AND r.status <> 'lapsed'
-          -- THE QUEUE. What the conversations thought first, what the ranker thought
-          -- second, newest last. A person sees the head of this and says yes or
-          -- not-for-me; a no lapses the row and the next one is already here. The
-          -- agreement rate ORDERS the list -- it used to gate it, and a pair the
-          -- agents were unsure about was thrown away with nothing shown.
-          ORDER BY r.agreement DESC NULLS LAST, r.rank_score DESC NULLS LAST,
-                   r.decided_at DESC NULLS LAST`,
+          -- THE QUEUE. Newest round first, and within a round an order that means
+          -- nothing: a hash of the id. A person sees the head of this and says yes
+          -- or not-for-me; a no lapses the row and the next one is already here.
+          --
+          -- NEVER BY A SCORE. This used to be agreement first, rank second, and a
+          -- list ordered by a score teaches the person the score: the head of the
+          -- queue reads as "the one it liked most", position becomes a verdict, and
+          -- every yes compare-scorers later counts has been nudged by the scorer it
+          -- is judging. The pairs of one round are claimed in one transaction and
+          -- share a created_at to the microsecond, so a round is exactly the rows
+          -- with the same created_at. COLLATE "C" so the hash sorts by bytes, not
+          -- by whatever the database's locale thinks of hex.
+          ORDER BY r.created_at DESC, md5(r.id::text) COLLATE "C"`,
         [ctx.userId],
       );
       return rows;
     });
     const round = await tenantSession(ctx, (db) => latestRound(db, ctx.userId));
+    // WHAT EACH OTHER PERSON STILL SHOWS, read now (brief.ts liveCard): their public,
+    // active, current sentences -- the only view the matchmaker has of anybody -- so a
+    // sentence they hid since a card was written comes off that card as it is shown.
+    const realOthers = [...new Set(rows.filter((r) => r.other_is_synthetic !== true).map((r) => r.other_id))];
+    const liveBy = new Map<string, Set<string>>(realOthers.map((id) => [id, new Set()]));
+    if (realOthers.length) {
+      await matchmakerSession(async (db) => {
+        const { rows: said } = await db.query<{ user_id: string; source_quote: string }>(
+          `SELECT user_id, source_quote FROM facts
+            WHERE user_id = ANY($1::uuid[]) AND disclosure = 'public' AND status = 'active' AND valid_to IS NULL`,
+          [realOthers]);
+        for (const r of said) liveBy.get(r.user_id)?.add(sentenceKey(r.source_quote));
+      });
+    }
     // Their characters: what the card shows before the reveal shows a photo.
     const looks = rows.length
       ? await matchmakerSession((db) => looksFor(db, rows.map((r) => r.other_id),
@@ -484,10 +572,20 @@ export const datingRoutes = new Hono()
           const myTurn = r.first_mover === ctx.userId || r.other_decided === true;
           return {
             id: r.id,
-            headline: r.headline,
-            overlaps: r.overlap_quotes ?? [],
-            concern: r.concern,
-            questions: r.questions ?? [],
+            // The code-written card: facts line, the constant line, shared tags,
+            // their own verified words, an opener. A brief a model wrote before
+            // 2026-09-23 comes back as the plain card; see readBrief.
+            //
+            // THE SECOND MOVER GETS THE PLAIN CARD until the first mover says yes.
+            // The first mover decides alone and first, and only then is their profile
+            // shown to the other -- the reveal below holds back their age, where they
+            // live and their tags until then. The code-written facts line carries
+            // exactly those (age, neighbourhood, shared tags), so without this the
+            // busier side's age and neighbourhood reached every second mover they
+            // were paired with, including the ones they go on to turn down. The row
+            // is kept as written; it is shown the moment their yes makes it this
+            // person's turn.
+            ...(myTurn ? liveCard(readBrief(r), liveBy.get(r.other_id) ?? null) : plainCard()),
             waitingOnYou: r.human_says_yes === null && myTurn,
             // Never a hint about what they will say -- only that they have not looked.
             // A no is silent, so this state is also what a no looks like, for ever.
@@ -495,11 +593,6 @@ export const datingRoutes = new Hono()
             // Said plainly, on the card, before the person spends any feeling on it.
             practice: r.other_is_synthetic === true,
             look: looks.get(r.other_id),
-            // How the agents got on, as a fraction of conversations that ended in a
-            // mutual yes. The app turns this into words, never a percentage: a number
-            // here would be read as compatibility, and pre-date self-report predicts
-            // attraction badly enough that it would be a lie with a decimal point.
-            agreement: r.agreement,
           };
         }),
     });
@@ -740,18 +833,36 @@ export const datingRoutes = new Hono()
   /**
    * Send the agent out, once.
    *
-   * Manual for now, and rate-limited by cost rather than by policy: five simulated
-   * conversations are a few cents and a couple of minutes. A weekly cadence is the
-   * shape this wants -- one match, at a fixed time -- but that is a scheduler, and a
-   * button that works is worth more today than a scheduler that is not wired up.
+   * Manual for now. A round makes no model call (orchestrator.ts), so what limits it
+   * is the one-round-at-a-time index, ROUNDS_PER_DAY open rounds that met somebody,
+   * and, for targets, five a day. A weekly cadence is the shape this wants -- one
+   * match, at a fixed time -- but that is a scheduler, and a button that works is worth
+   * more today than a scheduler that is not wired up.
    */
   .post('/v1/matches/run', async (c) => {
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
-    await tenantSession(ctx, (db) => touchActive(db, ctx.userId));
+    // READY BEFORE QUEUED. This used to queue whatever the person's stored pool flag
+    // said, and the worker checked the same stored flag (orchestrator.ts). A flag
+    // written before the five core cards existed still said yes, so a person with no
+    // card on file could send their agent out from the Home. poolNow rebuilds a yes
+    // that the cards say is out of date, and a no answers here, with what is missing,
+    // rather than as a round that fails a minute later with nothing on screen.
+    const ready = await tenantSession(ctx, async (db) => {
+      await touchActive(db, ctx.userId);
+      return poolNow(db, ctx);
+    });
+    if (!ready.inPool) {
+      return c.json({ error: 'not_ready', missing: friendly(ready.missing), need: ready.missing }, 409);
+    }
+    // YOUR AGENT'S ANSWERS, up to date before it goes out: what it says when another
+    // agent asks (answer-sheet.ts). No call when nothing changed; never blocks the tap.
+    await ensureSheet(ctx);
 
     // A TARGET is "send my agent over" from the square: one person, by the
-    // per-viewer ref the roster gave out, and a real conversation with them (~$0.02).
+    // per-viewer ref the roster gave out. It costs nothing in model calls now -- no
+    // conversation is held -- and is still five a day, which now bounds how often
+    // one person can put themselves in front of another rather than spend.
     // The ref resolves only among people the candidate rules already allow, so a
     // block or a filter answers "not here" exactly as it would to a scan of the
     // square. No body at all is the plain "send my agent out".
@@ -786,6 +897,7 @@ export const datingRoutes = new Hono()
       return c.json({ roundId: round.id, status: round.status }, 202);
     } catch (err) {
       if (err instanceof DailyTargetsExceeded) return c.json({ error: 'daily_targets', limit: err.limit }, 429);
+      if (err instanceof DailyRoundsExceeded) return c.json({ error: 'daily_rounds', limit: err.limit }, 429);
       throw err;
     }
   });
@@ -826,6 +938,13 @@ function friendly(missing: readonly string[]): string[] {
     birth_date: 'It does not know your age.',
     lives_in: 'It does not know where you are.',
     relationship_intent: 'It does not know what you are here for.',
+    // The five core cards (onboarding/questions.ts CORE). Each is done once answered or
+    // declined, so the sentence asks for the card, not for a value.
+    wants_children: 'It still needs your answer about children.',
+    monogamy_stance: 'It still needs your answer on one person or open.',
+    smoking: 'It still needs your answer about smoking.',
+    drinking: 'It still needs your answer about drinking.',
+    diet: 'It still needs your answer about food.',
   };
   return missing.map((m) => words[m] ?? `It still needs your ${m.replace(/_/g, ' ')}.`);
 }

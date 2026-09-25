@@ -21,13 +21,21 @@ import {
   Button, Card, Header, Screen, Surface, radius, space, sunk, type, usePalette,
 } from '../../components/ui';
 
+/**
+ * How many photos somebody may have, before the server has said. The server is the
+ * authority (`GET /v1/photos` returns `max`), but the You tab shows a three-well
+ * PREVIEW and needs a number to name without making a round trip -- and three empty
+ * wells with nothing said read as the limit.
+ */
+export const PHOTO_SLOTS = 6;
+
 const COLUMNS = 3;
 
 export default function PhotosScreen() {
   const p = usePalette();
   const token = useSession((s) => s.token);
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [max, setMax] = useState(6);
+  const [max, setMax] = useState(PHOTO_SLOTS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(null);
@@ -38,7 +46,7 @@ export default function PhotosScreen() {
     void getSelfieStatus(token).then(setSelfie);
     const mine = await getMyPhotos(token);
     setPhotos(mine?.photos ?? []);
-    setMax(mine?.max ?? 6);
+    setMax(mine?.max ?? PHOTO_SLOTS);
     // The serving route is keyed on the owner as well as the photo, so even showing
     // your own pictures needs your own id. It comes back with the list.
     setMe(mine?.me ?? null);

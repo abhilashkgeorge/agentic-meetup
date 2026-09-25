@@ -14,7 +14,9 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
+import { gardenSpots } from '../world/garden';
 import { MAP, spotsFrom } from '../world/map';
+import { CUBBON_PARK, venueGarden } from '../world/venue';
 import { loadWorldRenderer, rendererError, type WorldRenderer } from '../world/r3f';
 import { WorldSim } from '../world/sim';
 import type { WorldStats } from '../world/canvas';
@@ -44,6 +46,16 @@ export default function GlBenchScreen() {
   const [renderer, setRenderer] = useState<WorldRenderer | null | undefined>(undefined);
   const [size, setSize] = useState<(typeof SIZES)[number]>(48);
   const [cap30, setCap30] = useState(false);
+  /**
+   * WHICH WORLD IS BEING MEASURED. Until this existed the bench only ever drew the
+   * city, which is the cheap half: seen from 1,600 units up, people twenty pixels
+   * tall, and no rigged bodies at all. The park is a different scene with a different
+   * camera -- heavier ground (62,048 triangles of grass, trees and props against the
+   * city's 41,972, plus the furniture), far fewer people in frustum, and each of them
+   * filling a real part of the screen. A number from one does not transfer to the
+   * other, so both have to be measurable.
+   */
+  const [inPark, setInPark] = useState(false);
   const [stats, setStats] = useState<WorldStats | null>(null);
 
   useEffect(() => { void loadWorldRenderer().then(setRenderer); }, []);
@@ -52,6 +64,13 @@ export default function GlBenchScreen() {
   const sim = useMemo(() => {
     const s = new WorldSim(20260918);
     s.setMap(spotsFrom(MAP));
+    s.populateBench(size);
+    return s;
+  }, [size]);
+  /** The park, populated the same way and with the same count, for a fair comparison. */
+  const venueSim = useMemo(() => {
+    const s = new WorldSim(20260922);
+    s.setMap(gardenSpots(venueGarden(CUBBON_PARK)));
     s.populateBench(size);
     return s;
   }, [size]);
@@ -82,11 +101,14 @@ export default function GlBenchScreen() {
         )}
         {renderer && (
           <renderer.WorldCanvas
-            key={`${size}-${cap30 ? 30 : 60}-${night ? 'night' : 'day'}`}
+            key={`${size}-${cap30 ? 30 : 60}-${night ? 'night' : 'day'}-${inPark ? 'park' : 'city'}`}
             sim={sim}
             colors={colors}
             cap30={cap30}
             onStats={onStats}
+            inVenue={inPark}
+            venueSim={venueSim}
+            venue={CUBBON_PARK}
           />
         )}
       </View>
@@ -115,6 +137,7 @@ export default function GlBenchScreen() {
         <Card label="Cost knobs">
           <ChipGroup>
             <Chip label="30 fps cap" selected={cap30} onPress={() => { setStats(null); setCap30((x) => !x); }} />
+            <Chip label="In the park" selected={inPark} onPress={() => { setStats(null); setInPark((x) => !x); }} />
           </ChipGroup>
           <Text style={[type.callout, { color: p.textTertiary }]}>
             Run unplugged for at least a minute, then put the app in the background and bring it back twice.

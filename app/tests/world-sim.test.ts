@@ -2,8 +2,9 @@
  * The town's choreography, with no renderer in the room.
  *
  * sim.ts imports nothing from react-native or three, on purpose: this is where "your
- * agent walks over, they talk, a verdict shows, they part" is checked, and where a 2D
- * renderer would plug in if the 3D one ever fails on a phone.
+ * agent walks over, they stand together, they part" is checked, and where a 2D
+ * renderer would plug in if the 3D one ever fails on a phone. There is no verdict in
+ * it any more: parting shows the same mark for every pair.
  */
 import { describe, expect, it } from 'vitest';
 import { HOME, WorldSim, type MapSpots } from '../src/features/world/sim';
@@ -15,6 +16,19 @@ const town = () => {
   return s;
 };
 const run = (s: WorldSim, seconds: number) => { for (let i = 0; i < seconds * 30; i++) s.step(1 / 30); };
+/**
+ * Run until something is true, up to a limit, and return how long it took.
+ *
+ * Most of these tests used to say "run for fifteen seconds, then assert they arrived",
+ * which quietly encoded how fast an agent walks -- so slowing everybody from eleven
+ * kilometres an hour to five broke seven tests that were not about speed at all.
+ * Waiting for the thing itself says what the test means and survives the next change
+ * of pace; the limit is there so a genuine failure still fails.
+ */
+const until = (s: WorldSim, done: () => boolean, limit = 120): number => {
+  for (let i = 0; i < limit * 30; i++) { if (done()) return i / 30; s.step(1 / 30); }
+  return done() ? limit : Infinity;
+};
 const dist = (s: WorldSim, a: string, b: string) => {
   const A = s.get(a)!; const B = s.get(b)!; return Math.hypot(A.x - B.x, A.z - B.z);
 };
@@ -36,29 +50,28 @@ describe('the town', () => {
     expect(Math.hypot(a.x - a.tx, a.z - a.tz) < 0.2 || a.state === 'walking').toBe(true);
   });
 
-  it('walks your agent over to them and talks, then parts them on a verdict', () => {
+  it('walks your agent over to them, they stand together, then part with the same mark as anybody', () => {
     const s = town();
     const b0 = { ...s.get('b')! };
     s.meet('you', 'b');
-    run(s, 15);
+    expect(until(s, () => s.get('you')!.state === 'talking')).toBeLessThan(60);
     // The visited stayed; the visitor came within a metre; both show dots.
     expect(Math.hypot(s.get('b')!.x - b0.x, s.get('b')!.z - b0.z)).toBeLessThan(0.01);
     expect(dist(s, 'you', 'b')).toBeLessThan(1.1);
     expect(s.get('you')!.bubble).toBe('dots');
-    s.verdict('you', 'did_not_click'); s.verdict('b', 'did_not_click');
-    expect(s.get('you')!.bubble).toBe('did_not_click');
-    run(s, 12);
-    expect(dist(s, 'you', 'b')).toBeGreaterThan(1.5);
-    // ...and your agent went home.
+    s.parted('you', 'b');
+    expect(until(s, () => s.get('you')!.bubble === 'met')).toBeLessThan(5);
+    expect(s.get('b')!.bubble).toBe('met');
+    // ...and your agent went home, which from anywhere in the plaza is a stroll.
     const you = s.get('you')!;
-    expect(Math.hypot(you.x - HOME[0], you.z - HOME[1])).toBeLessThan(0.2);
+    expect(until(s, () => Math.hypot(you.x - HOME[0], you.z - HOME[1]) < 0.2)).toBeLessThan(90);
+    expect(dist(s, 'you', 'b')).toBeGreaterThan(1.5);
   });
 
   it('sends a passed person off the square', () => {
     const s = town();
     s.pass('a');
-    run(s, 20);
-    expect(s.get('a')!.state).toBe('gone');
+    expect(until(s, () => s.get('a')!.state === 'gone')).toBeLessThan(120);
   });
 
   it('visits three people one at a time, in the order it was told', () => {
@@ -70,41 +83,66 @@ describe('the town', () => {
     // b and c wait their turn: nobody is left "approaching" nobody.
     expect(s.get('b')!.state).not.toBe('approaching');
     expect(s.get('c')!.state).not.toBe('approaching');
-    run(s, 15);
-    expect(you.state).toBe('talking');
+    expect(until(s, () => you.state === 'talking')).toBeLessThan(60);
     expect(dist(s, 'you', 'a')).toBeLessThan(1.2);
-    // The verdict on a, then straight on to b -- not home.
-    s.verdict('you', 'got_on'); s.verdict('a', 'got_on');
-    run(s, 4);
+    // Parted from a, then straight on to b -- not home.
+    s.parted('you', 'a');
+    run(s, 6);
     expect(you.partner).toBe('b');
     expect(s.get('b')!.partner).toBe('you');
-    run(s, 15);
-    expect(you.state).toBe('talking');
+    expect(until(s, () => you.state === 'talking')).toBeLessThan(60);
     expect(dist(s, 'you', 'b')).toBeLessThan(1.2);
     // The roster stopped saying b was talking: same thing, on to c.
     s.settle('b');
     expect(you.partner).toBe('c');
-    run(s, 15);
-    expect(dist(s, 'you', 'c')).toBeLessThan(1.2);
+    expect(until(s, () => dist(s, 'you', 'c') < 1.2)).toBeLessThan(60);
     // Last one done: home.
-    s.verdict('you', 'did_not_click'); s.verdict('c', 'did_not_click');
-    run(s, 20);
-    expect(Math.hypot(you.x - HOME[0], you.z - HOME[1])).toBeLessThan(0.2);
-    expect(you.state).toBe('idle');
+    s.parted('you', 'c');
+    expect(until(s, () => you.state === 'idle'
+      && Math.hypot(you.x - HOME[0], you.z - HOME[1]) < 0.2)).toBeLessThan(90);
+  });
+
+  /**
+   * A round holds no conversation now (2026-09-23), so its cues land within a second
+   * of each other: met, met, met, then a parting for each, then done -- all before
+   * your agent has taken a step. The old sim parted on the cue and the recall dropped
+   * the queue, so your agent turned round and went home having met nobody.
+   *
+   * Negative control: put back `recall` as `visits.delete; settle` -> `seen` is empty.
+   */
+  it('plays out every meeting of a round that finished before your agent arrived', () => {
+    const s = town();
+    s.upsert([{ ref: 'c', kind: 'met', seed: 3 }]);
+    for (const r of ['a', 'b', 'c']) s.meet('you', r);
+    for (const r of ['a', 'b', 'c']) s.parted('you', r);
+    s.recall('you');
+    const you = s.get('you')!;
+    const seen: string[] = [];
+    const apart: number[] = [];
+    until(s, () => {
+      if (you.bubble === 'met' && you.partner && seen.at(-1) !== you.partner) {
+        seen.push(you.partner);
+        apart.push(dist(s, 'you', you.partner));
+      }
+      return seen.length === 3 && you.state !== 'parting';
+    }, 240);
+    expect(seen).toEqual(['a', 'b', 'c']);
+    // Each parting came after they had actually stood together, not mid-walk.
+    for (const d of apart) expect(d).toBeLessThan(1.2);
+    expect(until(s, () => you.state === 'idle'
+      && Math.hypot(you.x - HOME[0], you.z - HOME[1]) < 0.2)).toBeLessThan(90);
   });
 
   it('comes home on a recall, visits queued or not, and leaves the other to wander', () => {
     const s = town();
     s.meet('you', 'a'); s.meet('you', 'b');
-    run(s, 15);
-    expect(s.get('you')!.state).toBe('talking');
+    expect(until(s, () => s.get('you')!.state === 'talking')).toBeLessThan(60);
     s.recall('you');
     const you = s.get('you')!;
     expect(you.partner).toBeNull();
     expect(you.bubble).toBeNull();
-    run(s, 20);
-    expect(Math.hypot(you.x - HOME[0], you.z - HOME[1])).toBeLessThan(0.2);
-    expect(you.state).toBe('idle');
+    expect(until(s, () => you.state === 'idle'
+      && Math.hypot(you.x - HOME[0], you.z - HOME[1]) < 0.2)).toBeLessThan(90);
     // b was never visited, and a is not stuck talking to nobody.
     expect(s.get('b')!.partner).toBeNull();
     expect(s.get('a')!.state).not.toBe('talking');
@@ -116,10 +154,11 @@ describe('the town', () => {
     run(s, 1);
     expect(s.get('you')!.state).toBe('approaching');
     s.remove('a');
-    run(s, 25);
     const you = s.get('you')!;
+    // One step for the sim to notice they have gone, then it heads home.
+    s.step(1 / 30);
     expect(you.partner).toBeNull();
-    expect(Math.hypot(you.x - HOME[0], you.z - HOME[1])).toBeLessThan(0.2);
+    expect(until(s, () => Math.hypot(you.x - HOME[0], you.z - HOME[1]) < 0.2)).toBeLessThan(90);
   });
 
   it('keeps a practice profile see-through once it has been met', () => {
@@ -141,8 +180,8 @@ describe('the town', () => {
     expect(s.get('a')!.look).toEqual(lookFor(1));
     run(s, 3);
     const before = { x: s.get('a')!.x, z: s.get('a')!.z };
-    s.upsert([{ ref: 'a', kind: 'stranger', seed: 1, look: { ...lookFor(1), hair: 6 } }]);
-    expect(s.get('a')!.look.hair).toBe(6);
+    s.upsert([{ ref: 'a', kind: 'stranger', seed: 1, look: { ...lookFor(1), head: 6 } }]);
+    expect(s.get('a')!.look.head).toBe(6);
     expect([s.get('a')!.x, s.get('a')!.z]).toEqual([before.x, before.z]);
   });
 });
@@ -197,9 +236,9 @@ describe('on the map', () => {
     s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: 'a' }, { ref: 'm', kind: 'met', seed: 2, area: 'a' }]);
     s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: 'c' }]);
     expect(s.get('you')!.state).toBe('walking');
-    run(s, 10);
     const you = s.get('you')!;
-    expect(pointInPolygon([you.x, you.z], TRI.c)).toBe(true);
+    // Thirty units at a stroll is a couple of minutes; it is a walk, not a warp.
+    expect(until(s, () => pointInPolygon([you.x, you.z], TRI.c), 240)).toBeLessThan(240);
     // A refresh that says nothing about the area leaves it alone.
     s.upsert([{ ref: 'you', kind: 'you', seed: 7 }]);
     expect(you.area).toBe('c');
@@ -211,22 +250,51 @@ describe('on the map', () => {
     expect(s.get('m')!.area).toBe('b');
   });
 
-  it('hurries a long trip so a cross-town visit still arrives in about four seconds', () => {
+  it('hurries a cross-town visit up to a run, and never faster', () => {
+    // A visit has a deadline -- the conversation is already happening -- so a long
+    // approach speeds up. A WANDER has no deadline, and capping that by distance is
+    // what had everyone crossing a park at motorway speed (2026-09-22).
+    // Control: drop the RUN_MAX clamp and the speed assertion below fails at ~3 u/s.
     const s = mapped();
     s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: 'a' }, { ref: 'far', kind: 'met', seed: 3, area: 'b' }]);
     expect(dist(s, 'you', 'far')).toBeGreaterThan(20);
     s.meet('you', 'far');
-    run(s, 4.5);
-    expect(s.get('you')!.state).toBe('talking');
+    const you = s.get('you')!;
+    expect(you.speed, 'hurried, because somebody is waiting').toBeGreaterThan(0.5);
+    expect(you.speed, 'but never faster than a run').toBeLessThanOrEqual(0.84);
+    expect(until(s, () => you.state === 'talking', 90)).toBeLessThan(90);
     expect(dist(s, 'you', 'far')).toBeLessThan(1.1);
+
+  });
+
+  it('never lets a crowd going nowhere break into a run', () => {
+    // The founder's bug, as he saw it: "why are all the agents speedrunning . they
+    // are walking at around 200kmph" (2026-09-22). One agent is not enough to catch
+    // it -- a wander that happens to pick a spot two units away is slow whatever the
+    // rule is -- so watch forty of them for two minutes and keep the worst.
+    // Control: pass `hurried` from `wander()` in sim.ts and the max here is ~0.7,
+    // three and a half times a stroll. This is the test that edit slipped past before.
+    const s = mapped();
+    s.upsert(Array.from({ length: 40 }, (_, i) => ({ ref: `p${i}`, kind: 'stranger' as const, seed: i, area: 'b' })));
+    let fastest = 0; let walked = 0;
+    for (let i = 0; i < 120 * 30; i++) {
+      s.step(1 / 30);
+      for (const a of s.agents()) {
+        if (a.state !== 'walking' || a.partner) continue;
+        walked++;
+        fastest = Math.max(fastest, a.speed);
+      }
+    }
+    expect(walked, 'nobody moved, so this proved nothing').toBeGreaterThan(10000);
+    // 0.2 units a second is about 5 km/h at PERSON scale. Allow a hair for rounding.
+    expect(fastest, 'somebody was sprinting across the park').toBeLessThanOrEqual(0.21);
   });
 
   it('sends a passed person out of their own neighbourhood and marks them gone', () => {
     const s = mapped();
     s.upsert([{ ref: 'p', kind: 'stranger', seed: 4, area: 'c' }]);
     s.pass('p');
-    run(s, 20);
-    expect(s.get('p')!.state).toBe('gone');
+    expect(until(s, () => s.get('p')!.state === 'gone', 180)).toBeLessThan(180);
     expect(pointInPolygon([s.get('p')!.x, s.get('p')!.z], TRI.c)).toBe(false);
   });
 

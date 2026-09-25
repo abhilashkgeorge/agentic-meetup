@@ -68,6 +68,14 @@ const Env = z.object({
    * recall only. One key closes both.
    */
   GEMINI_API_KEY: z.string().default(''),
+  /**
+   * TypeSafe, for System One models (Jev). A different SHAPE of model, not a cheaper
+   * one: unstructured state in, typed decisions with calibrated probabilities out. It
+   * writes no text at all, so it can never carry a conversation -- see
+   * `adapters/typesafe.ts` and the `decide` task.
+   */
+  TYPESAFE_API_KEY: z.string().default(''),
+  TYPESAFE_API_URL: z.string().default('https://api.typesafe.ai/v1/systemone'),
 
   CHAT_MODEL: z.string().default('anthropic:claude-sonnet-5'),
   EXTRACT_MODEL: z.string().default('anthropic:claude-sonnet-5'),
@@ -75,6 +83,16 @@ const Env = z.object({
   REFLECT_MODEL: z.string().default('anthropic:claude-sonnet-5'),
   RENDER_PROFILE_MODEL: z.string().default('anthropic:claude-sonnet-5'),
   CANON_MODEL: z.string().default('anthropic:claude-sonnet-5'),
+  /**
+   * The typed-decision task. OFF BY DEFAULT and that is deliberate.
+   *
+   * Empty means every decision keeps running through the prose models it runs through
+   * today, so setting nothing changes nothing. Set it to `typesafe:jev-latest` to move
+   * the two places that want a calibrated probability rather than a paragraph: mapping
+   * a written dealbreaker onto a filter, and the fourth file scorer recorded on every
+   * pair for comparison. Nothing else may use it -- it cannot write text.
+   */
+  DECIDE_MODEL: z.string().default(''),
 
   EMBEDDING_MODEL: z.string().default('google:gemini-embedding-001'),
   EMBEDDING_DIMENSIONS: z.coerce.number().default(768),

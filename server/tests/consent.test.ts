@@ -51,6 +51,15 @@ beforeAll(async () => {
   await f('birth_date', '1994', { year: 1994, month: null });
   await f('lives_in', 'Bangalore',
     { city: 'bangalore', lat: 12.97, lon: 77.59, precision_km: 20 });
+  // The five core cards are a pool condition too (profile.ts), so "otherwise
+  // complete" includes them: done, "anyone", no rule.
+  const { CORE } = await import('../src/onboarding/questions.js');
+  for (const id of CORE) {
+    await owner.query(
+      `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)
+       VALUES ($1,$2,$3,'{"values":[],"whoFine":{"anyone":true}}'::jsonb, true)`,
+      [tenantId, ctx.userId, id]);
+  }
 });
 
 beforeEach(async () => {

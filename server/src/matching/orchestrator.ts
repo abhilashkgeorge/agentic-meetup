@@ -15,12 +15,18 @@
  * A FEW AT A TIME, AND NOT MANY. It used to be exactly one: the top-ranked candidate,
  * then five conversations, then -- if fewer than three of five agreed -- nothing at
  * all. Five of the seven real rounds ever run ended in nothing, and the nineteen other
- * people the ranker had scored were thrown away each time. Now the top K are met, EVERY
- * one gets a brief, and the agreement rate orders the list the person sees rather than
- * gating it. K is small on purpose: running the top twenty nightly for every user is
- * how this becomes unaffordable before it becomes useful. Ditto ships one match a week
- * per person and reports 20% turn into dates -- scarcity is a feature before it is a
- * cost control, and three is the smallest number that gives a person a next one.
+ * people the ranker had scored were thrown away each time. Now the top K are met and
+ * EVERY one gets a brief. K is small on purpose: Ditto ships one match a week per
+ * person and reports 20% turn into dates -- scarcity is a feature before it is a cost
+ * control, and three is the smallest number that gives a person a next one.
+ *
+ * NO MODEL ON THE DEFAULT PATH, SINCE 2026-09-23. A round was about 189 model calls
+ * ($0.055, measured): five conversations a pair, a file score and two model-written
+ * briefs. Now the filter, the pick and the brief are SQL and TypeScript and a round
+ * costs nothing. The conversations are off unless RENDEZVOUS_RUNS asks for them (why:
+ * rendezvous.ts RUNS), the file score is not taken (why: below), and the brief is a
+ * template (why: brief.ts). Even with conversations switched back on, neither their
+ * concern nor their agreement rate reaches anything a person reads.
  *
  * THREE PHASES, AND NO TRANSACTION AROUND THE MIDDLE ONE. The first version wrapped
  * the whole round in one `matchmakerSession`, which meant a database transaction stayed
@@ -30,23 +36,35 @@
  * extraction is written the same way for the same reason.
  *
  *   read    who to meet, and what each may say. Short transaction, then closed.
- *   model   five conversations and two briefs. NO transaction open.
- *   write   the runs, the verdict, the briefs. Short transaction.
+ *   middle  each person's verified sentences, each under their own session; the
+ *           conversations only if RENDEZVOUS_RUNS asks. NO transaction held across.
+ *   write   the briefs, and the runs if any. Short transaction, per pair.
  */
 import type { PoolClient } from 'pg';
 import { matchmakerSession } from '../db/client.js';
 import { env } from '../env.js';
 import { metered } from '../metering.js';
 import { log } from '../log.js';
-import { candidateIds, isCandidate } from './candidates.js';
-import { llmFileScore, rank } from './score.js';
-import { buildDossier, converse, passes, pickConcern, publicTags, recordRuns, RUNS } from './rendezvous.js';
-import { composeBoth, loadQuotes, saveBriefs, type Quote } from './brief.js';
+import { candidateIds, isCandidate, overExposed } from './candidates.js';
+import { jevFileScore, rank } from './score.js';
+import { buildDossier, converse, passes, publicTags, recordRuns, RUNS, type Conversations } from './rendezvous.js';
+import { cardFacts, composeBoth, loadQuotes, saveBriefs, type CardFacts } from './brief.js';
+import { compareSheets, practiceSheet, readSheets } from './answer-sheet.js';
+import {
+  TALK_SENTENCES, TALK_SOURCES, agentTalk, practiceSentences, talkFor, talkOn,
+} from './talk.js';
+import { cantCheck, cardAnswers, checkShortlist, checkWants, demote, loadWants, notMetCounts, wantRows } from './wants.js';
 import { voiceText } from '../memory/profile.js';
-import { agreementWords } from '@clone/shared';
 import { agentRef, notify } from './world.js';
 
-/** How many people one round meets. Each is five conversations, so keep this small. */
+/**
+ * What a pair "said" when no conversation was held -- the default. Zero runs, zero
+ * cost, and so an agreement of NULL: nothing was measured, which is different from a
+ * measurement of nothing.
+ */
+const NO_CONVERSATION: Conversations = { results: [], counted: 0, bothYes: 0, costUsd: 0 };
+
+/** How many people one round meets. Keep this small; see the header. */
 export const CANDIDATES_PER_ROUND = Number(process.env.ROUND_CANDIDATES ?? 3);
 
 export interface RoundResult {
@@ -54,7 +72,7 @@ export interface RoundResult {
   considered: number;
   /** The first person met, kept for callers that still think in ones. */
   met: string | null;
-  /** Everyone met this round, in ranked order. Each now has a brief waiting. */
+  /** Everyone met this round, in pick order (real first). Each now has a brief waiting. */
   metAll: string[];
   bothYes: number;
   runs: number;
@@ -93,8 +111,8 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     costUsd: 0, skipped, ...(target ? { target } : {}),
   });
 
-  // ── read ────────────────────────────────────────────────────────────────────
-  const plan = await matchmakerSession(async (c) => {
+  // ── read: the shortlist ─────────────────────────────────────────────────────
+  const shortlist = await matchmakerSession(async (c) => {
     const { rows: meRows } = await c.query<{ tenant_id: string; in_pool: boolean }>(
       'SELECT tenant_id, in_pool FROM match_profile WHERE user_id = $1', [userId],
     );
@@ -129,15 +147,75 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       return { stop: target ? 'your agent has already met them' : 'your agent has already met everyone who fits' } as const;
     }
 
-    const ranked = await rank(c, userId, fresh, target ? 1 : 20);
-    if (!ranked.length) return { stop: 'nobody to rank' } as const;
+    // NOBODY IS FLOODED. A real person already brought by five other real people's
+    // rounds this week is not picked again this week (overExposed): still a
+    // candidate, still reachable next week, just not the whole pool's first stop.
+    const capped = await overExposed(c, fresh);
+    const pickable = fresh.filter((id) => !capped.has(id));
+    if (!pickable.length) {
+      return { stop: target ? 'they have met a lot of people this week' : 'everyone who fits has met a lot of people this week' } as const;
+    }
+
+    // PICKED IN THE CANDIDATE QUERY'S ORDER: real people first, then the most recently
+    // active (candidateIds). It used to be re-sorted by rank(), and that buried every
+    // real person under five thousand invented ones -- rank()'s re-fetch has no ORDER
+    // BY (score.ts), its sort is by a score invented profiles win on richer tags, and
+    // with three picks a round a real person was reached only by luck. The score is
+    // still worked out and recorded on each pair, because it is one of the scorers
+    // compare-scorers.ts is measuring; it just no longer decides who is met.
+    const window = pickable.slice(0, target ? 1 : 20);
+    const scores = new Map((await rank(c, userId, window, window.length)).map((s) => [s.userId, s.score]));
+    const ranked = window.map((id) => ({ userId: id, score: scores.get(id) ?? 0 }));
 
     const a = { userId, tenantId: me.tenant_id };
-    // Loaded once. The same person's dossier goes into every conversation this round.
+    // Loaded once. The dossier and voice are for the conversations and the typed file
+    // score, both off by default; the card and the tags are what the brief is built
+    // from. Quotes are NOT read here: verifying one reads the person's own episodes,
+    // which this role cannot see (see loadQuotes).
     const dossierA = await buildDossier(c, a.userId);
     const voiceA = await voiceText(c, a.userId);
-    const quotesA = await loadQuotes(c, a.userId);
+    const cardA = await cardFacts(c, a.userId);
     const tagsA = await publicTags(c, a.userId);
+
+    // Who each candidate is -- their tenant, and whether they are invented -- for the
+    // wants check and for the claims, in the shortlist's order.
+    const { rows: whoRows } = await c.query<{ user_id: string; tenant_id: string; is_synthetic: boolean }>(
+      'SELECT user_id, tenant_id, is_synthetic FROM match_profile WHERE user_id = ANY($1::uuid[])',
+      [ranked.map((r) => r.userId)]);
+    const whoById = new Map(whoRows.map((r) => [r.user_id, r]));
+    const order = ranked.flatMap((r) => {
+      const w = whoById.get(r.userId);
+      return w ? [{ ...r, tenantId: w.tenant_id, synthetic: w.is_synthetic }] : [];
+    });
+
+    return {
+      stop: null,
+      considered: ranked.length,
+      a: { ...a, dossier: dossierA, voice: voiceA, card: cardA, tags: tagsA },
+      order,
+    } as const;
+  });
+  if (shortlist.stop) return empty(shortlist.stop);
+
+  // ── the wants, before anybody is claimed (wants.ts) ─────────────────────────
+  //
+  // ONLY DOWN, AND OUTSIDE ANY TRANSACTION. The starter's own wants are checked against
+  // the shortlist's sentences in one call; a candidate a want is not met by moves later
+  // in the order, within their own group, and nobody moves up or out. It runs here,
+  // between the shortlist and the claims, because a model call inside the read
+  // transaction is the eighteen-minute transaction this file was split to end. A round
+  // sent to one person has nothing to reorder, but their card still carries the wants;
+  // a person with no wants makes no call.
+  const spender = { tenantId: shortlist.a.tenantId, userId: shortlist.a.userId };
+  const wantsA = await loadWants(spender);
+  const pre = wantsA.length
+    ? await metered(spender, 'rendezvous', () => checkShortlist(spender, wantsA, shortlist.order))
+    : null;
+  const order = pre && !target ? demote(shortlist.order, notMetCounts(pre.byId)) : shortlist.order;
+
+  // ── read: the claims ────────────────────────────────────────────────────────
+  const plan = await matchmakerSession(async (c) => {
+    const a = shortlist.a;
 
     // THE TOP K, EACH CLAIMED INSIDE THIS TRANSACTION, so two rounds started at once
     // cannot both decide to run the same pair. A candidate whose claim fails was
@@ -145,17 +223,12 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     const pairs: Array<{
       rendezvousId: string;
       rankScore: number;
-      b: { userId: string; tenantId: string; synthetic: boolean; dossier: string; voice: string; quotes: Quote[]; tags: string[] };
+      b: { userId: string; tenantId: string; synthetic: boolean; dossier: string; voice: string; card: CardFacts; tags: string[] };
     }> = [];
     const k = target ? 1 : CANDIDATES_PER_ROUND;
-    for (const cand of ranked) {
+    for (const cand of order) {
       if (pairs.length >= k) break;
-      const { rows: themRows } = await c.query<{ tenant_id: string; is_synthetic: boolean }>(
-        'SELECT tenant_id, is_synthetic FROM match_profile WHERE user_id = $1', [cand.userId],
-      );
-      const them = themRows[0];
-      if (!them) continue;
-      const b = { userId: cand.userId, tenantId: them.tenant_id, synthetic: them.is_synthetic };
+      const b = { userId: cand.userId, tenantId: cand.tenantId, synthetic: cand.synthetic };
       // The pair key is ordered, because the unique index is.
       const [lo, hi] = a.userId < b.userId ? [a, b] : [b, a];
       const { rows: created } = await c.query<{ id: string }>(
@@ -173,27 +246,22 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       // kind of thing that works until it does not.
       const dossierB = await buildDossier(c, b.userId);
       const voiceB = await voiceText(c, b.userId);
-      const quotesB = await loadQuotes(c, b.userId);
+      const cardB = await cardFacts(c, b.userId);
       const tagsB = await publicTags(c, b.userId);
       pairs.push({
         rendezvousId: created[0].id, rankScore: cand.score,
-        b: { ...b, dossier: dossierB, voice: voiceB, quotes: quotesB, tags: tagsB },
+        b: { ...b, dossier: dossierB, voice: voiceB, card: cardB, tags: tagsB },
       });
     }
     if (!pairs.length) return { stop: 'already met' } as const;
 
-    return {
-      stop: null,
-      considered: ranked.length,
-      a: { ...a, dossier: dossierA, voice: voiceA, quotes: quotesA, tags: tagsA },
-      pairs,
-    } as const;
+    return { stop: null, considered: shortlist.considered, a, pairs } as const;
   });
 
   if (plan.stop) return empty(plan.stop);
 
   // THE TOWN HEARS IT FIRST. Every pair is claimed by now, so both sides can be told
-  // "somebody is walking over" before a single model call -- each with their own
+  // "somebody is walking over" before anything else happens -- each with their own
   // per-viewer ref for the other, never an id. The visited side gets no roundId: it
   // is not their round. An invented person has no socket and pushTo is a no-op.
   for (const pair of plan.pairs) {
@@ -207,32 +275,53 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     });
   }
 
-  // ── model. No transaction open, and metered. ───────────────────────────────
+  // ── the middle. No transaction held across it, and metered. ──────────────────
   //
-  // ONE METER ROUND THE WHOLE ROUND. Fifteen simulated conversations plus six briefs
-  // is the most expensive thing a tap can do in this product, and until now the only
-  // path that recorded any of it was the HTTP endpoint -- so the seven real rounds,
-  // which were all launched from scripts/round.ts, spent money the daily cap never
-  // saw. Opening the meter here rather than at the endpoint means the script, the
-  // endpoint and the worker are all counted by the same code.
+  // ONE METER ROUND THE WHOLE ROUND. Since 2026-09-24 the default path makes one small
+  // call per pair -- the agents' talk (talk.ts) -- and it is counted here, on the
+  // starter's day, like RENDEZVOUS_RUNS and DECIDE_MODEL when those are switched on. A
+  // call with no meter open throws rather than spending for free. The day's cap is
+  // checked once, before the round; a round of three pairs adds three turns to it.
   //
   // No `db` argument: this phase deliberately holds no transaction, which is the
   // entire reason the orchestrator is split into three phases.
-  //
-  // SEQUENTIAL, one pair after another. Parallel would be faster and would hit the
-  // free tier's rate limit three times as hard; see the pauses in converse().
-  const spender = { tenantId: plan.a.tenantId, userId: plan.a.userId };
   // Pairs whose write has landed. Anything else is still a bare claim if this throws.
   const written = new Set<string>();
   const outcomes = await metered(spender, 'rendezvous', async () => {
+    // The sender's own verified sentences, once: they go on every card the round
+    // writes for the people met. Each person's under their OWN session -- see
+    // loadQuotes for why the matchmaker cannot do it.
+    const quotesA = await loadQuotes(plan.a);
+    // THE ANSWER SHEETS, read -- never built -- here. Built once per change by each
+    // person's own session (answer-sheet.ts), so the exchange on every card costs a
+    // read and no model call. The words come live from `facts` under the matchmaker's
+    // row-level security: a sentence hidden since the sheet was built is not returned.
+    // A practice profile has nothing it ever typed; its sheet is a labelled template.
+    const sheets = await matchmakerSession((c) => readSheets(c, [
+      plan.a.userId, ...plan.pairs.filter((p) => !p.b.synthetic).map((p) => p.b.userId),
+    ]));
+    const sheetA = sheets.get(plan.a.userId);
+    // THE AGENTS TALK (talk.ts): one small call a pair, reading only sentences that
+    // pass the quote check, and writing nothing about anybody -- it points at them. The
+    // starter's own sentences are read once; a pair whose talk fails keeps the sheets.
+    const talking = talkOn();
+    // The starter's own sentences, once: the talk's side A, and what the other person's
+    // wants are checked against.
+    const sentencesA = (await loadQuotes(plan.a, { predicates: TALK_SOURCES, limit: TALK_SENTENCES }))
+      .map((q) => ({ text: q.text }));
+    const talkA = talking ? sentencesA : [];
     const out: Array<{
       pair: (typeof plan.pairs)[number];
-      runs: Awaited<ReturnType<typeof converse>>;
+      runs: Conversations;
       ok: boolean;
-      briefs: Awaited<ReturnType<typeof composeBoth>>;
-      concerns: { a: string; b: string };
-      fileScore: number | null;
-      fileCost: number;
+      briefs: ReturnType<typeof composeBoth>;
+      /** The fourth scorer, or null when no typed model is configured. */
+      jevScore: number | null;
+      jevCost: number;
+      /** What the agents' talk cost; 0 when they did not talk. */
+      talkCost: number;
+      /** What checking the other person's wants against the starter cost. */
+      wantCost: number;
     }> = [];
     for (const pair of plan.pairs) {
       notify(userId, { type: 'round.talking', roundId, rendezvousId: pair.rendezvousId,
@@ -240,65 +329,89 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       notify(pair.b.userId, { type: 'round.talking', roundId: null, rendezvousId: pair.rendezvousId,
                               agent: agentRef(pair.b.userId, userId) });
 
-      // THE THIRD SCORER, taken before the conversation so it cannot be influenced
-      // by it. One call, both files, no talking. Recorded on the pair and never
-      // shown; it exists to be compared against the other two once humans have
-      // spoken. See score.ts llmFileScore and scripts/compare-scorers.ts.
-      const file = await llmFileScore(plan.a, pair.b);
-      const runs = await converse(plan.a, pair.b);
-      const ok = passes(runs.bothYes, runs.counted, RUNS);
-
-      // The concern each agent recorded about the OTHER person, carried through
-      // verbatim rather than rewritten. The one the runs kept coming back to, not the
-      // last: five runs are five independent conversations, and the last is no better
-      // informed than the first. See pickConcern.
+      // NO FILE SCORE. `llmFileScore` was one model call a pair, recorded and never
+      // read, and only ever taken on real-vs-invented pairs -- whose answers say
+      // nothing about two real people, so nothing it measured could transfer. It
+      // stays in score.ts for compare-scorers to read the old rows; it is not called.
       //
-      // Keyed to the SIDES OF THIS CONVERSATION, which is what `runs.results` holds --
-      // `recordRuns` normalises to the table's own order when it writes, and these
-      // never go near the table.
-      const concerns = {
-        a: pickConcern(runs.results.map((r) => r.aConcern)),
-        b: pickConcern(runs.results.map((r) => r.bConcern)),
-      };
+      // The typed-decision scorer stays exactly as it was: a no-op unless DECIDE_MODEL
+      // is set. Its failure is not the round's -- an experiment nobody reads must
+      // never cost somebody the card they asked for.
+      const jev = await jevFileScore(plan.a, pair.b).catch((err: unknown) => {
+        log.warn({ err, userId }, 'typed file score failed; the round continues');
+        return { score: null, costUsd: 0 };
+      });
+      // NO CONVERSATION unless RENDEZVOUS_RUNS asks for one -- not even an empty
+      // call: `converse` with zero runs is a no-op today, but "skipped" should be
+      // true of the code, not of an argument.
+      const runs = RUNS > 0 ? await converse(plan.a, pair.b) : NO_CONVERSATION;
+      const ok = RUNS > 0 && passes(runs.bothYes, runs.counted, RUNS);
 
-      // A BRIEF FOR EVERY PAIR, whatever the verdict. The agreement rate now ORDERS
-      // what the person sees; it used to gate it, and a pair the agents were unsure
-      // about was thrown away with nothing shown. The person is the judge; the agents
-      // write the brief and say how sure they were.
-      const briefs = await composeBoth(plan.a, pair.b);
-      const o = { pair, runs, ok, briefs, concerns, fileScore: file.score, fileCost: file.costUsd };
+      // A BRIEF FOR EVERY PAIR, written by code from what is true of both people.
+      // Nothing from a conversation goes into it -- not the concern, not the rate --
+      // even when conversations have been switched back on. See brief.ts.
+      const quotesB = await loadQuotes(pair.b);
+      // What the two agents asked each other: the same twelve questions, each side's
+      // answers in its person's own words, "I don't know" where they never said.
+      const sheetB = pair.b.synthetic ? practiceSheet(pair.b.tags) : sheets.get(pair.b.userId);
+      // Their side of the talk: a person's verified sentences, under their own session
+      // like the quotes; a practice profile's template lines, marked practice.
+      const talkB = !talking ? []
+        : pair.b.synthetic ? await matchmakerSession((c) => practiceSentences(c, pair.b.userId))
+        : (await loadQuotes(pair.b, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })).map((q) => ({ text: q.text }));
+      const said = talking ? await agentTalk(spender, talkA, talkB) : { talk: null, costUsd: 0 };
+      // THE OTHER SIDE'S WANTS, against the starter's sentences, for their card. The
+      // starter's own were checked before the claims (above). An invented person has
+      // no wants.
+      const wantsB = pair.b.synthetic ? [] : await loadWants(pair.b);
+      const bChecked = wantsB.length
+        ? await checkWants(spender, wantsB, [sentencesA], [(await cardAnswers([plan.a.userId])).get(plan.a.userId) ?? null])
+        : null;
+      const briefs = composeBoth(
+        { card: plan.a.card, tags: plan.a.tags, quotes: quotesA },
+        { card: pair.b.card, tags: pair.b.tags, quotes: quotesB },
+        { forA: compareSheets(sheetA, sheetB), forB: compareSheets(sheetB, sheetA) },
+        { forA: talkFor(said.talk, 'a'), forB: talkFor(said.talk, 'b') },
+        // NEVER DROPPED: a want the check did not reach -- the call failed, or they were
+        // past the window -- is on the card as "We can't check this one yet".
+        {
+          forA: wantRows(pre?.byId.get(pair.b.userId) ?? cantCheck(wantsA)),
+          forB: wantRows(bChecked ? bChecked.results[0] : cantCheck(wantsB)),
+        },
+      );
+      const o = { pair, runs, ok, briefs, jevScore: jev.score, jevCost: jev.costUsd, talkCost: said.costUsd,
+                  wantCost: bChecked?.costUsd ?? 0 };
       out.push(o);
 
       // ── write, PER PAIR, in its own short transaction ───────────────────────
-      // The rule is "no transaction open across a model call", and this keeps it:
-      // the write opens after this pair's calls and closes before the next pair's.
-      // What it buys is that the first person met is on the record -- runs, score,
-      // brief -- before the second conversation starts, so a crash mid-round keeps
-      // what was paid for, and the town's event and the roster's poll can never
-      // disagree about a pair: the event is sent only once the row says the same.
+      // What it buys is that the first person met is on the record -- brief, and
+      // runs if any were held -- before the next pair is looked at, so a crash
+      // mid-round keeps what was done, and the town's event and the roster's poll can
+      // never disagree about a pair: the event is sent only once the row says the same.
       await matchmakerSession((c) => writePair(c, plan.a, o));
       written.add(pair.rendezvousId);
-      const agreement = o.runs.counted > 0 ? o.runs.bothYes / o.runs.counted : null;
-      const words = agreementWords(agreement);
+      // "They met", and nothing about how it went: the event carries no verdict and
+      // no words, so the square draws the same small moment for every pair.
       notify(userId, { type: 'round.decided', roundId, rendezvousId: pair.rendezvousId,
-                       agent: agentRef(userId, pair.b.userId), agreement: words });
+                       agent: agentRef(userId, pair.b.userId) });
       notify(pair.b.userId, { type: 'round.decided', roundId: null, rendezvousId: pair.rendezvousId,
-                              agent: agentRef(pair.b.userId, userId), agreement: words });
+                              agent: agentRef(pair.b.userId, userId) });
     }
     return out;
   }).catch(async (err: unknown) => {
     // THE CLAIMS THIS ROUND NEVER USED GO BACK. The read phase claimed one row per
-    // pair before any model call, so that two rounds could not run the same pair at
-    // once; a round that then dies -- the day's cap, the model down -- used to leave
+    // pair before anything else, so that two rounds could not run the same pair at
+    // once; a round that then dies -- the day's cap, a failed read -- used to leave
     // those rows 'running' for ever, and "a pair meets once" then counted them: three
-    // people this agent never spoke to, never to be met. What was paid for stays
-    // (the pairs in `written`); a claim with nothing behind it is released.
+    // people this agent never met, never to be met. What was written stays (the
+    // pairs in `written`); a claim with nothing behind it is released.
     const unused = plan.pairs.map((p) => p.rendezvousId).filter((id) => !written.has(id));
     if (unused.length) await matchmakerSession((c) => releaseClaims(c, unused));
     throw err;
   });
 
-  const costUsd = outcomes.reduce((n, o) => n + o.runs.costUsd + o.briefs.costUsd + o.fileCost, 0);
+  const costUsd = (pre?.costUsd ?? 0)
+    + outcomes.reduce((n, o) => n + o.runs.costUsd + o.jevCost + o.talkCost + o.wantCost, 0);
   const bothYes = outcomes.reduce((n, o) => n + o.runs.bothYes, 0);
   const runs = outcomes.reduce((n, o) => n + o.runs.counted, 0);
   const passed = outcomes.some((o) => o.ok);
@@ -330,25 +443,28 @@ export async function releaseClaims(c: PoolClient, ids: readonly string[]): Prom
   return rowCount ?? 0;
 }
 
-/** One pair's record: runs, scores, briefs, and the invented side's yes if allowed. */
+/** One pair's record: runs if any, scores, briefs, and the invented side's yes if allowed. */
 async function writePair(
   c: PoolClient,
-  a: { userId: string; tenantId: string; dossier: string; voice: string; quotes: Quote[]; tags: string[] },
+  a: { userId: string },
   o: {
-    pair: { rendezvousId: string; b: { userId: string; tenantId: string; dossier: string; voice: string; quotes: Quote[]; tags: string[] } };
-    runs: Awaited<ReturnType<typeof converse>>;
-    briefs: Awaited<ReturnType<typeof composeBoth>>;
-    concerns: { a: string; b: string };
-    fileScore: number | null;
+    pair: { rendezvousId: string; b: { userId: string } };
+    runs: Conversations;
+    briefs: ReturnType<typeof composeBoth>;
+    jevScore: number | null;
   },
 ): Promise<void> {
+  // With no conversation this inserts no runs and only marks the pair decided, with
+  // zero runs done -- the same state a round with conversations reaches, minus them.
   await recordRuns(c, o.pair.rendezvousId, o.runs, a.userId);
-  // What the conversation thought. NULL when nothing was conclusive, so the list
-  // orders it last rather than as a zero that reads as "they said no".
+  // What the conversations thought, kept for compare-scorers and nothing else. NULL
+  // when none was held or none was conclusive -- on the default path, always. It no
+  // longer orders anything a person sees (api/dating.ts) and is never shown.
   const agreement = o.runs.counted > 0 ? o.runs.bothYes / o.runs.counted : null;
-  await c.query('UPDATE rendezvous SET agreement = $2, llm_file_score = $3 WHERE id = $1',
-    [o.pair.rendezvousId, agreement, o.fileScore]);
-  await saveBriefs(c, o.pair.rendezvousId, a, o.pair.b, o.briefs, o.concerns);
+  await c.query(
+    'UPDATE rendezvous SET agreement = $2, jev_file_score = $3 WHERE id = $1',
+    [o.pair.rendezvousId, agreement, o.jevScore]);
+  await saveBriefs(c, o.pair.rendezvousId, a, o.pair.b, o.briefs);
   // An invented person cannot open the app and tap yes -- and taking it as a yes
   // anyway is how a real person ended up introduced to nobody, in a conversation
   // that would never be answered. Off by default; on only when the founder is

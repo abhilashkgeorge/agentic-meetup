@@ -106,8 +106,18 @@ export interface SyntheticProfile {
   traits: Record<string, unknown>;
 }
 
-/** The thirty neighbourhoods as a distribution, in whole-number weights. */
-const AREA_DIST: Dist<string> = AREAS.map((a) => [a.id, Math.round(a.weight * 100)] as const);
+/**
+ * The thirty neighbourhoods as a distribution, in whole-number weights.
+ *
+ * EXPORTED, because `scripts/backfill-areas.ts` spreads the synthetics that were
+ * seeded before areas existed and has to land them where new ones would land. A
+ * backfill with its own private copy of this table is a backfill that silently
+ * diverges from the generator the first time a weight changes.
+ */
+export const AREA_DIST: Dist<string> = AREAS.map((a) => [a.id, Math.round(a.weight * 100)] as const);
+
+/** How often a Bangalore person never says which part of town. Rule 3's hole. */
+export const AREA_SILENT = 0.08;
 
 export function makeProfile(r: () => number, tenantId: string): SyntheticProfile {
   const gender = pick(GENDER, r);
@@ -142,7 +152,7 @@ export function makeProfile(r: () => number, tenantId: string): SyntheticProfile
   // neighbourhood's centre rather than the city's -- the same rule rebuildMatchProfile
   // applies to a real person who names one. About one in twelve never says (Rule 3).
   const inBangalore = place !== null && nearestArea(place.lat, place.lon, 3) !== null;
-  const area = inBangalore && r() >= 0.08 ? pick(AREA_DIST, r) : null;
+  const area = inBangalore && r() >= AREA_SILENT ? pick(AREA_DIST, r) : null;
   const areaCentre = area ? AREAS.find((a) => a.id === area) ?? null : null;
 
   let intent = pick(INTENT, r);

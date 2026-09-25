@@ -17,22 +17,28 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { MIN_AGE, POOL_REQUIRED, isAdult } from '@clone/shared';
-import { getPool, setEssential } from '../../lib/api';
+import { getKnowledge, getPool, setEssential } from '../../lib/api';
 import { cityFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
-import { ESSENTIAL_FIELDS } from '../profile/fields';
+import { ESSENTIAL_FIELDS, essentialSteps, type FieldKind } from '../profile/fields';
+import { ageRangeDefault, parseAgeRange } from '../profile/age-range';
+import { AgeRangeInput, type AgeRangeText } from '../profile/age-range-input';
 import {
   Animation,
   Button, Card, Chip, ChipGroup, Field, Screen, StepsLeft, space, type, usePalette,
 } from '../../components/ui';
 
-type Answer = string | string[] | number | null;
+/** `AgeRangeText` is the two boxes of the age-range step, still as typed. */
+type Answer = string | string[] | number | null | AgeRangeText;
+
+const isRangeText = (v: Answer | undefined): v is AgeRangeText =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 interface Question {
   key: string;
   title: string;
   hint?: string;
-  kind: 'one' | 'many' | 'number' | 'text';
+  kind: FieldKind;
   options?: { value: string; label: string }[];
 }
 
@@ -76,6 +82,12 @@ export default function EssentialsScreen() {
    * -- falls back to the full list rather than skipping setup entirely.
    */
   const [questions, setQuestions] = useState<Question[] | null>(null);
+  /**
+   * The birth year the server already holds, for the age-range pre-fill when the year
+   * was not typed on this visit -- a "Finish setup" visitor who set up before the age
+   * range existed answers it here, and their year was given weeks ago.
+   */
+  const [knownYear, setKnownYear] = useState<number | null>(null);
   useEffect(() => {
     // No token should not be reachable behind the auth gate, but returning here without
     // setting `questions` would leave the loading spinner up for ever, so fall through
@@ -83,14 +95,21 @@ export default function EssentialsScreen() {
     if (!token) { setQuestions(ESSENTIAL_FIELDS); return; }
     let live = true;
     void (async () => {
-      const pool = await getPool(token);
+      // "What it knows" as well as the pool: the age range is asked when no range is
+      // held, which the pool does not report (see `essentialSteps`), and the pre-fill
+      // needs the birth year. An unreadable list counts as no range -- asking twice is
+      // cheaper than never asking.
+      const [pool, known] = await Promise.all([getPool(token), getKnowledge(token)]);
       if (!live) return;
+      const facts = known?.knows ?? [];
+      const year = Number(facts.find((f) => f.predicate === 'birth_date')?.value ?? NaN);
+      setKnownYear(Number.isFinite(year) && year > 0 ? year : null);
       const need = pool && Array.isArray(pool.need) ? pool.need : null;
       if (!need) { setQuestions(ESSENTIAL_FIELDS); return; }
       // Consent is a pool requirement but not a field this screen can ask. Send them to
       // the one screen that can, instead of filtering it away and calling setup done.
       if (need.includes('consent')) { router.replace('/consent'); return; }
-      const filtered = ESSENTIAL_FIELDS.filter((f) => need.includes(f.key));
+      const filtered = essentialSteps(need, facts.some((f) => f.predicate === 'age_range_sought'));
       // Nothing this screen can ask -- the agent has what it needs. Go on rather than
       // show an empty wizard: back to the caller for a "Finish setup", forward for setup.
       if (filtered.length === 0) { routeOnward(); return; }
@@ -126,9 +145,25 @@ export default function EssentialsScreen() {
   const q = list[at]!;
   const value = answers[q.key];
   const answered = useMemo(
-    () => (Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== ''),
-    [value],
+    () => (q.kind === 'range'
+      // Answered means a range the server will take: a half-typed box is not one.
+      ? isRangeText(value) && parseAgeRange(value.min, value.max) !== null
+      : Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== ''),
+    [value, q.kind],
   );
+
+  /**
+   * THE PRE-FILL, PUT IN THE BOXES WHEN THE STEP OPENS -- so what is on the screen is
+   * exactly what Next sends, and the person sees it before it is sent. Own age five
+   * either side, clamped (age-range.ts). The year typed a moment ago on this visit wins
+   * over the one the server held. No year at all leaves the boxes blank, not guessed.
+   */
+  useEffect(() => {
+    if (q.kind !== 'range' || answers[q.key] !== undefined) return;
+    const typedYear = Number(answers.birth_date ?? NaN);
+    const r = ageRangeDefault(Number.isFinite(typedYear) && typedYear > 0 ? typedYear : knownYear);
+    setAnswers((a) => ({ ...a, [q.key]: r ? { min: String(r.min), max: String(r.max) } : { min: '', max: '' } }));
+  }, [q.key, q.kind, answers, knownYear]);
 
   const advance = useCallback(async (skipped: boolean) => {
     if (!token) return;
@@ -146,6 +181,11 @@ export default function EssentialsScreen() {
       }
     }
 
+    // The two boxes go out as the {min, max} the fact is stored as, never as text.
+    const raw = answers[q.key];
+    const range = q.kind === 'range' && isRangeText(raw) ? parseAgeRange(raw.min, raw.max) : null;
+    if (!skipped && q.kind === 'range' && !range) return;
+
     setBusy(true);
     // A refusal is sent too. "Declined" and "never asked" must not look the same, or
     // the clone asks the same question every week for ever.
@@ -155,7 +195,7 @@ export default function EssentialsScreen() {
       ? fix
       : undefined;
     const ok = await setEssential(
-      token, q.key, skipped ? null : (answers[q.key] ?? null), skipped ? undefined : place,
+      token, q.key, skipped ? null : (range ?? raw ?? null), skipped ? undefined : place,
     );
     setBusy(false);
     if (!ok) { setNote({ text: 'That did not save. Check your connection and try again.', bad: true }); return; }
@@ -220,7 +260,10 @@ export default function EssentialsScreen() {
           
               How far you would travel is the only genuinely optional one: no answer
               means no distance filter, which costs nobody a match. */}
-          {!POOL_REQUIRED.includes(q.key as (typeof POOL_REQUIRED)[number]) && (
+          {/* Not on the age range either. It gates nothing, but a declined range
+              leaves no fact, so the step would come back on every visit; and the way
+              to say "any age" is already on the screen -- 18 to 99. */}
+          {!POOL_REQUIRED.includes(q.key as (typeof POOL_REQUIRED)[number]) && q.kind !== 'range' && (
             <Button label="Prefer not to say" variant="ghost" onPress={() => void advance(true)} />
           )}
         </>
@@ -259,6 +302,13 @@ export default function EssentialsScreen() {
               );
             })}
           </ChipGroup>
+        )}
+
+        {q.kind === 'range' && (
+          <AgeRangeInput
+            value={isRangeText(value) ? value : { min: '', max: '' }}
+            onChange={(next) => setAnswers((a) => ({ ...a, [q.key]: next }))}
+          />
         )}
 
         {(q.kind === 'number' || q.kind === 'text') && (
@@ -313,7 +363,11 @@ export default function EssentialsScreen() {
       <Text style={[type.callout, { color: p.textTertiary }]}>
         {q.key === 'birth_date'
           ? `You must be ${MIN_AGE} or older. Your birthday is never shown to anybody — only your age, and only once you have both said yes.`
-          : 'Your agent cannot go out without these. It is not a form — nothing here is shown on a profile until you say so.'}
+          : q.kind === 'range'
+            // True both ways: the candidate query tests their age against this range
+            // AND yours against theirs.
+            ? 'Nobody outside these ages is brought to you, and your age has to fit their range too.'
+            : 'Your agent cannot go out without these. It is not a form — nothing here is shown on a profile until you say so.'}
       </Text>
     </Screen>
   );

@@ -6,6 +6,7 @@ import { authRoutes, inviteRoutes } from './api/auth.js';
 import { configRoutes } from './api/config.js';
 import { chatImportRoutes, importRoutes } from './api/import.js';
 import { meRoutes } from './api/me.js';
+import { storyRoutes } from './api/stories.js';
 import { knowledgeRoutes, profileRoutes } from './api/profile.js';
 import { selfTestRoutes } from './api/selftest.js';
 import { tellRoutes } from './api/tell.js';
@@ -60,6 +61,7 @@ app.route('/', messageRoutes);
 app.route('/', photoRoutes);
 app.route('/', verifyRoutes);
 app.route('/', meRoutes);
+app.route('/', storyRoutes);
 app.route('/', adminRoutes);
 app.route('/', consentRoutes);
 

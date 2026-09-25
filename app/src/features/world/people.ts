@@ -13,7 +13,8 @@ export type PeopleRow =
 
 const STATE: Record<WorldAgent['state'], string> = {
   idle: '',
-  talking: 'Your agents are talking now',
+  // No conversation is held any more; the same words as the agent sheet.
+  talking: 'Your agent is with them now',
   briefed: 'Your agent met them',
   waiting: 'Waiting on them',
   introduced: 'You both said yes',

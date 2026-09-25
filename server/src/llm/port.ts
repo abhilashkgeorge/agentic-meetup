@@ -81,9 +81,68 @@ export type Event =
   | { type: 'usage.final'; usage: Usage }
   | { type: 'error'; message: string; retryable: boolean };
 
+// ── typed decisions (the `decide` task) ─────────────────────────────────────
+//
+// A DIFFERENT SHAPE OF MODEL, given its own entry point rather than squeezed into
+// `complete`. A System One model takes unstructured state plus a map of closed
+// questions and returns a probability for each, in one round trip; it generates no
+// text at all. Pretending that is a chat completion is exactly the silent degradation
+// rule 2 exists to prevent -- there would be no honest way to return `text`.
+//
+// Two question types are used here. Their API has a third (`score`, a rubric) which
+// nothing needs yet and is therefore not in this type: a port that can express more
+// than the code uses is a port nobody has tested.
+
+/** Yes or no, answered as a probability. */
+export interface NoulQuestion {
+  kind: 'noul';
+  /** A STATEMENT, phrased so that "more true" means a higher number. */
+  instructions: string;
+  /** Where the boundary is, when it is subtle. */
+  when?: { true: string; false: string };
+}
+
+/** One option out of a closed set, with the distribution over all of them. */
+export interface ChoiceQuestion {
+  kind: 'choice';
+  instructions: string;
+  /** option -> what that option means. The model may return no other string. */
+  options: Record<string, string>;
+}
+
+export type Question = NoulQuestion | ChoiceQuestion;
+
+export interface DecideRequest {
+  /** What is being judged. Free text; never a prompt telling it how to answer. */
+  state: string;
+  questions: Record<string, Question>;
+  /** REQUIRED, as for `complete`. There is no unattributed model call here either. */
+  tenantId: string;
+  userId: string;
+}
+
+export type Answer =
+  /** 1 is certainly true, 0 certainly false, 0.5 no information. */
+  | { kind: 'noul'; p: number }
+  | {
+      kind: 'choice';
+      /** The option with the highest probability. */
+      choice: string;
+      /** 0-1, from how spread the distribution is. Low means "it is guessing". */
+      confidence: number;
+      probabilities: Record<string, number>;
+    };
+
+export interface DecideResponse {
+  answers: Record<string, Answer>;
+  usage: Usage;
+}
+
 export interface LLMPort {
   complete(req: LLMRequest, model: ModelRef): Promise<LLMResponse>;
   stream(req: LLMRequest, model: ModelRef): AsyncIterable<Event>;
+  /** Only a model whose adapter implements it; every other one raises. */
+  decide(req: DecideRequest, model: ModelRef): Promise<DecideResponse>;
   capabilities(model: ModelRef): Caps;
 }
 

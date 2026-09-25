@@ -1,11 +1,12 @@
 /**
- * The ground truth: every pair carries three scores before the humans look, and the
- * humans' answers afterwards. Without this nothing about the matching can be measured,
- * and the argument between "let the clones talk" and "just score the two files" stays
- * an argument.
+ * The ground truth: every pair carries its scores before the humans look, and the
+ * humans' answers afterwards. Without this nothing about the matching can be measured.
  *
- * The model is stubbed. The file scorer's stub returns a fixed number so the test can
- * see that THAT number, and not some other, landed on the row.
+ * SINCE 2026-09-23 the default round takes one score, the rank, and no model call:
+ * the file score (`llm_file_score`) is no longer taken and `agreement` is NULL unless
+ * conversations are switched back on (RENDEZVOUS_RUNS). The stub still answers the file
+ * scorer with a fixed number, so a round that took it again would write THAT number
+ * and the first test would see it.
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Pool } from 'pg';
@@ -14,6 +15,11 @@ const stub = vi.hoisted(() => ({ fileScore: 0.42, calls: 0 }));
 
 vi.mock('../src/llm/index.js', () => ({
   modelFor: () => 'google:gemini-3.5-flash-lite',
+  // Off, as it is by default. Without it every round's jevFileScore threw vitest's
+  // "no decideModel export" and the orchestrator's catch swallowed it, so a zero call
+  // count here passed partly through an error. brief-code-only.test.ts guards the
+  // real default.
+  decideModel: () => null,
   llm: {
     complete: async (req: { outputSchema?: unknown; outputSchemaName?: string }) => {
       stub.calls++;
@@ -114,19 +120,22 @@ const req = (path: string, token: string, method = 'GET', body?: unknown) =>
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
 
-describe('the three scores on a pair', () => {
-  it('records the file score the model gave, alongside the other two', async () => {
+describe('the scores on a pair', () => {
+  it('records the rank, and on the default path no file score and no agreement', async () => {
     const { me } = await pair();
     stub.fileScore = 0.42;
     const r = await runRound(me.userId);
     expect(r.metAll.length).toBe(1);
-    const { rows } = await owner.query<{ rank_score: number; llm_file_score: number; agreement: number }>(
+    const { rows } = await owner.query<{ rank_score: number; llm_file_score: number | null; agreement: number | null }>(
       'SELECT rank_score, llm_file_score, agreement FROM rendezvous WHERE user_a = $1 OR user_b = $1',
       [me.userId]);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.rank_score).not.toBeNull();
-    expect(Number(rows[0]!.llm_file_score)).toBeCloseTo(0.42, 5);
-    expect(Number(rows[0]!.agreement)).toBe(1);
+    // Stopped: one call a pair, recorded and never read, and only ever taken on
+    // real-vs-invented pairs whose answers say nothing about two real people.
+    expect(rows[0]!.llm_file_score).toBeNull();
+    expect(rows[0]!.agreement).toBeNull();
+    expect(stub.calls, 'model calls in the round').toBe(0);
   });
 });
 

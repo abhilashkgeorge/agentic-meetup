@@ -4,28 +4,98 @@
  * Instagram's feed shape — a column of cards, one idea each, no chrome — but the card
  * is a BRIEF rather than a face. There is no swipe deck, no grid of photos, no score.
  *
- * NEVER A NUMBER. Pre-date self-report predicts attraction badly enough that any
- * percentage shown here would be a lie with a decimal point. What can honestly be
- * shown is provenance: two people said nearly the same thing, months apart, unprompted.
- * That is a true statement, and a store that overwrites its facts cannot make it.
+ * NEVER A NUMBER, AND NEVER A VERDICT. Pre-date self-report predicts attraction badly
+ * enough that any percentage shown here would be a lie with a decimal point -- and
+ * words are no better: "Your agents got on" is the same number, rounded. Since
+ * 2026-09-23 the card carries no agreement and no concern at all. The concern was an
+ * assessor's reading of two agents talking, and it is how an invented "comedy writer"
+ * reached a real person's card.
+ *
+ * WHAT IT SAYS INSTEAD, all written by code on the server (matching/brief.ts): their
+ * intent, age and area; the same line on every card; the interests you both have;
+ * up to two sentences they really typed; what the two agents asked each other, each
+ * answering in its own person's words or with "I don't know" (matching/answer-sheet.ts);
+ * and something to ask them about.
  *
  * NEVER THE TRANSCRIPT. It contains the other agent's characterisation of its human,
  * which is unverified — and reading it quietly turns a claim into a remembered fact
  * about somebody you have not met.
  */
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { setupRoute } from '../profile/fields';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import {
-  decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep, type RoundState,
+  decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep, type RoundState, type Talk,
 } from '../../lib/api';
+import { countLabel, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import {
   Button, Card, Crease, Empty, Screen, ScreenTitle, StatRow, Surface,
   radius, space, type, usePalette,
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
+import { chatRows, exchangeRows, sayOnCard, sharedSaid, wantRowsView, type Said } from './exchange';
+
+/**
+ * What the agents said, on the card: the date idea first -- the one useful thing a
+ * filter could never have made -- then what the two of you share, then the chat itself,
+ * folded away until asked for.
+ */
+function TalkOnCard({ talk }: { talk: Talk }) {
+  const p = usePalette();
+  const [open, setOpen] = useState(false);
+  const rows = chatRows(talk);
+  return (
+    <>
+      {talk.date && (
+        <>
+          <Crease />
+          <Text style={[type.label, { color: p.textSecondary }]}>DATE IDEA</Text>
+          <Text style={[type.bodyStrong, { color: p.text }]}>{talk.date.idea}</Text>
+          <Answer who="Them" said={sharedSaid(talk.date).them} />
+          <Answer who="You" said={sharedSaid(talk.date).you} />
+        </>
+      )}
+      {talk.shared.length > 0 && (
+        <>
+          <Crease />
+          <Text style={[type.label, { color: p.textSecondary }]}>SOMETHING YOU SHARE</Text>
+          {talk.shared.map((s, i) => (
+            <View key={i} style={{ gap: space.xs }}>
+              <Answer who="Them" said={sharedSaid(s).them} />
+              <Answer who="You" said={sharedSaid(s).you} />
+            </View>
+          ))}
+        </>
+      )}
+      {rows.length > 0 && (
+        <>
+          <Crease />
+          <Button label={open ? 'Hide the chat' : 'Read what your agents said'} variant="ghost"
+                  onPress={() => setOpen((o) => !o)} />
+          {open && rows.map((r, i) => (
+            <Text key={i} style={[type.body, { color: r.dim ? p.textTertiary : p.text }]}>
+              <Text style={{ color: p.textSecondary }}>{r.speaker}  </Text>
+              {r.text}
+            </Text>
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
+/** One side of one question: who, then their words, or "I don't know" set back. */
+function Answer({ who, said }: { who: string; said: Said }) {
+  const p = usePalette();
+  return (
+    <Text style={[type.body, { color: said.kind === 'dunno' ? p.textTertiary : p.text }]}>
+      <Text style={{ color: p.textSecondary }}>{who}  </Text>
+      {sayOnCard(said)}
+    </Text>
+  );
+}
 
 export default function MatchesScreen() {
   const p = usePalette();
@@ -36,7 +106,7 @@ export default function MatchesScreen() {
   // The round the person last asked for, so a "done" that was already on screen when
   // they arrived is not re-announced as news.
   const announced = useRef<string | null>(null);
-  const [pool, setPool] = useState<{ total: number; steps: PoolStep[]; inPool: boolean; missing: string[]; need: string[] } | null>(null);
+  const [pool, setPool] = useState<{ total: number | null; steps: PoolStep[]; inPool: boolean; missing: string[]; need: string[] } | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -46,7 +116,11 @@ export default function MatchesScreen() {
     setPool(po);
   }, [token]);
 
-  useEffect(() => { void load(); }, [load]);
+  // RE-READ ON EVERY FOCUS, not once on mount. A tab stays mounted, so the setup flow
+  // -- which ends by landing here -- found the "still inside" card it left, with every
+  // card it had just answered still listed as missing, and a button back into the
+  // setup it had just finished (the founder, 2026-09-24: "it never finishes").
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   // WHILE A ROUND IS OUT, ASK AGAIN. The round runs on the server with no request
   // waiting on it, so the only way to learn it finished is to look. Every eight
@@ -73,14 +147,14 @@ export default function MatchesScreen() {
             : round.met === 0
               ? 'It found nobody new to meet.'
               : round.met === 1
-                ? 'Your agent met one person. Their card is below.'
-                : `Your agent met ${round.met} people. The one it liked most is first.`,
+                ? 'Your agent found one person. Their card is below.'
+                : `Your agent found ${round.met} people. Their cards are below.`,
     );
   }, [round, active]);
 
   /**
-   * Asks for a round. Answers at once; the round itself is minutes of conversations
-   * on the server, and the poll above brings the result back.
+   * Asks for a round. Answers at once; the round runs on the server, and the poll
+   * above brings the result back.
    */
   const go = useCallback(async () => {
     if (!token || active) return;
@@ -88,9 +162,17 @@ export default function MatchesScreen() {
     const r = await runRound(token);
     if (!r) { setSaid('Cannot reach the server.'); return; }
     if ('error' in r) {
-      setSaid(r.error === 'budget_exceeded'
+      // daily_rounds: one open round a day that met somebody (server world.ts
+      // ROUNDS_PER_DAY). The same words as the old budget refusal, because to the
+      // person it is the same thing.
+      setSaid(r.error === 'budget_exceeded' || r.error === 'daily_rounds'
         ? 'Your agent has been out enough for today. Try again tomorrow.'
-        : 'Could not send your agent out. Try again.');
+        : r.error === 'not_ready'
+          ? 'Your agent needs a few more answers before it can go out.'
+          : 'Could not send your agent out. Try again.');
+      // Not ready (the server re-checks before it queues): reload, so the "still
+      // inside" card appears with its "Finish setting it up" button.
+      if (r.error === 'not_ready') await load();
       return;
     }
     announced.current = r.roundId;
@@ -131,7 +213,7 @@ export default function MatchesScreen() {
             invisible: the app simply never matches anybody and nobody can see why. */}
         {pool && pool.inPool && (
           <Card label="Who your agent can reach">
-            <Text style={[type.display, { color: p.text }]}>{pool.total}</Text>
+            <Text style={[type.display, { color: p.text }]}>{countLabel(pool.total)}</Text>
             <Text style={[type.callout, { color: p.textSecondary }]}>
               people fit what you have asked for
             </Text>
@@ -141,16 +223,16 @@ export default function MatchesScreen() {
                 was there before nor how the two are related. */}
             <StatRow
               label="everyone your agent could consider"
-              value={String(pool.steps.find((s) => s.step === 'everyone')?.remaining ?? 0)}
+              value={countLabel(pool.steps.find((s) => s.step === 'everyone')?.remaining)}
             />
-            {pool.steps.filter((s) => s.cost > 0).map((s) => (
+            {pool.steps.filter((s) => (s.cost ?? 0) > 0).map((s) => (
               <StatRow key={s.step} label={s.step} value={`−${s.cost}`} muted />
             ))}
             <Crease />
-            <StatRow label="left to meet" value={String(pool.total)} />
-            {pool.total === 0 && (
+            <StatRow label="left to meet" value={countLabel(pool.total)} />
+            {isUnder20(pool.total) && (
               <Text style={[type.callout, { color: p.warning }]}>
-                Nobody fits. Something you have asked for is too strict.
+                Very few people fit. If something you asked for is strict, loosening it reaches more.
               </Text>
             )}
           </Card>
@@ -183,15 +265,15 @@ export default function MatchesScreen() {
             // before nobody believes anything else on the screen.
             body={
               pool?.inPool
-                ? 'Send it out when you are ready. It meets a few people, and comes back with what it made of each of them.'
+                ? 'Send it out when you are ready. It finds a few people who pass your rules, and brings back a card for each.'
                 : 'Your agent cannot go out yet — finish the bits above first.'
             }
           />
         ) : (
-          // ONE AT A TIME. The list is ordered by how the agents got on, so the first
-          // card the person can act on is the best one the round produced. Saying
-          // not-for-me removes it and the next is already here -- the shape Hinge
-          // ships as "Most Compatible", and the founder's own proposal. Cards already
+          // ONE AT A TIME. The list comes newest round first and, within a round, in
+          // an order that means nothing (a hash) -- never by a score, because the head
+          // of a list ordered by a score reads as "the one it liked most". Saying
+          // not-for-me removes it and the next is already here. Cards already
           // answered and waiting on the other side sit underneath, quietly.
           [...matches.filter((m) => m.waitingOnYou).slice(0, 1),
            ...matches.filter((m) => !m.waitingOnYou)].map((m) => (
@@ -199,49 +281,86 @@ export default function MatchesScreen() {
               {/* Their character: who this is before the reveal shows a photo. */}
               {m.look && <CharacterAvatar look={m.look} size={40} />}
               <Text style={[type.label, { color: p.textSecondary }]}>
-                {m.waitingOnYou ? 'WAITING ON YOU'
-                  : m.waitingOnThem ? 'WAITING ON THEM'
-                  : 'BOTH AGENTS SAID YES'}
+                {m.waitingOnYou ? 'WAITING ON YOU' : 'WAITING ON THEM'}
               </Text>
-              {/* HOW THE AGENTS GOT ON, IN WORDS. Never a number: a percentage here is
-                  read as compatibility, and nothing measured before two people meet
-                  predicts that. What can be said honestly is how often five
-                  conversations ended with both agents wanting a sixth. */}
-              <Text style={[type.callout, { color: p.textSecondary }]}>
-                {m.agreement === null ? 'Your agents could not tell.'
-                  : m.agreement >= 0.6 ? 'Your agents got on.'
-                  : m.agreement >= 0.2 ? 'Your agents were not sure.'
-                  : 'Your agents did not really click. You might see it differently.'}
-              </Text>
+              {/* Intent, age, area -- the facts line. */}
               <Text style={[type.title, { color: p.text }]}>{m.headline}</Text>
+              {/* The same words on every card, so the wording can never say anything
+                  about this particular pair by changing. */}
+              <Text style={[type.callout, { color: p.textSecondary }]}>{m.line}</Text>
 
               {/* Said on the card, not buried in a settings screen. Before there are
                   users the pool is invented, and a match that does not say so is a
                   match that lies by leaving it out. */}
               {m.practice && (
                 <Text style={[type.callout, { color: p.textSecondary }]}>
-                  Practice match — this one is not a real person. Your agent still went
-                  out and this is really what it made of them.
+                  Practice match — this one is not a real person.
                 </Text>
               )}
 
-              {/* Real quotes, with real dates, from both memories. The one thing here
-                  that is verifiably true rather than predicted. */}
-              {m.overlaps.slice(0, 3).map((o, i) => (
+              {m.shared.length > 0 && (
+                <Text style={[type.body, { color: p.text }]}>You both like {m.shared.join(', ')}.</Text>
+              )}
+              {/* Said as work, not as a liking: two people in finance do not both
+                  "like finance". */}
+              {m.work && m.work.length > 0 && (
+                <Text style={[type.body, { color: p.text }]}>You both work in {m.work.join(', ')}.</Text>
+              )}
+
+              {/* Their own words, checked on the server as something they typed. The
+                  one thing here that is verifiably theirs rather than predicted. */}
+              {m.quotes.length > 0 && <Crease />}
+              {m.quotes.map((q, i) => (
                 <View key={i} style={{ gap: space.xs }}>
-                  {i > 0 && <Crease />}
-                  <Text style={[type.callout, { color: p.textTertiary }]}>You, {o.dateA}</Text>
-                  <Text style={[type.body, { color: p.text }]}>“{o.quoteA}”</Text>
-                  <Text style={[type.callout, { color: p.textTertiary }]}>Them, {o.dateB}</Text>
-                  <Text style={[type.body, { color: p.text }]}>“{o.quoteB}”</Text>
+                  <Text style={[type.callout, { color: p.textTertiary }]}>
+                    {q.when ? `In their words, ${q.when}` : 'In their words'}
+                  </Text>
+                  <Text style={[type.body, { color: p.text }]}>“{q.text}”</Text>
                 </View>
               ))}
 
-              {/* Mandatory, and singular. A brief with nothing to worry about is a
-                  brief that was written to please. */}
-              <Crease />
-              <Text style={[type.label, { color: p.textSecondary }]}>ONE THING I'D WANT TO KNOW</Text>
-              <Text style={[type.body, { color: p.text }]}>{m.concern}</Text>
+              {/* What the agents said: their talk when they talked; otherwise what they
+                  asked each other from the answer sheets -- each answered in its own
+                  person's words or with "I don't know", never a guess. */}
+              {m.talk ? <TalkOnCard talk={m.talk} /> : exchangeRows(m.qa).length > 0 && (
+                <>
+                  <Crease />
+                  <Text style={[type.label, { color: p.textSecondary }]}>WHAT YOUR AGENTS ASKED EACH OTHER</Text>
+                  {exchangeRows(m.qa).map((r) => (
+                    <View key={r.label} style={{ gap: space.xs }}>
+                      <Text style={[type.callout, { color: p.textTertiary }]}>{r.label}</Text>
+                      <Answer who="Them" said={r.them} />
+                      <Answer who="You" said={r.you} />
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {/* What you asked for, each beside their own words -- no verdict. You
+                  read the two side by side and decide; the app never says "met". */}
+              {wantRowsView(m.wants).length > 0 && (
+                <>
+                  <Crease />
+                  <Text style={[type.label, { color: p.textSecondary }]}>WHAT YOU ASKED FOR</Text>
+                  {wantRowsView(m.wants).map((w, i) => (
+                    <View key={i} style={{ gap: space.xs }}>
+                      <Text style={[type.callout, { color: p.textTertiary }]}>{w.label}</Text>
+                      <Text style={[type.body, { color: p.text }]}>{w.want}</Text>
+                      <Text style={[type.body, { color: w.dim ? p.textTertiary : p.text }]}>
+                        {w.prefix && <Text style={{ color: p.textSecondary }}>{w.prefix}  </Text>}
+                        {w.theirs}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {m.opener && (
+                <>
+                  <Crease />
+                  <Text style={[type.callout, { color: p.textSecondary }]}>{m.opener}</Text>
+                </>
+              )}
 
               {m.waitingOnYou ? (
                 <>

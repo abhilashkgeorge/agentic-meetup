@@ -1,10 +1,11 @@
 /**
  * The map's render budget, counted from the geometry rather than measured on a phone:
- * thirteen draw calls and under sixty thousand triangles on top of the town's, in
- * both themes. three runs in node, so this builds the real meshes from the real asset.
+ * seventeen draw calls and under seventy thousand triangles on top of the town's, in
+ * both themes. The four new calls buy roofs, contact shadows, trunks and a real venue
+ * marker; repeated buildings and trees remain instanced.
  *
  * Negative control, run by hand: multiply the block list by ten in map-mesh.ts ->
- * the triangle test fails; add a fourteenth mesh -> the draw-call test fails.
+ * the triangle test fails; make each roof its own Mesh -> the draw-call test fails.
  */
 import { describe, expect, it } from 'vitest';
 import { MAP, spotsFrom } from '../src/features/world/map';
@@ -17,24 +18,39 @@ const day: MapColors = {
 const evening: MapColors = { ...day, bg: '#31353D', ground: '#272B32', light: '#414651', prop: '#181B20', night: true };
 
 describe('the drawn map', () => {
-  it('stays within thirteen draw calls and sixty thousand triangles, day and evening', () => {
+  it('stays within seventeen draw calls and seventy thousand triangles, day and evening', () => {
     for (const colors of [day, evening]) {
       const built = buildMap(MAP, colors);
       const s = built.stats();
-      expect(s.meshes, colors.night ? 'evening' : 'day').toBeLessThanOrEqual(13);
-      expect(s.triangles).toBeLessThanOrEqual(60_000);
+      expect(s.meshes, colors.night ? 'evening' : 'day').toBeLessThanOrEqual(17);
+      expect(s.triangles).toBeLessThanOrEqual(70_000);
       expect(s.triangles).toBeGreaterThan(10_000);
       built.dispose();
     }
   });
 
-  it('lights windows only in the evening', () => {
+  it('draws subdued windows by day and lights them in the evening', () => {
     const d = buildMap(MAP, day); const e = buildMap(MAP, evening);
-    const windows = (g: ReturnType<typeof buildMap>) => g.group.children.find((c) => c.name === 'windows') as { count: number };
-    expect(windows(d).count).toBe(0);
+    const windows = (g: ReturnType<typeof buildMap>) => g.group.children.find((c) => c.name === 'windows') as unknown as {
+      count: number; material: { opacity: number };
+    };
+    expect(windows(d).count).toBeGreaterThan(100);
     expect(windows(e).count).toBeGreaterThan(100);
+    expect(windows(e).material.opacity).toBeGreaterThan(windows(d).material.opacity);
     expect(e.bulbs.emissiveIntensity).toBeGreaterThan(d.bulbs.emissiveIntensity);
     d.dispose(); e.dispose();
+  });
+
+  it('adds modern depth without giving up instancing', () => {
+    const built = buildMap(MAP, day);
+    const named = (name: string) => built.group.children.find((c) => c.name === name);
+    expect(named('blocks')).toMatchObject({ isInstancedMesh: true });
+    expect(named('roofs')).toMatchObject({ isInstancedMesh: true });
+    expect(named('building-shadows')).toMatchObject({ isInstancedMesh: true });
+    expect(named('tree-trunks')).toMatchObject({ isInstancedMesh: true });
+    expect(named('venue-marker')).toBeDefined();
+    expect((named('blocks') as unknown as { material: { isMeshStandardMaterial: boolean } }).material.isMeshStandardMaterial).toBe(true);
+    built.dispose();
   });
 
   it('lifts one tile out of the merged set as yours, and puts it back', () => {

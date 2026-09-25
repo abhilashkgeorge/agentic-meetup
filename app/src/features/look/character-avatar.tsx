@@ -11,17 +11,15 @@
 import { memo } from 'react';
 import { View } from 'react-native';
 import { HAIR_HEX, OUTFIT_HEX, SKIN_HEX, lookKey, type Look } from '@clone/shared';
+import { beardOf, hairOf, skirtOf, topOf } from './silhouette';
 import { raised, sunk, usePalette } from '../../components/ui';
 
-/** Eye spacing and size per face preset, as a fraction of the well. */
-const FACE: readonly { gap: number; eye: number; y: number }[] = [
-  { gap: 0.16, eye: 0.06, y: 0.36 },   // Calm
-  { gap: 0.18, eye: 0.07, y: 0.35 },   // Bright
-  { gap: 0.16, eye: 0.045, y: 0.37 },  // Sleepy
-  { gap: 0.2, eye: 0.08, y: 0.35 },    // Wide-eyed
-  { gap: 0.15, eye: 0.06, y: 0.36 },   // Wry
-  { gap: 0.16, eye: 0.05, y: 0.37 },   // Serious
-];
+/**
+ * Eye spacing and size, as a fraction of the well. One face: the catalog used to offer
+ * six expressions and they did nothing at all on the rigged body, so they are gone.
+ * This is the old "Calm", which is what everybody started with.
+ */
+const FACE = { gap: 0.16, eye: 0.06, y: 0.36 } as const;
 const BODY_W = [0.36, 0.44, 0.54];
 
 function darker(hex: string, f: number): string {
@@ -39,7 +37,11 @@ export const CharacterAvatar = memo(function CharacterAvatar({ look, size = 52, 
   const skin = SKIN_HEX[look.skin] ?? SKIN_HEX[3];
   const hair = HAIR_HEX[look.hairColor] ?? HAIR_HEX[0];
   const outfit = OUTFIT_HEX[look.outfitColor] ?? OUTFIT_HEX[2];
-  const face = FACE[look.face] ?? FACE[0]!;
+  const face = FACE;
+  const hairKind = hairOf(look);
+  const beard = beardOf(look);
+  const top = topOf(look);
+  const skirt = skirtOf(look);
   const head = size * 0.42;
   const headTop = size * 0.2;
   const cx = size / 2;
@@ -61,38 +63,59 @@ export const CharacterAvatar = memo(function CharacterAvatar({ look, size = 52, 
       {/* body: a rounded block rising from the bottom of the well */}
       <View style={{ ...abs, left: cx - bodyW / 2, top: size * 0.62, width: bodyW, height: size * 0.5,
                      borderTopLeftRadius: bodyW * 0.45, borderTopRightRadius: bodyW * 0.45, backgroundColor: outfit }} />
-      {/* outfit details: a collar for hoodie/kurta/jacket/suit, a sash for the sari */}
-      {(look.outfit === 1 || look.outfit === 2 || look.outfit === 5 || look.outfit === 6) && (
+      {/* a skirt, when the legs they picked are one */}
+      {skirt && (
+        <View style={{ ...abs, left: cx - bodyW * 0.62, top: size * 0.86, width: bodyW * 1.24, height: size * 0.24,
+                       borderTopLeftRadius: bodyW * 0.2, borderTopRightRadius: bodyW * 0.2, backgroundColor: darker(outfit, 0.88) }} />
+      )}
+      {/* what the top has at the neck */}
+      {top === 'collar' && (
         <View style={{ ...abs, left: cx - bodyW * 0.18, top: size * 0.62, width: bodyW * 0.36, height: size * 0.12,
                        borderBottomLeftRadius: bodyW * 0.18, borderBottomRightRadius: bodyW * 0.18, backgroundColor: darker(outfit, 0.72) }} />
       )}
-      {look.outfit === 4 && (
+      {top === 'straps' && (
         <View style={{ ...abs, left: cx - bodyW * 0.5, top: size * 0.66, width: bodyW, height: size * 0.07,
                        backgroundColor: darker(outfit, 0.72), transform: [{ rotate: '-24deg' }] }} />
       )}
-      {look.outfit === 7 && (
-        <View style={{ ...abs, left: cx - bodyW * 0.5, top: size * 0.74, width: bodyW, height: size * 0.05, backgroundColor: p.bg }} />
+      {top === 'open' && (
+        <View style={{ ...abs, left: cx - bodyW * 0.06, top: size * 0.62, width: bodyW * 0.12, height: size * 0.5, backgroundColor: darker(outfit, 0.6) }} />
       )}
       {/* long hair hangs behind the head */}
-      {(look.hair === 3 || look.hair === 5) && (
+      {(hairKind === 'long' || hairKind === 'ponytail') && (
         <View style={{ ...abs, left: cx - head * 0.56, top: headTop + head * 0.3, width: head * 1.12, height: head * 0.95,
                        borderBottomLeftRadius: head * 0.3, borderBottomRightRadius: head * 0.3, backgroundColor: hair }} />
       )}
       {/* head */}
       <View style={{ ...abs, left: cx - head / 2, top: headTop, width: head, height: head, borderRadius: head / 2, backgroundColor: skin }} />
       {/* hair on top */}
-      {look.hair !== 7 && (
+      {hairKind !== 'bald' && (
         <View style={{
-          ...abs, left: cx - head / 2, top: headTop - head * (look.hair === 2 ? 0.1 : 0.02), width: head,
-          height: head * (look.hair === 1 ? 0.3 : look.hair === 2 ? 0.62 : 0.48),
+          ...abs, left: cx - head / 2, top: headTop - head * (hairKind === 'curly' ? 0.1 : 0.02), width: head,
+          height: head * (hairKind === 'buzz' ? 0.3 : hairKind === 'curly' ? 0.62 : 0.48),
           borderTopLeftRadius: head / 2, borderTopRightRadius: head / 2,
-          borderBottomLeftRadius: look.hair === 2 ? head * 0.2 : 0, borderBottomRightRadius: look.hair === 2 ? head * 0.2 : 0,
+          borderBottomLeftRadius: hairKind === 'curly' ? head * 0.2 : 0, borderBottomRightRadius: hairKind === 'curly' ? head * 0.2 : 0,
           backgroundColor: hair,
         }} />
       )}
-      {look.hair === 4 && <View style={{ ...abs, left: cx - head * 0.18, top: headTop - head * 0.28, width: head * 0.36, height: head * 0.36, borderRadius: head * 0.18, backgroundColor: hair }} />}
-      {look.hair === 5 && <View style={{ ...abs, left: cx + head * 0.36, top: headTop + head * 0.25, width: head * 0.24, height: head * 0.7, borderRadius: head * 0.12, backgroundColor: hair }} />}
-      {look.hair === 6 && <View style={{ ...abs, left: cx - head * 0.1, top: headTop - head * 0.34, width: head * 0.2, height: head * 0.5, borderRadius: head * 0.06, backgroundColor: hair }} />}
+      {hairKind === 'bun' && <View style={{ ...abs, left: cx - head * 0.18, top: headTop - head * 0.28, width: head * 0.36, height: head * 0.36, borderRadius: head * 0.18, backgroundColor: hair }} />}
+      {hairKind === 'ponytail' && <View style={{ ...abs, left: cx + head * 0.36, top: headTop + head * 0.25, width: head * 0.24, height: head * 0.7, borderRadius: head * 0.12, backgroundColor: hair }} />}
+      {hairKind === 'mohawk' && <View style={{ ...abs, left: cx - head * 0.1, top: headTop - head * 0.34, width: head * 0.2, height: head * 0.5, borderRadius: head * 0.06, backgroundColor: hair }} />}
+      {/* facial hair: how much of the lower face is covered, and nothing finer --
+          this is a 52-point circle. */}
+      {beard !== 'none' && (
+        <View style={{
+          ...abs,
+          left: cx - head * (beard === 'moustache' ? 0.16 : beard === 'goatee' ? 0.14 : 0.36),
+          top: headTop + head * (beard === 'moustache' ? 0.56 : beard === 'goatee' ? 0.66 : 0.52),
+          width: head * (beard === 'moustache' ? 0.32 : beard === 'goatee' ? 0.28 : 0.72),
+          height: head * (beard === 'moustache' ? 0.1 : beard === 'goatee' ? 0.24 : beard === 'jaw' ? 0.3 : 0.4),
+          borderBottomLeftRadius: head * 0.3,
+          borderBottomRightRadius: head * 0.3,
+          borderTopLeftRadius: beard === 'moustache' ? head * 0.05 : 0,
+          borderTopRightRadius: beard === 'moustache' ? head * 0.05 : 0,
+          backgroundColor: hair,
+        }} />
+      )}
       {/* eyes */}
       <View style={{ ...abs, left: cx - gap / 2 - eye / 2, top: eyeY, width: eye, height: eye, borderRadius: eye / 2, backgroundColor: '#262626' }} />
       <View style={{ ...abs, left: cx + gap / 2 - eye / 2, top: eyeY, width: eye, height: eye, borderRadius: eye / 2, backgroundColor: '#262626' }} />

@@ -14,6 +14,7 @@ import { commit, currentState } from './facts.js';
 import { extractSessionFacts } from './extract.js';
 import { multiValuedExisting, resolveConflicts } from './resolve.js';
 import { rebuildCoreProfile } from './profile.js';
+import { ensureSheet } from '../matching/answer-sheet.js';
 
 /**
  * Sessions idle this long are considered over and get extracted.
@@ -52,7 +53,12 @@ export async function extractSession(
   // one operation, and the budget question is whether this session is affordable, not
   // whether its third call is. The meter takes its own connection, since the phases
   // deliberately open and close their own.
-  return metered(ctx, 'extract', () => extractSessionInner(ctx, sessionId));
+  const out = await metered(ctx, 'extract', () => extractSessionInner(ctx, sessionId));
+  // THE ANSWER SHEET, when something new was learned: after -- and outside -- the
+  // extraction's own meter, since it keeps its own. At most one small call, none when
+  // no sentence it could point at changed, and it never throws (answer-sheet.ts).
+  if (out && out.asserted + out.superseded > 0) await ensureSheet(ctx);
+  return out;
 }
 
 async function extractSessionInner(

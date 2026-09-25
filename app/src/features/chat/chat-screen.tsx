@@ -11,6 +11,7 @@ import { Text, View } from 'react-native';
 import { CloneChat } from './clone-chat';
 import { useSession } from '../../store/session';
 import { getConfig, getKnowledge, getPool, type Config, type Knowledge } from '../../lib/api';
+import { countLabel, isUnder20 } from '../../lib/counts';
 import { label, setupRoute, missingLabel } from '../profile/fields';
 import {
   Button, Card, Chip, ChipGroup, Crease, Screen, Skeleton, space, type, usePalette,
@@ -31,7 +32,7 @@ export default function ChatScreen() {
   const token = useSession((s) => s.token);
   const [config, setConfig] = useState<Config | null>(null);
   const [k, setK] = useState<Knowledge | null>(null);
-  const [pool, setPool] = useState<{ total: number; inPool: boolean; missing: string[]; need: string[] } | null>(null);
+  const [pool, setPool] = useState<{ total: number | null; inPool: boolean; missing: string[]; need: string[] } | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -96,7 +97,7 @@ export default function ChatScreen() {
               <Card label={pool.inPool ? 'Your agent is out there' : 'Not out there yet'}>
                 {pool.inPool ? (
                   <>
-                    <Text style={[type.display, { color: p.text }]}>{pool.total}</Text>
+                    <Text style={[type.display, { color: p.text }]}>{countLabel(pool.total)}</Text>
                     <Text style={[type.callout, { color: p.textSecondary }]}>people it can reach right now</Text>
                   </>
                 ) : (

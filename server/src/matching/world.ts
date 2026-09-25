@@ -20,8 +20,29 @@ import { env } from '../env.js';
 import { pushTo } from '../messaging/hub.js';
 import { candidateIds } from './candidates.js';
 
-/** Targeted rounds allowed per person per rolling day. A spend control, counted in the database. */
+/**
+ * Targeted rounds allowed per person per rolling day, counted in the database. It was
+ * a spend control while each visit held a conversation (~$0.02); a visit costs no
+ * model call now, and the cap stays as the bound on how often one person can put
+ * themselves in front of another.
+ */
 export const TARGETED_PER_DAY = Number(process.env.TARGETED_ROUNDS_PER_DAY ?? 5);
+
+/**
+ * Open rounds ("send my agent out", no target) allowed per person per rolling day,
+ * counting only the ones that met somebody. Counted in the database, like the above.
+ *
+ * WHY IT EXISTS NOW. Nothing limited an open round except the day's model budget,
+ * because a round spent it: the Seeker test account's second round of the day was a
+ * budget_exceeded, which is the founder's recorded one-round-a-day rule. Since
+ * 2026-09-23 a round makes no model call, so that cap no longer bites and one person
+ * could tap every few seconds -- three new people a tap, a card and three town events
+ * on each real person's phone -- and in a small real pool put themselves in front of
+ * everybody eligible within minutes. This puts the day's limit back as a limit on
+ * EXPOSURE rather than spend. A round that failed, or found nobody, put nobody in
+ * front of anybody and does not count.
+ */
+export const ROUNDS_PER_DAY = Number(process.env.ROUNDS_PER_DAY ?? 1);
 
 /** How many strangers the square holds. Bounded, so the roster is a sample, never a list. */
 // 40, up from 24, once the square became a city of thirty tiles: the sample is the

@@ -142,7 +142,7 @@ export default function SelfTestScreen() {
         ))}
         {ready?.ready && (
           <Text style={[type.bodyStrong, { color: p.accent }]}>
-            It's ready. It can go out and talk to other people's agents.
+            It's ready. It can go out and meet people for you.
           </Text>
         )}
       </Card>

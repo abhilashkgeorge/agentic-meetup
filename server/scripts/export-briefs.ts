@@ -107,7 +107,9 @@ const cards = rows.map((r, i) => ({
   // the BRIEF works, and a visibly duplicated quote makes them answer a different
   // question. Filtering on inequality rather than deleting the feature, so real
   // overlaps appear the moment the generator produces variety.
-  overlaps: (r.overlap_quotes ?? [])
+  // Model-written briefs only carry an array here. A code-written one (brief.ts, from
+  // 2026-09-23) keeps a versioned object instead, which has no quote pairs to export.
+  overlaps: (Array.isArray(r.overlap_quotes) ? r.overlap_quotes : [])
     .map((o) => ({ ...o, quoteA: anonymise(o.quoteA), quoteB: anonymise(o.quoteB) }))
     .filter((o) => o.quoteA.trim().toLowerCase() !== o.quoteB.trim().toLowerCase()),
   // Kept so the answers can be cut by how strongly the agents agreed. If readers say

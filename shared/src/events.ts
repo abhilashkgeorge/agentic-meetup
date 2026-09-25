@@ -86,7 +86,6 @@ const DmMessage = z.object({
 
 /** A per-viewer handle for somebody in the square. 32 hex; never a user id. */
 const AgentRef = z.string().regex(/^[0-9a-f]{32}$/);
-const Agreement = z.enum(['got_on', 'unsure', 'did_not_click', 'could_not_tell']);
 
 export const ServerEvent = z.discriminatedUnion('type', [
   /** A message, echoed to the sender and pushed to the recipient. */
@@ -119,10 +118,10 @@ export const ServerEvent = z.discriminatedUnion('type', [
     question: z.string(),
   }),
   // ── the town ──────────────────────────────────────────────────────────
-  // What the square is allowed to draw, and nothing more: refs, never ids; how the
-  // agents got on in words, never a number; no names, no text anybody wrote. Every
-  // event here also reaches the app by the next poll of /v1/world -- the socket is
-  // the animation cue, the roster is the truth.
+  // What the square is allowed to draw, and nothing more: refs, never ids; no names,
+  // no text anybody wrote, and no verdict of any kind -- not a number and not words
+  // either. Every event here also reaches the app by the next poll of /v1/world --
+  // the socket is the animation cue, the roster is the truth.
   z.object({ type: z.literal('round.queued'), roundId: z.uuid() }),
   /** Your agent is walking over to somebody. `roundId` is null on the visited side. */
   z.object({
@@ -133,9 +132,14 @@ export const ServerEvent = z.discriminatedUnion('type', [
     type: z.literal('round.talking'), roundId: z.uuid().nullable(), rendezvousId: z.uuid(),
     agent: AgentRef,
   }),
+  /**
+   * The pair is written and the card exists: the agents "met". It says nothing about
+   * how it went. It used to carry `agreement` -- got_on / unsure / did_not_click --
+   * and the square drew it as a tick or a cross over both heads.
+   */
   z.object({
     type: z.literal('round.decided'), roundId: z.uuid().nullable(), rendezvousId: z.uuid(),
-    agent: AgentRef, agreement: Agreement,
+    agent: AgentRef,
   }),
   z.object({
     type: z.literal('round.done'), roundId: z.uuid(), met: z.number(),
@@ -170,18 +174,3 @@ export type ServerEvent = z.infer<typeof ServerEvent>;
 
 /** Server -> client heartbeat cadence. Client reconnects after 2 missed. */
 export const HEARTBEAT_MS = 15_000;
-
-/**
- * How the agents got on, in words.
- *
- * ONE threshold, shared by the matches list and the town, so the card and the bubble
- * over an agent's head can never disagree. Never a percentage: pre-date self-report
- * predicts attraction badly enough that a number here would be a lie with a decimal
- * point. `null` is "the conversations could not tell" -- nothing conclusive ran.
- */
-export type AgreementWords = 'got_on' | 'unsure' | 'did_not_click' | 'could_not_tell';
-export const agreementWords = (agreement: number | null | undefined): AgreementWords =>
-  agreement === null || agreement === undefined ? 'could_not_tell'
-  : agreement >= 0.6 ? 'got_on'
-  : agreement >= 0.2 ? 'unsure'
-  : 'did_not_click';

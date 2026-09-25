@@ -16,6 +16,8 @@ import { Text, View } from 'react-native';
 import { getKnowledge, setEssential } from '../../lib/api';
 import { useSession } from '../../store/session';
 import { FIELD_BY_KEY } from './fields';
+import { ageRangeDefault, parseAgeRange, rangeFromText } from './age-range';
+import { AgeRangeInput, type AgeRangeText } from './age-range-input';
 import {
   Button, Chip, ChipGroup, Field, Header, Screen, space, type, usePalette,
 } from '../../components/ui';
@@ -28,6 +30,7 @@ export default function EditBasic() {
 
   const [chosen, setChosen] = useState<string[]>([]);
   const [text, setText] = useState('');
+  const [range, setRange] = useState<AgeRangeText>({ min: '', max: '' });
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -36,6 +39,15 @@ export default function EditBasic() {
     if (!token || !field) return;
     const k = await getKnowledge(token);
     const mine = (k?.knows ?? []).filter((f) => f.predicate === field.key);
+    // The age range opens on the stored range, or -- when there is none -- on the same
+    // own-age pre-fill setup offers, so this screen never opens on two blank boxes for
+    // somebody whose birth year it knows.
+    if (field.kind === 'range') {
+      const year = Number((k?.knows ?? []).find((f) => f.predicate === 'birth_date')?.value ?? NaN);
+      const r = rangeFromText(mine[0]?.value) ?? ageRangeDefault(Number.isFinite(year) ? year : null);
+      if (r) setRange({ min: String(r.min), max: String(r.max) });
+      return;
+    }
     if (!mine.length) return;
     if (field.kind === 'many') setChosen(mine.map((f) => f.value));
     else if (field.kind === 'one') setChosen([mine[0]!.value]);
@@ -53,9 +65,12 @@ export default function EditBasic() {
   }
 
   const value = field.kind === 'one' || field.kind === 'many' ? chosen : text.trim();
-  const ready = Array.isArray(value) ? value.length > 0 : value.length > 0;
+  const parsedRange = field.kind === 'range' ? parseAgeRange(range.min, range.max) : null;
+  const ready = field.kind === 'range'
+    ? parsedRange !== null
+    : Array.isArray(value) ? value.length > 0 : value.length > 0;
 
-  const save = async (answer: string | string[] | null): Promise<void> => {
+  const save = async (answer: unknown): Promise<void> => {
     if (!token) return;
     setBusy(true);
     const r = await setEssential(token, field.key, answer);
@@ -73,11 +88,17 @@ export default function EditBasic() {
             variant="primary"
             disabled={!ready || busy}
             loading={busy}
-            onPress={() => void save(field.kind === 'many' ? chosen : (value as string[])[0] ?? text.trim())}
+            onPress={() => void save(
+              field.kind === 'range' ? parsedRange
+              : field.kind === 'many' ? chosen : (value as string[])[0] ?? text.trim(),
+            )}
           />
           {/* A recorded refusal, not a blank. The question queue must know the
-              difference between "never asked" and "asked, and they declined". */}
-          <Button label="Prefer not to say" variant="ghost" onPress={() => void save(null)} />
+              difference between "never asked" and "asked, and they declined".
+              Not for the age range: "any age" is 18 to 99, on the screen already. */}
+          {field.kind !== 'range' && (
+            <Button label="Prefer not to say" variant="ghost" onPress={() => void save(null)} />
+          )}
         </>
       }
     >
@@ -90,7 +111,9 @@ export default function EditBasic() {
         )}
       </View>
 
-      {field.options ? (
+      {field.kind === 'range' ? (
+        <AgeRangeInput value={range} onChange={setRange} />
+      ) : field.options ? (
         <ChipGroup>
           {field.options.map((o) => {
             const on = chosen.includes(o.value);

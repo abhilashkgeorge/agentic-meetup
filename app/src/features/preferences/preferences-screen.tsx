@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { getPool, getPreferences, setPreferenceStrength, type PoolStep, type Preference } from '../../lib/api';
+import { countLabel, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import {
   Header,
@@ -31,7 +32,7 @@ export default function PreferencesScreen() {
   const p = usePalette();
   const token = useSession((s) => s.token);
   const [prefs, setPrefs] = useState<Preference[]>([]);
-  const [pool, setPool] = useState<{ total: number; steps: PoolStep[]; inPool: boolean } | null>(null);
+  const [pool, setPool] = useState<{ total: number | null; steps: PoolStep[]; inPool: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -69,28 +70,30 @@ export default function PreferencesScreen() {
             <Skeleton height={40} width="50%" />
           ) : (
             <>
-              <Text style={[type.display, { color: pool?.total === 0 ? p.warning : p.text }]}>
-                {pool?.total ?? 0}
+              <Text style={[type.display, { color: pool && isUnder20(pool.total) ? p.warning : p.text }]}>
+                {countLabel(pool?.total)}
               </Text>
               <Text style={[type.callout, { color: p.textSecondary }]}>
                 people fit everything you have asked for
               </Text>
               {/* What each rule cost. The line that turns an invisible failure into a
                   choice somebody can actually make. */}
-              {(pool?.steps ?? []).filter((s) => s.cost > 0).map((s) => (
+              {(pool?.steps ?? []).filter((s) => (s.cost ?? 0) > 0).map((s) => (
                 <StatRow key={s.step} label={s.step} value={`−${s.cost}`} muted />
               ))}
               {/* THREE REASONS THE NUMBER IS ZERO, and they need different answers.
                   This told everybody to loosen a must-have -- while the card directly
                   below it said "Must have · 0". Advice to undo something you have not
                   done is worse than no advice: it implies the app has misread you. */}
-              {pool?.total === 0 && (
+              {/* "Under 20" and not "nobody": below twenty the server sends no number
+                  at all (lib/counts.ts), so the honest words are the small-pool ones. */}
+              {pool && isUnder20(pool.total) && (
                 <Text style={[type.callout, { color: p.warning }]}>
                   {!pool.inPool
                     ? 'Your agent is not out there yet, so it cannot reach anybody. Finish setting it up first.'
                     : dealbreakers.length > 0
-                      ? 'Nobody fits. Turn a must-have into a want and they will come back.'
-                      : 'Nobody fits yet — not because of anything you asked for. There are simply no other agents in range.'}
+                      ? 'Very few people fit. Turn a must-have into a want to reach more.'
+                      : 'Very few people are in range yet — not because of anything you asked for.'}
                 </Text>
               )}
             </>
@@ -131,7 +134,7 @@ export default function PreferencesScreen() {
           </Text>
           {wants.length === 0 ? (
             <Text style={[type.body, { color: p.textTertiary }]}>
-              Nothing yet. Tell your clone what you are after and it will fill this in.
+              Nothing yet. These come from the optional questions.
             </Text>
           ) : (
             wants.map((x, i) => (
@@ -151,8 +154,8 @@ export default function PreferencesScreen() {
         </Card>
 
         <Text style={[type.callout, { color: p.textTertiary }]}>
-          Your clone adds to this as you talk. Mention something you cannot live with
-          and it will appear here as a must-have.
+          Must-haves come from your cards. Your agent never adds one by itself: what you
+          say in chat is checked with you first.
         </Text>
       </View>
     </Screen>

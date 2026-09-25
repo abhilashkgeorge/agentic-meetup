@@ -126,6 +126,9 @@ export default function VerifyScreen() {
     setLeft(RESEND_AFTER);
   }, [params.phone, params.country]);
 
+  /** The last digits of the number, when we were told them. */
+  const tail = params.sentTo?.replace(/^•+/, '').trim() || null;
+
   return (
     <Screen
       center
@@ -144,8 +147,12 @@ export default function VerifyScreen() {
     >
       <View style={{ gap: space.sm }}>
         <Text style={[type.display, { color: p.text }]}>Check your texts</Text>
+        {/* The tail of the number is a courtesy, not the sentence. Without the guard
+            a missing `sentTo` -- coming back to an app that was killed mid-signup, or
+            any cold entry to this route -- rendered "the number ending ." with a hole
+            where the digits should be, which reads as a bug rather than a reassurance. */}
         <Text style={[type.body, { color: p.textSecondary }]}>
-          We sent six digits to the number ending {params.sentTo?.replace(/^•+/, '')}.
+          {tail ? `We sent six digits to the number ending ${tail}.` : 'We sent you six digits.'}
         </Text>
       </View>
 

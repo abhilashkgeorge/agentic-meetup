@@ -5,6 +5,9 @@
  *
  *   rank_score      the hand-weighted profile score (score.ts rank), free
  *   llm_file_score  one model call reading both files, ~$0.001, no conversation
+ *   jev_file_score  a System One model's probability from the same two files, output
+ *                   free -- null on every pair run before DECIDE_MODEL was set, and
+ *                   dropped from its own row rather than counted as a zero
  *   agreement       five simulated conversations, ~$0.03
  *
  * and two labels arrive afterwards: both humans said yes on the card, and either
@@ -24,7 +27,7 @@
  */
 import { Pool } from 'pg';
 import { env } from '../src/env.js';
-import { auc, aucStandardError } from '../src/matching/evaluate.js';
+import { auc, aucStandardError, pairOutcome, seeAgainOutcome, type SeeAgain } from '../src/matching/evaluate.js';
 
 const includeSynthetic = process.argv.includes('--all');
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
@@ -33,33 +36,43 @@ interface Row {
   id: string;
   rank_score: number | null;
   llm_file_score: number | null;
+  jev_file_score: number | null;
   agreement: number | null;
   a_yes: boolean | null;
   b_yes: boolean | null;
   met: boolean | null;
   synthetic: boolean;
+  introduced: boolean;
 }
 
 const { rows } = await owner.query<Row>(`
-  SELECT r.id, r.rank_score, r.llm_file_score, r.agreement,
+  SELECT r.id, r.rank_score, r.llm_file_score, r.jev_file_score, r.agreement,
          ba.human_says_yes AS a_yes, bb.human_says_yes AS b_yes,
          (coalesce(ba.met, false) OR coalesce(bb.met, false)) AS met,
-         (pa.is_synthetic OR pb.is_synthetic) AS synthetic
+         (pa.is_synthetic OR pb.is_synthetic) AS synthetic,
+         (r.introduced_at IS NOT NULL) AS introduced
     FROM rendezvous r
     JOIN rendezvous_briefs ba ON ba.rendezvous_id = r.id AND ba.for_user = r.user_a
     JOIN rendezvous_briefs bb ON bb.rendezvous_id = r.id AND bb.for_user = r.user_b
     JOIN match_profile pa ON pa.user_id = r.user_a
     JOIN match_profile pb ON pb.user_id = r.user_b
    ORDER BY r.created_at`);
+
+// The check-ins, for "would you see them again". Read raw, not through
+// checkin_mutual_again: that helper counts no answer as no (see seeAgainOutcome).
+const { rows: checkins } = await owner.query<{ rendezvous_id: string; met: boolean; see_again: boolean | null }>(
+  'SELECT rendezvous_id, met, see_again FROM date_checkins');
 await owner.end();
 
 const pairs = rows.filter((r) => includeSynthetic || !r.synthetic);
-// A pair is labelled once BOTH humans have answered. One answer is not an outcome.
-const labelled = pairs.filter((r) => r.a_yes !== null && r.b_yes !== null);
+// A pair is labelled once it is DECIDED: both answered, or either said no. A first-mover
+// no lapses the pair and the second person is never asked; it used to fall out of the
+// measurement here, dropping a whole class of negatives (pairOutcome).
+const labelled = pairs.filter((r) => pairOutcome(r.a_yes, r.b_yes) !== null);
 
 console.log(`pairs with briefs on both sides : ${pairs.length}${includeSynthetic ? ' (including invented)' : ' (real only)'}`);
-console.log(`  both humans have answered     : ${labelled.length}`);
-console.log(`  both said yes                 : ${labelled.filter((r) => r.a_yes && r.b_yes).length}`);
+console.log(`  decided (both answered, or a no): ${labelled.length}`);
+console.log(`  both said yes                 : ${labelled.filter((r) => pairOutcome(r.a_yes, r.b_yes) === 'yes').length}`);
 console.log(`  reported meeting              : ${labelled.filter((r) => r.met).length}`);
 console.log();
 
@@ -68,9 +81,9 @@ if (labelled.length < 10) {
   console.log();
 }
 
-const scorers = ['rank_score', 'llm_file_score', 'agreement'] as const;
+const scorers = ['rank_score', 'llm_file_score', 'jev_file_score', 'agreement'] as const;
 const labels = [
-  { name: 'both said yes', of: (r: Row) => Boolean(r.a_yes && r.b_yes) },
+  { name: 'both said yes', of: (r: Row) => pairOutcome(r.a_yes, r.b_yes) === 'yes' },
   { name: 'reported meeting', of: (r: Row) => Boolean(r.met) },
 ] as const;
 
@@ -95,3 +108,28 @@ for (const scorer of scorers) {
 
 console.log();
 console.log('Reading it: 0.5 is a coin. A difference smaller than about two standard errors is noise.');
+
+// ── would they see each other again, over EVERY introduced pair ─────────────────
+//
+// The outcome this product is judged on. Over all introduced pairs, not only the ones
+// somebody reported on, with no response counted as itself -- silence is not a no.
+const introduced = pairs.filter((r) => r.introduced);
+const byPair = new Map<string, { met: boolean; seeAgain: boolean | null }[]>();
+for (const c of checkins) {
+  const list = byPair.get(c.rendezvous_id) ?? [];
+  list.push({ met: c.met, seeAgain: c.see_again });
+  byPair.set(c.rendezvous_id, list);
+}
+const tally: Record<SeeAgain, number> = { again: 0, not_again: 0, unsure: 0, no_response: 0 };
+for (const r of introduced) tally[seeAgainOutcome(byPair.get(r.id) ?? [])]++;
+const answered = introduced.length - tally.no_response;
+console.log();
+console.log(`introduced pairs                : ${introduced.length}`);
+console.log(`  would see each other again    : ${tally.again}`);
+console.log(`  at least one would not        : ${tally.not_again}`);
+console.log(`  not sure, or did not meet     : ${tally.unsure}`);
+console.log(`  no response yet               : ${tally.no_response}`);
+if (introduced.length) {
+  console.log(`  see-again rate, all introduced: ${(tally.again / introduced.length * 100).toFixed(0)}%`
+    + `  (response rate ${(answered / introduced.length * 100).toFixed(0)}%)`);
+}

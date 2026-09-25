@@ -16,6 +16,9 @@ const routed = (): ModelRef[] =>
   [
     process.env.CHAT_MODEL, process.env.EXTRACT_MODEL, process.env.RESOLVE_MODEL,
     process.env.REFLECT_MODEL, process.env.RENDER_PROFILE_MODEL, process.env.CANON_MODEL,
+    // Empty unless somebody turned the typed-decision model on, and filtered out
+    // below when it is -- but gated exactly like the rest the moment it is set.
+    process.env.DECIDE_MODEL,
   ].filter((m): m is ModelRef => typeof m === 'string' && m.length > 0);
 
 describe('G7: the cached prefix clears the model minimum', () => {
@@ -80,9 +83,9 @@ describe('the AI disclosure', () => {
     // routes -- a disclosure that names nobody.
     const { modelFor } = await import('../src/llm/index.js');
     const { providerOf } = await import('../src/llm/caps.js');
-    const { DISCLOSED_TASKS, LABELLED_PROVIDERS } = await import('../src/api/config.js');
+    const { disclosedTasks, LABELLED_PROVIDERS } = await import('../src/api/config.js');
 
-    const missing = [...new Set(DISCLOSED_TASKS.map((t) => providerOf(modelFor(t))))]
+    const missing = [...new Set(disclosedTasks().map((t) => providerOf(modelFor(t))))]
       .filter((p) => !LABELLED_PROVIDERS.has(p));
 
     expect(missing, `no display name for: ${missing.join(', ')}`).toEqual([]);

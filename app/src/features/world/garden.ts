@@ -28,14 +28,38 @@ export interface Flower { x: number; z: number; scale: number; tint: number }
 export interface Reed { x: number; z: number; scale: number; rot: number }
 export interface Bridge { x: number; z: number; rot: number; span: number; width: number }
 export interface Fountain { x: number; z: number; radius: number }
+/** A roofed thing you walk around. Only a real place has any. */
+export interface Building { ring: Pt[]; name: string; height: number }
+/** A statue, a rock somebody put a plaque on. Real places have these too. */
+export interface Landmark { x: number; z: number; kind: string; name: string }
 
 export interface Garden {
   id: string;
   /** How far out you can walk before the fog takes over. */
   radius: number;
+  /**
+   * The edge of the world, as a ring.
+   *
+   * A CIRCLE FOR A SEEDED GARDEN AND A SURVEY FOR A REAL ONE, and the difference is
+   * the whole reason this is a field rather than `radius` and some trigonometry: a
+   * real park is not round, and walking into a wall where the map says there is still
+   * park is the single most obvious way a place stops being a place.
+   */
+  outline: Pt[];
   /** The path, as a smooth polyline from one side to the other. */
   path: Pt[];
+  /**
+   * Every path, each with its own width.
+   *
+   * One entry for a seeded garden -- the same line as `path` -- and a hundred and
+   * eighty-five for Cubbon Park, where a service road through the middle and a
+   * two-person footpath are different things and drawing both at one width is how a
+   * park turns into a car park.
+   */
+  paths: { line: Pt[]; width: number }[];
   pond: Pt[];
+  /** Every body of water. `[pond]` for a seeded garden. */
+  ponds: Pt[][];
   /** The river's banks as one ring, and the line down the middle of it. */
   river: Pt[];
   riverLine: Pt[];
@@ -52,16 +76,43 @@ export interface Garden {
   /** Where people stand: along the path, off to the sides. */
   spots: Pt[];
   home: Pt;
+  /** Empty for a seeded garden; a real place has buildings in it. */
+  buildings: Building[];
+  landmarks: Landmark[];
 }
 
 /** How far out the ground goes. Beyond the radius it rolls into hills and haze. */
 export const GARDEN_RADIUS = 26;
 /** Four people abreast, against a person about 0.24 tall. At 1.5 it was a road. */
 export const PATH_WIDTH = 0.95;
+/**
+ * HOW BIG EACH THING IS TO WALK INTO, against a person about 0.21 units tall.
+ *
+ * These were eyeballed in a garden 26 units across that nobody ever walked up to
+ * anything in, and at Cubbon Park's scale -- where one unit is about eight metres --
+ * they were absurd. You stopped SIX AND A HALF METRES from a tree trunk, four times
+ * your own height, and could not get near a bench or a lamp (the founder, on the
+ * phone, 2026-09-23: "even though I am a few metres away from the objects, I am not
+ * able to walk towards it").
+ *
+ * So each one is now the size of the thing it stands for, and the tree is the
+ * important one: what stops you is the TRUNK. A canopy begins about ten metres up.
+ * You walk under a tree.
+ */
+/** The canopy. Used for PLANTING -- do not put a bench inside a tree -- never to walk into. */
 const TREE_R = 0.55;
-const PROP_R = 0.3;
-const BENCH_R = 0.26;
-const BUSH_R = 0.16;
+/** The trunk: the only part of a tree that is in the way. ~0.5 m of bark. */
+const TRUNK_R = 0.06;
+/** A lamp post is a post. */
+const PROP_R = 0.07;
+/** A bench is about 1.8 m long, so a little under a metre from its middle. */
+const BENCH_R = 0.11;
+/**
+ * A bush is drawn as a sphere of 0.15 x its scale, and this used to be 0.16 -- bigger
+ * than the leaves, so the bush ended half a metre before what stopped you. Just inside
+ * the foliage instead: a hedge is a soft thing and brushing the outer leaves is right.
+ */
+const BUSH_R = 0.12;
 /** Wide enough to read as water you would not step into, narrow enough to bridge. */
 const RIVER_W = 2.1;
 
@@ -385,10 +436,19 @@ export function makeGarden(id: string): Garden {
   }
 
   const mid = path[Math.floor(path.length / 2)]!;
+  // The round edge of a grown garden, written down rather than implied, so everything
+  // downstream reads one field whether the place was invented or surveyed.
+  const outline: Pt[] = [];
+  for (let i = 0; i < 40; i++) {
+    const a = (i / 40) * Math.PI * 2;
+    outline.push([Math.cos(a) * R, Math.sin(a) * R]);
+  }
   return {
-    id, radius: R, path, pond, river, riverLine, bridge, fountain,
+    id, radius: R, outline, path, paths: [{ line: path, width: PATH_WIDTH }], pond, ponds: [pond],
+    river, riverLine, bridge, fountain,
     trees, tufts, props, benches, bushes, flowers, reeds, spots,
     home: [mid[0], mid[1]],
+    buildings: [], landmarks: [],
   };
 }
 
@@ -399,7 +459,24 @@ export function makeGarden(id: string): Garden {
  */
 export function gardenSpots(g: Garden): MapSpots {
   const solids: Solid[] = [
-    ...g.trees.map((t) => ({ x: t.x, z: t.z, r: TREE_R * t.scale, h: 2.2 * t.scale })),
+    // ONE SOLID PER TREE, AND IT IS THE TRUNK.
+    //
+    // It was the canopy -- one wide, tall cylinder -- and that did two wrong things at
+    // once. It stopped you six and a half metres short of the bark, in a park whose
+    // whole point is the trees. And it read to the camera as a building, so `clearBack`
+    // pulled the lens right in and `riseFor` swung it overhead: the view snapped to a
+    // plan of your own head every time you brushed past one, in a park with 700 of
+    // them (on the phone, 2026-09-23).
+    //
+    // A canopy begins about ten metres up and was never in anybody's way. The trunk
+    // is, for your feet -- but not for your eyes, which is what `seeThrough` says.
+    ...g.trees.map((t) => ({
+      x: t.x, z: t.z, r: TRUNK_R * t.scale, h: 2.4 * t.scale,
+      // You can see past a tree. Without this the camera treats every trunk as a wall
+      // and rears up over your head the moment you touch one -- which only became
+      // reachable when the canopy stopped stopping you six metres out.
+      seeThrough: true,
+    })),
     ...g.props.map((p) => ({ x: p.x, z: p.z, r: PROP_R, h: p.kind === 'lantern' ? 0.35 : 0.15 })),
     // You walk round a bench, not through it, but the camera sees over both it and
     // the hedges -- which is what the height on each of these is for.
@@ -407,22 +484,73 @@ export function gardenSpots(g: Garden): MapSpots {
     ...g.bushes.map((b) => ({ x: b.x, z: b.z, r: BUSH_R * b.scale, h: 0.16 * b.scale })),
     { x: g.fountain.x, z: g.fountain.z, r: g.fountain.radius, h: 0.5 },
   ];
-  // The edge of the world, as a ring of solids you cannot push past.
-  const edge = 44;
-  for (let i = 0; i < edge; i++) {
-    const a = (i / edge) * Math.PI * 2;
-    solids.push({ x: Math.cos(a) * (g.radius + 1.6), z: Math.sin(a) * (g.radius + 1.6), r: 2.2, h: 4 });
+  // A BUILDING IS A WALL, AND A WALL IS ITS EDGES, NOT ITS CORNERS.
+  //
+  // One solid per corner is what this was, and a surveyed footprint is a handful of
+  // corners a long way apart: the State Central Library's longest edge is 3.4 units
+  // between two solids that cover half a unit each. You could walk straight through
+  // the wall and stand inside an extruded box. So the solids step along every edge,
+  // close enough together that nothing fits between two of them.
+  for (const b of g.buildings) {
+    for (let i = 0; i < b.ring.length; i++) {
+      const a = b.ring[i]!;
+      const c = b.ring[(i + 1) % b.ring.length]!;
+      const len = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      // A METRE OF WALL, not four. At r 0.4 the library stood a full four metres
+      // further out than it looked, and the bandstand's collider was twice the size
+      // of the bandstand. Thinner solids need closer spacing or you walk between two
+      // of them, so the step falls with the radius.
+      const n = Math.max(1, Math.round(len / 0.16));
+      for (let k = 0; k < n; k++) {
+        const t = k / n;
+        solids.push({
+          x: a[0] + (c[0] - a[0]) * t,
+          z: a[1] + (c[1] - a[1]) * t,
+          r: 0.12, h: b.height,
+        });
+      }
+    }
   }
-  const ring: Pt[] = [];
-  for (let i = 0; i < 40; i++) {
-    const a = (i / 40) * Math.PI * 2;
-    ring.push([Math.cos(a) * g.radius, Math.sin(a) * g.radius]);
+
+  // THE EDGE OF THE WORLD FOLLOWS THE OUTLINE, whatever shape it is. A ring of solids
+  // just outside it, spaced closely enough that nobody slips between two of them --
+  // which is what a long straight boundary would do if the solids were only placed at
+  // its corners.
+  const step = 1.6;
+  for (let i = 0; i < g.outline.length; i++) {
+    const a = g.outline[i]!;
+    const b = g.outline[(i + 1) % g.outline.length]!;
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const n = Math.max(1, Math.round(len / step));
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      // Pushed OUT along the edge's normal, so the wall stands outside the ground
+      // rather than on top of the last metre of it.
+      const dx = (b[0] - a[0]) / (len || 1);
+      const dz = (b[1] - a[1]) / (len || 1);
+      solids.push({
+        x: a[0] + (b[0] - a[0]) * t + dz * 0.9,
+        z: a[1] + (b[1] - a[1]) * t - dx * 0.9,
+        // KNEE HIGH, NOT FOUR UNITS TALL, and the difference is the whole feel of
+        // walking near the edge. Walking is blocked by ANY solid at all -- the
+        // collision asks `h > 0` -- so height buys nothing there. What it costs is the
+        // CAMERA: `seeThrough` ignores anything shorter than the lens (0.95), and at
+        // four units the wall was a building standing behind you. The camera pulled
+        // itself in against it and rose to look over the top, which is right for a
+        // city street and, in a park, turns into a plan view of your own head the
+        // moment you approach the boundary. It did exactly that (on the phone,
+        // 2026-09-23) and the park read as broken.
+        r: 1.1, h: 0.9,
+      });
+    }
   }
   return {
     central: g.id,
-    areas: { [g.id]: { home: g.home, centre: [0, 0], radius: g.radius, spots: g.spots, polygon: ring } },
+    areas: {
+      [g.id]: { home: g.home, centre: [0, 0], radius: g.radius, spots: g.spots, polygon: g.outline },
+    },
     solids,
-    lakes: [g.pond, g.river],
+    lakes: [...g.ponds, g.river].filter((w) => w.length > 2),
     bridges: g.bridge ? [{ x: g.bridge.x, z: g.bridge.z, r: g.bridge.span * 0.6, h: 0 }] : [],
   };
 }

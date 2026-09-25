@@ -17,6 +17,7 @@ import { MIN_AGE, POOL_REQUIRED, canFilterOn, findArea, haversineKm, nearestArea
 // and importing a second one under the same name silently shadowed it, emptying
 // `missing` for every profile. tsc accepted it; a test caught it.
 import { REQUIRED as REQUIRED_CONSENTS } from '../api/consent.js';
+import { CORE_CARDS } from '../onboarding/questions.js';
 
 export interface RebuildResult {
   matchable: number;
@@ -152,6 +153,29 @@ export async function rebuildMatchProfile(
     return false;
   });
 
+  // THE FIVE CORE CARDS ARE A POOL CONDITION TOO. Kids, one person or open, smoking,
+  // drinking, food: the fields two people are compared on as exact code, which is only
+  // exact when BOTH answered the same five. Without this a person could go out having
+  // been asked only the three basics -- before they are in the pool the interview's
+  // picker has nothing to measure and never reached these fields (see
+  // next-question.ts) -- and then every rule anybody set on them passed that person as
+  // unknown, so "passes your rules both ways" said nothing on the fields it is about.
+  //
+  // DONE means a question_answers row for the card's id, whatever it holds. "Prefer
+  // not to say" is done: declining is kept cheap on purpose, because making it costly
+  // pays people to lie. The missing list names the card's PREDICATE, like every other
+  // entry on it.
+  //
+  // Invented profiles are untouched by this. They are written straight into
+  // match_profile with in_pool = true (synthetic.ts loadProfiles) and never pass
+  // through this function, so they carry no question_answers and need none.
+  const { rows: cards } = await c.query<{ question_id: string }>(
+    `SELECT question_id FROM question_answers WHERE user_id = $1 AND question_id = ANY($2)`,
+    [ctx.userId, CORE_CARDS.map((k) => k.id)],
+  );
+  const done = new Set(cards.map((r) => r.question_id));
+  for (const k of CORE_CARDS) if (!done.has(k.id)) missing.push(k.predicate);
+
   // An agent that cannot answer the five questions every candidate query asks would
   // be matched with everybody or nobody. It waits outside the pool until it can.
   //
@@ -211,6 +235,83 @@ export async function rebuildMatchProfile(
   );
 
   return { matchable: Object.keys(traits).length, missing, inPool };
+}
+
+/**
+ * Can this person's agent go out NOW? The stored flag, but never trusted past a rule
+ * the code has added since it was written.
+ *
+ * WHAT WAS WRONG. `in_pool` is a cache, and it is current only while every change to
+ * what the pool requires arrives through a write that rebuilds it. The five core cards
+ * arrived through a code change instead. Everybody who set up before them kept a
+ * stored `in_pool = true` with no card on file, and two paths read that stored flag
+ * rather than rebuilding: the Home (/v1/world) rebuilt only when the flag said no, and
+ * "send my agent out" (/v1/matches/run) queued a round for a worker that reads the same
+ * flag (orchestrator.ts). Found in review; a read-only count on 2026-09-23 showed all
+ * six real users in the pool with fewer than five card rows, so any of them could send
+ * their agent out from the Home without answering a card, and stayed in other people's
+ * candidate lists until they happened to open a screen that rebuilds.
+ *
+ * WHY THIS SHAPE. A flag that says no is always rebuilt -- that is the only time
+ * `missing` has anything in it, and it is what the Home already did. A flag that says
+ * yes is trusted only while the five cards are on file, which is one count over the
+ * caller's own question_answers; when they are not, the rebuild runs, takes the person
+ * out, and names the cards still to do. Not a rebuild on every call: the Home polls
+ * this every eight seconds while a round runs, and a rebuild is a write.
+ *
+ * Invented profiles never come through here, as they never come through the rebuild.
+ */
+export async function poolNow(
+  c: PoolClient,
+  ctx: { tenantId: string; userId: string },
+): Promise<{ inPool: boolean; missing: string[] }> {
+  const { rows } = await c.query<{ in_pool: boolean; cards: string }>(
+    `SELECT mp.in_pool,
+            (SELECT count(*) FROM question_answers q
+              WHERE q.user_id = mp.user_id AND q.question_id = ANY($2)) AS cards
+       FROM match_profile mp WHERE mp.user_id = $1`,
+    [ctx.userId, CORE_CARDS.map((k) => k.id)],
+  );
+  if (rows[0]?.in_pool && Number(rows[0].cards) === CORE_CARDS.length) {
+    return { inPool: true, missing: [] };
+  }
+  const r = await rebuildMatchProfile(c, ctx);
+  return { inPool: r.inPool, missing: r.missing };
+}
+
+/**
+ * Take every real profile that is in the pool without its five cards out of it, now.
+ *
+ * `poolNow` corrects a person the next time they open the Home or tap "send my agent
+ * out". Somebody who never opens the app again would otherwise stay in other people's
+ * candidate lists, cards unanswered, until the sixty-day activity filter drops them.
+ * This closes that for everybody at once. It is for scripts/hold-until-cards.ts, which
+ * the founder runs; it needs the OWNER connection, because it reads and writes across
+ * tenants.
+ *
+ * ONLY `in_pool`, set to false. Not a rebuild: a rebuild stamps `last_active_at`, and
+ * a script run is not the person being here -- it would keep an absent profile
+ * "active" for another sixty days. Nothing is deleted. The person's next visit
+ * rebuilds from their facts and says which cards are left. Invented profiles are never
+ * touched (`NOT is_synthetic`): they carry no cards and need none.
+ *
+ * `only` scopes it to the given users, which is how the test runs it against its own
+ * fixtures and never against the real people sharing the database.
+ */
+export async function holdUntilCardsDone(
+  c: PoolClient,
+  opts: { only?: readonly string[]; dry?: boolean } = {},
+): Promise<string[]> {
+  const { rows } = await c.query<{ user_id: string }>(
+    `${opts.dry ? 'SELECT mp.user_id FROM match_profile mp WHERE' : 'UPDATE match_profile mp SET in_pool = false WHERE'}
+        NOT mp.is_synthetic AND mp.in_pool
+        AND ($1::uuid[] IS NULL OR mp.user_id = ANY($1::uuid[]))
+        AND (SELECT count(*) FROM question_answers q
+              WHERE q.user_id = mp.user_id AND q.question_id = ANY($2)) < $3
+     ${opts.dry ? '' : 'RETURNING mp.user_id'}`,
+    [opts.only ?? null, CORE_CARDS.map((k) => k.id), CORE_CARDS.length],
+  );
+  return rows.map((r) => r.user_id);
 }
 
 /**

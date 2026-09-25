@@ -109,6 +109,43 @@ export async function candidateIds(
 }
 
 /**
+ * How many rounds started by OTHER real people one real person may appear in, per
+ * rolling week, before picking skips them.
+ *
+ * WHY A CAP, AND WHY NOW. Picking is real-first (orchestrator.ts): a real person is the
+ * point, and before it the ranker buried them under five thousand invented profiles.
+ * But real-first in a small pool means the scarce side is picked by EVERY round --
+ * Bruch & Newman 2018 found the most-contacted people on dating markets receiving
+ * messages at many times the median rate. So the cap ships with real-first rather than
+ * after it: a real person is still a candidate for everyone, and is simply not picked
+ * again this week once five real people's rounds have already brought them. Invented
+ * profiles are never capped; they have no inbox to flood.
+ */
+export const WEEKLY_REAL_EXPOSURE = Number(process.env.WEEKLY_REAL_EXPOSURE ?? 5);
+
+/**
+ * The real people in `ids` who have already appeared WEEKLY_REAL_EXPOSURE times this
+ * week in rounds started by other real people. Read from `rounds.result.metAll`, which
+ * every finished round records; no migration and no new column.
+ */
+export async function overExposed(c: PoolClient, ids: readonly string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const { rows } = await c.query<{ id: string }>(
+    `SELECT mp.user_id AS id
+       FROM match_profile mp
+      WHERE mp.user_id = ANY($1::uuid[]) AND NOT mp.is_synthetic
+        AND (SELECT count(*)
+               FROM rounds r
+               JOIN match_profile i ON i.user_id = r.user_id AND NOT i.is_synthetic
+              WHERE r.requested_at > now() - interval '7 days'
+                AND r.user_id <> mp.user_id
+                AND r.result -> 'metAll' ? mp.user_id::text) >= $2`,
+    [ids, WEEKLY_REAL_EXPOSURE],
+  );
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
  * The same pool, nearest first: the square's sample of strangers is the people
  * around this person, so a neighbourhood on the map has neighbours in it. Real
  * before invented still; distance before recency. A person with no point (or a
@@ -154,6 +191,60 @@ export interface PoolStep {
   remaining: number;
   /** How many this one rule cost. The number that makes over-filtering visible. */
   cost: number;
+}
+
+/**
+ * Under this many people, a count is not shown at all -- the person is told "under 20".
+ */
+export const SHOWN_FLOOR = 20;
+
+/**
+ * A pool count as a person may see it: rounded to the nearest ten, and nothing at all
+ * under twenty.
+ *
+ * WHY A COUNT IS A PRIVACY LEAK. Before the core cards no real person had a value on
+ * smoking, drinking, kids, monogamy or food, so every rule passed them as unknown and
+ * no count moved. Now everybody has one, and an exact count is a question anybody can
+ * ask about anybody: set "Let me choose" on a card, flip that rule between must-have
+ * and want on /preferences, and the difference in the total is how many people in
+ * range hold the excluded values. The invented part of the pool does not change, so the
+ * same difference taken a day apart is ONE newly joined real person's answer -- which
+ * is exactly what "we never show your smoking to anybody" promises cannot happen. A
+ * person joining moves a rounded count only when it happens to sit on a boundary, and
+ * below twenty there is nothing to difference at all. The spec's line, verbatim: no
+ * real counts below 20, and never how many people a single rule removes.
+ *
+ * Null is "under 20", not zero. A person whose rules leave nobody is told they leave
+ * "under 20", which is true and is still the nudge to loosen one.
+ */
+export function shownCount(n: number): number | null {
+  if (!Number.isFinite(n) || n < SHOWN_FLOOR) return null;
+  return Math.round(n / 10) * 10;
+}
+
+/** One step of the breakdown as it may be shown: the same rounding, both numbers. */
+export interface ShownStep {
+  step: string;
+  remaining: number | null;
+  /**
+   * Worked out from the ROUNDED counts either side, never from the exact ones -- the
+   * exact difference is precisely the number this exists not to send. When a step
+   * takes the pool under twenty, it is shown as costing about everything that was left.
+   */
+  cost: number | null;
+}
+
+export function shownBreakdown(steps: readonly PoolStep[]): ShownStep[] {
+  let before: number | null = null;
+  return steps.map((s, i) => {
+    const remaining = shownCount(s.remaining);
+    const cost = i === 0 ? 0
+      : before === null ? null
+      : remaining === null ? before
+      : Math.max(0, before - remaining);
+    before = remaining;
+    return { step: s.step, remaining, cost };
+  });
 }
 
 /**

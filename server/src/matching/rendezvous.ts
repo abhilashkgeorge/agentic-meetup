@@ -1,6 +1,11 @@
 /**
  * Two agents meeting. Several times. Counting how often both say yes.
  *
+ * OFF BY DEFAULT SINCE 2026-09-23. A round no longer holds these conversations unless
+ * RENDEZVOUS_RUNS asks for them, and nothing they produce reaches a person either way.
+ * Why is written at `RUNS` below. What follows is the design as it stood, kept while
+ * the code is.
+ *
  * THE IDEA, from "Hang the DJ": the System runs a pair a thousand times and the match
  * is how often they rebel together. The good part is not the number — it is that the
  * score comes from WATCHING THE PAIR INTERACT, repeatedly, instead of comparing two
@@ -33,6 +38,7 @@
  * shown to a human.
  */
 import type { PoolClient } from 'pg';
+import { contactDetail } from '@clone/shared';
 import { z } from 'zod';
 import { llm, modelFor } from '../llm/index.js';
 import { modelIdOf } from '../llm/caps.js';
@@ -40,7 +46,32 @@ import { currentState } from '../memory/facts.js';
 import { env } from '../env.js';
 import { log } from '../log.js';
 
-export const RUNS = Number(process.env.RENDEZVOUS_RUNS ?? 5);
+/**
+ * How many conversations a pair gets. ZERO BY DEFAULT: a round holds no conversation.
+ *
+ * WHAT WAS WRONG. Five runs a pair was about 60 of the 63 model calls in a round and
+ * about 95% of its cost ($0.055 a round, measured on the live database 2026-09-23) --
+ * and what it produced reached a real person's card as fact. A real user with nine
+ * facts and one episode, none of them about comedy, received two briefs whose concern
+ * called him a comedy writer. The only thing standing between an agent's invention and
+ * a card was one prompt line ("Never invent a detail", PROBER above), and a prompt line
+ * is not a guard. The agreement rate was then shown as words and ORDERED the list,
+ * which contaminated the very labels compare-scorers needs to judge it; and it tracked
+ * how rich a file was (0.79 on invented-vs-invented pairs against 0.16 on
+ * real-vs-invented) more than anything about two people. A conversation between two
+ * agents holds no information that is not already in the two files.
+ *
+ * WHY THE CODE DEFAULT, NOT AN ENV LINE. `RENDEZVOUS_RUNS=0` in one .env would be
+ * undone by a fresh machine or a lost line, and the conversations would come back
+ * silently with their cost and their inventions. The default is the guarantee; the
+ * env var is the deliberate opt-in, for an experiment and nothing else. Even opted in,
+ * nothing a conversation says reaches a person: the brief is code (brief.ts) and the
+ * orchestrator no longer carries the concern or the agreement anywhere a human looks.
+ *
+ * `runOnce` and `converse` stay until the code-only flow has been through its tests;
+ * git keeps them after that.
+ */
+export const RUNS = Number(process.env.RENDEZVOUS_RUNS ?? 0);
 /**
  * Messages each side sends per run.
  *
@@ -312,8 +343,10 @@ export async function buildDossier(c: PoolClient, userId: string): Promise<strin
     [userId],
   );
   const ok = new Set(allowed.map((r) => r.predicate));
+  // No contact detail, even here (shared/src/contact.ts): these lines are told to
+  // another person's agent, which is exactly the stranger a number must not reach.
   const lines = facts
-    .filter((f) => ok.has(f.predicate))
+    .filter((f) => ok.has(f.predicate) && contactDetail(f.objectText) === null)
     .map((f) => `- ${f.predicate.replace(/_/g, ' ')}: ${f.objectText}`);
 
   // NO PROSE BLOCK. This used to prepend coreProfileText, the rendered identity /

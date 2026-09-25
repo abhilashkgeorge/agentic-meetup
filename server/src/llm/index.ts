@@ -7,6 +7,7 @@
  */
 import { env } from '../env.js';
 import {
+  UnsupportedCapability,
   capabilities,
   daysUntilRetirement,
   isModelRef,
@@ -16,10 +17,13 @@ import {
   type Task,
 } from './caps.js';
 import { noteUsage } from '../metering.js';
-import type { Event, LLMPort, LLMRequest, LLMResponse } from './port.js';
+import type {
+  DecideRequest, DecideResponse, Event, LLMPort, LLMRequest, LLMResponse,
+} from './port.js';
 import * as anthropic from './adapters/anthropic.js';
 import * as openai from './adapters/openai.js';
 import * as google from './adapters/google.js';
+import * as typesafe from './adapters/typesafe.js';
 
 const ROUTING: Record<Task, string> = {
   chat: env.CHAT_MODEL,
@@ -28,6 +32,7 @@ const ROUTING: Record<Task, string> = {
   reflect: env.REFLECT_MODEL,
   render_profile: env.RENDER_PROFILE_MODEL,
   canon: env.CANON_MODEL,
+  decide: env.DECIDE_MODEL,
 };
 
 export function modelFor(task: Task): ModelRef {
@@ -38,7 +43,26 @@ export function modelFor(task: Task): ModelRef {
   return spec;
 }
 
-const adapters = { anthropic, openai, google } as const;
+const adapters = { anthropic, openai, google, typesafe } as const;
+
+/**
+ * The typed-decision model, or null when there is not one.
+ *
+ * SEPARATE FROM `modelFor` BECAUSE UNSET IS A REAL ANSWER. Every other task has a
+ * model and a missing one is a misconfiguration worth throwing over; this one is an
+ * experiment that is off until somebody turns it on, and both of its call sites have
+ * a perfectly good path that does not need it. Asking `modelFor('decide')` with
+ * nothing configured would throw at the two places least able to do anything useful
+ * with the exception.
+ */
+export function decideModel(): ModelRef | null {
+  const spec = ROUTING.decide;
+  if (!spec) return null;
+  if (!isModelRef(spec)) {
+    throw new Error(`bad model spec '${spec}' for task 'decide'; expected '<provider>:<id>'`);
+  }
+  return spec;
+}
 
 /**
  * THE CHOKE POINT. Every model call in the system goes through these two functions,
@@ -49,6 +73,18 @@ export const llm: LLMPort = {
   async complete(req: LLMRequest, model: ModelRef): Promise<LLMResponse> {
     const res = await adapters[providerOf(model)].complete(req, model);
     noteUsage(res.usage, `complete(${model})`);
+    return res;
+  },
+  async decide(req: DecideRequest, model: ModelRef): Promise<DecideResponse> {
+    const adapter = adapters[providerOf(model)];
+    if (!('decide' in adapter)) {
+      throw new UnsupportedCapability(
+        `${model} has no typed-decision endpoint. Only a System One model answers ` +
+          `llm.decide; route the 'decide' task at one, or use llm.complete.`,
+      );
+    }
+    const res = await adapter.decide(req, model);
+    noteUsage(res.usage, `decide(${model})`);
     return res;
   },
   stream(req: LLMRequest, model: ModelRef): AsyncIterable<Event> {
@@ -72,6 +108,10 @@ export const llm: LLMPort = {
 export function validateRouting(): void {
   const problems: string[] = [];
   for (const task of Object.keys(ROUTING) as Task[]) {
+    // An unrouted task is not a misconfiguration when unset is a real answer: the
+    // typed-decision model is off until somebody turns it on, and both of its call
+    // sites have a path that does not need it. Every other task has a default.
+    if (!ROUTING[task]) continue;
     const model = modelFor(task);
     const caps = capabilities(model);
 

@@ -15,11 +15,10 @@ import { Pool } from 'pg';
 import sharp from 'sharp';
 import { env } from '../src/env.js';
 import { close, closeMatchPool, matchmakerSession, tenantSession } from '../src/db/client.js';
-import { composeBoth, loadQuotes, saveBriefs } from '../src/matching/brief.js';
-import { buildDossier } from '../src/matching/rendezvous.js';
+import { cardFacts, composeBoth, loadQuotes, saveBriefs, type Quote } from '../src/matching/brief.js';
+import { publicTags } from '../src/matching/rendezvous.js';
 import { autoDecideSynthetic } from '../src/matching/orchestrator.js';
 import * as photos from '../src/photos/store.js';
-import { metered } from '../src/metering.js';
 
 const email = process.argv[2] ?? 'abhilash@dabba.com';
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
@@ -123,28 +122,15 @@ if (waiting[0]!.n > 0) {
     const x = { userId: pair.user_a, tenantId: pair.tenant_a };
     const y = { userId: pair.user_b, tenantId: pair.tenant_b };
 
+    // Each person's verified sentences under their own session, as a round reads them
+    // (see loadQuotes). The brief is code now: no model call, so nothing to meter, and
+    // no concern -- nothing a conversation said reaches a card.
+    const [qx, qy] = [await loadQuotes(x), await loadQuotes(y)];
     const written = await matchmakerSession(async (c) => {
-      const qx = await loadQuotes(c, x.userId);
-      const qy = await loadQuotes(c, y.userId);
-      const dx = await buildDossier(c, x.userId);
-      const dy = await buildDossier(c, y.userId);
-      // Metered, like every other model call. The meter caught this script the first
-      // time it ran after metering moved into the router -- which is the point of
-      // making an unmetered call throw rather than quietly cost money. A development
-      // script spends exactly the same real money as the product does.
-      const made = await metered(x, 'brief', () => composeBoth(
-        { ...x, quotes: qx, dossier: dx },
-        { ...y, quotes: qy, dossier: dy },
-      ), c);
-      // a_concern belongs to user_a, which is exactly the order x and y are in here.
-      // That is true because recordRuns normalises it; it was not true before, and the
-      // result was two people each shown their own agent's worry about themselves.
-      const { rows } = await c.query<{ a_concern: string; b_concern: string }>(
-        `SELECT a_concern, b_concern FROM rendezvous_runs
-          WHERE rendezvous_id = $1 ORDER BY run_no DESC LIMIT 1`, [pair.id]);
-      const n = await saveBriefs(c, pair.id, x, y, made, {
-        a: rows[0]?.a_concern ?? '', b: rows[0]?.b_concern ?? '',
-      });
+      const side = async (who: { userId: string }, quotes: Quote[]) =>
+        ({ card: await cardFacts(c, who.userId), tags: await publicTags(c, who.userId), quotes });
+      const made = composeBoth(await side(x, qx), await side(y, qy));
+      const n = await saveBriefs(c, pair.id, x, y, made);
       await c.query(
         `UPDATE rendezvous
             SET status = 'decided',

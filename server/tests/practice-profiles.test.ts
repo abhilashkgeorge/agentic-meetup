@@ -31,9 +31,15 @@ async function person(tag: string, synthetic: boolean) {
     'INSERT INTO app_users (tenant_id, email) VALUES ($1,$2) RETURNING id',
     [tenantId, `${tag}-${Date.now()}@example.test`]);
   const userId = u.rows[0]!.id;
+  // OUT OF THE POOL. Nothing here needs it in, and in it this profile -- no gender,
+  // no intent, and every candidate clause passes on NULL -- was somebody every other
+  // file's round could meet while this one ran. Once a round stopped holding
+  // conversations (2026-09-23) rounds got fast enough to meet it routinely, and the
+  // DELETE in afterAll then deadlocked against their writes to rendezvous, left both
+  // tenants behind, and every later round in the database met them.
   await owner.query(
     `INSERT INTO match_profile (user_id, tenant_id, age, in_pool, is_synthetic)
-     VALUES ($1,$2,30,true,$3)`, [userId, tenantId, synthetic]);
+     VALUES ($1,$2,30,false,$3)`, [userId, tenantId, synthetic]);
   return { tenantId, userId };
 }
 

@@ -10,7 +10,8 @@
  * in the light, or it reads as a diagram of a park. The founder put a game's garden
  * next to our city and asked for the garden (2026-09-22).
  *
- * Nine draw calls: sky, hills, path, pond, trunks, canopies, grass, stone, leaves.
+ * Eleven draw calls: sky, hills, path, pond, trunks, canopies, grass, stone, leaves,
+ * and the buildings in two colours with their windows unlit on top.
  * About nineteen thousand triangles. The grass sways in its vertex shader and the
  * leaves drift in the frame loop, and nothing else moves.
  */
@@ -32,8 +33,15 @@ export interface BuiltGarden {
   horizon: THREE.Color;
   /** Called every frame while the garden is on screen. */
   tick(t: number, dt: number): void;
+  /** Where the person looking is, so the sky, the leaves and the grass follow them. */
+  follow(x: number, y: number, z: number): void;
   stats(): { meshes: number; triangles: number };
   dispose(): void;
+}
+
+export interface GardenMeshOptions {
+  /** A venue GLB supplies benches and lamps; keep the procedural fallback otherwise. */
+  assetFurniture?: boolean;
 }
 
 /** Heights are in scene units against an agent drawn about 0.24 tall (PERSON). */
@@ -51,12 +59,142 @@ const TRUNK_H = 1.15;
 const PATH_Y = 0.0012;
 const POND_Y = 0.0008;
 const LEAVES = 130;
-const HILL_FAR = 96;
+/**
+ * How far the ground goes before the haze takes over, for a 26-unit garden.
+ *
+ * SCALED BY THE PLACE, not fixed, because Cubbon Park is 170 units long: at a fixed 96
+ * the ground plane ended inside the park and the hills started behind the player.
+ */
+const HILL_FAR_BASE = 96;
+const hillFar = (radius: number) => Math.max(HILL_FAR_BASE, radius * 2.1);
+
+/**
+ * A closed ring pushed out from its own middle by `d` units.
+ *
+ * NOT A TRUE POLYGON OFFSET, which needs a mitre solved at every corner and can eat
+ * its own thin parts. A building footprint at this size is a blob twenty to forty
+ * metres across and a plinth stands about thirty centimetres proud, so scaling about
+ * the centroid is within a few centimetres of right everywhere and is four lines.
+ */
+export function outset(ring: Pt[], d: number): Pt[] {
+  let cx = 0; let cz = 0;
+  for (const [x, z] of ring) { cx += x; cz += z; }
+  cx /= ring.length; cz /= ring.length;
+  let r = 0;
+  for (const [x, z] of ring) r = Math.max(r, Math.hypot(x - cx, z - cz));
+  const k = r > 0 ? (r + d) / r : 1;
+  return ring.map(([x, z]) => [cx + (x - cx) * k, cz + (z - cz) * k] as Pt);
+}
+
+/** A ring extruded between two heights, standing on the ground plane. */
+export function prism(ring: Pt[], y0: number, y1: number): THREE.BufferGeometry {
+  const shape = new THREE.Shape(ring.map(([x, z]) => new THREE.Vector2(x, -z)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: y1 - y0, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2);
+  if (y0) geo.translate(0, y0, 0);
+  geo.deleteAttribute('uv');
+  return geo;
+}
+
+/** True when a point is inside a ring, by the usual crossing count. */
+export function inside(px: number, pz: number, ring: Pt[]): boolean {
+  let hit = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, zi] = ring[i]!; const [xj, zj] = ring[j]!;
+    if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) hit = !hit;
+  }
+  return hit;
+}
+
+/**
+ * A pillar every couple of metres round a ring, for a roof that stands on nothing else.
+ *
+ * Square posts, not cylinders: everything in this park is flat-shaded, a cylinder
+ * costs a ring of triangles each, and at this size the difference is a pixel.
+ *
+ * NON-INDEXED, because they are merged with the prisms beside them and
+ * `mergeGeometries` wants an index on all of them or on none. `BoxGeometry` carries
+ * one and `ExtrudeGeometry` does not, so the first version of this returned null from
+ * the merge and the whole park died on `new Mesh(null)`. The same trap took out a
+ * whole character once, through a beard.
+ */
+export function posts(ring: Pt[], y0: number, y1: number): THREE.BufferGeometry[] {
+  const STEP = 0.26;
+  const R = 0.022;
+  const out: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, az] = ring[i]!; const [bx, bz] = ring[(i + 1) % ring.length]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 1e-4) continue;
+    const n = Math.max(1, Math.round(len / STEP));
+    // The last post of an edge is the first of the next, so it is left to that edge.
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      const box = new THREE.BoxGeometry(R * 2, y1 - y0, R * 2);
+      box.translate(ax + (bx - ax) * t, (y0 + y1) / 2, az + (bz - az) * t);
+      const geo = box.toNonIndexed();
+      box.dispose();
+      geo.deleteAttribute('uv');
+      out.push(geo);
+    }
+  }
+  return out;
+}
+
+/** A window, in units: about 1.2 m across and 1.4 m tall, one every 2.6 m of wall. */
+const PANE_W = 0.15;
+const PANE_H = 0.17;
+const PANE_GAP = 0.32;
+
+/**
+ * One storey's windows, all the way round a footprint, sitting a hair off the wall.
+ *
+ * OUTWARD IS DECIDED BY ASKING, not by trusting the winding: these rings come from
+ * OSM by way of a scale and a simplify, and a ring that comes back clockwise would
+ * hang every window inside the building where nobody would ever see one. So the
+ * normal is tested against the ring itself and flipped if it points inwards.
+ */
+export function paneRow(ring: Pt[], y: number): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  const y0 = y; const y1 = y + PANE_H;
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, az] = ring[i]!; const [bx, bz] = ring[(i + 1) % ring.length]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < PANE_GAP) continue;
+    const dx = (bx - ax) / len; const dz = (bz - az) / len;
+    let nx = dz; let nz = -dx;
+    const mx = (ax + bx) / 2; const mz = (az + bz) / 2;
+    if (inside(mx + nx * 0.02, mz + nz * 0.02, ring)) { nx = -nx; nz = -nz; }
+    const n = Math.floor(len / PANE_GAP);
+    for (let k = 0; k < n; k++) {
+      const t = (len - n * PANE_GAP) / 2 + PANE_GAP * (k + 0.5);
+      const cx = ax + dx * t + nx * 0.006;
+      const cz = az + dz * t + nz * 0.006;
+      const hw = PANE_W / 2;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([
+        cx - dx * hw, y0, cz - dz * hw,
+        cx + dx * hw, y0, cz + dz * hw,
+        cx + dx * hw, y1, cz + dz * hw,
+        cx - dx * hw, y1, cz - dz * hw,
+      ], 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(
+        [nx, 0, nz, nx, 0, nz, nx, 0, nz, nx, 0, nz], 3));
+      geo.setIndex([0, 1, 2, 0, 2, 3]);
+      out.push(geo);
+    }
+  }
+  return out;
+}
 
 interface Palette {
   skyTop: string; skyLow: string; hill: string; grass: string;
   path: string; pond: string; canopy: string; trunk: string; stone: string; leaf: string;
   wood: string; bush: string; reed: string;
+  /** The library is red. A landmark the colour of every shed is not a landmark. */
+  brick: string;
+  /** What a window is: a hole, drawn unlit. */
+  pane: string;
   sun: number; ambient: number;
 }
 
@@ -70,12 +208,14 @@ const DAY: Palette = {
   path: '#D6C6A2', pond: '#7FA6C6', canopy: '#79A45C', trunk: '#7A644C',
   stone: '#9BA1A6', leaf: '#D9B65A', sun: 0.95, ambient: 0.85,
   wood: '#A8825A', bush: '#688F4C', reed: '#6E9450',
+  brick: '#B05A42', pane: '#4A5560',
 };
 const NIGHT: Palette = {
   skyTop: '#1E2740', skyLow: '#55597A', hill: '#3B4752', grass: '#465B45',
   path: '#6E6654', pond: '#37506B', canopy: '#3A5540', trunk: '#453A2E',
   stone: '#565C63', leaf: '#8A7440', sun: 0.4, ambient: 0.55,
   wood: '#544432', bush: '#31462E', reed: '#3A4E33',
+  brick: '#6B3325', pane: '#D8C070',
 };
 
 const mix = (a: string | THREE.Color, b: string | THREE.Color, t: number) =>
@@ -124,7 +264,8 @@ function fill(ring: readonly Pt[], y: number): THREE.BufferGeometry {
  * what give the haze something to fade, and what stops the world ending in a line.
  */
 function ground(radius: number): THREE.BufferGeometry {
-  const g = new THREE.PlaneGeometry(HILL_FAR * 2, HILL_FAR * 2, 44, 44);
+  const far = hillFar(radius);
+  const g = new THREE.PlaneGeometry(far * 2, far * 2, 44, 44);
   g.rotateX(-Math.PI / 2);
   const p = g.getAttribute('position') as THREE.BufferAttribute;
   for (let i = 0; i < p.count; i++) {
@@ -198,7 +339,7 @@ function windy(material: THREE.MeshLambertMaterial): { material: THREE.MeshLambe
   return { material, time };
 }
 
-export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
+export function buildGarden(g: Garden, colors: GardenColors, options: GardenMeshOptions = {}): BuiltGarden {
   const P = colors.night ? NIGHT : DAY;
   const group = new THREE.Group();
   // Built hidden. The city is what the Home screen opens on, and a garden that starts
@@ -221,7 +362,7 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
   // Sky: an inside-out dome, lit by nothing, graded from horizon to top. It rides
   // with the camera so you can never walk to the edge of it.
   const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(HILL_FAR * 1.6, 18, 12),
+    new THREE.SphereGeometry(hillFar(g.radius) * 1.6, 18, 12),
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: { uTop: { value: new THREE.Color(P.skyTop) }, uLow: { value: horizon } },
@@ -236,19 +377,46 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
   // The ground is a shade lighter than the blades standing in it. Matched, the grass
   // disappears into it and the field goes flat; this is what makes it read as texture.
   add(ground(g.radius), new THREE.MeshLambertMaterial({ color: mix(P.grass, P.hill, 0.3) }), 'ground');
-  add(ribbon(g.path, PATH_WIDTH, PATH_Y), new THREE.MeshLambertMaterial({
-    color: P.path, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
-  }), 'path');
+
+  // THE PARK'S OWN SHAPE, laid over the plain. A surveyed boundary is the one thing a
+  // person can actually recognise from a map, and without this the ground is the same
+  // green everywhere and the place has no edges at all.
+  {
+    // LIGHTER THAN THE BLADES STANDING IN IT, for the same reason the ground is --
+    // and the first cut of this mesh forgot, tinting the lawn toward white until it
+    // was all but the blades' own green. Sixty thousand tufts drew and not one of
+    // them could be seen: on the phone the park was a flat field (2026-09-23), and
+    // scaling a blade up six times was what proved they had been there all along.
+    const lawn = fill(g.outline, PATH_Y * 0.4);
+    add(lawn, new THREE.MeshLambertMaterial({
+      color: mix(P.grass, P.hill, 0.22),
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2,
+    }), 'lawn');
+  }
+
+  // Every path, at its own width, merged into one mesh. Cubbon Park is 185 of them and
+  // 23 km; the seeded garden is one.
+  {
+    const parts = g.paths.filter((p) => p.line.length > 1).map((p) => ribbon(p.line, p.width, PATH_Y));
+    const merged = parts.length > 1 ? mergeGeometries(parts, false)! : parts[0]!;
+    if (parts.length > 1) for (const q of parts) q.dispose();
+    add(merged, new THREE.MeshLambertMaterial({
+      color: P.path, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+    }), 'path');
+  }
 
   const pondMat = new THREE.MeshLambertMaterial({
     color: mix(P.pond, colors.accent, 0.12), transparent: true, opacity: 0.9, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     emissive: new THREE.Color(P.pond), emissiveIntensity: colors.night ? 0.3 : 0,
   });
-  const waterParts = [fill(g.pond, POND_Y), fill(g.river, POND_Y)];
-  const water = mergeGeometries(waterParts, false)!;
-  for (const w of waterParts) w.dispose();
-  add(water, pondMat, 'water');
+  const waterRings = [...g.ponds, g.river].filter((w) => w.length > 2);
+  if (waterRings.length) {
+    const waterParts = waterRings.map((w) => fill(w, POND_Y));
+    const water = waterParts.length > 1 ? mergeGeometries(waterParts, false)! : waterParts[0]!;
+    if (waterParts.length > 1) for (const w of waterParts) w.dispose();
+    add(water, pondMat, 'water');
+  }
 
   // Trees: a trunk and three canopy blobs, two draw calls for the lot.
   const trunks = new THREE.InstancedMesh(
@@ -291,25 +459,59 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
   const { time: windTime } = windy(grassMat);
   // The reeds ride along in the same mesh: same blades, taller and bluer, so the
   // water's edge sways with everything else and costs no extra draw call.
-  const blades = g.tufts.length + g.reeds.length;
-  const tufts = new THREE.InstancedMesh(tuftGeometry(), grassMat, Math.max(1, blades));
-  g.tufts.forEach((t, i) => {
-    dummy.position.set(t.x, 0, t.z);
-    dummy.rotation.set(0, t.rot, 0);
-    dummy.scale.set(t.scale, t.scale * (0.8 + (i % 5) * 0.1), t.scale);
-    dummy.updateMatrix(); tufts.setMatrixAt(i, dummy.matrix);
-    tufts.setColorAt(i, shade.set(P.grass).multiplyScalar(0.74 + ((i * 11) % 13) / 42));
-  });
-  g.reeds.forEach((r, k) => {
-    const i = g.tufts.length + k;
-    dummy.position.set(r.x, 0, r.z);
-    dummy.rotation.set(0, r.rot, 0);
-    dummy.scale.set(r.scale * 0.7, r.scale * 2.6, r.scale * 0.7);
-    dummy.updateMatrix(); tufts.setMatrixAt(i, dummy.matrix);
-    tufts.setColorAt(i, shade.set(P.reed).multiplyScalar(0.8 + ((k * 7) % 9) / 26));
-  });
-  tufts.name = 'grass'; tufts.frustumCulled = false; tufts.raycast = () => {};
-  group.add(tufts); meshes.push(tufts); junk.push(tufts.geometry, grassMat);
+  //
+  // ONE MESH PER PATCH OF GROUND, NOT ONE FOR THE PARK. The seeded garden put 7,000
+  // tufts in a 26-unit circle and drew all of them, always, which was fine: that is
+  // one draw call and the whole circle is in front of you. Cubbon Park is nine times
+  // the area, and the same density is 24,000 blades -- and the park already measured
+  // at 59.8 fps with grass as more than half its triangles.
+  //
+  // So the grass is cut into a grid. Each cell is its own instanced mesh with its own
+  // real bounding sphere, which makes three's frustum culling work on it -- and a
+  // cell more than GRASS_SEE away from the player is switched off outright in
+  // `follow` below, because the haze hides it long before that anyway. Near a player
+  // that is six or eight meshes of a few hundred blades instead of one of 24,000.
+  //
+  // THE BOUNDING SPHERE IS SAFE HERE and is not in the crowd: an instanced mesh
+  // computes its sphere once from instances 0..count-1 and never invalidates it, so a
+  // VARYING count freezes it wrongly. These counts never change after they are filled.
+  const GRASS_CELL = 16;
+  const grassCells: THREE.InstancedMesh[] = [];
+  {
+    type Blade = { x: number; z: number; rot: number; scale: number; reed: boolean; i: number };
+    const cells = new Map<string, Blade[]>();
+    const put = (b: Blade) => {
+      const k = `${Math.floor(b.x / GRASS_CELL)},${Math.floor(b.z / GRASS_CELL)}`;
+      const at = cells.get(k);
+      if (at) at.push(b); else cells.set(k, [b]);
+    };
+    g.tufts.forEach((t, i) => put({ x: t.x, z: t.z, rot: t.rot, scale: t.scale, reed: false, i }));
+    // The reeds ride along in the same meshes: same blades, taller and bluer, so the
+    // water's edge sways with everything else and costs no extra draw call.
+    g.reeds.forEach((r, i) => put({ x: r.x, z: r.z, rot: r.rot, scale: r.scale, reed: true, i }));
+
+    const geo = tuftGeometry();
+    junk.push(geo);
+    for (const blades of cells.values()) {
+      const mesh = new THREE.InstancedMesh(geo, grassMat, blades.length);
+      blades.forEach((b, k) => {
+        dummy.position.set(b.x, 0, b.z);
+        dummy.rotation.set(0, b.rot, 0);
+        if (b.reed) dummy.scale.set(b.scale * 0.7, b.scale * 2.6, b.scale * 0.7);
+        else dummy.scale.set(b.scale * 1.3, b.scale * (0.8 + (b.i % 5) * 0.1) * 1.5, b.scale * 1.3);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(k, dummy.matrix);
+        mesh.setColorAt(k, b.reed
+          ? shade.set(P.reed).multiplyScalar(0.8 + ((b.i * 7) % 9) / 26)
+          : shade.set(P.grass).multiplyScalar(0.74 + ((b.i * 11) % 13) / 42));
+      });
+      mesh.name = 'grass';
+      mesh.raycast = () => {};
+      mesh.computeBoundingSphere();
+      group.add(mesh); meshes.push(mesh); grassCells.push(mesh);
+    }
+    junk.push(grassMat);
+  }
 
   // A bridge where the path fords the river. Without one the river is a wall and the
   // path stops being a path; the sim is told the same thing in gardenSpots.
@@ -333,7 +535,13 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
   }
 
   // The fountain: a stone basin with water in it and a bowl on a column above.
-  {
+  //
+  // ONLY IF THERE IS ONE. A seeded garden always has a fountain; a surveyed place has
+  // whatever the survey found, and Cubbon Park's is not in OSM. Drawn at radius zero
+  // the basin collapses to nothing but the column and the bowl still stand -- so the
+  // park opened with a three-metre grey mushroom in front of the camera, which is
+  // exactly what it looked like on the phone (2026-09-23).
+  if (g.fountain.radius > 0) {
     const parts: THREE.BufferGeometry[] = [];
     const basin = new THREE.CylinderGeometry(g.fountain.radius, g.fountain.radius * 1.04, 0.1, 20);
     basin.translate(0, 0.05, 0); parts.push(basin);
@@ -353,7 +561,7 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
 
   // Benches, all of them one mesh. Somewhere to sit is most of what makes a field a
   // park, and they are what the people standing about are standing about near.
-  if (g.benches.length) {
+  if (g.benches.length && !options.assetFurniture) {
     const parts: THREE.BufferGeometry[] = [];
     for (const bn of g.benches) {
       const bits: THREE.BufferGeometry[] = [];
@@ -408,6 +616,7 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
   const stone: THREE.BufferGeometry[] = [];
   for (const p of g.props) {
     if (p.kind === 'lantern') {
+      if (options.assetFurniture) continue;
       const post = new THREE.CylinderGeometry(0.035, 0.05, 0.18, 6); post.translate(0, 0.09, 0);
       const body = new THREE.BoxGeometry(0.11, 0.09, 0.11); body.translate(0, 0.225, 0);
       const roof = new THREE.ConeGeometry(0.11, 0.07, 4); roof.translate(0, 0.305, 0);
@@ -427,17 +636,112 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
     add(merged, new THREE.MeshLambertMaterial({ color: P.stone }), 'stone');
   }
 
+  // Buildings. The State Central Library, the bandstand, the Fern House -- surveyed
+  // footprints extruded to a guessed height, because OSM records the plan and not the
+  // elevation.
+  //
+  // A FOOTPRINT EXTRUDED IS A CRATE, NOT A BUILDING. That is exactly what this was:
+  // the founder walked up to the library and asked why there was a huge box in the
+  // middle of the road (2026-09-23). It was the right size and the right place and it
+  // still read as an untextured placeholder, because next to hand-made trees and
+  // benches a bare grey prism is the one thing in the park with no edges in it.
+  //
+  // Three cheap things fix that, and none of them is a texture. A PLINTH, because a
+  // building meets the ground on something wider than itself. A CORNICE, the thin
+  // overhanging slab at the top, which is what actually reads as a roof from the
+  // ground. And WINDOWS -- small dark quads a hair off each wall, in rows by storey --
+  // which are what give a wall its scale: without them nothing says whether the thing
+  // is ten metres tall or a hundred. The library also gets its own red, because it is
+  // red, and a landmark that is the colour of every shed in the park is not a landmark.
+  if (g.buildings.length) {
+    const stoneWalls: THREE.BufferGeometry[] = [];
+    const brickWalls: THREE.BufferGeometry[] = [];
+    const panes: THREE.BufferGeometry[] = [];
+    /** One storey, in units: about three and a half metres of Cubbon Park. */
+    const STOREY = 0.43;
+    for (const b of g.buildings) {
+      if (b.ring.length < 3) continue;
+      const brick = /library/i.test(b.name);
+      const into = brick ? brickWalls : stoneWalls;
+      // THE BANDSTAND HAS NO WALLS. It is a roof on pillars and always was -- the code
+      // that guessed its height said so in a comment while the mesh drew a solid
+      // eight-metre cube, standing on the path circle a minute's walk from where you
+      // spawn. That cube is what the founder saw and asked about, in those words: a
+      // huge box in the middle of the road (2026-09-23). Pillars stand ON the ring, so
+      // you still stop where the collision already stops you.
+      if (/band/i.test(b.name)) {
+        into.push(prism(outset(b.ring, 0.04), 0, 0.09));
+        into.push(...posts(b.ring, 0.09, b.height));
+        into.push(prism(outset(b.ring, 0.055), b.height, b.height + 0.07));
+        continue;
+      }
+      into.push(prism(b.ring, 0, b.height));
+      // The plinth sits proud of the wall and the cornice overhangs it. Both are the
+      // same ring pushed out from its own middle, which is exact enough at this size
+      // and costs nothing -- a true polygon offset would be a mitre per corner.
+      into.push(prism(outset(b.ring, 0.035), 0, 0.055));
+      into.push(prism(outset(b.ring, 0.03), b.height, b.height + 0.05));
+      // Windows start above the plinth and stop below the cornice, so a one-storey
+      // shed gets a single row and the library gets four.
+      const rows = Math.max(1, Math.floor((b.height - 0.18) / STOREY));
+      for (let r = 0; r < rows; r++) panes.push(...paneRow(b.ring, 0.16 + r * STOREY));
+    }
+    const put = (parts: THREE.BufferGeometry[], color: string, name: string) => {
+      if (!parts.length) return;
+      const merged = parts.length > 1 ? mergeGeometries(parts, false)! : parts[0]!;
+      if (parts.length > 1) for (const q of parts) q.dispose();
+      add(merged, new THREE.MeshLambertMaterial({ color }), name);
+    };
+    put(stoneWalls, P.stone, 'buildings');
+    put(brickWalls, P.brick, 'buildings-brick');
+    // Unlit, because a window is a hole and a hole does not catch the sun.
+    if (panes.length) {
+      const merged = mergeGeometries(panes, false)!;
+      for (const q of panes) q.dispose();
+      add(merged, new THREE.MeshBasicMaterial({ color: P.pane }), 'windows');
+    }
+  }
+
+  // The statues, and the rock. Cubbon Park's landmarks are mostly a figure on a
+  // plinth, so that is what these are: nobody is modelling Queen Victoria at twenty
+  // pixels tall, and a plinth with something on it reads as a statue from anywhere.
+  if (g.landmarks.length) {
+    const parts: THREE.BufferGeometry[] = [];
+    for (const l of g.landmarks) {
+      const bits: THREE.BufferGeometry[] = [];
+      if (l.kind === 'rock') {
+        const r = new THREE.SphereGeometry(0.42, 7, 5);
+        r.scale(1.3, 0.8, 1); bits.push(r);
+      } else {
+        const base = new THREE.BoxGeometry(0.3, 0.22, 0.3); base.translate(0, 0.11, 0); bits.push(base);
+        const plinth = new THREE.BoxGeometry(0.2, 0.3, 0.2); plinth.translate(0, 0.37, 0); bits.push(plinth);
+        const body = new THREE.CylinderGeometry(0.05, 0.075, 0.28, 6); body.translate(0, 0.66, 0); bits.push(body);
+        const head = new THREE.SphereGeometry(0.052, 6, 4); head.translate(0, 0.83, 0); bits.push(head);
+      }
+      for (const q of bits) { q.deleteAttribute('uv'); q.translate(l.x, 0, l.z); }
+      parts.push(...bits);
+    }
+    const merged = mergeGeometries(parts, false)!;
+    for (const q of parts) q.dispose();
+    add(merged, new THREE.MeshLambertMaterial({ color: mix(P.stone, '#ffffff', 0.18) }), 'landmarks');
+  }
+
   // Leaves on the air. Few enough to write by hand each frame.
   const leafGeo = new THREE.PlaneGeometry(0.05, 0.035);
   const leaves = new THREE.InstancedMesh(leafGeo, new THREE.MeshBasicMaterial({
     color: P.leaf, side: THREE.DoubleSide, transparent: true, opacity: 0.85,
   }), LEAVES);
+  // AROUND THE PLAYER, NOT ACROSS THE PARK. Spread over a 170-unit park, 130 leaves
+  // are one leaf every thirty metres and you never see one. The patch is a few units
+  // wide and rides with whoever is looking (see `follow`).
+  const LEAF_SPREAD = 14;
   const drift = Array.from({ length: LEAVES }, (_, i) => ({
-    x: (((i * 37) % 100) / 100 - 0.5) * g.radius * 1.6,
-    z: (((i * 61) % 100) / 100 - 0.5) * g.radius * 1.6,
+    x: (((i * 37) % 100) / 100 - 0.5) * LEAF_SPREAD,
+    z: (((i * 61) % 100) / 100 - 0.5) * LEAF_SPREAD,
     y: ((i * 17) % 100) / 100,
     s: 0.4 + (((i * 23) % 70) / 100),
   }));
+  const eye = { x: 0, z: 0 };
   leaves.name = 'leaves'; leaves.frustumCulled = false; leaves.raycast = () => {};
   group.add(leaves); meshes.push(leaves); junk.push(leafGeo, leaves.material as THREE.Material);
 
@@ -448,9 +752,9 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
       const d = drift[i]!;
       const fall = (d.y + t * 0.055 * d.s) % 1;
       dummy.position.set(
-        d.x + Math.sin(t * 0.6 + i) * 0.5,
+        eye.x + d.x + Math.sin(t * 0.6 + i) * 0.5,
         2.4 * (1 - fall) + 0.05,
-        d.z + Math.cos(t * 0.45 + i * 1.7) * 0.5,
+        eye.z + d.z + Math.cos(t * 0.45 + i * 1.7) * 0.5,
       );
       dummy.rotation.set(t * 0.8 + i, t * 1.1 + i, 0);
       dummy.scale.setScalar(d.s);
@@ -466,15 +770,44 @@ export function buildGarden(g: Garden, colors: GardenColors): BuiltGarden {
     return (n / 3) * (m instanceof THREE.InstancedMesh ? m.count : 1);
   };
 
+  /**
+   * Everything that has to move with whoever is looking, once a frame.
+   *
+   * The sky dome, the drifting leaves, and -- the one that matters for a park this
+   * size -- which cells of grass are switched on at all. Distance, not the frustum:
+   * three culls what is behind you for free, but a cell four hundred metres ahead is
+   * still in front of you and still costs a draw call, and the haze has hidden it
+   * since sixty.
+   */
+  const GRASS_SEE = 34;
+  const follow = (x: number, y: number, z: number) => {
+    eye.x = x; eye.z = z;
+    if (sky) sky.position.set(x, y, z);
+    for (const cell of grassCells) {
+      const c = cell.boundingSphere;
+      cell.visible = !c || Math.hypot(c.center.x - x, c.center.z - z) - c.radius < GRASS_SEE;
+    }
+  };
+
   return {
-    group, horizon, tick,
-    stats: () => ({ meshes: meshes.length, triangles: Math.round(meshes.reduce((s, m) => s + tris(m), 0)) }),
+    group, horizon, tick, follow,
+    stats: () => ({
+      meshes: meshes.filter((m) => m.visible).length,
+      triangles: Math.round(meshes.filter((m) => m.visible).reduce((s, m) => s + tris(m), 0)),
+    }),
     dispose: () => { for (const j of junk) j.dispose(); },
   };
 }
 
-/** The sky dome has to follow the camera, or you walk out from under it. */
+/**
+ * The sky dome has to follow the camera, or you walk out from under it -- and so do
+ * the leaves, and so does the question of which grass is worth drawing.
+ *
+ * Kept as a function rather than folded into the caller because `canvas.tsx` already
+ * calls it once a frame with the camera, and because searching the group for the sky
+ * by name every frame (which is what this used to do) is a linear scan over a hundred
+ * meshes now that the grass is cut into cells.
+ */
 export function skyFollow(built: BuiltGarden, x: number, y: number, z: number): void {
-  const sky = built.group.children.find((c) => c.name === 'sky');
-  if (sky) sky.position.set(x, y, z);
+  built.follow(x, y, z);
 }

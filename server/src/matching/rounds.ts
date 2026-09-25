@@ -24,7 +24,7 @@
  */
 import { matchmakerSession, tenantSession } from '../db/client.js';
 import { BudgetExceeded } from '../metering.js';
-import { TARGETED_PER_DAY, notify } from './world.js';
+import { ROUNDS_PER_DAY, TARGETED_PER_DAY, notify } from './world.js';
 import { log } from '../log.js';
 import { runRound, type RoundResult } from './orchestrator.js';
 
@@ -45,6 +45,14 @@ export class DailyTargetsExceeded extends Error {
   }
 }
 
+/** Asked for one open round more than the day allows (world.ts ROUNDS_PER_DAY). */
+export class DailyRoundsExceeded extends Error {
+  constructor(readonly limit: number) {
+    super(`daily rounds exceeded: ${limit}`);
+    this.name = 'DailyRoundsExceeded';
+  }
+}
+
 export interface EnqueueOptions {
   /** Meet this one person and nobody else: "send my agent over" from the square. */
   targetUserId?: string;
@@ -61,8 +69,10 @@ export async function enqueueRound(
 ): Promise<RoundRow> {
   return tenantSession(ctx, async (c) => {
     if (opts.targetUserId) {
-      // A count in the database, not the in-memory limiter: a spend control has to
-      // survive a restart, and five visits a day is a spend control (~$0.02 each).
+      // A count in the database, not the in-memory limiter: a limit has to survive a
+      // restart. Five visits a day was a spend control while each one held a
+      // conversation; a visit costs nothing now, and the five bound how often one
+      // person can put themselves in front of another.
       const { rows: n } = await c.query<{ n: string }>(
         `SELECT count(*) AS n FROM rounds
           WHERE user_id = $1 AND target_user_id IS NOT NULL
@@ -70,6 +80,21 @@ export async function enqueueRound(
         [ctx.userId],
       );
       if (Number(n[0]?.n ?? 0) >= TARGETED_PER_DAY) throw new DailyTargetsExceeded(TARGETED_PER_DAY);
+    } else {
+      // The open round's day, for the same reason in different words: it used to be
+      // the model budget that stopped a second tap, and a round spends none of it now
+      // (world.ts ROUNDS_PER_DAY). Only rounds that met somebody count -- a failure or
+      // an empty square put nobody in front of anybody. A round still queued or
+      // running is not 'done', so a second tap during one falls through to the
+      // insert below and gets that round back, as it always did.
+      const { rows: n } = await c.query<{ n: string }>(
+        `SELECT count(*) AS n FROM rounds
+          WHERE user_id = $1 AND target_user_id IS NULL AND status = 'done'
+            AND requested_at > now() - interval '24 hours'
+            AND result->'metAll' <> '[]'::jsonb`,
+        [ctx.userId],
+      );
+      if (Number(n[0]?.n ?? 0) >= ROUNDS_PER_DAY) throw new DailyRoundsExceeded(ROUNDS_PER_DAY);
     }
     const { rows } = await c.query<{ id: string; status: RoundRow['status']; requested_at: string }>(
       `INSERT INTO rounds (user_id, tenant_id, target_user_id) VALUES ($1, $2, $3)

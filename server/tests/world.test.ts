@@ -19,12 +19,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import { pool, closeMatchPool } from '../src/db/client.js';
+import { pool, closeMatchPool, matchSession } from '../src/db/client.js';
+import { candidateCount, shownCount } from '../src/matching/candidates.js';
 import { env } from '../src/env.js';
 import { worldRoutes } from '../src/api/world.js';
 import { mintToken, newSessionId } from '../src/tokens.js';
 import { AREAS, AREA_IDS, LOOK_PARTS, lookFor } from '@clone/shared';
 import { lookSeed } from '../src/looks/store.js';
+import { CORE } from '../src/onboarding/questions.js';
 
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
 const made: string[] = [];
@@ -58,6 +60,16 @@ async function person(label: string, over: Record<string, unknown> = {}): Promis
   await owner.query(
     `INSERT INTO match_profile (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')})`,
     keys.map((k) => cols[k]));
+  // The five core cards, done. A real person in the pool has answered them, and the
+  // Home and the tap re-check that (poolNow) instead of trusting a planted in_pool.
+  if (!cols.is_synthetic) {
+    for (const id of CORE) {
+      await owner.query(
+        `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)
+         VALUES ($1,$2,$3,'{"values":[],"whoFine":{"anyone":true}}'::jsonb, true)`,
+        [tenantId, userId, id]);
+    }
+  }
   const sessionId = newSessionId();
   await owner.query(
     `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at)
@@ -89,7 +101,7 @@ const fetchWorld = async (token: string) => {
   expect(res.status).toBe(200);
   return res.json() as Promise<{
     square: { city: string | null; area: string }; me: { inPool: boolean; knows: number; area: string | null; need: string[] };
-    pool: { total: number }; targetsLeftToday: number;
+    pool: { total: number | null }; targetsLeftToday: number;
     agents: { ref: string; kind: string; practice: boolean; seed: number; state: string;
               look: Record<string, number>; area: string;
               name?: string; rendezvousId?: string; agreement?: string; yourTurn?: boolean }[];
@@ -194,7 +206,10 @@ describe('people this person has met', () => {
     expect(byId.get(seatTheirs)?.state).toBe('waiting');
     expect(byId.get(seatTheirs)?.yourTurn).toBe(false);
     expect(byId.get(seatOpen)?.state).toBe('briefed');
-    expect(byId.get(seatMine)?.agreement).toBe('got_on');
+    // The seat's row says agreement 0.8. The roster used to turn that into "got_on"
+    // and the square drew a tick over both heads; it says nothing about it now.
+    expect(byId.get(seatMine)).not.toHaveProperty('agreement');
+    expect(JSON.stringify(w.agents)).not.toMatch(/"agreement"|got_on|did_not_click|could_not_tell/);
     // Tara: I said no. She walks off. (Her own no, had it happened, would read as waiting.)
     const passed = w.agents.filter((a) => a.state === 'passed');
     expect(passed).toHaveLength(1);
@@ -221,7 +236,7 @@ describe('people this person has met', () => {
     expect(live!.state).toBe('talking');
     expect(live!.name, 'nothing is revealed while they talk').toBeUndefined();
     expect(live!.yourTurn).toBe(false);
-    expect(live!.agreement).toBe('could_not_tell');
+    expect(live).not.toHaveProperty('agreement');
     // And Kavya is not ALSO standing about as a stranger.
     expect(w.agents.filter((a) => a.ref === live!.ref)).toHaveLength(1);
   });
@@ -260,7 +275,12 @@ describe('the rest of the roster', () => {
   it('reports setup, the pool, and five targeted rounds a day to start', async () => {
     const w = await fetchWorld(me.token);
     expect(w.me.inPool).toBe(true);
-    expect(w.pool.total).toBeGreaterThan(0);
+    // The pool, as a person may see it (shownCount): rounded to ten, or "under 20" as
+    // null. This scene's pool is small, so the exact count is checked server-side --
+    // the wire cannot say "more than none" below twenty, by design.
+    const exact = await matchSession((c) => candidateCount(c, me.userId));
+    expect(exact, 'the scene has nobody in range, so this proves nothing').toBeGreaterThan(0);
+    expect(w.pool.total).toEqual(shownCount(exact));
     expect(w.targetsLeftToday).toBe(5);
   });
 });

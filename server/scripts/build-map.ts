@@ -19,8 +19,7 @@ import { fileURLToPath } from 'node:url';
 import {
   AREAS, CENTRAL_AREA, nearestArea,
   bbox, centroid, dedupeRing, distToRing, distToSegment, insetRing, isSimple, lcg, pointInPolygon,
-  polygonArea, project, projection, rdp, rdpRing, unproject, voronoiCells, type Pt,
-} from '@clone/shared';
+  polygonArea, project, projection, rdp, rdpRing, unproject, voronoiCells, type Pt,, checkMap, type CityAsset } from '@clone/shared';
 
 /**
  * The eight things you can point at. Hoisted out of the build so the standing
@@ -382,7 +381,17 @@ async function main() {
     outline: bytes(asset.outline), areas: bytes(asset.areas), roads: bytes(asset.roads), water: bytes(asset.water),
     parks: bytes(asset.parks), landmarks: bytes(asset.landmarks), lamps: bytes(asset.lamps), total: json.length,
   });
-  if (json.length > 300_000) throw new Error(`asset is ${json.length} bytes; the budget is 300 KB (try without --secondary)`);
+  // THE GATE. Nothing is written that the server would refuse to serve. Overpass can
+  // answer one query and time out on the next, an id can name a courtyard instead of a
+  // city, and a simplifier can eat a ring -- all three have happened here, and all
+  // three produce a file that looks perfectly reasonable. `checkMap` is the same
+  // function the server runs before serving, so the build cannot pass something the
+  // runtime would reject, and the runtime cannot reject something the build blessed.
+  const faults = checkMap(asset as CityAsset, json.length);
+  if (faults.length) {
+    for (const f of faults) console.error(`  FAULT ${f.code}: ${f.detail}`);
+    throw new Error(`${faults.length} fault(s); nothing written`);
+  }
   await mkdir(OUT, { recursive: true });
   await writeFile(join(OUT, 'bangalore.json'), json);
   await writeFile(join(OUT, 'ATTRIBUTION.md'), `# Map data

@@ -6,7 +6,7 @@
  * does, the draft starts from the free character the server seeded for this person.
  */
 import { create } from 'zustand';
-import { STARTER } from '@clone/shared';
+import { STARTER, clampLook } from '@clone/shared';
 import { buyItem, getLook, putLook, type Look } from '../../lib/api';
 
 const NONE: ReadonlySet<string> = new Set();
@@ -32,14 +32,18 @@ export const useLook = create<LookStore>((set, get) => ({
   load: async (token) => {
     const r = await getLook(token);
     if (!r) return;                                  // offline keeps the last picture
-    set({ look: r.look, saved: r.saved, owned: new Set(r.owned), balance: r.balance, loaded: true });
+    // CLAMPED ON THE WAY IN. An app that has been updated before the server behind it
+    // gets a look with parts it has never heard of and none of the ones it needs --
+    // and `look.legs.toString()` on an undefined is a red screen over a pair of
+    // trousers. `clampLook` is the same function the server uses on stored rows.
+    set({ look: clampLook(r.look), saved: r.saved, owned: new Set(r.owned), balance: r.balance, loaded: true });
   },
   setLook: (look) => set({ look }),
   save: async (token) => {
     const r = await putLook(token, get().look);
     if (!r) return { ok: false, error: 'offline' };
     if ('error' in r) return { ok: false, error: r.error, ...(r.items ? { items: r.items } : {}) };
-    set({ look: r.look, saved: true, balance: r.balance });
+    set({ look: clampLook(r.look), saved: true, balance: r.balance });
     return { ok: true, first: r.first, awarded: r.awarded };
   },
   buy: async (token, item) => {

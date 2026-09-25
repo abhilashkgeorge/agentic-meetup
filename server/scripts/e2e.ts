@@ -136,19 +136,34 @@ try {
   const stranger0 = new Phone('nosy-e2e');
   await stranger0.signUp();
 
-  step('2. onboarding — the five answers an agent cannot go out without');
+  step('2. onboarding — everything an agent cannot go out without');
+  // Consent, the five essentials, and the five core cards: the whole pool condition
+  // (matching/profile.ts). This helper used to post the essentials alone. Consent and
+  // then the cards each became a condition without it learning, so both phones stayed
+  // out of the pool and every round below stopped at "agent is not ready to go out
+  // yet". The cards come from the server's own list, so a renamed card cannot strand
+  // it again; each is "Prefer not to say" and "Anyone is fine", which writes no rule.
+  const { CORE } = await import('../src/onboarding/questions.js');
   const essentials = async (p: Phone, gender: string, seeking: string, year: number) => {
+    const owed = await api<{ required: { document: string; version: string }[] }>('/v1/consent', p.token);
+    await post('/v1/consent', p.token, {
+      accept: owed.body.required.map(({ document, version }) => ({ document, version })),
+    });
     await p.essential('gender', gender);
     await p.essential('seeking_gender', seeking);
     await p.essential('birth_date', String(year));
     await p.essential('lives_in', 'Bangalore');
     await p.essential('relationship_intent', 'long_term');
+    for (const questionId of CORE) {
+      const r = await post('/v1/interview/answer', p.token, { questionId, values: [], whoFine: { anyone: true } });
+      if (r.status !== 200) fail(`${p.name}: card ${questionId} refused`, r.body);
+    }
   };
   await essentials(a, 'man', 'woman', 1994);
   await essentials(b, 'woman', 'man', 1996);
 
   const poolA = await api<{ inPool: boolean; missing: string[] }>('/v1/pool', a.token);
-  check(poolA.body.inPool === true, 'the agent is allowed out once it can answer all five',
+  check(poolA.body.inPool === true, 'the agent is allowed out once everything is answered',
     poolA.body.missing);
 
   // Half an answer is no answer: the agent stays in until every one is known.
@@ -455,8 +470,8 @@ async function userIdOf(p: Phone): Promise<string> {
  */
 async function runRoundFor(p: Phone): Promise<{ rendezvousId: string; briefs: number; passed: boolean }> {
   const { runRound } = await import('../src/matching/orchestrator.js');
-  const { composeBoth, loadQuotes, saveBriefs } = await import('../src/matching/brief.js');
-  const { buildDossier } = await import('../src/matching/rendezvous.js');
+  const { cardFacts, composeBoth, loadQuotes, saveBriefs } = await import('../src/matching/brief.js');
+  const { publicTags } = await import('../src/matching/rendezvous.js');
   const { matchmakerSession } = await import('../src/db/client.js');
 
   const me = await userIdOf(p);
@@ -478,14 +493,12 @@ async function runRoundFor(p: Phone): Promise<{ rendezvousId: string; briefs: nu
     console.log('  (pair did not clear the bar — writing the briefs anyway to test the rest)');
     const x = { userId: r.user_a, tenantId: r.tenant_a };
     const y = { userId: r.user_b, tenantId: r.tenant_b };
+    const [qx, qy] = [await loadQuotes(x), await loadQuotes(y)];
     await matchmakerSession(async (c) => {
-      const qx = await loadQuotes(c, x.userId);
-      const qy = await loadQuotes(c, y.userId);
-      const dx = await buildDossier(c, x.userId);
-      const dy = await buildDossier(c, y.userId);
-      const made = await composeBoth(
-        { ...x, quotes: qx, dossier: dx }, { ...y, quotes: qy, dossier: dy });
-      await saveBriefs(c, r.id, x, y, made, { a: 'test', b: 'test' });
+      const made = composeBoth(
+        { card: await cardFacts(c, x.userId), tags: await publicTags(c, x.userId), quotes: qx },
+        { card: await cardFacts(c, y.userId), tags: await publicTags(c, y.userId), quotes: qy });
+      await saveBriefs(c, r.id, x, y, made);
       await c.query(
         `UPDATE rendezvous SET status = 'decided', decided_at = coalesce(decided_at, now())
           WHERE id = $1`, [r.id]);

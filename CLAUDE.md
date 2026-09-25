@@ -87,11 +87,16 @@ Commit only when asked. The founder runs the phones; say what to tap after a cha
 
 ## The matching mechanism is measured, not argued
 
-Every pair carries three scores before the humans look (`rank_score`, `llm_file_score`,
-`agreement`) and the humans' answers after. `server/scripts/compare-scorers.ts` reports
-which one predicts a yes; it needs ~50 real decisions before it is a finding. Do not show
-a percentage to a human (OkCupid 2014: the number changes behaviour more than it predicts
-it). The plan and its literature are in the commit messages from `64f549e` to `c373d30`.
+Every pair carries `rank_score` before the humans look -- plus `jev_file_score` when
+`DECIDE_MODEL` is set and `agreement` when the conversations are switched on (off by
+default; `llm_file_score` is no longer written) -- and the humans' answers after, where a
+first-mover no counts as a no. `server/scripts/compare-scorers.ts` reports which one
+predicts a yes, and would-see-again over every introduced pair; it needs ~50 real
+decisions before it is a finding. The score records; it does not pick -- a round takes
+real people first. Do not show a percentage to a human (OkCupid 2014: the number changes
+behaviour more than it predicts it). The plan and its literature are in the commit
+messages from `64f549e` to `c373d30`; the redesign of 2026-09-23 and its evidence are in
+`AGENT-DESIGN-RESEARCH.md`.
 
 ## Release blockers (safe on a laptop, not anywhere else)
 

@@ -1,11 +1,21 @@
 import { Hono } from 'hono';
-import { modelFor } from '../llm/index.js';
+import { decideModel, modelFor } from '../llm/index.js';
 import { providerOf, type Task } from '../llm/caps.js';
 
-/** Every task whose provider a person is told about. Exported so a test can check
- *  that each one has a display name rather than falling through to "unknown". */
-export const DISCLOSED_TASKS: Task[] =
-  ['chat', 'extract', 'resolve', 'reflect', 'render_profile', 'canon'];
+/**
+ * Every task whose provider a person is told about. Exported so a test can check that
+ * each one has a display name rather than falling through to "unknown".
+ *
+ * A FUNCTION, not a constant, because one of them may not be routed anywhere. The
+ * typed-decision task is off by default; when it IS on, a person's own sentence and
+ * their file go to a third party like everything else, so it joins the list and the
+ * disclosure names them. A subprocessor nobody is told about is the failure this
+ * screen exists to prevent.
+ */
+export const disclosedTasks = (): Task[] => [
+  'chat', 'extract', 'resolve', 'reflect', 'render_profile', 'canon',
+  ...(decideModel() ? (['decide'] as Task[]) : []),
+];
 // Every provider the router can reach. The app shows this to a person before their
 // first message, so a missing entry is not cosmetic: the screen read "processed by
 // unknown", which names nobody and satisfies neither the person nor the requirement
@@ -14,6 +24,7 @@ const LABEL: Record<string, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   google: 'Google',
+  typesafe: 'TypeSafe',
 };
 
 /** Exported so a test can check nothing routes to a provider with no name. */
@@ -32,7 +43,7 @@ export const LABELLED_PROVIDERS = new Set(Object.keys(LABEL));
  * in force since 2026-08-02.
  */
 export const configRoutes = new Hono().get('/v1/config', (c) => {
-  const providers = [...new Set(DISCLOSED_TASKS.map((t) => LABEL[providerOf(modelFor(t))] ?? 'unknown'))].sort();
+  const providers = [...new Set(disclosedTasks().map((t) => LABEL[providerOf(modelFor(t))] ?? 'unknown'))].sort();
   return c.json({
     aiProviders: providers,
     disclosure: {

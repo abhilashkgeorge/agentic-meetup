@@ -1,12 +1,13 @@
 /**
  * "Send my agent over": one person, by their ref, and nobody else.
  *
- * WHAT IS BEING GUARDED. A tap on somebody in the square starts a real
- * conversation (~$0.02), so it is bounded three ways before a row exists: the day's
- * budget, five visits a day counted in the database, and the same candidate rules
- * as an open round -- a block or a filter answers "not here" exactly as it would to
- * a scan of the square. The run itself checks the rules again, because the tap and
- * the run are minutes apart.
+ * WHAT IS BEING GUARDED. A tap on somebody in the square sends your agent to them.
+ * It used to start a real conversation (~$0.02); since 2026-09-23 it holds none and
+ * costs no model call, and it is still bounded three ways before a row exists: the
+ * day's budget, five visits a day counted in the database, and the same candidate
+ * rules as an open round -- a block or a filter answers "not here" exactly as it
+ * would to a scan of the square. The run itself checks the rules again, because the
+ * tap and the run are minutes apart.
  *
  * Fixtures go in through the owner connection; the endpoint is hit through its real
  * route with a real token; the model is stubbed as in labels.test.ts.
@@ -22,6 +23,11 @@ const stub = vi.hoisted(() => ({ calls: 0 }));
 
 vi.mock('../src/llm/index.js', () => ({
   modelFor: () => 'google:gemini-3.5-flash-lite',
+  // Off, as it is by default. Without it every round's jevFileScore threw vitest's
+  // "no decideModel export" and the orchestrator's catch swallowed it, so a zero call
+  // count here passed partly through an error. brief-code-only.test.ts guards the
+  // real default.
+  decideModel: () => null,
   llm: {
     complete: async (req: { outputSchema?: unknown; outputSchemaName?: string }) => {
       stub.calls++;
@@ -45,6 +51,7 @@ const { runRound } = await import('../src/matching/orchestrator.js');
 const { agentRef, TARGETED_PER_DAY } = await import('../src/matching/world.js');
 const { datingRoutes } = await import('../src/api/dating.js');
 const { mintToken, newSessionId } = await import('../src/tokens.js');
+const { CORE } = await import('../src/onboarding/questions.js');
 const hub = await import('../src/messaging/hub.js');
 
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
@@ -71,6 +78,16 @@ async function person(label: string, over: Record<string, unknown> = {}): Promis
   };
   const keys = Object.keys(cols);
   await owner.query(`INSERT INTO match_profile (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')})`, keys.map((k) => cols[k]));
+  // The five core cards, done. A real person in the pool has answered them, and the
+  // Home and the tap re-check that (poolNow) instead of trusting a planted in_pool.
+  if (!cols.is_synthetic) {
+    for (const id of CORE) {
+      await owner.query(
+        `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)
+         VALUES ($1,$2,$3,'{"values":[],"whoFine":{"anyone":true}}'::jsonb, true)`,
+        [tenantId, userId, id]);
+    }
+  }
   const ctx = { tenantId, userId };
   await tenantSession(ctx, (c) => commit(c, ctx, {
     predicate: 'interest', objectText: `thing-${label}`, objectValue: `thing-${label}`,

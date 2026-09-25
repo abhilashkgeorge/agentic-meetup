@@ -14,10 +14,17 @@
  * and .../model-deprecations on 2026-09-07.
  */
 
-export type Provider = 'anthropic' | 'openai' | 'google';
+export type Provider = 'anthropic' | 'openai' | 'google' | 'typesafe';
 export type ModelRef = `${Provider}:${string}`;
 
-export type Task = 'chat' | 'extract' | 'resolve' | 'reflect' | 'render_profile' | 'canon';
+export type Task = 'chat' | 'extract' | 'resolve' | 'reflect' | 'render_profile' | 'canon'
+  /**
+   * A TYPED DECISION, not a paragraph. Its model answers a map of closed questions
+   * with probabilities and writes no text at all, so only `llm.decide` may use it and
+   * `llm.complete` on such a model throws rather than degrading. See
+   * `adapters/typesafe.ts`.
+   */
+  | 'decide';
 
 export class UnsupportedCapability extends Error {
   constructor(message: string) {
@@ -163,6 +170,56 @@ export const REGISTRY: Record<string, Caps> = {
     supportsMidConversationSystem: false, supportsNativeSchema: true, batchAvailable: true,
     tokenizerFamily: 'gemini',
   },
+  /**
+   * Jev. A System One model: `state` plus a map of typed questions in, a probability
+   * per question out, in one round trip. It does not generate text, so `complete()`
+   * on it raises -- `maxOutput: 0` is not a limit to work around, it is the shape of
+   * the model.
+   *
+   * THE PRICE IS THE INTERESTING PART. $0.042 per million input tokens and output
+   * free, against $2 in / $10 out for the model this system runs on. Scoring one
+   * person against a thousand candidates is about four cents where the header of
+   * `matching/candidates.ts` records it as seven dollars -- which is why that file
+   * puts the whole filter in SQL. Whether a cheap typed judgement is any GOOD at this
+   * is a separate question, and the reason `jev_file_score` is recorded on every pair
+   * and read by nobody until there are enough human answers to measure it against.
+   *
+   * Verified against docs.typesafe.ai/models.md on 2026-09-23: "$42 / $0.042" per
+   * billion and million input tokens, "Output tokens are free", "64k tokens per
+   * request; 32k tokens for state plus the longest question".
+   */
+  'typesafe:jev-latest': {
+    price: {
+      input: 0.042, output: 0,
+      // Nothing to multiply: there is no prompt cache and no batch endpoint.
+      cacheWriteMultiplier: 1, cacheReadMultiplier: 1, batchDiscount: 1,
+      verified: true, verifiedOn: '2026-09-23',
+      source: 'https://docs.typesafe.ai/models.md',
+    },
+    maxContext: 64_000, maxOutput: 0,
+    cacheStyle: 'none', cacheScope: 'content_addressed',
+    minCacheableTokens: 0, maxBreakpoints: 0, cacheTtls: [],
+    thinkingShape: 'none', supportsEffort: false,
+    supportsMidConversationSystem: false, supportsNativeSchema: false, batchAvailable: false,
+    // Not a transformer tokenizer we have re-baselined; usage is read from their
+    // response and never estimated here.
+    tokenizerFamily: 'openai',
+  },
+  /** The pinned version behind the alias, so a run can be reproduced. */
+  'typesafe:jev-1.13.0': {
+    price: {
+      input: 0.042, output: 0,
+      cacheWriteMultiplier: 1, cacheReadMultiplier: 1, batchDiscount: 1,
+      verified: true, verifiedOn: '2026-09-23',
+      source: 'https://docs.typesafe.ai/models.md',
+    },
+    maxContext: 64_000, maxOutput: 0,
+    cacheStyle: 'none', cacheScope: 'content_addressed',
+    minCacheableTokens: 0, maxBreakpoints: 0, cacheTtls: [],
+    thinkingShape: 'none', supportsEffort: false,
+    supportsMidConversationSystem: false, supportsNativeSchema: false, batchAvailable: false,
+    tokenizerFamily: 'openai',
+  },
   'openai:gpt-5.6-luna': {
     // UNVERIFIED. Confirm the model id and both prices against OpenAI's live pricing
     // page before routing to it; the app refuses to boot on an unverified price
@@ -201,7 +258,7 @@ export function modelIdOf(model: ModelRef): string {
   return model.slice(model.indexOf(':') + 1);
 }
 
-const PROVIDERS: readonly Provider[] = ['anthropic', 'openai', 'google'];
+const PROVIDERS: readonly Provider[] = ['anthropic', 'openai', 'google', 'typesafe'];
 
 export function isModelRef(spec: string): spec is ModelRef {
   const [p, ...rest] = spec.split(':');

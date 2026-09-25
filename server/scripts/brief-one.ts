@@ -13,7 +13,8 @@
 import { Pool } from 'pg';
 import { env } from '../src/env.js';
 import { close, closeMatchPool, matchmakerSession } from '../src/db/client.js';
-import { composeBoth, loadQuotes, saveBriefs } from '../src/matching/brief.js';
+import { cardFacts, composeBoth, loadQuotes, saveBriefs, type Quote } from '../src/matching/brief.js';
+import { publicTags } from '../src/matching/rendezvous.js';
 
 const email = process.argv[2];
 if (!email) {
@@ -42,16 +43,15 @@ if (!pair) { console.error('no rendezvous has run yet'); process.exit(1); }
 const a = { userId: pair.user_a, tenantId: pair.tenant_a };
 const b = { userId: pair.user_b, tenantId: pair.tenant_b };
 
+// Each person's verified sentences under their own session, as the round reads them
+// (see loadQuotes); the brief itself is code and calls no model.
+const [qa, qb] = [await loadQuotes(a), await loadQuotes(b)];
+console.log(`quotes: ${qa.length} and ${qb.length}`);
 const result = await matchmakerSession(async (c) => {
-  const [qa, qb] = await Promise.all([loadQuotes(c, a.userId), loadQuotes(c, b.userId)]);
-  console.log(`quotes: ${qa.length} and ${qb.length}`);
-  const briefs = await composeBoth({ ...a, quotes: qa }, { ...b, quotes: qb });
-  const { rows } = await c.query<{ a_concern: string; b_concern: string }>(
-    `SELECT a_concern, b_concern FROM rendezvous_runs
-      WHERE rendezvous_id = $1 ORDER BY run_no DESC LIMIT 1`, [pair.id]);
-  const written = await saveBriefs(c, pair.id, a, b, briefs, {
-    a: rows[0]?.a_concern ?? '', b: rows[0]?.b_concern ?? '',
-  });
+  const side = async (who: { userId: string }, quotes: Quote[]) =>
+    ({ card: await cardFacts(c, who.userId), tags: await publicTags(c, who.userId), quotes });
+  const briefs = composeBoth(await side(a, qa), await side(b, qb));
+  const written = await saveBriefs(c, pair.id, a, b, briefs);
   await c.query(
     `UPDATE rendezvous SET status = 'decided', decided_at = coalesce(decided_at, now())
       WHERE id = $1`, [pair.id]);

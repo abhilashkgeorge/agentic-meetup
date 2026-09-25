@@ -1,0 +1,20 @@
+{
+  "id": "cubbon-park",
+  "source": "https://opengameart.org/content/park-furniture",
+  "download": "https://opengameart.org/sites/default/files/parkfurnitures.zip",
+  "license": "CC0-1.0",
+  "file": "furniture.glb",
+  "bytes": 752140,
+  "sourceMeshes": 45,
+  "sourceTriangles": 17744,
+  "runtime": {
+    "meshes": [
+      "ParkFurn_Bench_A",
+      "ParkFurn_Lamp_A",
+      "ParkFurn_TrashCan_C",
+      "ParkFurn_Table_I"
+    ],
+    "maxDrawCalls": 4,
+    "maxTriangles": 20000
+  }
+}

@@ -67,6 +67,22 @@ async function pooled(ctx: Ctx, over: Record<string, unknown> = {}): Promise<voi
   );
 }
 
+/**
+ * The five core cards, done and "anyone": no fact, no rule. They are a pool condition
+ * (profile.ts), so a fixture that must survive a rebuild in the pool needs them the way
+ * it needs consent; "anyone" keeps every filter here exactly as it was.
+ */
+async function cardsDone(ctx: Ctx): Promise<void> {
+  const { CORE } = await import('../src/onboarding/questions.js');
+  for (const id of CORE) {
+    await owner.query(
+      `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)
+       VALUES ($1,$2,$3,'{"values":[],"whoFine":{"anyone":true}}'::jsonb, true)
+       ON CONFLICT DO NOTHING`,
+      [ctx.tenantId, ctx.userId, id]);
+  }
+}
+
 /** Somebody every fixture above would accept, so filters other than the one under test pass. */
 async function seeker(): Promise<Ctx> {
   const me = await makeUser('seeker');
@@ -100,6 +116,7 @@ describe('defect 1: activity', () => {
         `INSERT INTO consents (tenant_id, user_id, document, version) VALUES ($1,$2,$3,$4)
          ON CONFLICT DO NOTHING`, [back.tenantId, back.userId, r.document, r.version]);
     }
+    await cardsDone(back);
     await tenantSession(back, async (c) => {
       const f = (predicate: string, objectText: string, objectValue?: unknown) =>
         commit(c, back, {
@@ -223,6 +240,7 @@ describe('defect 6: moderation', () => {
         `INSERT INTO consents (tenant_id, user_id, document, version) VALUES ($1,$2,$3,$4)
          ON CONFLICT DO NOTHING`, [bad.tenantId, bad.userId, r.document, r.version]);
     }
+    await cardsDone(bad);
     await tenantSession(bad, async (c) => {
       const f = (predicate: string, objectText: string, objectValue?: unknown) =>
         commit(c, bad, {

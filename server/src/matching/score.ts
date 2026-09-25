@@ -18,7 +18,7 @@
  */
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
-import { llm, modelFor } from '../llm/index.js';
+import { decideModel, llm, modelFor } from '../llm/index.js';
 
 /** How much a stated preference counts when it is met. */
 const STRENGTH_WEIGHT: Record<string, number> = {
@@ -208,6 +208,11 @@ export async function rank(
  * The founder's proposal, in its strongest form: one model reads both files and says
  * how likely a second evening is. No conversation. About a tenth of a cent.
  *
+ * NOT CALLED SINCE 2026-09-23. The round stopped taking it (orchestrator.ts): it was
+ * only ever recorded on real-vs-invented pairs, whose answers say nothing about two
+ * real people, so what it measured could not transfer. Kept, with the rows it wrote,
+ * for compare-scorers; git has it if a real-vs-real experiment ever wants it back.
+ *
  * WHY IT IS HERE AT ALL. The literature predicts this cannot see pair chemistry --
  * nothing measured before two people interact does -- but it may well match the
  * hand-weighted score above on everything else, at a fraction of the cost of five
@@ -255,6 +260,66 @@ export async function llmFileScore(
   return parsed.success
     ? { score: parsed.data.score, concern: parsed.data.concern, costUsd: res.usage.costUsd }
     : { score: null, concern: '', costUsd: res.usage.costUsd };
+}
+
+/**
+ * The same question, asked of a model that answers with a probability instead of a
+ * paragraph. One `noul`, one round trip, output free.
+ *
+ * WHY A FOURTH NUMBER. `llmFileScore` above exists to find out whether something cheap
+ * predicts as well as five simulated conversations. This is the cheap thing taken
+ * seriously: a model whose entire output is a calibrated probability, at a price
+ * (docs.typesafe.ai/models.md, 2026-09-23) that makes scoring a whole pool cost cents
+ * rather than the seven dollars recorded in candidates.ts. If it ranks pairs as well
+ * as the conversation does, most of the spend in this product is optional. If it does
+ * not, that is worth knowing for the price of one column.
+ *
+ * ONE QUESTION, NOT SEVERAL. The comparison is only honest if all four scorers are
+ * answering the same thing, and the other three answer "would each want a second
+ * evening". Asking this one a battery of sub-questions and combining them would be a
+ * different, better-informed scorer -- worth trying later, and not what this measures.
+ *
+ * NEVER SHOWN TO A PERSON, for the reason in `llmFileScore`: a number told to somebody
+ * changes their behaviour more than it predicts it.
+ *
+ * Returns null when no typed model is configured, which is the default.
+ */
+export async function jevFileScore(
+  a: { userId: string; tenantId: string; dossier: string },
+  b: { dossier: string },
+): Promise<{ score: number | null; costUsd: number }> {
+  const model = decideModel();
+  if (!model) return { score: null, costUsd: 0 };
+  if (!a.dossier.trim() && !b.dossier.trim()) return { score: null, costUsd: 0 };
+
+  const res = await llm.decide(
+    {
+      state:
+        `Person A:\n${a.dossier || '(nothing known)'}\n\n` +
+        `Person B:\n${b.dossier || '(nothing known)'}`,
+      questions: {
+        second_evening: {
+          kind: 'noul',
+          instructions:
+            'After one evening together, each of these two people would want a second one.',
+          when: {
+            true: 'There is something specific in these two files that would still ' +
+              'matter to both of them by the second hour of an evening.',
+            false: 'Nothing here suggests it, or something here would get in the way. ' +
+              'A long list of interests is not evidence of anything except a long list.',
+          },
+        },
+      },
+      tenantId: a.tenantId,
+      userId: a.userId,
+    },
+    model,
+  );
+  const answer = res.answers.second_evening;
+  return {
+    score: answer?.kind === 'noul' ? answer.p : null,
+    costUsd: res.usage.costUsd,
+  };
 }
 
 const FILE_SCORER = `You are given what two people have each said about themselves. You have not

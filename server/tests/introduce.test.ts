@@ -32,10 +32,14 @@ async function person(label: string, synthetic = false) {
     'INSERT INTO app_users (tenant_id, email) VALUES ($1,$2) RETURNING id',
     [tenantId, `${label}-${Math.random()}@example.test`]);
   const userId = u.rows[0]!.id;
+  // A made-up intent of its own. With no gender and no intent every candidate clause
+  // passes on NULL, so while this file ran its people could be met by any other
+  // file's round -- and a round holds no conversation now (2026-09-23), so rounds are
+  // fast enough to do it routinely. Nothing here runs a round, so nothing here cares.
   await owner.query(
-    `INSERT INTO match_profile (user_id, tenant_id, display_name, in_pool, is_synthetic)
-     VALUES ($1,$2,$3,true,$4)`,
-    [userId, tenantId, label, synthetic]);
+    `INSERT INTO match_profile (user_id, tenant_id, display_name, in_pool, is_synthetic, intent)
+     VALUES ($1,$2,$3,true,$4,$5)`,
+    [userId, tenantId, label, synthetic, [`introduce-${userId}`]]);
   return { tenantId, userId };
 }
 

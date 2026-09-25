@@ -32,12 +32,12 @@
  * most recent, so a tile has its neighbours in it.
  */
 import { Hono } from 'hono';
-import { CENTRAL_AREA, agreementWords, nearestArea, type AgreementWords } from '@clone/shared';
+import { CENTRAL_AREA, nearestArea } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { currentState } from '../memory/facts.js';
-import { candidateCount, candidateIds, candidateIdsNear } from '../matching/candidates.js';
-import { rebuildMatchProfile, shouldAskArea, touchActive } from '../matching/profile.js';
+import { candidateCount, candidateIds, candidateIdsNear, shownCount } from '../matching/candidates.js';
+import { poolNow, shouldAskArea, touchActive } from '../matching/profile.js';
 import { rank } from '../matching/score.js';
 import { latestRound } from '../matching/rounds.js';
 import { looksFor } from '../looks/store.js';
@@ -68,7 +68,9 @@ export interface WorldAgent {
   area: string;
   rendezvousId?: string;
   name?: string;
-  agreement?: AgreementWords;
+  // No `agreement`. The square used to carry how the agents got on, in words, and draw
+  // it as a tick or a cross over their heads -- a verdict on a person, shown before
+  // either human had looked. A met seat now says only where it stands.
   yourTurn?: boolean;
 }
 
@@ -96,17 +98,16 @@ export const worldRoutes = new Hono()
 
     const own = await tenantSession(ctx, async (db) => {
       await touchActive(db, me);
-      // READ the pool flag; REBUILD only when it says no. This is the Home, polled
-      // every eight seconds while a round runs, and rebuilding the profile from every
-      // fact on each poll is a write on a read path. Every write path already rebuilds
-      // (essentials, tell, import) and so does /v1/pool, so the flag is current; the
-      // rebuild is kept for the out-of-pool case, which is the only time `missing`
-      // has anything in it.
-      const { rows: prof } = await db.query<{ in_pool: boolean; traits: Record<string, unknown> | null }>(
-        'SELECT in_pool, traits FROM match_profile WHERE user_id = $1', [me]);
-      const state: { inPool: boolean; missing: string[] } = prof[0]?.in_pool
-        ? { inPool: true, missing: [] }
-        : await rebuildMatchProfile(db, ctx);
+      // The pool flag, through poolNow: rebuilt when it says no, and when it says yes
+      // but the five core cards are not on file. This is the Home, polled every eight
+      // seconds while a round runs, so a yes is not rebuilt on every poll -- that would
+      // be a write on a read path. It used to trust any stored yes, on the grounds that
+      // every write path rebuilds; the cards changed the requirement in code, not
+      // through a write, and every person who set up before them kept a yes they no
+      // longer had, with a working "send my agent out" button (see poolNow).
+      const state = await poolNow(db, ctx);
+      const { rows: prof } = await db.query<{ traits: Record<string, unknown> | null }>(
+        'SELECT traits FROM match_profile WHERE user_id = $1', [me]);
       const myArea = typeof prof[0]?.traits?.area === 'string' ? (prof[0].traits.area as string) : null;
       const askArea = await shouldAskArea(db, me);
       const round = await latestRound(db, me);
@@ -133,12 +134,12 @@ export const worldRoutes = new Hono()
       // stand there talking for ever.
       const { rows: seats } = await db.query<{
         id: string; other_id: string; status: string; first_mover: string | null;
-        human_says_yes: boolean | null; agreement: number | null;
+        human_says_yes: boolean | null;
         other_said_yes: boolean | null; other_is_synthetic: boolean | null;
       }>(
         `SELECT r.id,
                 CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END AS other_id,
-                r.status, r.first_mover, b.human_says_yes, r.agreement,
+                r.status, r.first_mover, b.human_says_yes,
                 rendezvous_other_said_yes(r.id, $1)     AS other_said_yes,
                 rendezvous_other_is_synthetic(r.id, $1) AS other_is_synthetic
            FROM rendezvous r
@@ -225,7 +226,6 @@ export const worldRoutes = new Hono()
         area: seatAreas.get(s.other_id) ?? CENTRAL_AREA,
         rendezvousId: s.id,
         ...(name ? { name } : {}),
-        agreement: agreementWords(s.agreement),
         yourTurn: s.human_says_yes === null && myTurn,
       });
     }
@@ -244,7 +244,7 @@ export const worldRoutes = new Hono()
         look: seatLooks.get(me)!,
         area: own.myArea,
       },
-      pool: { total: strangers.total },
+      pool: { total: shownCount(strangers.total) },
       round: own.round ? {
         id: own.round.id, status: own.round.status,
         skipped: own.round.result?.skipped ?? null,

@@ -41,3 +41,16 @@ example
 # generated native folders
 /ios
 /android
+
+# Source art for scripts/build-characters.mjs. ~35 MB of glTF from the creator's
+# public Drive; the built assets/characters/*.glb are what ships.
+.character-cache/
+
+# CC0 source archives for scripts/build-venue.mjs. The optimised venue bundle and
+# its manifest/licence under assets/venues/ are committed; downloaded source is not.
+.venue-cache/
+# Raw Overpass answers for Cubbon Park, 2.2 MB. NOT committed, unlike the city's:
+# `scripts/build-cubbon.mjs --offline` needs them, but the built `park.json` is 24 KB
+# and IS committed, so a clone can draw the park without them. Refetching takes a
+# minute and the script pins the OSM way id, so it comes back the same.
+.cubbon-cache/

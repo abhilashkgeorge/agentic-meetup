@@ -87,8 +87,10 @@ describe('defect 7: dealbreakers that cannot filter', () => {
     expect(canFilterOn('birth_date')).toBe(false);
     expect(canFilterOn('age_range_sought')).toBe(false);
     expect(canFilterOn('max_distance_km')).toBe(false);
+    // The faith card (2026-09-25) gave `religion` a value shape: its partner row is a
+    // rule tested like any card's (core-cards.test.ts "the faith card").
+    expect(canFilterOn('religion')).toBe(true);
     // Matchable, but no value shape, so never an object_value, so never in traits.
-    expect(canFilterOn('religion')).toBe(false);
     expect(canFilterOn('industry')).toBe(false);
   });
 

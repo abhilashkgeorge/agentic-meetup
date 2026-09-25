@@ -6,18 +6,27 @@
  * component (drop the foreshortening) -> the vertical drag and the pinch tests fail;
  * drop the zoomMax clamp in pinch -> the clamp test fails.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   CITY_ELEVATION, ISO_VERTICAL, STREET_ELEVATION, WALK_AIM, WALK_BACK, WALK_RISE, ZOOM_MAX,
   bandOf, cityPose, clampTarget, driveVector, elevationFor, eyeOffset, flyAt, followPose,
-  fromScreen, pan, pinch, tileZoom, toScreen, turnToward, verticalOf, type Pose,
-} from '../src/features/world/camera';
+  fromScreen, orthographicBounds, pan, pinch, tileZoom, toScreen, turnToward, verticalOf, rigsFor, type Pose } from '../src/features/world/camera';
 import { MAP } from '../src/features/world/map';
 
 const size = { width: 390, height: 800 };
 const pose: Pose = { tx: 3, tz: -2, zoom: 30 };
 
 describe('the isometric map', () => {
+  it('gives a true orthographic camera the same pixels-per-unit zoom contract', () => {
+    const b = orthographicBounds(size, pose.zoom);
+    expect(b).toEqual({ left: -195, right: 195, top: 400, bottom: -400, zoom: 30 });
+    // Visible world width is base-frustum width / camera zoom. Dividing screen pixels
+    // by that gives exactly the pure camera's pixels per world unit.
+    expect(size.width / ((b.right - b.left) / b.zoom)).toBe(pose.zoom);
+  });
+
   it('puts the target at the screen centre and screen-right at (1,0,-1)/√2', () => {
     expect(toScreen(pose.tx, pose.tz, pose, size)).toEqual([195, 400]);
     const [px, py] = toScreen(pose.tx + 1 / Math.SQRT2, pose.tz - 1 / Math.SQRT2, pose, size);
@@ -181,5 +190,71 @@ describe('the isometric map', () => {
     expect(turnToward(1, 1, 1)).toBeCloseTo(1, 9);              // already there
     let a = 0;
     for (let i = 0; i < 400; i++) { a = turnToward(a, a + 2.5, 1); expect(wrapped(a)).toBe(true); }
+  });
+});
+
+/**
+ * The rig budget falls with the zoom.
+ *
+ * THE BUG THIS EXISTS FOR. A rigged character is one draw call and about five thousand
+ * triangles, and three walks its whole bone tree every frame; twenty-four of them ran
+ * at every zoom, including the one where a person is a pixel and a half tall. On
+ * expo-gl a draw call is not a GPU cost -- it is a pile of commands marshalled across
+ * the JS/native bridge -- so the city view sat at 29 fps with a p95 of 38 ms and 14%
+ * janky frames while `dumpsys gfxinfo` had the UI thread idle at 11 ms. Measured on
+ * the Pixel 6a, 2026-09-23: 89 draw calls, 242 K triangles.
+ *
+ * AND WHY PIXELS, NOT BANDS. The first fix keyed off the three zoom bands and the step
+ * landed badly: the default street view is zoom 55, which is `mid`, so it silently
+ * dropped from 24 rigs to 8 -- a quality cut nobody asked for, in the one view people
+ * actually use. What decides whether a rig can be told from a capsule is how many
+ * pixels tall it is, so that is what the budget counts.
+ *
+ * Negative controls, run by hand and recorded in the commit:
+ *   - `return max` always -> the city test fails.
+ *   - drop the RIG_FLOOR_PX guard -> the city test fails, at 1 rig instead of 0.
+ */
+describe('how many people get bones', () => {
+  /** Zoom such that a person is this many pixels tall. */
+  const atPx = (px: number) => px / 0.24;
+
+  it('draws none of them from the whole city', () => {
+    // Pulled right out a person is about a pixel and a half. There is no face to see.
+    expect(rigsFor(atPx(1.5), 24)).toBe(0);
+    expect(rigsFor(atPx(3.9), 24)).toBe(0);
+  });
+
+  it('keeps the street view people actually use at nearly full quality', () => {
+    // ZOOM_START is 55, which is 13 px a person. The banded version gave this 8.
+    expect(rigsFor(55, 24)).toBeGreaterThanOrEqual(14);
+  });
+
+  it('spends everything once a person is worth looking at', () => {
+    expect(rigsFor(atPx(20), 24)).toBe(24);
+    expect(rigsFor(atPx(40), 24)).toBe(24);
+  });
+
+  it('never goes down as you zoom in', () => {
+    let last = -1;
+    for (let z = 1; z <= 340; z += 1) {
+      const n = rigsFor(z, 24);
+      expect(n, `rigs dropped at zoom ${z}`).toBeGreaterThanOrEqual(last);
+      last = n;
+    }
+  });
+
+  it('never asks for more rigs than the pool holds', () => {
+    // canvas.tsx allocates the pool once; asking for more would draw fewer and make
+    // the budget a lie.
+    for (let z = 1; z <= 340; z += 7) expect(rigsFor(z, 24)).toBeLessThanOrEqual(24);
+  });
+
+  it('keeps everyone visible regardless: the capsules are not its business', () => {
+    // A guard against "fixing" this by culling people. The instanced capsules draw all
+    // sixty-four in one call whatever the rig budget is, so nobody disappears.
+    const code = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code).toMatch(/rigsFor\(cam\.pose\.zoom, RIGS_CITY\)/);
+    expect(code).not.toMatch(/crowdList\.slice/);
   });
 });

@@ -15,33 +15,43 @@
  * of it, and tests/native-imports.test.ts will say so if that changes.
  */
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, View, type LayoutChangeEvent } from 'react-native';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, AppState, Linking, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatScreen from '../chat/chat-screen';
-import { runRound, type WorldAgent } from '../../lib/api';
+import { getMatches, runRound, type MatchCard, type WorldAgent } from '../../lib/api';
 import { getFps30, getGlFuse, setGlFuse, strikeGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { setupRoute } from '../profile/fields';
 import { Screen, useIsDark, usePalette } from '../../components/ui';
+import { FPS_METER, FpsMeter, feedFps } from '../dev/fps';
+import { bubblesForCard, pickExchange } from '../matches/exchange';
 import { AgentSheet } from './agent-sheet';
+import { ExchangeStrip } from './exchange-strip';
 import type { Band, Size, WorldControl } from './camera';
 
 /** What the server says when it will not send the agent, in the person's words. */
 const REFUSED: Record<string, string> = {
   budget_exceeded: 'Your agent has been out enough for today.',
+  // One open round a day that met somebody (server world.ts ROUNDS_PER_DAY).
+  daily_rounds: 'Your agent has been out enough for today.',
   daily_targets: 'That is all the visits for today. Try again tomorrow.',
   not_here: 'That person has moved on.',
+  // The server re-checks the pool before it queues anything (poolNow): a person who set
+  // up before the five core cards can still have a Home that thought it was ready.
+  not_ready: 'Your agent needs a few more answers before it can go out.',
 };
 import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
-import { CENTRAL_AREA } from '@clone/shared';
-import { gardenSpots, makeGarden } from './garden';
+import { gardenSpots } from './garden';
 import { MAP, spotsFrom } from './map';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { WorldSim } from './sim';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
+import {
+  CITY_REALM, CUBBON_PARK, agentsForVenue, directionsUrl, transitionRealm, venueGarden,
+} from './venue';
 
 /**
  * One town per app run. It outlives this screen so a tab switch does not reshuffle
@@ -139,17 +149,15 @@ export default function WorldScreen() {
   }, [token, focused, active, load]);
 
   /**
-   * THE OTHER WORLD. The city answers "who is near me and where"; it is a map, and at
-   * head height a map looks like a map. Walking opens a garden instead -- one per
-   * neighbourhood, grown from its id, so yours is always yours -- with the same
-   * people standing in it. Two towns, because they are two different questions.
+   * THE OTHER WORLD. Cubbon Park has local coordinates and a bounded nearby roster.
+   * It is not a magnified patch of the city map.
    */
-  const gardenId = world?.me.area ?? CENTRAL_AREA;
-  const gardenSim = useMemo(() => {
+  const venueLayout = useMemo(() => venueGarden(CUBBON_PARK), []);
+  const venueSim = useMemo(() => {
     const s = new WorldSim(20260922);
-    s.setMap(gardenSpots(makeGarden(gardenId)));
+    s.setMap(gardenSpots(venueLayout));
     return s;
-  }, [gardenId]);
+  }, [venueLayout]);
 
   // Roster -> sim. Only what changed since the last roster, so a poll never restarts
   // a walk-over already under way.
@@ -158,9 +166,11 @@ export default function WorldScreen() {
     if (!world) return;
     const roster = fromRoster(world);
     sim.upsert(roster);
-    // The same people, standing in the garden instead of in their neighbourhoods.
-    gardenSim.upsert(roster.map((a) => ({ ...a, area: gardenId })));
-    for (const ref of departed(applied.current, world.agents)) { sim.remove(ref); gardenSim.remove(ref); }
+    const local = agentsForVenue(roster, CUBBON_PARK);
+    venueSim.upsert(local);
+    const localRefs = new Set(local.map((a) => a.ref));
+    for (const a of venueSim.agents()) if (!localRefs.has(a.ref)) venueSim.remove(a.ref);
+    for (const ref of departed(applied.current, world.agents)) { sim.remove(ref); venueSim.remove(ref); }
     for (const t of planTransitions(applied.current, world.agents)) {
       if (t.op === 'meet') sim.meet(YOU, t.ref);
       else if (t.op === 'introduced') sim.introduced(YOU, t.ref);
@@ -168,7 +178,7 @@ export default function WorldScreen() {
       else sim.settle(t.ref);
     }
     applied.current = new Map(world.agents.map((a) => [a.ref, a.state]));
-  }, [world, gardenSim, gardenId]);
+  }, [world, venueSim]);
 
   // Socket -> sim, at once. Each is recorded as applied so the roster that follows
   // two seconds later does not replay it.
@@ -183,7 +193,7 @@ export default function WorldScreen() {
         if (t.theyCame) sim.meet(t.ref, YOU);
         else sim.meet(YOU, t.ref);
       }
-      else if (t.op === 'verdict') { sim.verdict(YOU, t.words); sim.verdict(t.ref, t.words); }
+      else if (t.op === 'parted') sim.parted(YOU, t.ref);
       else if (t.op === 'introduced') sim.introduced(YOU, t.ref);
       else if (t.op === 'pass') sim.pass(t.ref);
       else sim.settle(t.ref);
@@ -199,10 +209,18 @@ export default function WorldScreen() {
 
   // Say how the round went, once, when the one this person asked for comes back.
   const [said, setSaid] = useState<string | null>(null);
+  // AND PLAY WHAT THE AGENTS SAID, from the first of the round's cards that carries a
+  // talk or, when they did not talk, the answer-sheet exchange. Read from /v1/matches, so the reveal rule has already
+  // been applied: a card this person may not read yet has none, and plays nothing.
+  const [exchange, setExchange] = useState<MatchCard | null>(null);
+  const bubbles = useMemo(() => (exchange ? bubblesForCard(exchange) : []), [exchange]);
   useEffect(() => {
     const r = world?.round;
     if (!r || active || announce !== r.id) return;
     setAnnounce(null);
+    if (r.met > 0 && !r.error && token) {
+      void getMatches(token).then((m) => setExchange(pickExchange(m?.matches ?? [], r.met)));
+    }
     setSaid(
       r.error === 'budget_exceeded' ? 'Your agent has been out enough for today.'
       : r.error ? 'Something went wrong while your agent was out.'
@@ -211,7 +229,7 @@ export default function WorldScreen() {
       : r.met === 1 ? 'Your agent met one person. See Matches.'
       : `Your agent met ${r.met} people. See Matches.`,
     );
-  }, [world, active, announce, setAnnounce]);
+  }, [world, active, announce, setAnnounce, token]);
 
   /**
    * Send the agent out -- to whoever the ranking picks, or, with a ref, to the one
@@ -221,9 +239,15 @@ export default function WorldScreen() {
   const sendOut = useCallback(async (target?: string) => {
     if (!token || active) return;
     setSaid(null);
+    setExchange(null);
     const r = await runRound(token, target);
     if (!r) { setSaid('Cannot reach the server.'); return; }
-    if ('error' in r) { setSaid(REFUSED[r.error] ?? 'Could not send your agent out. Try again.'); return; }
+    if ('error' in r) {
+      setSaid(REFUSED[r.error] ?? 'Could not send your agent out. Try again.');
+      // Not ready: reload, so the Home swaps the button for "Finish setup".
+      if (r.error === 'not_ready') await load(token);
+      return;
+    }
     setAnnounce(r.roundId);
     await load(token);
   }, [token, active, load, setAnnounce]);
@@ -246,6 +270,42 @@ export default function WorldScreen() {
   // The stick's live value, read by the renderer once a frame and never rendered.
   const stick = useRef({ x: 0, y: 0 });
   const [walking, setWalking] = useState(false);
+  const [realm, dispatchRealm] = useReducer(transitionRealm, CITY_REALM);
+  const veil = useRef(new Animated.Value(0)).current;
+  const transitioning = realm.phase === 'entering' || realm.phase === 'leaving';
+
+  const enterVenue = useCallback(() => {
+    if (realm.phase !== 'city' || !world) return;
+    control.current?.flyToPoint(CUBBON_PARK.mapAt[0], CUBBON_PARK.mapAt[1], 48);
+    dispatchRealm({ type: 'enter', venue: CUBBON_PARK });
+  }, [realm.phase, world]);
+  const leaveVenue = useCallback(() => {
+    if (realm.phase !== 'venue') return;
+    dispatchRealm({ type: 'leave' });
+  }, [realm.phase]);
+
+  useEffect(() => {
+    Animated.timing(veil, {
+      toValue: transitioning ? 1 : 0,
+      duration: transitioning ? 360 : 280,
+      useNativeDriver: true,
+    }).start();
+    if (realm.phase === 'entering') {
+      const t = setTimeout(() => {
+        control.current?.setWalking(true);
+        dispatchRealm({ type: 'entered' });
+      }, 430);
+      return () => clearTimeout(t);
+    }
+    if (realm.phase === 'leaving') {
+      const t = setTimeout(() => {
+        control.current?.setWalking(false);
+        control.current?.flyToPoint(CUBBON_PARK.mapAt[0], CUBBON_PARK.mapAt[1], 48);
+        dispatchRealm({ type: 'left' });
+      }, 360);
+      return () => clearTimeout(t);
+    }
+  }, [realm.phase, transitioning, veil]);
   const [band, setBand] = useState<Band | null>(null);
   const [size, setSize] = useState<Size | null>(null);
   const insets = useSafeAreaInsets();
@@ -274,15 +334,45 @@ export default function WorldScreen() {
     <View style={{ flex: 1, backgroundColor: p.bg }} onLayout={onLayout}>
       <renderer.WorldCanvas key={epoch} sim={sim} colors={colors} active={focused && inFront} cap30={cap30}
                             onTapAgent={onTap} onFirstFrame={firstFrame}
+                            onStats={FPS_METER ? feedFps : undefined}
                             control={control} onBand={setBand} frame={frame}
                             stick={stick} onWalking={setWalking}
-                            gardenSim={gardenSim} gardenOf={gardenId} />
+                            venueSim={venueSim} venue={CUBBON_PARK}
+                            inVenue={realm.phase === 'venue' || realm.phase === 'leaving'}
+                            onTapVenue={() => enterVenue()} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
+           onAppearance={() => router.push('/appearance')}
            onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })}
            band={band} size={size} frame={frame}
            onHome={() => control.current?.flyHome()} onCity={() => control.current?.flyCity()}
            onArea={() => router.push({ pathname: setupRoute(['area']), params: { finish: '1' } })}
-           walking={walking} onWalk={(on) => control.current?.setWalking(on)} stick={stick} />
+           walking={walking} venue={realm.venue} transitioning={transitioning}
+           onEnterVenue={enterVenue} onLeaveVenue={leaveVenue}
+           onDirections={() => void Linking.openURL(directionsUrl(CUBBON_PARK))}
+           stick={stick}
+           exchange={bubbles.length > 0 && exchange && world ? (
+             <ExchangeStrip bubbles={bubbles} you={world.me.look} them={exchange.look}
+                            practice={exchange.practice === true}
+                            talking={Boolean(exchange.talk)}
+                            onClose={() => setExchange(null)}
+                            onSeeCard={() => { setExchange(null); router.push('/matches'); }} />
+           ) : null} />
+      {/* Over everything, including the HUD, and under nothing. Debug builds only. */}
+      <FpsMeter capped={cap30} />
+      <Animated.View
+        pointerEvents={transitioning ? 'auto' : 'none'}
+        style={{
+          position: 'absolute', inset: 0, opacity: veil, backgroundColor: p.bg,
+          alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}
+      >
+        <Text style={{ color: p.text, fontSize: 24, fontWeight: '700' }}>
+          {realm.phase === 'leaving' ? 'Back to Bengaluru' : CUBBON_PARK.name}
+        </Text>
+        <Text style={{ color: p.textSecondary }}>
+          {realm.phase === 'leaving' ? 'Returning to the city map…' : 'Entering the park…'}
+        </Text>
+      </Animated.View>
       {peopleOpen && world && (
         <PeopleSheet agents={world.agents} myArea={world.me.area} onClose={() => setPeopleOpen(false)}
                      onPick={(ref) => { setPeopleOpen(false); onTap(ref); }} />
