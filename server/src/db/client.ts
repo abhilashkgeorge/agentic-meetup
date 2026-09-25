@@ -166,7 +166,7 @@ export async function provisioningSession<T>(
 }
 
 /**
- * Background-job discovery. Reads ACROSS tenants, so it uses the owner connection.
+ * Background-job discovery. Reads ACROSS tenants, as `clone_discovery` (0066).
  *
  * WHY THIS EXISTS. `adminSession` runs as clone_app, which is NOSUPERUSER NOBYPASSRLS
  * -- correct everywhere else, and fatal here. With no tenant context every RLS policy
@@ -174,20 +174,32 @@ export async function provisioningSession<T>(
  * consolidator were reading an empty database and silently doing nothing. The agent
  * could never learn.
  *
+ * NOT THE OWNER ANY MORE. It used to connect as `clone`, a superuser, which ignores
+ * every grant and policy. `clone_discovery` can read, across tenants, exactly the
+ * columns the sweeper, the consolidator and /stats name -- episodes' ids and times but
+ * not their text -- so the rule below is the database's, not a comment's.
+ *
  * STRICT RULE: metadata only -- ids, counts, timestamps. Never message text, never
  * fact content. Discovery decides WHICH user to process; the work itself then runs
  * inside tenantSession under that user's own policies.
  */
-let _ownerPool: Pool | undefined;
+let _discoveryPool: Pool | undefined;
+function roleUrl(name: 'DOOR_DATABASE_URL' | 'DISCOVERY_DATABASE_URL'): string {
+  const url = env[name];
+  // No fallback, on purpose: the owner is a superuser and the app role cannot see
+  // what these need, so either would be wrong -- one silently.
+  if (!url) throw new Error(`${name} is not set. It has its own role (migration 0066); see .env.example.`);
+  return url;
+}
 export async function discoverySession<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  _ownerPool ??= new Pool({
-    connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL,
+  _discoveryPool ??= new Pool({
+    connectionString: roleUrl('DISCOVERY_DATABASE_URL'),
     max: 2,
     // Background work waits politely rather than for ever. Nothing here is on a
     // person's critical path, so failing and retrying next tick beats queueing.
     connectionTimeoutMillis: 10_000,
   });
-  const client = await _ownerPool.connect();
+  const client = await _discoveryPool.connect();
   try {
     return await fn(client);
   } finally {
@@ -196,13 +208,14 @@ export async function discoverySession<T>(fn: (client: PoolClient) => Promise<T>
 }
 
 /**
- * Phone verification. The owner connection, and only for this.
+ * Phone verification, as `clone_door` (0066) -- the owner until then, a superuser.
  *
  * `phone_challenges` is revoked from `clone_app` in 0045, so the ordinary pool cannot
  * see it at all -- which is the point: the role that serves every request should not
  * be able to read a table of code hashes. The boundary is therefore the connection
  * rather than a policy, because a challenge exists BEFORE there is an account and
- * there is no tenant to compare a policy against.
+ * there is no tenant to compare a policy against. `clone_door` can touch that table,
+ * and read an account's id and tenant by its number, and nothing else in the database.
  *
  * Unlike `discoverySession` this opens a real transaction: the verify path increments
  * an attempt counter and consumes a ticket, and those two must not be separable by a
@@ -227,7 +240,7 @@ export async function phoneSession<T>(fn: (client: PoolClient) => Promise<T>): P
   // promise and the process runs out of memory rather than shedding load. Three
   // seconds and then an error the route turns into a 503.
   _phonePool ??= new Pool({
-    connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL,
+    connectionString: roleUrl('DOOR_DATABASE_URL'),
     max: 4,
     connectionTimeoutMillis: 3_000,
   });
@@ -322,8 +335,8 @@ export async function closeMatchPool(): Promise<void> {
 }
 
 export async function close(): Promise<void> {
-  await _ownerPool?.end();
-  _ownerPool = undefined;
+  await _discoveryPool?.end();
+  _discoveryPool = undefined;
   await _phonePool?.end();
   _phonePool = undefined;
   await pool.end();

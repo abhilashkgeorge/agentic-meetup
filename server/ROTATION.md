@@ -58,10 +58,13 @@ ALTER ROLE clone_match      PASSWORD 'REPLACE_ME_2';
 ALTER ROLE clone_matchmaker PASSWORD 'REPLACE_ME_3';
 ALTER ROLE clone_eraser     PASSWORD 'REPLACE_ME_4';
 ALTER ROLE clone            PASSWORD 'REPLACE_ME_5';
+ALTER ROLE clone_door       PASSWORD 'REPLACE_ME_6';
+ALTER ROLE clone_discovery  PASSWORD 'REPLACE_ME_7';
 SQL
 ```
 
-Then update the four URLs in `server/.env` and re-run `check-keys.ts`. Every role must
+Then update the URLs in `server/.env` (DOOR_ and DISCOVERY_DATABASE_URL too, since
+0066) and re-run `check-keys.ts`. Every role must
 still connect, and `(password equals the role name)` must be gone from every line.
 
 When you deploy for real, the passwords should come from the host's secret store and

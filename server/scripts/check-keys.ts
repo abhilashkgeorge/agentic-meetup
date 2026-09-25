@@ -58,6 +58,9 @@ const urls: [string, string | undefined][] = [
   ['MIGRATION_DATABASE_URL', env.MIGRATION_DATABASE_URL],
   ['MATCHMAKER_DATABASE_URL', env.MATCHMAKER_DATABASE_URL],
   ['ERASE_DATABASE_URL', env.ERASE_DATABASE_URL],
+  // 0066: sign-in and the background sweepers, off the superuser.
+  ['DOOR_DATABASE_URL', env.DOOR_DATABASE_URL],
+  ['DISCOVERY_DATABASE_URL', env.DISCOVERY_DATABASE_URL],
 ];
 for (const [name, url] of urls) {
   if (!url) { console.log(`  --   ${name.padEnd(26)} not set`); continue; }

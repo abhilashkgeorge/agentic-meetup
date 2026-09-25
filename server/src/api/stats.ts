@@ -7,8 +7,9 @@
  * was saying so before somebody found out at a dinner.
  *
  * Counts only. No names, no content, nothing that identifies anybody. It reads
- * through the owner pool because there is no user to be, and it selects nothing but
- * aggregates -- there is no row here that belongs to a person.
+ * through the discovery role (clone_discovery, 0066) because there is no user to be,
+ * and it selects nothing but aggregates -- there is no row here that belongs to a
+ * person.
  */
 import { Hono } from 'hono';
 import { html, raw } from 'hono/html';

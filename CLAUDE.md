@@ -35,9 +35,10 @@ written normally.
 ## Database
 
 Row-level security is the isolation boundary. The app connects as `clone_app`; matching
-reads as `clone_match`; rounds run as `clone_matchmaker`; erasure as `clone_eraser`. The
-owner `clone` (superuser) is used only by migrations and by `phoneSession` /
-`discoverySession`, which need cross-tenant reads before a tenant exists. Every query goes
+reads as `clone_match`; rounds run as `clone_matchmaker`; erasure as `clone_eraser`; the
+phone door (`phoneSession`) as `clone_door`; background discovery (`discoverySession`)
+as `clone_discovery`, which may read ids, counts and times but no content (0066). The
+owner `clone` (superuser) is used only by migrations. Every query goes
 through a helper in `server/src/db/client.ts` — `tenantSession`, `matchSession`,
 `matchmakerSession`, `adminSession`, `provisioningSession`, `phoneSession`,
 `discoverySession`, `eraseSession`. `adminSession` is `clone_app` with no tenant context,
@@ -106,5 +107,6 @@ messages from `64f549e` to `c373d30`; the redesign of 2026-09-23 and its evidenc
    2026-09-25). A production server refuses to start with `ALLOW_REUSABLE_INVITES`,
    `SMS_PROVIDER=console`, `SMS_DEV_ECHO` or `ALLOW_UNVERIFIED_SIGNUP` on
    (`tests/boot-refusals.test.ts`); on the real host, leave them off.
-3. Move `phoneSession` / `discoverySession` off the superuser onto a dedicated owner role.
+3. Done 2026-09-25 (0066): `phoneSession` runs as `clone_door`, `discoverySession` as
+   `clone_discovery`; production refuses to start without their URLs.
 4. Set a real `SMS_PROVIDER` on the real host (it will not start with `console`).

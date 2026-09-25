@@ -48,7 +48,8 @@ describe('every table is either the app\'s, or explicitly not', () => {
         FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent
        WHERE c.relkind = 'r' GROUP BY p.relname ORDER BY p.relname`);
     expect(rows.map((r) => [r.parent, Number(r.n)])).toEqual([['episodes', 32], ['facts', 32]]);
-    for (const role of ['clone_app', 'clone_match', 'clone_matchmaker']) {
+    // clone_door and clone_discovery (0066) read episodes through the parent only.
+    for (const role of ['clone_app', 'clone_match', 'clone_matchmaker', 'clone_door', 'clone_discovery']) {
       expect(await can(role, 'SELECT', 'facts_p0'), `${role} on facts_p0`).toBe(false);
       expect(await can(role, 'SELECT', 'episodes_p0'), `${role} on episodes_p0`).toBe(false);
     }

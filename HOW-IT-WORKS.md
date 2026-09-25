@@ -718,7 +718,7 @@ spend.
 
 ## 11. The safety boundary
 
-Row-level security, not application code. Five roles:
+Row-level security, not application code. Seven roles:
 
 | role | sees |
 |---|---|
@@ -726,7 +726,9 @@ Row-level security, not application code. Five roles:
 | `clone_match` | across tenants: `match_profile` and dealbreaker preferences only |
 | `clone_matchmaker` | two people at once, and only facts marked **public** |
 | `clone_eraser` | deletion |
-| `clone` (owner) | migrations, and the two sessions that need cross-tenant reads before a tenant exists |
+| `clone_door` | sign-in: code hashes, and an account's id by its number (0066) |
+| `clone_discovery` | background work: ids, counts and times across tenants, never content (0066) |
+| `clone` (owner) | migrations only |
 
 The agent that goes out **cannot say more than the public facts, because the database
 will not show it more than that.**

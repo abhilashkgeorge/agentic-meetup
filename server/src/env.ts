@@ -34,6 +34,15 @@ const Env = z.object({
    * simply finds nobody: the correct failure, silent and total.
    */
   MATCHMAKER_DATABASE_URL: z.string().startsWith('postgres').optional(),
+  /**
+   * The phone door (clone_door, 0066): code hashes, and one look at an account by its
+   * number. And background discovery (clone_discovery): ids, counts and times across
+   * tenants, never content. Neither falls back to anything -- the owner they used to
+   * be is a superuser, and the app role cannot see what they need, so a missing one
+   * fails loudly at first use. Production refuses to start without them.
+   */
+  DOOR_DATABASE_URL: z.string().startsWith('postgres').optional(),
+  DISCOVERY_DATABASE_URL: z.string().startsWith('postgres').optional(),
   PORT: z.coerce.number().default(8000),
   /**
    * This server's public name. It cannot be derived from a request: an address built
@@ -352,6 +361,15 @@ if (env.NODE_ENV === 'production' && env.SMS_DEV_ECHO) {
 
 // A provider that texts nobody is the right default and the wrong production
 // setting: every code would sit in the log and no phone would ever ring.
+// Sign-in and the background sweepers ran as the superuser until 0066. On a real host
+// they must have their own connections; there is deliberately no fallback to use.
+if (env.NODE_ENV === 'production' && (!env.DOOR_DATABASE_URL || !env.DISCOVERY_DATABASE_URL)) {
+  throw new Error(
+    'DOOR_DATABASE_URL and DISCOVERY_DATABASE_URL must be set in production: sign-in and '
+    + 'the background sweepers have their own narrow roles (0066), never the owner.',
+  );
+}
+
 // Every account has a verified number: it is what makes one person one account, and
 // what a ban holds against (0065). Skipping it is for a laptop with no SMS account.
 if (env.NODE_ENV === 'production' && env.ALLOW_UNVERIFIED_SIGNUP) {
