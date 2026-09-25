@@ -23,6 +23,8 @@ export interface Message {
   rendezvousId: string;
   senderId: string;
   body: string;
+  /** 'date_idea' when it was sent with "Propose this date" (0067). Still a message. */
+  kind: 'text' | 'date_idea';
   sentAt: Date;
   seq: string;
   deliveredAt: Date | null;
@@ -37,6 +39,7 @@ const map = (r: Record<string, unknown>): Message => ({
   // A redacted message keeps its row and loses its words. Hard-deleting one silently
   // rewrites a conversation somebody may need to report.
   body: r.redacted_at ? '' : (r.body as string),
+  kind: r.kind === 'date_idea' ? 'date_idea' : 'text',
   sentAt: r.sent_at as Date,
   seq: String(r.seq),
   deliveredAt: (r.delivered_at as Date | null) ?? null,
@@ -84,7 +87,11 @@ export interface SendResult {
  */
 export async function send(
   c: PoolClient,
-  args: { id: string; rendezvousId: string; senderId: string; recipientId: string; body: string },
+  args: {
+    id: string; rendezvousId: string; senderId: string; recipientId: string; body: string;
+    /** Only api/date-idea.ts passes this, with words it built itself. */
+    kind?: 'text' | 'date_idea';
+  },
 ): Promise<SendResult> {
   if (await isBlocked(c, args.senderId, args.recipientId)) throw new Blocked();
 
@@ -96,11 +103,11 @@ export async function send(
   await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [args.rendezvousId]);
 
   const { rows } = await c.query(
-    `INSERT INTO messages (id, rendezvous_id, sender_id, body, seq)
-     VALUES ($1, $2, $3, $4, next_message_seq($2))
+    `INSERT INTO messages (id, rendezvous_id, sender_id, body, seq, kind)
+     VALUES ($1, $2, $3, $4, next_message_seq($2), $5)
      ON CONFLICT (id) DO NOTHING
      RETURNING *`,
-    [args.id, args.rendezvousId, args.senderId, args.body.trim()],
+    [args.id, args.rendezvousId, args.senderId, args.body.trim(), args.kind ?? 'text'],
   );
 
   if (!rows.length) {
@@ -109,6 +116,18 @@ export async function send(
   }
   return { message: map(rows[0]!), fresh: true };
 }
+
+/** A message as the phones receive it, over the socket and from the date route alike. */
+export const toWire = (m: Message) => ({
+  id: m.id,
+  rendezvousId: m.rendezvousId,
+  senderId: m.senderId,
+  text: m.body,
+  sentAt: m.sentAt.toISOString(),
+  seq: m.seq,
+  deliveredAt: m.deliveredAt?.toISOString() ?? null,
+  readAt: m.readAt?.toISOString() ?? null,
+});
 
 /** Oldest-first, paged backwards. `before` is a seq, not a timestamp. */
 export async function history(

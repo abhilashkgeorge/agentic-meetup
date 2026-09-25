@@ -185,16 +185,7 @@ async function participants(
   });
 }
 
-const wire = (m: messages.Message) => ({
-  id: m.id,
-  rendezvousId: m.rendezvousId,
-  senderId: m.senderId,
-  text: m.body,
-  sentAt: m.sentAt.toISOString(),
-  seq: m.seq,
-  deliveredAt: m.deliveredAt?.toISOString() ?? null,
-  readAt: m.readAt?.toISOString() ?? null,
-});
+const wire = messages.toWire;
 
 async function handleDm(
   ws: WebSocket,

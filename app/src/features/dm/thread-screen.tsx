@@ -20,7 +20,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardPad } from '../../lib/keyboard';
-import { getMessages, type Look } from '../../lib/api';
+import { getDateIdea, getMessages, proposeDate, type Look } from '../../lib/api';
+import * as Crypto from 'expo-crypto';
+import { showDateIdea, type DateIdeaState } from './date-idea';
 import { SafetySheet } from '../safety/safety-sheet';
 import { PersonAvatar } from '../look/person-avatar';
 import { Checkin } from './checkin';
@@ -28,7 +30,7 @@ import { readDm, sendDm, sendTyping } from '../../lib/socket';
 import { useSession } from '../../store/session';
 import { useDm, type Dm } from '../../store/dm';
 import {
-  Bubble, Button, Field, Header, space, type, usePalette,
+  Bubble, Button, Field, Header, Surface, radius, space, type, usePalette,
 } from '../../components/ui';
 
 /** Sent, delivered, read — shown only on your own messages, like every other app. */
@@ -165,6 +167,25 @@ export default function ThreadScreen() {
   const other = conversation?.otherId || who?.id;
   const stop = () => { if (other && token) setSafety(true); };
 
+  // THE AGENTS' DATE IDEA, and "Propose this date". Read once per visit; the server
+  // re-checks the idea every time. The button sends a message from this person --
+  // written by the server from the checked idea -- and the agent schedules nothing.
+  const [dateIdea, setDateIdea] = useState<DateIdeaState>(null);
+  const [proposing, setProposing] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    void getDateIdea(token, rendezvousId).then(setDateIdea);
+  }, [token, rendezvousId]);
+  const propose = async () => {
+    if (!token || proposing) return;
+    setProposing(true);
+    const r = await proposeDate(token, rendezvousId, Crypto.randomUUID());
+    setProposing(false);
+    if (!r) return; // offline or refused: the button stays, nothing was sent
+    useDm.getState().received(r.message);
+    setDateIdea((d) => (d ? { ...d, proposed: true } : d));
+  };
+
   // Newest at the bottom without measuring anything: render the list upside down and
   // feed it the messages in reverse.
   const data = [...messages].reverse();
@@ -213,6 +234,18 @@ export default function ThreadScreen() {
         <Checkin token={token} rendezvousId={rendezvousId}
                  otherId={conversation?.otherId || who?.id || null}
                  otherName={conversation?.name ?? 'them'} />
+      )}
+
+      {showDateIdea(dateIdea) && (
+        <Surface depth="sunken" radius={radius.lg}
+                 style={{ marginHorizontal: space.screen, marginBottom: space.sm, padding: space.md, gap: space.sm }}>
+          <Text style={[type.label, { color: p.textSecondary }]}>YOUR AGENTS' DATE IDEA</Text>
+          <Text style={[type.body, { color: p.text }]}>{dateIdea.idea}</Text>
+          <Button label="Propose this date" variant="primary" loading={proposing} onPress={() => void propose()} />
+          <Text style={[type.callout, { color: p.textTertiary }]}>
+            It goes as a message from you. You two pick the day.
+          </Text>
+        </Surface>
       )}
 
       <FlatList

@@ -880,6 +880,24 @@ export const reportUser = (
 ) => post<{ ok: boolean }>('/v1/report', token, args);
 
 /**
+ * The date idea the two agents came back with, for a conversation -- checked again by
+ * the server each time -- and whether either of you has proposed it yet.
+ */
+export const getDateIdea = (token: string, rendezvousId: string) =>
+  get<{ idea: string | null; proposed: boolean }>(`/v1/conversations/${rendezvousId}/date`, token);
+
+/**
+ * "Propose this date". Sends only the message's own id: the server writes the words,
+ * from the checked idea, so nothing typed here -- and nothing the agent might add --
+ * can ride along. What comes back is the message, from you, like any other.
+ */
+export const proposeDate = (token: string, rendezvousId: string, messageId: string) =>
+  post<{ message: {
+    id: string; rendezvousId: string; senderId: string; text: string;
+    sentAt: string; seq: string; deliveredAt: string | null; readAt: string | null;
+  } }>(`/v1/conversations/${rendezvousId}/date`, token, { messageId });
+
+/**
  * Block or report from a card or a profile: by MATCH, since neither carries anybody's
  * id -- the server works out the other half, and only of a match you are half of.
  */

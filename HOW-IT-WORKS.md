@@ -486,6 +486,14 @@ same plain-card rule as everything else about the first mover.
 
 ---
 
+**Propose this date** (0067, since 2026-09-25). Once both have said yes, the chat shows
+the agents' date idea with one button. It sends a message from the person --
+"How about this: <idea>?", words the server builds from the idea, checked again as it
+is sent (withdrawn if the other person has hidden the sentence it stands on, and run
+through the contact-detail block again). Nothing the phone sends rides along, the agent
+schedules nothing, and there is one proposal per conversation. The message is marked
+`kind = 'date_idea'`, which is how the funnel counts "date proposed".
+
 ## 7c. What you asked for -- evidence, never a verdict
 
 `server/src/matching/wants.ts` · asked for by the founder on 2026-09-25
