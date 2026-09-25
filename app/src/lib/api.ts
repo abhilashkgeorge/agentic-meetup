@@ -449,6 +449,20 @@ export const getStories = (token: string) =>
 export const saveStory = (token: string, id: string, text: string) =>
   post<{ ok: boolean; factId: string }>('/v1/stories', token, { id, text });
 
+/**
+ * The question of the day (server matching/unknowns.ts): something other agents asked
+ * yours that it could not answer. `count` is how many times lately -- never who asked.
+ */
+export interface DailyQuestion { id: string; ask: string; count: number }
+export const getQuestionOfDay = (token: string) =>
+  get<{ question: DailyQuestion | null; min: number; max: number }>('/v1/question-of-day', token);
+/** Saved either way; `usable` false means no agent will ever say it, and `reason` says why. */
+export const answerQuestionOfDay = (token: string, id: string, text: string) =>
+  post<{ ok: boolean; factId: string; usable?: boolean; reason?: 'contact' | 'private' | null }>(
+    '/v1/question-of-day', token, { id, text });
+export const skipQuestionOfDay = (token: string, id: string) =>
+  post<{ ok: boolean }>('/v1/question-of-day/skip', token, { id });
+
 export interface HistoryEntry {
   value: string;
   status: string;

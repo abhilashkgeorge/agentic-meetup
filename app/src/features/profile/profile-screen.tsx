@@ -271,6 +271,10 @@ export default function ProfileScreen() {
                onPress={() => router.push('/appearance')} />
           <Row title="Things to talk about" subtitle="What your agent can say when it meets someone's"
                onPress={() => router.push('/stories')} />
+          {/* The optional faith card (2026-09-25), for people set up before it existed:
+              the interview asks whatever card is still unanswered, then sends them back. */}
+          <Row title="Faith (optional)" subtitle="Only used to check who fits. Nobody ever sees it"
+               onPress={() => router.push({ pathname: '/onboarding/interview', params: { finish: '1' } })} />
           <Row title="Settings" onPress={() => router.push('/settings')} last />
         </Card>
 

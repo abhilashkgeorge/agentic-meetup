@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { ActivityIndicator, Animated, AppState, Linking, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatScreen from '../chat/chat-screen';
-import { getMatches, runRound, type MatchCard, type WorldAgent } from '../../lib/api';
+import { getMatches, getQuestionOfDay, runRound, type MatchCard, type WorldAgent } from '../../lib/api';
 import { getFps30, getGlFuse, setGlFuse, strikeGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import { setupRoute } from '../profile/fields';
@@ -134,11 +134,17 @@ export default function WorldScreen() {
   }, []);
 
   // The roster: on focus, then on a clock whose speed depends on whether a round is out.
+  // And whether a question of the day is waiting: read on every visit, so answering or
+  // skipping one takes the chip away the moment the person comes back.
   const [focused, setFocused] = useState(false);
+  const [question, setQuestion] = useState(false);
   useFocusEffect(useCallback(() => {
     setFocused(true);
     void getFps30().then(setCap30);
-    if (token) void load(token);
+    if (token) {
+      void load(token);
+      void getQuestionOfDay(token).then((r) => setQuestion(Boolean(r?.question)));
+    }
     return () => setFocused(false);
   }, [token, load]));
   const active = roundActive(world);
@@ -220,6 +226,8 @@ export default function WorldScreen() {
     setAnnounce(null);
     if (r.met > 0 && !r.error && token) {
       void getMatches(token).then((m) => setExchange(pickExchange(m?.matches ?? [], r.met)));
+      // The meeting may have left an "I don't know" to ask about.
+      void getQuestionOfDay(token).then((q) => setQuestion(Boolean(q?.question)));
     }
     setSaid(
       r.error === 'budget_exceeded' ? 'Your agent has been out enough for today.'
@@ -342,6 +350,7 @@ export default function WorldScreen() {
                             onTapVenue={() => enterVenue()} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
            onAppearance={() => router.push('/appearance')}
+           question={question} onQuestion={() => router.push('/question')}
            onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })}
            band={band} size={size} frame={frame}
            onHome={() => control.current?.flyHome()} onCity={() => control.current?.flyCity()}

@@ -40,6 +40,8 @@ export function Hud({
   onDirections,
   stick,
   exchange,
+  question,
+  onQuestion,
 }: {
   world: World | null;
   onSendOut: () => void;
@@ -74,6 +76,9 @@ export function Hud({
   stick: MutableRefObject<{ x: number; y: number }>;
   /** What the agents just asked each other, played above the button. */
   exchange?: ReactNode;
+  /** A question of the day is waiting (server matching/unknowns.ts). */
+  question?: boolean;
+  onQuestion?: () => void;
 }) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
@@ -142,6 +147,7 @@ export function Hud({
               ) : (
                 <>
                   {askArea && <Chip label="Which part of town?" selected={false} onPress={onArea} />}
+                  {question && onQuestion && <Chip label="A question for you" selected onPress={onQuestion} />}
                   <Chip label="Visit Cubbon Park" selected={false} onPress={onEnterVenue} />
                   <Chip label={`${areaName(myArea)} · ${here} here`} selected={band !== 'city'} onPress={onHome} />
                   {band !== 'city' && <Chip label="Whole city" selected={false} onPress={onCity} />}

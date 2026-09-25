@@ -503,6 +503,26 @@ until the first says yes.
 
 ---
 
+## 7d. The question of the day -- asking the person what their agent could not answer
+
+`server/src/matching/unknowns.ts` · migration `0062` · asked for by the founder on
+2026-09-25
+
+When an agent says "I don't know" in a meeting -- in the talk, or on the answer sheets --
+the round records it against that person, by the bank question (`unknown_asks`). The
+table has no column for who asked, so nothing can ever say who did. The person is then
+offered the question asked most in the last two weeks that their sheet cannot answer:
+**at most two a day**, answered or skipped, and a skipped one stays quiet for a week.
+The reason shown is a count and nothing else ("Other agents asked yours this twice
+lately"). The answer is saved as their own sentence (an episode and a quotable
+`prompt_answer` fact tagged `sheet:<question>`), becomes that question's answer on their
+sheet at once, and stays it through every rebuild (`withExplicit`). An answer holding a
+contact detail, or naming a private topic, goes through the same rules as any sentence:
+kept, never put on the sheet, never repeated -- and the screen says which it was. The
+Town shows "A question for you" when one is waiting. No model call anywhere in it.
+
+---
+
 ## 8. The scorers, measured against each other
 
 What each pair carries before any human looks:
@@ -736,6 +756,8 @@ basics + 5 cards → facts / rules       onboarding/questions.ts, api/interview.
            → rank_score (recorded only)   matching/score.ts
            → answer sheets, lined up      matching/answer-sheet.ts (built per person, read per pair)
            → the agents talk (1 call)     matching/talk.ts (points at sentences; stories.ts gives them some)
+           → wants beside quotes          matching/wants.ts (only lowers the pick; private = check-only)
+           → "I don't know" → a question  matching/unknowns.ts (question of the day, 2 a day)
            → brief per person, by code    matching/brief.ts
            → both tap yes                 orchestrator.ts decide()
            → messaging unlocked           api/messages.ts, messaging/*

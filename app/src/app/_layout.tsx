@@ -222,6 +222,7 @@ export default function RootLayout() {
         <Stack.Screen name="preferences" options={{ headerShown: false }} />
         <Stack.Screen name="appearance" options={{ headerShown: false }} />
         <Stack.Screen name="stories" options={{ headerShown: false }} />
+        <Stack.Screen name="question" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="character" options={{ headerShown: false }} />
         <Stack.Screen name="selfie" options={{ headerShown: false }} />

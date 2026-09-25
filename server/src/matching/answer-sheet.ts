@@ -148,6 +148,23 @@ export function pointedToAnswers(
 }
 
 /**
+ * A sheet with the person's own explicit answers laid over what the pointer chose: a
+ * sentence they typed IN ANSWER to a question (the question of the day, unknowns.ts)
+ * answers that question, whatever the model pointed at -- and answers only that one.
+ * Pure. `explicit` holds only sentences that passed the quote check.
+ */
+export function withExplicit(
+  answers: Readonly<Record<string, string>>,
+  explicit: ReadonlyMap<string, string>,
+): Record<string, string> {
+  const taken = new Set(explicit.values());
+  const out: Record<string, string> = {};
+  for (const [q, factId] of Object.entries(answers)) if (!taken.has(factId)) out[q] = factId;
+  for (const [q, factId] of explicit) if (BY_ID.has(q)) out[q] = factId;
+  return out;
+}
+
+/**
  * Build the person's sheet if what they have said has changed since it was built.
  *
  * Runs as the person (their own session reads their own episodes, which is what makes
@@ -185,6 +202,15 @@ export async function ensureSheet(
       ));
       answers = pointedToAnswers(res.parsed, sentences);
     }
+    // THEIR OWN ANSWERS WIN: a sentence typed in answer to a question stays its answer.
+    const verified = new Set(sentences.map((s) => s.id));
+    const tagged = await tenantSession(who, (c) => c.query<{ id: string; prompt: string }>(
+      `SELECT id, object_value->>'prompt' AS prompt FROM facts
+        WHERE user_id = $1 AND predicate = 'prompt_answer' AND status = 'active' AND valid_to IS NULL
+          AND object_value->>'prompt' LIKE 'sheet:%'`, [who.userId]));
+    answers = withExplicit(answers, new Map(tagged.rows
+      .filter((r) => verified.has(r.id))
+      .map((r) => [r.prompt.slice('sheet:'.length), r.id])));
 
     await tenantSession(who, (c) => c.query(
       `INSERT INTO answer_sheets (user_id, tenant_id, answers, basis, built_at)

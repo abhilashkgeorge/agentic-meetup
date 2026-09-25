@@ -119,6 +119,24 @@ export async function saveStory(
   storyId: string,
   text: string,
 ): Promise<{ factId: string; replaced: number }> {
+  return saveOwnSentence(c, ctx, storyId, text, STORIES.find((s) => s.id === storyId)?.forYou === true);
+}
+
+/**
+ * One sentence the person typed in answer to something we asked -- a story, or the
+ * question of the day (`sheet:<question id>`, matching/unknowns.ts) -- kept so the quote
+ * check accepts it: a user-role episode with the words, and a fact whose source_quote is
+ * those same words, tagged with what it answers. A new answer to the same thing retires
+ * the old one (kept, never deleted). `want` stores it as a match-only `seeking` instead.
+ */
+export async function saveOwnSentence(
+  c: PoolClient,
+  ctx: { tenantId: string; userId: string },
+  prompt: string,
+  text: string,
+  want = false,
+): Promise<{ factId: string; replaced: number }> {
+  const storyId = prompt;
   const words = text.trim();
   // What makes the sentence verifiable: the person typed it. The quote check looks for
   // the fact's source_quote inside a user-role episode, word for word.
@@ -128,7 +146,6 @@ export async function saveStory(
   });
   // The want is `seeking`, single-valued, so a new one supersedes the old by itself --
   // and match-only, so it is never read by the matchmaker, quoted, or talked about.
-  const want = STORIES.find((s) => s.id === storyId)?.forYou === true;
   const r = await commit(c, ctx, {
     predicate: want ? 'seeking' : 'prompt_answer', objectText: words, objectValue: { prompt: storyId },
     stance: 'asserted', originClass: 'owner', sourceQuote: words,

@@ -54,6 +54,7 @@ import {
   TALK_SENTENCES, TALK_SOURCES, agentTalk, practiceSentences, talkFor, talkOn,
 } from './talk.js';
 import { cantCheck, cardAnswers, checkShortlist, checkWants, demote, loadWants, notMetCounts, wantRows } from './wants.js';
+import { recordUnknowns, unknownsOf } from './unknowns.js';
 import { voiceText } from '../memory/profile.js';
 import { agentRef, notify } from './world.js';
 
@@ -322,6 +323,8 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       talkCost: number;
       /** What checking the other person's wants against the starter cost. */
       wantCost: number;
+      /** The questions each side's agent could not answer in this meeting. */
+      gaps: { a: string[]; b: string[] };
     }> = [];
     for (const pair of plan.pairs) {
       notify(userId, { type: 'round.talking', roundId, rendezvousId: pair.rendezvousId,
@@ -379,8 +382,13 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
           forB: wantRows(bChecked ? bChecked.results[0] : cantCheck(wantsB)),
         },
       );
+      // WHO SAID "I DON'T KNOW", to what (unknowns.ts): the question of the day for that
+      // person, later. Real people only -- a practice profile has nobody to ask.
+      const qaA = compareSheets(sheetA, sheetB);
+      const qaB = compareSheets(sheetB, sheetA);
+      const gaps = unknownsOf(talkFor(said.talk, 'a'), qaA, qaB);
       const o = { pair, runs, ok, briefs, jevScore: jev.score, jevCost: jev.costUsd, talkCost: said.costUsd,
-                  wantCost: bChecked?.costUsd ?? 0 };
+                  wantCost: bChecked?.costUsd ?? 0, gaps };
       out.push(o);
 
       // ── write, PER PAIR, in its own short transaction ───────────────────────
@@ -388,7 +396,13 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       // runs if any were held -- before the next pair is looked at, so a crash
       // mid-round keeps what was done, and the town's event and the roster's poll can
       // never disagree about a pair: the event is sent only once the row says the same.
-      await matchmakerSession((c) => writePair(c, plan.a, o));
+      await matchmakerSession(async (c) => {
+        await writePair(c, plan.a, o);
+        await recordUnknowns(c, [
+          { tenantId: plan.a.tenantId, userId: plan.a.userId, questionIds: o.gaps.a },
+          ...(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId, userId: pair.b.userId, questionIds: o.gaps.b }]),
+        ]);
+      });
       written.add(pair.rendezvousId);
       // "They met", and nothing about how it went: the event carries no verdict and
       // no words, so the square draws the same small moment for every pair.
