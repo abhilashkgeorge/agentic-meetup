@@ -107,6 +107,10 @@ export async function nextQuestion(
 ): Promise<NextQuestion | null> {
   const available = QUESTIONS.filter((q) => {
     if (answered.has(q.id)) return false;
+    // SITUATIONS ARE NEVER ASKED HERE. They exist for other people's wants and arrive
+    // as a question of the day when one needs them (matching/want-questions.ts); in the
+    // interview they would be a form for its own sake, and count toward "remaining".
+    if (q.tier === 'situation') return false;
     // "Would that bother you?" must not arrive before "do you?".
     if (q.after && !answered.has(q.after)) return false;
     // AND IT MUST NOT ARRIVE AFTER A SKIPPED "do you?" EITHER, when the answer would

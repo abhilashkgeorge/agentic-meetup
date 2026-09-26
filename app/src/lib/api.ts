@@ -439,6 +439,16 @@ export interface SheetEntry {
 export type NamedPlace = 'company' | 'college' | 'building';
 export const getAppearance = (token: string) => get<Appearance>('/v1/me/appearance', token);
 
+/** Your wants, each with the question the other person answers (server api/wants.ts). */
+export const getWants = (token: string) =>
+  get<{ wants: import('../features/preferences/wants-state').WantView[] }>('/v1/me/wants', token);
+/** Tie a want to its question: the answers that are fine. */
+export const setWantQuestion = (token: string, want: string, questionId: string, accepted: string[]) =>
+  post<{ ok: boolean }>('/v1/me/wants/question', token, { want, questionId, accepted });
+/** Stop checking a want against its question. */
+export const clearWantQuestion = (token: string, want: string) =>
+  post<{ ok: boolean }>('/v1/me/wants/question/clear', token, { want });
+
 /** Your own rules, read back in words. A template over what you tapped, not a model. */
 export interface Readback { lines: string[]; footer: string; sentence: string }
 export const getReadback = (token: string) => get<Readback>('/v1/me/readback', token);

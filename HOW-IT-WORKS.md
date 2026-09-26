@@ -548,6 +548,21 @@ until the first says yes.
 
 ---
 
+**Wants tied to a question** (2026-09-26). A want like "a saver, not an impulse spender"
+is not guessed from a label: code matches it to one question in the bank
+(`matching/want-questions.ts`) -- a SITUATION question about what people do ("You get an
+unexpected ₹50,000. What happens to most of it?", "A friend takes you to a tiny street
+stall…", eight of them, tier `situation`, never asked by onboarding) or a tapped question
+that already existed ("What field are you in?", exercise, sleep, moving cities). On
+"What you're looking for" the person sees the question and ticks the answers that are
+fine -- nothing ticked for them; every answer ticked is no rule. That writes an ordinary
+rule on the answer (`in [ticked]`, source: the want's own words), with Must have / Really
+want / Nice to have like every rule. In a round a tied want is checked BY CODE against
+the other person's tapped answer -- met, not met, or can't check yet -- never sent to the
+model and never quoted. A want no question fits stays a sentence, checked as before, and
+only ever moves people down. Situation answers are tap-only (not in the chat
+extractor's vocabulary) and never public.
+
 ## 7d. The question of the day -- asking the person what their agent could not answer
 
 `server/src/matching/unknowns.ts` · migration `0062` · asked for by the founder on

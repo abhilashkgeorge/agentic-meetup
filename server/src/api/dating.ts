@@ -19,6 +19,7 @@ import { resolveAgentRef } from '../matching/world.js';
 import { liveCard, plainCard, readBrief, sentenceKey } from '../matching/brief.js';
 import { expireDue } from '../matching/expiry.js';
 import { roundRecap } from '../matching/recap.js';
+import { ruleLabel } from '../matching/want-questions.js';
 import { lookOf, looksFor } from '../looks/store.js';
 import { award } from '../points/ledger.js';
 import { ANSWERS, WHY_NOT, checkinQuestions, type CheckinQuestion, type Shown } from '../checkin/questions.js';
@@ -430,7 +431,8 @@ export const datingRoutes = new Hono()
       preferences: rows.map((r) => ({
         id: r.id,
         predicate: r.predicate,
-        label: phrase(r.predicate, r.operator, r.value),
+        // A want's rule reads with its question's own words (want-questions.ts).
+        label: (r.operator === 'in' ? ruleLabel(r.predicate, r.value) : null) ?? phrase(r.predicate, r.operator, r.value),
         strength: r.strength,
         sourceQuote: r.source_quote,
       })),

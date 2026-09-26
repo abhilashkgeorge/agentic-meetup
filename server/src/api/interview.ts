@@ -143,7 +143,8 @@ export const interviewRoutes = new Hono()
     // ordinary next question.
     const one = c.req.query('card');
     const pinned = one ? BY_ID.get(one) : undefined;
-    const next = pinned?.whoFine
+    // A situation question too (tier 'situation', 2026-09-26): one tap, asked only this way.
+    const next = pinned?.whoFine || pinned?.tier === 'situation'
       ? { question: pinned, remaining: 0 }
       : await tenantSession(ctx, (db) =>
           nextQuestion(db, ctx.userId, answered, candidates, state.asked.skipped),

@@ -6,11 +6,17 @@
  * Idempotent: safe to run on every migrate.
  */
 import type { PoolClient } from 'pg';
-import { CORE_PREDICATES, OPEN_PREDICATES } from '@clone/shared';
+import { CORE_PREDICATES, OPEN_PREDICATES, SITUATION_PREDICATES } from '@clone/shared';
 
 export async function seedPredicates(c: PoolClient): Promise<number> {
   const rows = [
     ...CORE_PREDICATES.map((p) => ({
+      name: p.name, tier: 'core', cardinality: p.cardinality,
+      durability: p.durability, matchable: p.matchable,
+    })),
+    // Situation answers: closed and matchable like the core, but tapped only -- they
+    // are not in CORE_PREDICATES, so the extraction prompt never offers them.
+    ...SITUATION_PREDICATES.map((p) => ({
       name: p.name, tier: 'core', cardinality: p.cardinality,
       durability: p.durability, matchable: p.matchable,
     })),

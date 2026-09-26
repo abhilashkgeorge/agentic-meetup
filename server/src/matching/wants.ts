@@ -38,6 +38,7 @@ import { log } from '../log.js';
 import { loadQuotes, mayRepeat, namesCoreValue, type WantRow } from './brief.js';
 import { ALL_CARDS, BY_ID } from '../onboarding/questions.js';
 import { TALK_SOURCES, practiceSentences, type TalkSentence } from './talk.js';
+import { QUESTION_BY_PREDICATE, WANT_QUESTION_PREDICATES, checkAsked } from './want-questions.js';
 
 export const WANT_SOURCES = ['seeking', 'dealbreaker'] as const;
 export const MAX_WANTS = 5;
@@ -46,7 +47,15 @@ export const MAX_WANTS = 5;
  * One want: the person's own words, whether it is something wanted or ruled out, and
  * whether it touches a private topic -- checked against a card, never quoted.
  */
-export interface Want { text: string; kind: 'wants' | 'not'; private: boolean }
+export interface Want {
+  text: string; kind: 'wants' | 'not'; private: boolean;
+  /**
+   * A want the person tied to a question (want-questions.ts, 2026-09-26): the answers
+   * they ticked as fine. Checked BY CODE against the other person's tapped answer --
+   * never sent to a model, never quoted.
+   */
+  ask?: { questionId: string; predicate: string; accepted: string[]; multi: boolean };
+}
 
 /** `cant_check`: nothing could check it -- said on the card, never left off it. */
 export type WantStatus = 'met' | 'not_met' | 'unknown' | 'cant_check';
@@ -57,6 +66,8 @@ export interface WantResult {
   private?: boolean; practice?: boolean;
   /** A private want's card, when the model mapped it onto one (card answers are read by code). */
   card?: string;
+  /** A want checked by a question: the bank question, so a gap can be asked (unknowns.ts). */
+  question?: string;
 }
 
 /**
@@ -91,11 +102,33 @@ export async function loadWants(who: { tenantId: string; userId: string }): Prom
         out.push({ text, kind: r.predicate === 'dealbreaker' ? 'not' : 'wants', private: namesCoreValue(text) });
       }
     }
-    return out.slice(0, MAX_WANTS);
+    return await withAsks(who, out.slice(0, MAX_WANTS));
   } catch (err) {
     log.warn({ err, userId: who.userId }, 'wants not read');
     return [];
   }
+}
+
+/**
+ * The questions a person tied their wants to: the live rule on a want question's answer
+ * whose source is that want's own words (api/wants.ts writes it so). A want with none is
+ * checked as a sentence, as before.
+ */
+async function withAsks(who: { tenantId: string; userId: string }, wants: Want[]): Promise<Want[]> {
+  if (!wants.length) return wants;
+  const rules = await tenantSession(who, async (c) => (await c.query<{ predicate: string; value: unknown; source_quote: string }>(
+    `SELECT predicate, value, source_quote FROM preferences
+      WHERE user_id = $1 AND retired_at IS NULL AND operator = 'in'
+        AND predicate = ANY($2) AND source_quote = ANY($3)`,
+    [who.userId, [...WANT_QUESTION_PREDICATES], wants.map((w) => w.text)])).rows);
+  const byText = new Map(rules.map((r) => [r.source_quote, r]));
+  return wants.map((w) => {
+    const r = byText.get(w.text);
+    if (!r || w.private || !Array.isArray(r.value)) return w;
+    const q = QUESTION_BY_PREDICATE.get(r.predicate);
+    if (!q) return w;
+    return { ...w, ask: { questionId: q.id, predicate: r.predicate, accepted: r.value.map(String), multi: q.multi ?? false } };
+  });
 }
 
 // ── the check ───────────────────────────────────────────────────────────────
@@ -182,8 +215,36 @@ export async function checkWants(
   wants: readonly Want[],
   people: readonly (readonly TalkSentence[])[],
   cardsOf: readonly (Readonly<Record<string, unknown>> | null)[] = [],
+  /** Each person's tags, for a want tied to a multi-choice question (the field you work in). */
+  tagsOf: readonly (readonly string[] | null)[] = [],
 ): Promise<{ results: WantResult[][]; costUsd: number } | null> {
   if (!wants.length || !people.length) return null;
+  // A WANT TIED TO A QUESTION IS CHECKED BY CODE, and never reaches the model: the other
+  // person's tapped answer against the answers the person ticked (want-questions.ts).
+  const asked = (w: Want, pi: number): WantResult => {
+    const status = checkAsked(w.ask!, cardsOf[pi] || tagsOf[pi]
+      ? { traits: cardsOf[pi] ?? {}, tags: tagsOf[pi] ?? [] } : null);
+    return { want: w.text, kind: w.kind, status, quote: null, private: true, question: w.ask!.questionId };
+  };
+  const byModel = wants.filter((w) => !w.ask);
+  if (!byModel.length) {
+    return { results: people.map((_, pi) => wants.map((w) => asked(w, pi))), costUsd: 0 };
+  }
+  const merge = (fromModel: WantResult[][]): WantResult[][] => people.map((_, pi) => {
+    let k = 0;
+    return wants.map((w) => (w.ask ? asked(w, pi) : fromModel[pi]![k++]!));
+  });
+  const r = await checkByModel(who, byModel, people, cardsOf);
+  return r ? { results: merge(r.results), costUsd: r.costUsd } : null;
+}
+
+/** The sentence wants, in one model call. Null when it fails; never throws. */
+async function checkByModel(
+  who: { tenantId: string; userId: string },
+  wants: readonly Want[],
+  people: readonly (readonly TalkSentence[])[],
+  cardsOf: readonly (Readonly<Record<string, unknown>> | null)[],
+): Promise<{ results: WantResult[][]; costUsd: number } | null> {
   try {
     const wantLines = wants.map((w, i) =>
       `${i + 1}. ${w.private ? 'PRIVATE ' : ''}${w.kind === 'not' ? 'Could not be with: ' : 'Wants: '}${w.text}`).join('\n');
@@ -265,7 +326,9 @@ export async function checkShortlist(
       : (await loadQuotes(cand, { predicates: TALK_SOURCES, limit: WANT_SENTENCES })).map((q) => ({ text: q.text })));
   }
   const cards = await cardAnswers(checked.map((c) => c.userId));
-  const r = await checkWants(who, wants, people, checked.map((c) => cards.get(c.userId) ?? null));
+  const tags = await tagsOfPeople(checked.map((c) => c.userId));
+  const r = await checkWants(who, wants, people, checked.map((c) => cards.get(c.userId) ?? null),
+    checked.map((c) => tags.get(c.userId) ?? null));
   if (!r) return null;
   return { byId: new Map(checked.map((cand, i) => [cand.userId, r.results[i]!])), costUsd: r.costUsd };
 }
@@ -283,10 +346,21 @@ export async function cardAnswers(userIds: readonly string[]): Promise<Map<strin
   });
 }
 
+/** The tags of the given people, as the matchmaker sees them. Read by code only. */
+export async function tagsOfPeople(userIds: readonly string[]): Promise<Map<string, string[]>> {
+  if (!userIds.length) return new Map();
+  return matchmakerSession(async (c) => {
+    const { rows } = await c.query<{ user_id: string; attribute_tags: string[] | null }>(
+      'SELECT user_id, attribute_tags FROM match_profile WHERE user_id = ANY($1::uuid[])', [[...userIds]]);
+    return new Map(rows.map((r) => [r.user_id, r.attribute_tags ?? []]));
+  });
+}
+
 /** Every want, unchecked: what a card says when the check did not run. Never nothing. */
 export const cantCheck = (wants: readonly Want[]): WantResult[] =>
   wants.map((w) => ({ want: w.text, kind: w.kind, status: 'cant_check' as const, quote: null,
-                      ...(w.private ? { private: true } : {}) }));
+                      ...(w.private || w.ask ? { private: true } : {}),
+                      ...(w.ask ? { question: w.ask.questionId } : {}) }));
 
 /** One reader's results as the rows a card carries. */
 export const wantRows = (results: readonly WantResult[] | undefined): WantRow[] =>

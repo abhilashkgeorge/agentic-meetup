@@ -171,6 +171,16 @@ export const VALUE_SHAPES = {
   sleep_pattern: z.string(),
   relocation_openness: z.string(),
 
+  /** Situation answers (facts.ts SITUATION_PREDICATES): one tapped option each. */
+  money_windfall: z.string(),
+  unplanned_buy: z.string(),
+  street_food: z.string(),
+  pet_sitting: z.string(),
+  weeknight_dinner: z.string(),
+  last_book: z.string(),
+  long_weekend: z.string(),
+  last_minute_plan: z.string(),
+
   /**
    * A dealbreaker names what it is ABOUT. "no smokers" is {target:'smoking'}, and
    * that is the difference between a joinable rule and a sentence.

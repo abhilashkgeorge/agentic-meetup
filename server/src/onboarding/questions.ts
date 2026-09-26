@@ -34,7 +34,7 @@
  * NO MODEL CALLS ANYWHERE IN THIS FILE. Options are fixed, answers map straight onto
  * predicates, and which question comes next is fixed code up to the optional tier.
  */
-import { DIETS, FAITHS, FREQUENCY, IMPORTANCE, MONOGAMY, WANTS_CHILDREN } from '@clone/shared';
+import { DIETS, FAITHS, FREQUENCY, IMPORTANCE, MONOGAMY, SITUATION_PREDICATES, WANTS_CHILDREN } from '@clone/shared';
 
 /**
  * `free` is a sentence rather than a choice. It exists for one question -- see
@@ -43,7 +43,7 @@ import { DIETS, FAITHS, FREQUENCY, IMPORTANCE, MONOGAMY, WANTS_CHILDREN } from '
 export type QuestionKind = 'fact' | 'preference' | 'free';
 
 /** Where a question sits in the interview. See the header for what each one means. */
-export type Tier = 'basics' | 'core' | 'optional' | 'free';
+export type Tier = 'basics' | 'core' | 'optional' | 'free' | 'situation';
 
 export interface Option {
   value: string;
@@ -119,6 +119,17 @@ const card = (
     whoFine: { text: partner, options },
   };
 };
+
+/**
+ * One situation question: one tap from a short list, skippable, a fact about what the
+ * person does. Returned as a one-element array so the bank reads as a list.
+ */
+const situation = (
+  id: string, predicate: string, topic: string, text: string, labels: Record<string, string>,
+): Question[] => [{
+  id, predicate, kind: 'fact', tier: 'situation', declinable: true, topic, text,
+  options: Object.entries(labels).map(([value, label]) => ({ value, label })),
+}];
 
 const FREQUENCY_LABELS: Record<string, string> = {
   never: 'Never', rarely: 'Rarely', sometimes: 'Sometimes', often: 'Often', daily: 'Every day',
@@ -305,6 +316,41 @@ export const QUESTIONS: readonly Question[] = [
       { value: 'no', label: 'No' },
     ],
   },
+
+  // ── situations: what you DO, never what you are (the founder, 2026-09-26) ───
+  //
+  // Nobody answers "are you impulsive with money?" honestly, and many do not know. So
+  // these never ask for the label; they ask what happens. They exist for other people's
+  // WANTS (matching/want-questions.ts): "a saver, not an impulse spender" is checked
+  // against the answer to the ₹50,000 question, by code, never quoted. Onboarding never
+  // asks them (next-question.ts): a person meets one as their question of the day, when
+  // somebody's want needs it, and never learns who. Skippable, one tap, tap-only facts
+  // (facts.ts SITUATION_PREDICATES).
+  ...situation('sit-windfall', 'money_windfall', 'Money', 'You get an unexpected ₹50,000. What happens to most of it?', {
+    'save-invest': 'Saved or invested', 'pay-off': 'Pays off something I owe', 'some-each': 'Some saved, some spent',
+    treat: 'A treat: a trip, a gadget, a night out', family: 'Goes to family',
+  }),
+  ...situation('sit-unplanned-buy', 'unplanned_buy', 'Money', "The last time you bought something big you hadn't planned: when was it?", {
+    'this-month': 'This month', 'this-year': 'Earlier this year', longer: 'More than a year ago', never: "I don't do that",
+  }),
+  ...situation('sit-street-food', 'street_food', 'Food', 'A friend takes you to a tiny street stall. Amazing food, not very clean. You…', {
+    'dig-in': '😋 Dig in', 'try-a-bit': '🤔 Try a bit', pass: '🙅 Pass',
+  }),
+  ...situation('sit-pet-sitting', 'pet_sitting', 'Pets', 'A friend asks you to look after their dog for a week. You…', {
+    gladly: 'Say yes, gladly', 'if-needed': 'Say yes if nobody else can', no: 'Say no, not for me',
+  }),
+  ...situation('sit-weeknight-dinner', 'weeknight_dinner', 'Cooking', "It's a weeknight, you're hungry and nothing is planned. Most often you…", {
+    cook: 'Cook something', 'order-in': 'Order in', 'eat-out': 'Head out to eat', snack: 'Grab a snack and skip it',
+  }),
+  ...situation('sit-last-book', 'last_book', 'Books', 'The last book you finished: when was it?', {
+    'this-month': 'This month', 'this-year': 'Earlier this year', longer: 'Longer ago than that', 'dont-read': "I don't really read books",
+  }),
+  ...situation('sit-long-weekend', 'long_weekend', 'Weekends', 'A long weekend and no plans. You…', {
+    trip: 'Book a trip somewhere', city: 'See friends around the city', home: 'Stay in and rest', work: 'Catch up on work',
+  }),
+  ...situation('sit-last-minute', 'last_minute_plan', 'Plans', 'A friend calls at 7pm: plans tonight? You…', {
+    in: "I'm in", depends: 'Depends on the plan', 'stay-in': "I'd rather stay in",
+  }),
 ];
 
 export const BY_ID = new Map(QUESTIONS.map((q) => [q.id, q]));
@@ -359,4 +405,9 @@ export const TAPPED_PREDICATES: ReadonlySet<string> = new Set([
   ...CORE_PREDICATES,
   // The faith card too: a sentence in chat must never quietly change a card.
   ...OPTIONAL_CARDS.map((id) => BY_ID.get(id)!.predicate),
+  // And every situation answer: somebody's want is checked against it.
+  ...SITUATION_PREDICATES.map((p) => p.name),
 ]);
+
+/** The situation questions, in bank order. */
+export const SITUATIONS: readonly Question[] = QUESTIONS.filter((q) => q.tier === 'situation');

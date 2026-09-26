@@ -12,7 +12,9 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { getPool, getPreferences, setPreferenceStrength, type PoolStep, type Preference } from '../../lib/api';
+import { getPool, getPreferences, getWants, setPreferenceStrength, type PoolStep, type Preference } from '../../lib/api';
+import { WantsCard } from './wants-card';
+import type { WantView } from './wants-state';
 import { countLabel, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import {
@@ -35,12 +37,14 @@ export default function PreferencesScreen() {
   const [pool, setPool] = useState<{ total: number | null; steps: PoolStep[]; inPool: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [myWants, setMyWants] = useState<WantView[]>([]);
 
   const load = useCallback(async () => {
     if (!token) return;
-    const [pr, po] = await Promise.all([getPreferences(token), getPool(token)]);
+    const [pr, po, wa] = await Promise.all([getPreferences(token), getPool(token), getWants(token)]);
     setPrefs(pr?.preferences ?? []);
     setPool(po);
+    setMyWants(wa?.wants ?? []);
     setLoading(false);
   }, [token]);
 
@@ -99,6 +103,11 @@ export default function PreferencesScreen() {
             </>
           )}
         </Card>
+
+        {/* Each want beside the question the other person answers (2026-09-26). A
+            key per text and answers, so a reload opens each box on what it now holds. */}
+        <WantsCard key={myWants.map((w) => `${w.text}:${(w.accepted ?? []).join(',')}`).join('|')}
+                   wants={myWants} onSaved={() => void load()} />
 
         <Card label={`Must have · ${dealbreakers.length}`}>
           <Text style={[type.callout, { color: p.textSecondary }]}>

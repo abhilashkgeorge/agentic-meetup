@@ -193,6 +193,31 @@ export const CORE_PREDICATES: readonly PredicateDef[] = [
  */
 export const OPEN_PREDICATES = ['topic', 'owns', 'did', 'believes'] as const;
 
+/**
+ * SITUATION ANSWERS (the founder, 2026-09-26): what a person picks when asked about a
+ * situation -- "You get an unexpected ₹50,000. What happens to most of it?" -- instead
+ * of for a label nobody answers honestly ("Do you save money?"). Each is the answer to
+ * one situation question (server onboarding/questions.ts, tier 'situation'), asked when
+ * somebody's want needs it, and what that want is checked against.
+ *
+ * TAP-ONLY. Deliberately NOT in CORE_PREDICATES: that list is the chat extractor's
+ * vocabulary, and a sentence in passing must never become somebody's answer to a
+ * situation they were never asked. Seeded into `predicates` beside the core (so they
+ * reach match traits) and nowhere else. Never public: a situation answer decides a
+ * match and is never repeated to anybody (not in PUBLIC_BY_DEFAULT).
+ */
+export const SITUATION_PREDICATES: readonly PredicateDef[] = [
+  { name: 'money_windfall',   cardinality: 'single', durability: 'soft', matchable: true },
+  { name: 'unplanned_buy',    cardinality: 'single', durability: 'soft', matchable: true },
+  { name: 'street_food',      cardinality: 'single', durability: 'soft', matchable: true },
+  { name: 'pet_sitting',      cardinality: 'single', durability: 'soft', matchable: true },
+  { name: 'weeknight_dinner', cardinality: 'single', durability: 'soft', matchable: true },
+  { name: 'last_book',        cardinality: 'single', durability: 'soft', matchable: true },
+  { name: 'long_weekend',     cardinality: 'single', durability: 'soft', matchable: true },
+  { name: 'last_minute_plan', cardinality: 'single', durability: 'soft', matchable: true },
+] as const;
+export const SITUATION_PREDICATE_NAMES: ReadonlySet<string> = new Set(SITUATION_PREDICATES.map((p) => p.name));
+
 export const CORE_PREDICATE_NAMES = CORE_PREDICATES.map((p) => p.name);
 export const SINGLE_VALUED = new Set(
   CORE_PREDICATES.filter((p) => p.cardinality === 'single').map((p) => p.name),
