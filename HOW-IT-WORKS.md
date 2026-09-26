@@ -574,6 +574,15 @@ sentence there would hide somebody for good. Unanswered still hides nobody (0020
 pool on "What you're looking for" says how many fit all the must-haves, "Under 20" when
 it is small, and suggests turning one into a want.
 
+**How accurate the sentence check is** (2026-09-26). `server/evals/wants/`: 300 invented
+want/sentence pairs (30 wants, none on a private topic, every sentence one the check would
+really see). A person marks them on a local page -- `npm run wants:label`, then open
+http://localhost:8788; three big buttons, keys 1/2/3, 0 to go back -- into `labels.json`.
+`npm run wants:score` says what a run would do and cost and sends nothing; only
+`-- --go` runs the real check (metered, one kept eval account) and reports agreement
+against the 90% target, with the misses. A full run is 30 calls, about $0.04. Tapped
+checks are compared by code and are not part of this number.
+
 ## 7d. The question of the day -- asking the person what their agent could not answer
 
 `server/src/matching/unknowns.ts` · migration `0062` · asked for by the founder on

@@ -18,7 +18,9 @@
     "corpus:harvest": "tsx evals/corpus/harvest.ts",
     "seed:synthetic": "tsx src/db/seed-synthetic.ts",
     "e2e": "tsx scripts/e2e.ts",
-    "round": "tsx scripts/round.ts"
+    "round": "tsx scripts/round.ts",
+    "wants:label": "tsx evals/wants/label.ts",
+    "wants:score": "tsx evals/wants/score.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
