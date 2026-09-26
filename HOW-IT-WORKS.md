@@ -562,6 +562,10 @@ the other person's tapped answer -- met, not met, or can't check yet -- never se
 model and never quoted. A want no question fits stays a sentence, checked as before, and
 only ever moves people down. Situation answers are tap-only (not in the chat
 extractor's vocabulary) and never public.
+When the other person has never answered a tied want's question, that is their gap
+(`ask:<question>` in `unknown_asks`) and becomes their question of the day: "Other agents
+needed this lately to check who fits… One tap. Nobody ever sees your answer." It opens the
+question by its id, one tap answers it, and whose want it was is never said.
 
 ## 7d. The question of the day -- asking the person what their agent could not answer
 

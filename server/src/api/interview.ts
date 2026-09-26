@@ -21,6 +21,7 @@ import { rebuildMatchProfile, setPreference } from '../matching/profile.js';
 import { candidateIds, shownCount } from '../matching/candidates.js';
 import { BY_ID, CORE_CARDS, GATING, type Question } from '../onboarding/questions.js';
 import { nextQuestion } from '../onboarding/next-question.js';
+import { WANT_QUESTION_IDS } from '../matching/want-questions.js';
 import { metered } from '../metering.js';
 import { mapDealbreaker } from '../onboarding/dealbreaker.js';
 import { log } from '../log.js';
@@ -143,8 +144,9 @@ export const interviewRoutes = new Hono()
     // ordinary next question.
     const one = c.req.query('card');
     const pinned = one ? BY_ID.get(one) : undefined;
-    // A situation question too (tier 'situation', 2026-09-26): one tap, asked only this way.
-    const next = pinned?.whoFine || pinned?.tier === 'situation'
+    // A question a want is tied to as well (want-questions.ts, 2026-09-26): a situation,
+    // or a tapped question like the field you work in -- one tap, opened by its id.
+    const next = pinned && (pinned.whoFine || WANT_QUESTION_IDS.has(pinned.id))
       ? { question: pinned, remaining: 0 }
       : await tenantSession(ctx, (db) =>
           nextQuestion(db, ctx.userId, answered, candidates, state.asked.skipped),

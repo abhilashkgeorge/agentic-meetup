@@ -23,6 +23,7 @@ import { SHEET, readOwnSheet } from './answer-sheet.js';
 import { mayRepeat, namesCoreValue, type QaLine, type TalkView } from './brief.js';
 import { ALL_CARDS, BY_ID } from '../onboarding/questions.js';
 import type { WantResult } from './wants.js';
+import { WANT_QUESTIONS } from './want-questions.js';
 
 /** At most this many questions a day, answered or skipped. */
 export const DAILY_QUESTIONS = 2;
@@ -43,11 +44,24 @@ export const SHEET_IDS: ReadonlySet<string> = new Set(SHEET.map((q) => q.id));
  * said, so it counts as a check-only match. `card:<predicate>` is how such a gap is
  * recorded; the question of the day then opens that card instead of a text box.
  */
+/*
+ * AND THE QUESTIONS WANTS ARE TIED TO (2026-09-26): somebody's "a saver, not an impulse
+ * spender" is checked against the other person's answer to the ₹50,000 question
+ * (want-questions.ts). When they have none, that is their gap, recorded as
+ * `ask:<question id>` and asked the same way a card is: opened by its id, answered with
+ * one tap, never saying who wanted to know.
+ */
 export const CARD_QUESTIONS: ReadonlyMap<string, { questionId: string; predicate: string; text: string; topic: string }> =
-  new Map(ALL_CARDS.map((c) => {
-    const q = BY_ID.get(c.id)!;
-    return [`card:${c.predicate}`, { questionId: c.id, predicate: c.predicate, text: q.text, topic: q.topic ?? q.text }];
-  }));
+  new Map([
+    ...ALL_CARDS.map((c) => {
+      const q = BY_ID.get(c.id)!;
+      return [`card:${c.predicate}`, { questionId: c.id, predicate: c.predicate, text: q.text, topic: q.topic ?? q.text }] as const;
+    }),
+    ...WANT_QUESTIONS.map((w) => {
+      const q = BY_ID.get(w.questionId)!;
+      return [`ask:${q.id}`, { questionId: q.id, predicate: q.predicate, text: q.text, topic: q.topic ?? q.text }] as const;
+    }),
+  ]);
 
 /** Everything a gap may be recorded as: a bank question, or a card. */
 export const QUESTION_IDS: ReadonlySet<string> = new Set([...SHEET_IDS, ...CARD_QUESTIONS.keys()]);
@@ -60,6 +74,18 @@ export function unknownCardsOf(results: readonly WantResult[] | undefined): stri
   const out = new Set<string>();
   for (const r of results ?? []) {
     if (r.private && r.status === 'cant_check' && r.card && CARD_QUESTIONS.has(`card:${r.card}`)) out.add(`card:${r.card}`);
+  }
+  return [...out];
+}
+
+/**
+ * The questions a want tied to one could not read for the other person: they never
+ * answered it. Those are theirs to fill, as their question of the day. Pure.
+ */
+export function unknownAsksOf(results: readonly WantResult[] | undefined): string[] {
+  const out = new Set<string>();
+  for (const r of results ?? []) {
+    if (r.question && r.status === 'cant_check' && CARD_QUESTIONS.has(`ask:${r.question}`)) out.add(`ask:${r.question}`);
   }
   return [...out];
 }
@@ -130,7 +156,10 @@ export async function questionOfDay(who: { tenantId: string; userId: string }): 
         WHERE user_id = $1 AND predicate = ANY($2) AND status = 'active' AND valid_to IS NULL
           AND object_value IS NOT NULL AND object_value <> 'null'::jsonb`,
       [who.userId, [...CARD_QUESTIONS.values()].map((q) => q.predicate)]);
-    for (const r of cards) known.add(`card:${r.predicate}`);
+    // Every tapped question on that field: its card, or the question a want is tied to.
+    for (const r of cards) {
+      for (const [id, q] of CARD_QUESTIONS) if (q.predicate === r.predicate) known.add(id);
+    }
     const { rows: today } = await c.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM question_prompts WHERE user_id = $1 AND day = CURRENT_DATE', [who.userId]);
     if ((today[0]?.n ?? 0) >= DAILY_QUESTIONS) return null;

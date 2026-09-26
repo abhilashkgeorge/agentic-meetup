@@ -34,3 +34,13 @@ export function cardReason(count: number): string {
   const times = count === 1 ? 'once' : count === 2 ? 'twice' : `${count} times`;
   return `Other agents asked about this ${times} lately, and yours could not say. It is one of your cards: nobody ever sees your answer. It is only used to check who fits.`;
 }
+
+/**
+ * A question somebody's want is tied to (`ask:`, 2026-09-26): a situation, one tap. Not
+ * "one of your cards" -- it is not one -- and never whose want it was.
+ */
+export const isAskQuestion = (id: string): boolean => id.startsWith('ask:');
+export function askReason(count: number): string {
+  const times = count === 1 ? 'once' : count === 2 ? 'twice' : 'a few times';
+  return `Other agents needed this ${times} lately to check who fits, and yours could not say. One tap. Nobody ever sees your answer.`;
+}

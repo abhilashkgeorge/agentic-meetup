@@ -18,7 +18,7 @@ import {
   Button, Card, Field, Header, Screen, ScreenTitle, Skeleton, space, type, usePalette,
 } from '../../components/ui';
 import { canSave, contactNote, tooShort } from '../stories/stories-state';
-import { cardReason, questionReason, unusedNote } from './question-state';
+import { askReason, cardReason, isAskQuestion, questionReason, unusedNote } from './question-state';
 
 export default function QuestionScreen() {
   const p = usePalette();
@@ -80,8 +80,10 @@ export default function QuestionScreen() {
           <Card>
             <Text style={[type.label, { color: p.textSecondary }]}>{q.card.topic.toUpperCase()}</Text>
             <Text style={[type.title, { color: p.text }]}>{q.ask}</Text>
-            <Text style={[type.callout, { color: p.textSecondary }]}>{cardReason(q.count)}</Text>
-            <Button label="Answer the card" variant="primary"
+            <Text style={[type.callout, { color: p.textSecondary }]}>
+              {isAskQuestion(q.id) ? askReason(q.count) : cardReason(q.count)}
+            </Text>
+            <Button label={isAskQuestion(q.id) ? 'Answer it' : 'Answer the card'} variant="primary"
                     onPress={() => router.replace({ pathname: '/onboarding/interview', params: { card: q.card!.id, qotd: q.id } })} />
             <Button label="Not now" variant="ghost" onPress={() => void skip()} />
           </Card>

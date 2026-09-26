@@ -64,6 +64,7 @@ const BY_QUESTION = new Map(WANT_QUESTIONS.map((w) => [w.questionId, w]));
 export const QUESTION_BY_PREDICATE: ReadonlyMap<string, Question> =
   new Map(WANT_QUESTIONS.map((w) => [BY_ID.get(w.questionId)!.predicate, BY_ID.get(w.questionId)!]));
 export const WANT_QUESTION_PREDICATES: ReadonlySet<string> = new Set(QUESTION_BY_PREDICATE.keys());
+export const WANT_QUESTION_IDS: ReadonlySet<string> = new Set(WANT_QUESTIONS.map((w) => w.questionId));
 
 /**
  * A rule on a question's answer, said with that question's own labels: "Money: Saved or

@@ -53,8 +53,8 @@ import { compareSheets, practiceSheet, readSheets } from './answer-sheet.js';
 import {
   TALK_SENTENCES, TALK_SOURCES, agentTalk, practiceSentences, talkFor, talkOn,
 } from './talk.js';
-import { cantCheck, cardAnswers, checkShortlist, checkWants, demote, loadWants, notMetCounts, wantRows } from './wants.js';
-import { recordUnknowns, unknownCardsOf, unknownsOf } from './unknowns.js';
+import { cantCheck, cardAnswers, checkShortlist, checkWants, demote, loadWants, notMetCounts, tagsOfPeople, wantRows } from './wants.js';
+import { recordUnknowns, unknownAsksOf, unknownCardsOf, unknownsOf } from './unknowns.js';
 import { voiceText } from '../memory/profile.js';
 import { agentRef, notify } from './world.js';
 import { ANSWER_BY, expireDue } from './expiry.js';
@@ -369,7 +369,10 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       // no wants.
       const wantsB = pair.b.synthetic ? [] : await loadWants(pair.b);
       const bChecked = wantsB.length
-        ? await checkWants(spender, wantsB, [sentencesA], [(await cardAnswers([plan.a.userId])).get(plan.a.userId) ?? null])
+        ? await checkWants(spender, wantsB, [sentencesA], [(await cardAnswers([plan.a.userId])).get(plan.a.userId) ?? null],
+            // Their tags too: a want tied to a many-answer question (the field you work
+            // in) is read from them. Without these it could never be checked this way.
+            [(await tagsOfPeople([plan.a.userId])).get(plan.a.userId) ?? null])
         : null;
       const briefs = composeBoth(
         { card: plan.a.card, tags: plan.a.tags, quotes: quotesA },
@@ -390,9 +393,11 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       const talked = unknownsOf(talkFor(said.talk, 'a'), qaA, qaB);
       // And the CARDS a want could not read: A's private wants against B's card answers
       // are B's gaps, and B's against A's are A's (unknowns.ts CARD_QUESTIONS).
+      // And the QUESTIONS a tied want could not read (want-questions.ts): the same rule --
+      // A's want, B's unanswered question, B's gap.
       const gaps = {
-        a: [...talked.a, ...unknownCardsOf(bChecked?.results[0])],
-        b: [...talked.b, ...unknownCardsOf(pre?.byId.get(pair.b.userId))],
+        a: [...talked.a, ...unknownCardsOf(bChecked?.results[0]), ...unknownAsksOf(bChecked?.results[0])],
+        b: [...talked.b, ...unknownCardsOf(pre?.byId.get(pair.b.userId)), ...unknownAsksOf(pre?.byId.get(pair.b.userId))],
       };
       const o = { pair, runs, ok, briefs, jevScore: jev.score, jevCost: jev.costUsd, talkCost: said.costUsd,
                   wantCost: bChecked?.costUsd ?? 0, gaps };
