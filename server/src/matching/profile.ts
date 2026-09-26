@@ -17,7 +17,7 @@ import { MIN_AGE, POOL_REQUIRED, canFilterOn, findArea, haversineKm, nearestArea
 // and importing a second one under the same name silently shadowed it, emptying
 // `missing` for every profile. tsc accepted it; a test caught it.
 import { REQUIRED as REQUIRED_CONSENTS } from '../api/consent.js';
-import { CORE_CARDS } from '../onboarding/questions.js';
+import { CORE_CARDS, mustHaveAllowed } from '../onboarding/questions.js';
 
 export interface RebuildResult {
   matchable: number;
@@ -378,6 +378,11 @@ export async function setPreference(
   // everyone, silently, for ever. The person believed they had drawn a line. Nothing
   // had. Saying so at the moment they draw it is the only honest response.
   if (pref.strength === 'dealbreaker' && !canFilterOn(pref.predicate)) {
+    throw new PreferenceCannotFilter(pref.predicate);
+  }
+  // Only on a tapped answer (questions.ts mustHaveAllowed): a must-have that could hide
+  // somebody over a sentence the extractor misread is refused, not stored.
+  if (pref.strength === 'dealbreaker' && !mustHaveAllowed(pref.predicate)) {
     throw new PreferenceCannotFilter(pref.predicate);
   }
   await c.query(

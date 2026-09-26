@@ -20,6 +20,7 @@ import { liveCard, plainCard, readBrief, sentenceKey } from '../matching/brief.j
 import { expireDue } from '../matching/expiry.js';
 import { roundRecap } from '../matching/recap.js';
 import { ruleLabel } from '../matching/want-questions.js';
+import { mustHaveAllowed } from '../onboarding/questions.js';
 import { lookOf, looksFor } from '../looks/store.js';
 import { award } from '../points/ledger.js';
 import { ANSWERS, WHY_NOT, checkinQuestions, type CheckinQuestion, type Shown } from '../checkin/questions.js';
@@ -433,6 +434,8 @@ export const datingRoutes = new Hono()
         predicate: r.predicate,
         // A want's rule reads with its question's own words (want-questions.ts).
         label: (r.operator === 'in' ? ruleLabel(r.predicate, r.value) : null) ?? phrase(r.predicate, r.operator, r.value),
+        // Whether "Must have" is offered at all: only on a tapped answer.
+        mustHave: canFilterOn(r.predicate) && mustHaveAllowed(r.predicate),
         strength: r.strength,
         sourceQuote: r.source_quote,
       })),
@@ -462,6 +465,14 @@ export const datingRoutes = new Hono()
         return c.json({
           error: 'cannot_filter',
           message: 'That one cannot rule anybody out. It can only move people up or down.',
+        }, 400);
+      }
+      // ONLY ON A TAPPED ANSWER (questions.ts mustHaveAllowed): this field can also come
+      // from what people say in chat, and a must-have must never hide somebody over that.
+      if (pred && !mustHaveAllowed(pred)) {
+        return c.json({
+          error: 'not_tapped',
+          message: 'This one can only move people up or down. A must-have only hides someone over an answer they tapped, and people also say this one in chat.',
         }, 400);
       }
     }

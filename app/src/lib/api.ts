@@ -750,14 +750,33 @@ export interface Preference {
   label: string;
   strength: 'dealbreaker' | 'strong' | 'mild';
   sourceQuote: string;
+  /**
+   * Whether "Must have" is offered: only on an answer people tap (server questions.ts
+   * mustHaveAllowed). Optional only so an older server's list still draws.
+   */
+  mustHave?: boolean;
 }
 
 export const getPreferences = (token: string) =>
   get<{ preferences: Preference[] }>('/v1/preferences', token);
 
 /** Moving something between must-have and want is the main lever on pool size. */
-export const setPreferenceStrength = (token: string, id: string, strength: string) =>
-  post<{ ok: boolean; total: number | null }>('/v1/preferences/strength', token, { id, strength });
+export async function setPreferenceStrength(
+  token: string, id: string, strength: string,
+): Promise<{ ok: true; total: number | null } | { ok: false; message: string } | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/v1/preferences/strength`, {
+      method: 'POST',
+      headers: { ...BASE_HEADERS, 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id, strength }),
+    });
+    const body = (await res.json()) as { total?: number | null; message?: string };
+    // A refusal says why -- "only on a tapped answer" -- instead of doing nothing.
+    return res.ok ? { ok: true, total: body.total ?? null } : { ok: false, message: body.message ?? 'That did not change.' };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The second row of a core card: who you would be fine with.

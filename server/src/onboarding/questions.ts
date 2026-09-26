@@ -409,5 +409,17 @@ export const TAPPED_PREDICATES: ReadonlySet<string> = new Set([
   ...SITUATION_PREDICATES.map((p) => p.name),
 ]);
 
+/**
+ * WHETHER A RULE ON THIS FIELD MAY BE A MUST-HAVE (the founder, 2026-09-26: "only on
+ * tapped answers"). A must-have hides people, so it may only test an answer the person
+ * TAPPED: the basics, the cards and the situations, which a sentence can never set
+ * (above). Not the field you work in, exercise, sleep or moving cities -- those are also
+ * filled from what people say in chat, read by the extractor, and a wrong reading there
+ * would hide somebody for good with nobody knowing. Those rules move people up or down.
+ */
+export function mustHaveAllowed(predicate: string): boolean {
+  return TAPPED_PREDICATES.has(predicate);
+}
+
 /** The situation questions, in bank order. */
 export const SITUATIONS: readonly Question[] = QUESTIONS.filter((q) => q.tier === 'situation');

@@ -566,6 +566,13 @@ When the other person has never answered a tied want's question, that is their g
 (`ask:<question>` in `unknown_asks`) and becomes their question of the day: "Other agents
 needed this lately to check who fits… One tap. Nobody ever sees your answer." It opens the
 question by its id, one tap answers it, and whose want it was is never said.
+**Must have only on a tapped answer** (2026-09-26). "Must have" hides people, so it is
+offered only on a field people TAP -- the basics, the cards, the situations
+(`questions.ts mustHaveAllowed`) -- and refused, with the reason, on fields people also
+fill by talking (the field you work in, exercise, sleep, moving cities): a misread
+sentence there would hide somebody for good. Unanswered still hides nobody (0020). The
+pool on "What you're looking for" says how many fit all the must-haves, "Under 20" when
+it is small, and suggests turning one into a want.
 
 ## 7d. The question of the day -- asking the person what their agent could not answer
 

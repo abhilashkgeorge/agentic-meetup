@@ -21,7 +21,7 @@ import { tenantSession, type TenantCtx } from '../db/client.js';
 import { setPreference } from '../matching/profile.js';
 import { loadWants } from '../matching/wants.js';
 import { WANT_QUESTION_PREDICATES, questionForWant, wantQuestion } from '../matching/want-questions.js';
-import { BY_ID } from '../onboarding/questions.js';
+import { BY_ID, mustHaveAllowed } from '../onboarding/questions.js';
 
 async function ctxOf(header: string | undefined): Promise<TenantCtx | null> {
   try {
@@ -94,10 +94,12 @@ export const wantRoutes = new Hono()
         [ctx.userId, want, [...WANT_QUESTION_PREDICATES]]);
       // EVERY ANSWER TICKED IS NO RULE: it accepts everybody.
       if (ticked.length === values.size) return;
+      // A re-tick keeps the strength they chose on "What you're looking for" -- except a
+      // must-have moved onto a question that cannot carry one (not tapped-only).
+      const kept = (before?.strength as 'dealbreaker' | 'strong' | 'mild' | undefined) ?? 'strong';
       await setPreference(db, ctx, {
         predicate: wq.question.predicate, operator: 'in', value: ticked,
-        // A re-tick keeps the strength they chose on "What you're looking for".
-        strength: (before?.strength as 'dealbreaker' | 'strong' | 'mild' | undefined) ?? 'strong',
+        strength: kept === 'dealbreaker' && !mustHaveAllowed(wq.question.predicate) ? 'strong' : kept,
         sourceQuote: want,
       });
     });

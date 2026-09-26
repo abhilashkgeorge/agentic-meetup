@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { getPool, getPreferences, getWants, setPreferenceStrength, type PoolStep, type Preference } from '../../lib/api';
 import { WantsCard } from './wants-card';
+import { NOT_A_MUST_HAVE, STRENGTHS, strengthsFor } from './strengths';
 import type { WantView } from './wants-state';
 import { countLabel, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
@@ -24,11 +25,6 @@ import {
   Skeleton, space, type, usePalette,
 } from '../../components/ui';
 
-const STRENGTHS = [
-  { value: 'dealbreaker', label: 'Must have' },
-  { value: 'strong', label: 'Really want' },
-  { value: 'mild', label: 'Nice to have' },
-] as const;
 
 export default function PreferencesScreen() {
   const p = usePalette();
@@ -50,11 +46,14 @@ export default function PreferencesScreen() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Why a change was refused, shown under that rule (a must-have on a field chat fills).
+  const [refused, setRefused] = useState<{ id: string; message: string } | null>(null);
   const change = useCallback(async (id: string, strength: string) => {
     if (!token) return;
     setBusy(id);
-    await setPreferenceStrength(token, id, strength);
+    const r = await setPreferenceStrength(token, id, strength);
     setBusy(null);
+    setRefused(r && !r.ok ? { id, message: r.message } : null);
     // Reloaded rather than patched locally, because the pool number is the point and
     // a stale count here would be worse than a moment of loading.
     void load();
@@ -151,12 +150,18 @@ export default function PreferencesScreen() {
                 {i > 0 && <Crease />}
                 <Text style={[type.body, { color: p.text }]}>{x.label}</Text>
                 <ChipGroup>
-                  {STRENGTHS.map((s) => (
+                  {strengthsFor(x).map((s) => (
                     <Chip key={s.value} label={s.label} selected={x.strength === s.value}
                           disabled={busy === x.id}
                           onPress={() => void change(x.id, s.value)} />
                   ))}
                 </ChipGroup>
+                {x.mustHave === false && (
+                  <Text style={[type.callout, { color: p.textTertiary }]}>{NOT_A_MUST_HAVE}</Text>
+                )}
+                {refused?.id === x.id && (
+                  <Text style={[type.callout, { color: p.warning }]}>{refused.message}</Text>
+                )}
               </View>
             ))
           )}
