@@ -165,7 +165,11 @@ describe('the matches list', () => {
       headline: PLAIN_HEADLINE, line: BRIEF_LINE, shared: [], work: [], quotes: [], opener: null,
       waitingOnYou: false, waitingOnThem: true,
     });
-    expect(JSON.stringify(waiting)).not.toMatch(/30|long-term|pottery/);
+    // WITHOUT THE ID AND THE CHARACTER: a random uuid holds "30" about one run in ten
+    // ("a86f4ef8-1c30-..."), and this failed on exactly that on 2026-09-26 -- the age it
+    // looks for, found inside an id that says nothing about anybody.
+    const { id: _id, look: _look, ...shown } = waiting!;
+    expect(JSON.stringify(shown)).not.toMatch(/30|long-term|pottery/);
 
     // They say yes: now it is my turn, and the card is the one that was written.
     await owner.query(

@@ -583,6 +583,12 @@ http://localhost:8788; three big buttons, keys 1/2/3, 0 to go back -- into `labe
 against the 90% target, with the misses. A full run is 30 calls, about $0.04. Tapped
 checks are compared by code and are not part of this number.
 
+**Were they like their answers?** (2026-09-26). The after-date check-in adds, for a want
+tied to a question that the reader's card showed as "Matches": "You wanted “<their own
+words>”. Did they seem that way?" (or "Were they fine on that?" for a could-not-be-with).
+Nothing the card had not already said; stored with the check-in as `want:<question>`.
+`scripts/compare-scorers.ts` prints, by topic, how many said no -- where people fudge.
+
 ## 7d. The question of the day -- asking the person what their agent could not answer
 
 `server/src/matching/unknowns.ts` · migration `0062` · asked for by the founder on

@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { MIN_AGE, ageFromYear, deriveValue, findArea, findPlace, isAdult, canFilterOn, type Look } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
-import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
+import { matchSession, matchmakerSession, tenantSession, type TenantCtx } from '../db/client.js';
 import { commit } from '../memory/facts.js';
 import { poolNow, rebuildMatchProfile, shouldAskArea, touchActive } from '../matching/profile.js';
 import { candidateCount, poolBreakdown, shownBreakdown, shownCount } from '../matching/candidates.js';
@@ -20,6 +20,7 @@ import { liveCard, plainCard, readBrief, sentenceKey } from '../matching/brief.j
 import { expireDue } from '../matching/expiry.js';
 import { roundRecap } from '../matching/recap.js';
 import { ruleLabel } from '../matching/want-questions.js';
+import { loadWants } from '../matching/wants.js';
 import { mustHaveAllowed } from '../onboarding/questions.js';
 import { lookOf, looksFor } from '../looks/store.js';
 import { award } from '../points/ledger.js';
@@ -196,6 +197,20 @@ async function checkinSeat(db: PoolClient, id: string, me: string) {
     [id, me],
   );
   return rows[0] ?? null;
+}
+
+/**
+ * The reader's wants their card for this match showed as "Matches", each tied to its
+ * question: what the check-in may ask about in their own words (checkin/questions.ts).
+ * Read from their own brief -- what they were shown -- and their own tied wants.
+ */
+async function matchedWants(ctx: TenantCtx, rendezvousId: string): Promise<{ key: string; text: string; kind: 'wants' | 'not' }[]> {
+  const rows = await tenantSession(ctx, async (db) => (await db.query<{ overlap_quotes: { wants?: { want: string; kind: 'wants' | 'not'; status: string }[] } | null }>(
+    'SELECT overlap_quotes FROM rendezvous_briefs WHERE rendezvous_id = $1 AND for_user = $2', [rendezvousId, ctx.userId])).rows);
+  const shown = (rows[0]?.overlap_quotes?.wants ?? []).filter((w) => w.status === 'met');
+  if (!shown.length) return [];
+  const tied = new Map((await loadWants(ctx)).filter((w) => w.ask).map((w) => [w.text, w.ask!.questionId]));
+  return shown.filter((w) => tied.has(w.want)).map((w) => ({ key: `want:${tied.get(w.want)}`, text: w.want, kind: w.kind }));
 }
 
 export const datingRoutes = new Hono()
@@ -710,7 +725,7 @@ export const datingRoutes = new Hono()
     let questions: CheckinQuestion[] = [];
     if (state === 'ask' && seat.met) {
       const other = await otherOf(id, ctx.userId, practice);
-      if (other) questions = checkinQuestions(revealOf(other, practice, seat.photos > 0).shown);
+      if (other) questions = checkinQuestions({ ...revealOf(other, practice, seat.photos > 0).shown, wants: await matchedWants(ctx, id) });
     }
     return c.json({ state, met: seat.met, practice, questions, whyNot: WHY_NOT, again: seat.again });
   })
@@ -741,7 +756,7 @@ export const datingRoutes = new Hono()
       // have one -- those are the ones that count for anybody.
       const other = await otherOf(id, ctx.userId, practice);
       if (!other) return c.json({ error: 'not found' }, 404);
-      const questions = checkinQuestions(revealOf(other, practice, seat.photos > 0).shown);
+      const questions = checkinQuestions({ ...revealOf(other, practice, seat.photos > 0).shown, wants: await matchedWants(ctx, id) });
       const allowed = new Set(questions.map((q) => q.key));
       for (const k of Object.keys(body.data.answers)) if (!allowed.has(k)) return c.json({ error: 'unknown_question', key: k }, 400);
       for (const q of questions) if (q.identity && !(q.key in body.data.answers)) return c.json({ error: 'missing_answer', key: q.key }, 400);

@@ -66,7 +66,8 @@ export async function main(
     out(`agreed           : ${score.agree}   ${score.rate === null ? '' : `${(score.rate * 100).toFixed(1)}%`}   target ${TARGET * 100}%  ${score.meetsTarget ? 'MET' : 'NOT MET'}`);
     out(`spent            : $${run.costUsd.toFixed(4)}`);
     for (const m of score.misses.slice(0, 15)) out(`  ${m.id}: marked ${m.marked}, check said ${m.got}`);
-    const dir = join(import.meta.dirname, 'results');
+    // A test points this at scratch, so even a broken gate never writes into the repo.
+    const dir = process.env.WANT_RESULTS_DIR ?? join(import.meta.dirname, 'results');
     mkdirSync(dir, { recursive: true });
     const file = join(dir, `${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`);
     writeFileSync(file, `${JSON.stringify({ model, ...score, costUsd: run.costUsd, failed: run.failed }, null, 2)}\n`);

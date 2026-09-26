@@ -18,6 +18,12 @@ export interface Shown {
   /** Raw `prefix:value` tags as the reveal selected them, before it flattened the words. */
   tags: string[];
   photosVisible: boolean;
+  /**
+   * The reader's OWN wants that their card showed as "Matches" -- tied to a question the
+   * other person answered (want-questions.ts). Their own words, and nothing the card had
+   * not already said: that the answer matched.
+   */
+  wants?: readonly { key: string; text: string; kind: 'wants' | 'not' }[];
 }
 
 export interface CheckinQuestion {
@@ -33,6 +39,7 @@ export const IDENTITY_KEYS = ['photos', 'age', 'name', 'city'] as const;
 export const WHY_NOT = ['plans_fell_through', 'stopped_replying', 'changed_my_mind', 'other'] as const;
 const MAX_QUESTIONS = 6;
 const MAX_TAGS = 2;
+const MAX_WANTS = 2;
 
 export function checkinQuestions(s: Shown): CheckinQuestion[] {
   const out: CheckinQuestion[] = [];
@@ -40,6 +47,16 @@ export function checkinQuestions(s: Shown): CheckinQuestion[] {
   if (s.age) out.push({ key: 'age', text: `Did they seem about ${s.age}?`, identity: true });
   if (s.name && s.name !== 'Someone') out.push({ key: 'name', text: `Did they go by ${s.name}?`, identity: true });
   if (s.livesIn) out.push({ key: 'city', text: `Do they live around ${s.livesIn}?`, identity: true });
+  // WERE THEY LIKE THEIR ANSWERS? (the founder, 2026-09-26: "that tells you where people
+  // fudge"). Asked in the reader's own words, about a want their card said matched.
+  for (const w of (s.wants ?? []).slice(0, MAX_WANTS)) {
+    if (out.length >= MAX_QUESTIONS) break;
+    out.push({
+      key: w.key,
+      text: w.kind === 'not' ? `You didn't want “${w.text}”. Were they fine on that?` : `You wanted “${w.text}”. Did they seem that way?`,
+      identity: false,
+    });
+  }
   let tags = 0;
   for (const t of s.tags) {
     if (out.length >= MAX_QUESTIONS || tags >= MAX_TAGS) break;

@@ -38,7 +38,12 @@ vi.mock('../src/llm/index.js', async (importOriginal) => {
 // The page writes marks; this points it at a scratch file, never the real one.
 const dir = mkdtempSync(join(tmpdir(), 'want-labels-'));
 process.env.WANT_LABELS_PATH = join(dir, 'labels.json');
-afterAll(() => { rmSync(dir, { recursive: true, force: true }); delete process.env.WANT_LABELS_PATH; });
+process.env.WANT_RESULTS_DIR = join(dir, 'results');
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.WANT_LABELS_PATH;
+  delete process.env.WANT_RESULTS_DIR;
+});
 
 const { EVAL_PAIRS, EVAL_WANTS } = await import('../evals/wants/pairs.js');
 const { agreement, plan, readLabels, TARGET } = await import('../evals/wants/accuracy.js');

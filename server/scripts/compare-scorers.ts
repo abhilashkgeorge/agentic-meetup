@@ -28,6 +28,7 @@
 import { Pool } from 'pg';
 import { env } from '../src/env.js';
 import { auc, aucStandardError, pairOutcome, seeAgainOutcome, type SeeAgain } from '../src/matching/evaluate.js';
+import { WANT_QUESTIONS } from '../src/matching/want-questions.js';
 
 const includeSynthetic = process.argv.includes('--all');
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
@@ -63,8 +64,8 @@ const { rows } = await owner.query<Row>(`
 
 // The check-ins, for "would you see them again". Read raw, not through
 // checkin_mutual_again: that helper counts no answer as no (see seeAgainOutcome).
-const { rows: checkins } = await owner.query<{ rendezvous_id: string; met: boolean; see_again: boolean | null }>(
-  'SELECT rendezvous_id, met, see_again FROM date_checkins');
+const { rows: checkins } = await owner.query<{ rendezvous_id: string; met: boolean; see_again: boolean | null; answers: Record<string, string> | null }>(
+  'SELECT rendezvous_id, met, see_again, answers FROM date_checkins');
 await owner.end();
 
 const pairs = rows.filter((r) => includeSynthetic || !r.synthetic);
@@ -139,3 +140,23 @@ if (introduced.length) {
   console.log(`  see-again rate, all introduced: ${(tally.again / introduced.length * 100).toFixed(0)}%`
     + `  (response rate ${(answered / introduced.length * 100).toFixed(0)}%)`);
 }
+
+// WHERE PEOPLE FUDGE (the founder, 2026-09-26): after a date, "You wanted <their own
+// words>. Did they seem that way?" -- asked only about a want their card said matched.
+// A "no" is somebody whose answer did not survive meeting them. By topic, counts only.
+const about = new Map(WANT_QUESTIONS.map((w) => [`want:${w.questionId}`, w.about]));
+const fudge = new Map<string, { asked: number; no: number }>();
+for (const c of checkins) {
+  for (const [k, v] of Object.entries(c.answers ?? {})) {
+    const topic = about.get(k);
+    if (!topic || v === 'unsure') continue;
+    const t = fudge.get(topic) ?? { asked: 0, no: 0 };
+    t.asked++;
+    if (v === 'no') t.no++;
+    fudge.set(topic, t);
+  }
+}
+console.log();
+console.log('after a date, "did they seem that way?" about a matched want:');
+if (!fudge.size) console.log('  nothing answered yet');
+for (const [topic, t] of fudge) console.log(`  ${topic.padEnd(14)}: ${t.no} of ${t.asked} said no`);
