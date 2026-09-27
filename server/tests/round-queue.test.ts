@@ -149,12 +149,20 @@ async function cardsOf(token: string): Promise<string[]> {
   return ((await res.json()) as { matches: { id: string }[] }).matches.map((m) => m.id);
 }
 
-/** Run the worker until this person's round is finished, or give up. */
+/**
+ * Run this person's round until it is finished, or give up.
+ *
+ * BY ITS ID, NEVER "THE OLDEST". Test files run in parallel on one database, and the
+ * worker's own claim -- no id -- takes the oldest queued round there is, which is often
+ * another file's. It ran targeted-round.test.ts's round from here, and that file's own
+ * claim then found nothing (2026-09-28). The worker's claim is tested once, below, on
+ * a round made the oldest on purpose.
+ */
 async function drainFor(me: Ctx, ticks = 10) {
   for (let i = 0; i < ticks; i++) {
     const r = await tenantSession(me, (c) => latestRound(c, me.userId));
-    if (r && (r.status === 'done' || r.status === 'failed')) return r;
-    if (!(await runOneQueuedRound())) break;
+    if (!r || r.status === 'done' || r.status === 'failed') return r;
+    if (!(await runOneQueuedRound(r.id))) break;
   }
   return tenantSession(me, (c) => latestRound(c, me.userId));
 }
@@ -265,13 +273,39 @@ describe('the queue', () => {
   it('is drained by the worker, which writes the result back', async () => {
     const { me } = await scene();
     const q = await enqueueRound(me);
-    const done = await drainFor(me);
+    // The worker's own claim, with no id, takes the oldest queued round in the
+    // database. Backdated, this one is that -- so the claim is tested without taking
+    // a round another file is about to run.
+    await owner.query(`UPDATE rounds SET requested_at = '2000-01-01' WHERE id = $1`, [q.id]);
+    expect(await runOneQueuedRound()).toBe(true);
+    const done = await tenantSession(me, (c) => latestRound(c, me.userId));
     expect(done?.id).toBe(q.id);
     expect(done?.status).toBe('done');
     expect(done?.error).toBeNull();
     expect(done?.result?.metAll.length).toBe(CANDIDATES_PER_ROUND);
-    // And with nothing queued the worker says so, rather than spinning.
-    expect(await runOneQueuedRound()).toBe(false);
+    // And a finished round is not claimed again: the worker says so, rather than spinning.
+    expect(await runOneQueuedRound(q.id)).toBe(false);
+  });
+
+  it('drains only its own round, never another file’s', async () => {
+    // Another file's queued round, older than ours: exactly what a claim with no id
+    // takes first. Its person meets nobody, so a claim of it here changes nothing else.
+    const other = await person('other-file', { intent: [`nobody-${Date.now()}-${Math.random()}`] });
+    const { rows } = await owner.query<{ id: string }>(
+      `INSERT INTO rounds (user_id, tenant_id, status, requested_at)
+       VALUES ($1, $2, 'queued', '1999-01-01') RETURNING id`, [other.userId, other.tenantId]);
+    const theirs = rows[0]!.id;
+    try {
+      const { me } = await scene();
+      const mine = await enqueueRound(me);
+      expect((await drainFor(me))?.id).toBe(mine.id);
+      const { rows: after } = await owner.query<{ status: string }>('SELECT status FROM rounds WHERE id = $1', [theirs]);
+      expect(after[0]!.status, 'another file’s round was run from here').toBe('queued');
+    } finally {
+      // Out of the queue, so no later claim with no id meets it.
+      await owner.query(`UPDATE rounds SET status = 'failed', finished_at = now(), error = 'test fixture'
+                          WHERE id = $1 AND status = 'queued'`, [theirs]);
+    }
   });
 
   /**
