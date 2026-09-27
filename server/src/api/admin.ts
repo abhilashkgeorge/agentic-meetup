@@ -24,6 +24,7 @@ import { adminSession, matchmakerSession } from '../db/client.js';
 import { env } from '../env.js';
 import { hide, unhide } from '../photos/store.js';
 import { log } from '../log.js';
+import { wantGaps } from '../matching/want-gaps.js';
 
 const admins = (): Set<string> =>
   new Set(env.ADMIN_USER_IDS.split(',').map((s) => s.trim()).filter(Boolean));
@@ -256,6 +257,20 @@ export const adminRoutes = new Hono()
     const ctx = await reviewer(c.req.header('authorization'));
     if (!ctx) return c.json({ error: 'not found' }, 404);
     return c.json({ admin: true });
+  })
+
+  /**
+   * The wants no question fits, most people first (0072, 2026-09-28): which situation
+   * questions to add next. One person's want leaves as its topic words, never their
+   * sentence (matching/want-gaps.ts).
+   */
+  .get('/v1/admin/unmatched-wants', async (c) => {
+    const ctx = await reviewer(c.req.header('authorization'));
+    if (!ctx) return c.json({ error: 'not found' }, 404);
+    const rows = await matchmakerSession(async (db) =>
+      (await db.query<{ user_id: string; text: string }>('SELECT user_id, text FROM founder_unmatched_wants()')).rows);
+    const g = wantGaps(rows);
+    return c.json({ wants: g.wants.slice(0, 50), topics: g.topics.slice(0, 30) });
   })
 
   /**

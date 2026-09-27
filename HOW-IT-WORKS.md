@@ -648,6 +648,13 @@ pair counts only when both people are REAL: not invented, signed in on a phone a
 once, and not a test fixture (an `@example.test` address). "Met" is either check-in:
 "did you meet" or the after-date one.
 
+Below it, **wants with no question yet** (0072, 2026-09-28): the wants a situation
+question does not cover, most people first -- which questions to add next
+(`matching/want-gaps.ts`). Two ways of saying one want count once per person; private
+topics and wants a question covers are left out. A want only one person has shows as its
+topic words, never their sentence ("Nobody else has ever seen what your clone knows");
+one two or more people share shows whole.
+
 ## 8. The scorers, measured against each other
 
 What each pair carries before any human looks:

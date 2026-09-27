@@ -7,17 +7,21 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { getFunnel } from '../../lib/api';
+import { getFunnel, getUnmatchedWants } from '../../lib/api';
 import { useSession } from '../../store/session';
 import { Card, Header, Row, Screen, ScreenTitle, Skeleton, space, type, usePalette } from '../../components/ui';
-import { funnelRows, type Funnel } from './funnel';
+import { funnelRows, gapRows, type Funnel } from './funnel';
 
 export default function FunnelScreen() {
   const p = usePalette();
   const token = useSession((s) => s.token);
   const [f, setF] = useState<Funnel | null>(null);
+  const [gaps, setGaps] = useState<Awaited<ReturnType<typeof getUnmatchedWants>>>(null);
   const load = useCallback(async () => {
-    if (token) setF(await getFunnel(token));
+    if (!token) return;
+    const [fu, ga] = await Promise.all([getFunnel(token), getUnmatchedWants(token)]);
+    setF(fu);
+    setGaps(ga);
   }, [token]);
   useEffect(() => { void load(); }, [load]);
 
@@ -42,6 +46,19 @@ export default function FunnelScreen() {
               Invented people, test accounts and anybody who never signed in on a phone are left out.
               Met counts either check-in.
             </Text>
+            {/* Which situation questions to add next (2026-09-28). */}
+            {gaps && (
+              <Card label="WANTS WITH NO QUESTION YET">
+                {gapRows(gaps).length === 0 ? (
+                  <Text style={[type.callout, { color: p.textTertiary }]}>Every want so far fits a question.</Text>
+                ) : gapRows(gaps).map((r, i, all) => (
+                  <Row key={r.title} title={r.title} value={r.value} last={i === all.length - 1} />
+                ))}
+                <Text style={[type.callout, { color: p.textTertiary }]}>
+                  A want only one person has shows as its topic, never their words.
+                </Text>
+              </Card>
+            )}
           </>
         )}
       </View>

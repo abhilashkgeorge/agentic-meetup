@@ -962,6 +962,10 @@ export interface AdminReport {
 }
 export const isAdmin = (token: string) => get<{ admin: boolean }>('/v1/admin/me', token);
 /** The founder's funnel: counts between real people (server 0070). Null for non-reviewers. */
+/** Wants no question fits, most people first: which situation questions to add next. */
+export const getUnmatchedWants = (token: string) =>
+  get<{ wants: { want: string | null; topic: string[]; people: number }[]; topics: { word: string; people: number }[] }>(
+    '/v1/admin/unmatched-wants', token);
 export const getFunnel = (token: string) =>
   get<import('../features/admin/funnel').Funnel>('/v1/admin/funnel', token);
 export const getAdminReports = (token: string, all = false) =>

@@ -20,6 +20,18 @@ const LABEL: Record<Funnel['steps'][number]['step'], string> = {
   met: 'Met',
 };
 
+/**
+ * The wants no question fits, as rows: the most common topics first, then wants two or
+ * more people share, word for word. Ten of each at most.
+ */
+export function gapRows(g: { wants: { want: string | null; people: number }[]; topics: { word: string; people: number }[] }): { title: string; value: string }[] {
+  const n = (k: number) => `${k} ${k === 1 ? 'person' : 'people'}`;
+  return [
+    ...g.topics.slice(0, 10).map((t) => ({ title: t.word, value: n(t.people) })),
+    ...g.wants.filter((w) => w.want !== null).slice(0, 10).map((w) => ({ title: `“${w.want}”`, value: n(w.people) })),
+  ];
+}
+
 /** The steps in order, as the page lists them. Unknown steps are left out. */
 export const funnelRows = (f: Funnel): { label: string; n: number }[] =>
   f.steps.filter((s) => s.step in LABEL).map((s) => ({ label: LABEL[s.step], n: s.n }));

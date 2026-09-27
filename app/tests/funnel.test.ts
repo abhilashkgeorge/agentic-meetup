@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { funnelRows } from '../src/features/admin/funnel';
+import { funnelRows, gapRows } from '../src/features/admin/funnel';
 
 describe('Numbers', () => {
   it('lists the five steps in order, as counts', () => {
@@ -39,5 +39,19 @@ describe('Numbers', () => {
     expect(push).toBeGreaterThan(gate);
     // Inside that block: nothing closes it between the gate and the push.
     expect(src.slice(gate, push)).not.toMatch(/\n\s{10}\)\}\n/);
+  });
+});
+
+describe('wants with no question yet', () => {
+  it('lists topics first, then wants two or more people share -- never one person\u2019s want', () => {
+    const rows = gapRows({
+      topics: [{ word: 'theatre', people: 3 }, { word: 'comedy', people: 1 }],
+      wants: [{ want: 'enjoys theatre', people: 2 }, { want: null, people: 1 }],
+    });
+    expect(rows).toEqual([
+      { title: 'theatre', value: '3 people' },
+      { title: 'comedy', value: '1 person' },
+      { title: '“enjoys theatre”', value: '2 people' },
+    ]);
   });
 });
