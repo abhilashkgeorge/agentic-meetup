@@ -407,15 +407,20 @@ export const TAPPED_PREDICATES: ReadonlySet<string> = new Set([
   ...OPTIONAL_CARDS.map((id) => BY_ID.get(id)!.predicate),
   // And every situation answer: somebody's want is checked against it.
   ...SITUATION_PREDICATES.map((p) => p.name),
+  // AND EVERY OTHER FIELD A MUST-HAVE CAN DEPEND ON (the founder, 2026-09-28): the field
+  // you work in, exercise, sleep, moving cities -- the tapped questions a want can be
+  // tied to (matching/want-questions.ts). Chat still hears them; what it hears waits
+  // for the person's Yes, one at a time on the You screen, like a card. Then a
+  // must-have on them hides nobody over a sentence the extractor misread.
+  'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',
 ]);
 
 /**
  * WHETHER A RULE ON THIS FIELD MAY BE A MUST-HAVE (the founder, 2026-09-26: "only on
  * tapped answers"). A must-have hides people, so it may only test an answer the person
- * TAPPED: the basics, the cards and the situations, which a sentence can never set
- * (above). Not the field you work in, exercise, sleep or moving cities -- those are also
- * filled from what people say in chat, read by the extractor, and a wrong reading there
- * would hide somebody for good with nobody knowing. Those rules move people up or down.
+ * TAPPED or said Yes to: exactly TAPPED_PREDICATES above, where a sentence is only ever
+ * a proposal. One set for both rules, so they cannot drift: any field a must-have can
+ * depend on is a field chat cannot change without a Yes (2026-09-28).
  */
 export function mustHaveAllowed(predicate: string): boolean {
   return TAPPED_PREDICATES.has(predicate);

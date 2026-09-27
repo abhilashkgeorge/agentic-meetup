@@ -566,13 +566,17 @@ When the other person has never answered a tied want's question, that is their g
 (`ask:<question>` in `unknown_asks`) and becomes their question of the day: "Other agents
 needed this lately to check who fits… One tap. Nobody ever sees your answer." It opens the
 question by its id, one tap answers it, and whose want it was is never said.
-**Must have only on a tapped answer** (2026-09-26). "Must have" hides people, so it is
-offered only on a field people TAP -- the basics, the cards, the situations
-(`questions.ts mustHaveAllowed`) -- and refused, with the reason, on fields people also
-fill by talking (the field you work in, exercise, sleep, moving cities): a misread
-sentence there would hide somebody for good. Unanswered still hides nobody (0020). The
-pool on "What you're looking for" says how many fit all the must-haves, "Under 20" when
-it is small, and suggests turning one into a want.
+**Must have only on a tapped answer** (2026-09-26, widened 2026-09-28). "Must have" hides
+people, so it is offered only on a field whose answer the person TAPPED or said Yes to --
+the basics, the cards, the situations, and since 2026-09-28 the field you work in,
+exercise, sleep and moving cities. Chat still hears those four, but what it hears is
+staged and asked about one at a time on the You screen, like a card (0071 staged the two
+values chat had written live before). One set decides both (`TAPPED_PREDICATES` =
+`mustHaveAllowed`), so they cannot drift. A must-have on a field with several answers
+(the field you work in) reads all of them from the tags. Interests and other chat-learned
+fields still only move people up or down, and say why. Unanswered hides nobody (0020).
+The pool on "What you're looking for" says how many fit all the must-haves, "Under 20"
+when it is small, and suggests turning one into a want.
 
 **How accurate the sentence check is** (2026-09-26). `server/evals/wants/`: 300 invented
 want/sentence pairs (30 wants, none on a private topic, every sentence one the check would

@@ -17,6 +17,18 @@
  * exclusion that must hold whichever clauses are switched on.
  */
 import type { PoolClient } from 'pg';
+import { CORE_PREDICATES } from '@clone/shared';
+
+/**
+ * The fields that hold several answers (the field you work in). A must-have on one is
+ * read from the tags, which hold every answer -- traits keep only one (0071). Names from
+ * the shared vocabulary, so this SQL fragment carries no user input.
+ */
+const MANY = `ARRAY[${CORE_PREDICATES.filter((p) => p.cardinality === 'multi').map((p) => `'${p.name}'`).join(',')}]::text[]`;
+const passes = (other: string) =>
+  `(CASE WHEN p.predicate = ANY(${MANY})
+         THEN match_pref_satisfied_multi(p.predicate, p.operator, p.value, ${other}.attribute_tags)
+         ELSE match_pref_satisfied(p.operator, p.value, ${other}.traits -> p.predicate) END)`;
 
 const BASE = `
   FROM match_profile a, match_profile b
@@ -70,15 +82,17 @@ export const CLAUSES: Record<string, string> = {
   // `retired_at IS NULL` is spelled out. clone_match's policy already hides retired
   // rows; clone_matchmaker's does not (0028), so without this the pool count and the
   // round that actually sends the agent out disagreed about who was excluded.
+  // A field with several answers is read from the tags (0071): "must work in AI" passes
+  // somebody in software AND AI, whichever of the two traits happens to hold.
   dealbreakers: `
    AND NOT EXISTS (
      SELECT p.id FROM preferences p
       WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL
-        AND NOT match_pref_satisfied(p.operator, p.value, b.traits -> p.predicate))
+        AND NOT ${passes('b')})
    AND NOT EXISTS (
      SELECT p.id FROM preferences p
       WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL
-        AND NOT match_pref_satisfied(p.operator, p.value, a.traits -> p.predicate))`,
+        AND NOT ${passes('a')})`,
 
   active: `
    AND b.last_active_at > now() - interval '60 days'`,

@@ -10,17 +10,14 @@
  *   - a must-have on a situation answer ("Money: Saved or invested") hides the person who
  *     answered "a treat", keeps the one who answered "saved", and keeps the one who never
  *     answered -- unknown is never a mismatch;
- *   - it is refused on a field people also fill by talking (the field you work in): the
- *     route says why, the rule stays a want, and "Must have" is not offered for it;
- *   - a want moved onto such a question does not carry a must-have with it.
+ *   - it is refused on a field chat changes without asking (interests): the route says
+ *     why, the rule stays a want, and "Must have" is not offered for it;
+ *   - it IS offered on every question a want can be tied to -- the work field included,
+ *     since 2026-09-28 chat changes to those wait for a Yes (must-have-fields.test.ts).
  *
- * Negative controls, run 2026-09-26, each restored byte-identical:
- *   - mustHaveAllowed true for everything              -> "refused" and "does not
- *     travel" fail
+ * Negative controls, run 2026-09-26 and again 2026-09-28, each restored byte-identical:
+ *   - mustHaveAllowed true for everything              -> "refused" fails
  *   - the strength route without the tapped check      -> "refused" fails
- *   - the wants route keeping a must-have on a re-tie   -> "does not travel" fails
- * The never-answered person is kept by match_pref_satisfied's unknown rule (0020); this
- * file asserts it, it does not re-control it.
  */
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { Pool } from 'pg';
@@ -109,13 +106,15 @@ describe('a must-have', () => {
     expect(after, 'someone who never answered was hidden').toContain(never.userId);
   });
 
-  it('is refused on a field people also fill by talking, and is not offered there', async () => {
+  it('is refused on a field chat changes without asking, and is not offered there', async () => {
+    // Interests are learned from chat as they are said -- not a field that waits for a
+    // Yes -- so a rule on one may rank but never hide anybody.
     const me = await person('me2', { gender: 'man', seeking_gender: ['woman'], intent: [`mh2-${Math.random()}`] });
-    const AI = 'Software engineer working on AI';
-    await said(me, AI);
-    expect((await tie(me, AI, 'q-works-in', ['ai'])).status).toBe(200);
-    const rule = (await prefs(me)).find((r) => r.predicate === 'works_in')!;
-    expect(rule.mustHave, '"Must have" offered on a field chat fills').toBe(false);
+    const { rows } = await owner.query<{ id: string }>(
+      `INSERT INTO preferences (tenant_id, user_id, predicate, operator, value, strength, source_quote)
+       VALUES ($1,$2,'interest','in','["hiking"]','strong','Someone who hikes') RETURNING id`, [me.tenantId, me.userId]);
+    const rule = (await prefs(me)).find((r) => r.id === rows[0]!.id)!;
+    expect(rule.mustHave, '"Must have" offered on a field chat fills without asking').toBe(false);
     const res = await strength(me, rule.id, 'dealbreaker');
     expect(res.status).toBe(400);
     expect(((await res.json()) as { message: string }).message).toMatch(/tapped/);
@@ -125,15 +124,13 @@ describe('a must-have', () => {
       predicate: 'interest', operator: 'in', value: ['hiking'], strength: 'dealbreaker' }))).rejects.toBeInstanceOf(PreferenceCannotFilter);
   });
 
-  it('does not travel with a want moved onto a question that cannot carry it', async () => {
+  it('is offered on every question a want can be tied to (2026-09-28: the work field too)', async () => {
     const me = await person('me3', { gender: 'man', seeking_gender: ['woman'], intent: [`mh3-${Math.random()}`] });
-    const W = 'Someone into travel and money-smart';
-    await said(me, W);
-    await tie(me, W, 'sit-windfall', ['save-invest']);
-    const first = (await prefs(me)).find((r) => r.predicate === 'money_windfall')!;
-    expect((await strength(me, first.id, 'dealbreaker')).status).toBe(200);
-    await tie(me, W, 'q-works-in', ['ai']);
-    const moved = (await prefs(me)).find((r) => r.predicate === 'works_in')!;
-    expect(moved.strength).toBe('strong');
+    const AI = 'Software engineer working on AI';
+    await said(me, AI);
+    await tie(me, AI, 'q-works-in', ['ai']);
+    const rule = (await prefs(me)).find((r) => r.predicate === 'works_in')!;
+    expect(rule.mustHave).toBe(true);
+    expect((await strength(me, rule.id, 'dealbreaker')).status).toBe(200);
   });
 });
