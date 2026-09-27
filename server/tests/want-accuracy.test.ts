@@ -98,6 +98,26 @@ describe('scoring', () => {
 });
 
 describe('the marking page', () => {
+  it('never shows the app\u2019s own answer, even with a run\u2019s results lying next to it', async () => {
+    // What a run leaves behind (score.ts): the check's answer for the very pair on screen.
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    mkdirSync(process.env.WANT_RESULTS_DIR!, { recursive: true });
+    const first = EVAL_PAIRS[0]!;
+    writeFileSync(join(process.env.WANT_RESULTS_DIR!, 'planted.json'), JSON.stringify({
+      misses: [{ id: first.id, marked: 'met', got: 'not_met' }], rate: 0.5, note: 'PLANTED-APP-ANSWER' }));
+    const html = await (await labelApp.request('/')).text();
+    expect(html).toContain(first.sentence.replace(/’/g, '’'));
+    for (const leak of ['PLANTED-APP-ANSWER', 'check said', 'The check', 'agree']) {
+      expect(html, `the page showed "${leak}"`).not.toContain(leak);
+    }
+    // And by construction: the page reads nothing a run writes.
+    const src = readFileSync(join(import.meta.dirname, '..', 'evals', 'wants', 'label.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    for (const banned of ["'./score.js'", 'runChecks', 'checkWants', 'WANT_RESULTS_DIR', 'results', 'llm']) {
+      expect(src, `label.ts reaches for ${banned}`).not.toContain(banned);
+    }
+  });
+
   it('words "could not be with" the other way round', () => {
     expect(buttonsFor('wants').map((b) => b.mark)).toEqual(['met', 'not_met', 'unknown']);
     expect(buttonsFor('not')[0]!.label).toMatch(/not like that/);

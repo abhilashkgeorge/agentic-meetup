@@ -7,6 +7,13 @@
  * is met, shows it is not, or says nothing about it. Saved at once to labels.json. The
  * page calls no model and reads no database: the pairs are in pairs.ts, the marks in a
  * file. Keys: 1, 2, 3 to mark, 0 to go back one.
+ *
+ * BLIND, ALWAYS (the founder, 2026-09-28: "the labeling page must not show the app's own
+ * answer"). This page reads the pairs and the person's own marks and nothing else -- never
+ * a results file, never the scorer, never the check -- and shows no score while marking.
+ * A mark made after seeing what the app said would measure how persuadable the marker
+ * is, not how right the app is. tests/want-accuracy.test.ts plants the app's answers
+ * where a run would leave them and checks none reaches the page.
  */
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
