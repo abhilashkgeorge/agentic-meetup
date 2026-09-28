@@ -24,6 +24,10 @@ export interface Field {
   rowLabel?: string;
   /** Part of the six the agent cannot go out without. */
   essential?: boolean;
+  /** What the empty box says, for a typed answer. */
+  placeholder?: string;
+  /** The note under the step in setup, where this field has its own. */
+  note?: string;
 }
 
 /** Words people use, for values stored as tags. */
@@ -48,6 +52,14 @@ export const label = (v: string): string =>
   HUMAN[v] ?? AREAS.find((a) => a.id === v)?.name ?? v.replace(/_/g, ' ');
 
 export const FIELDS: Field[] = [
+  // THE NAME ANOTHER PERSON SEES, and the only place it comes from (the founder,
+  // 2026-09-28): the chat is never where a name is taken, and the server refuses one
+  // from anywhere but this step and its editor. Optional -- the pool never waits on
+  // it -- and asked first, because it is the easiest question there is.
+  { key: 'first_name', title: 'What should people call you?', kind: 'text', essential: true,
+    rowLabel: 'First name', placeholder: 'Your first name',
+    hint: 'Just your first name.',
+    note: 'People see it only after you share your profile with them.' },
   { key: 'birth_date', title: 'What year were you born?', kind: 'number',
     hint: 'Used for age filtering, both ways.', essential: true },
   { key: 'gender', title: 'You are…', kind: 'one', essential: true,
@@ -66,7 +78,7 @@ export const FIELDS: Field[] = [
     rowLabel: 'Here for',
     options: RELATIONSHIP_INTENTS.map((i) => ({ value: i, label: label(i) })) },
   { key: 'lives_in', title: 'Where are you now?', kind: 'text', essential: true,
-    rowLabel: 'Lives in',
+    rowLabel: 'Lives in', placeholder: 'Bangalore',
     hint: 'Your city is enough. Nobody sees your exact location.' },
   // Asked only of a person the map covers (the pool says so in `need`), and skipped at
   // run time when the city typed a moment ago is not Bangalore. Optional: the pool never
@@ -103,6 +115,7 @@ export const FIELD_BY_KEY = new Map(FIELDS.map((f) => [f.key, f]));
  */
 const MISSING_NOUN: Record<string, string> = {
   consent: 'Your agreement to the basics',
+  first_name: 'Your first name',
   birth_date: 'Your birth year',
   gender: 'Your gender',
   seeking_gender: 'Who you want to meet',
@@ -125,7 +138,7 @@ export const missingLabel = (key: string): string =>
   ?? FIELD_BY_KEY.get(key)?.title
   ?? key.replace(/_/g, ' ');
 
-/** The six that gate the pool, in the order setup asks them. */
+/** What setup asks, in its order: the fields that gate the pool, and the optional few. */
 export const ESSENTIAL_FIELDS = FIELDS.filter((f) => f.essential);
 
 /**

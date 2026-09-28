@@ -21,7 +21,8 @@
  *   - talkBubbles drawing an ask or a reaction as `words`  -> "only their own words" fails
  *   - bubblesForCard ignoring the talk                     -> "plays the talk" fails
  *   - wantRowsView saying "Met" beside a quote             -> "never a verdict" fails
- *   - wantRowsView ignoring a private want's check         -> "says only whether it matches" fails
+ *   - wantRowsView ignoring a private want's check         -> "a want checked by code" fails
+ *   - wantRowsView showing a private topic as "Matches" (2026-09-28) -> "a want checked by code" fails
  *
  * AND THE TALK (2026-09-24): when the agents talked (server talk.ts), the town plays
  * their talk and the card lists it -- a person's sentence is still the only thing in
@@ -31,7 +32,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchCard, QaLine, Talk } from '../src/lib/api';
 import {
-  CANT_CHECK, DONT_KNOW, NOTHING_YET, bubblesFor, bubblesForCard, chatRows, exchangeRows, onScreen, pickExchange, sayOnCard,
+  CANT_CHECK, DONT_KNOW, NOTHING_YET, PRIVATE_TOPIC, bubblesFor, bubblesForCard, chatRows, exchangeRows, onScreen, pickExchange, sayOnCard,
   talkBubbles, wantRowsView,
 } from '../src/features/matches/exchange';
 
@@ -186,15 +187,23 @@ describe('what you asked for', () => {
     expect(wantRowsView(undefined)).toEqual([]);
   });
 
-  it('a private want says only whether it matches, never beside a quote -- and none is left off', () => {
+  it('a want checked by code is never beside a quote, and none is left off', () => {
+    // Tied to a question: matches or not. A private topic (2026-09-28): one line, the
+    // same whatever the check found -- "Matches" beside "Someone who doesn't drink" told
+    // the reader a card answer its owner was promised nobody sees.
     const rows = wantRowsView([
-      { want: "Someone who doesn't drink", kind: 'wants', theirs: null, check: 'matches' },
-      { want: 'Same faith as me', kind: 'wants', theirs: null, check: 'doesnt_match' },
-      { want: 'Someone politically on the left', kind: 'wants', theirs: null, check: 'cant_check' },
+      { want: 'Someone who reads', kind: 'wants', theirs: null, check: 'matches' },
+      { want: 'Someone who cooks', kind: 'wants', theirs: null, check: 'doesnt_match' },
+      { want: "Someone who doesn't drink", kind: 'wants', theirs: null, check: 'private' },
+      { want: 'Same faith as me', kind: 'wants', theirs: null, check: 'private' },
+      { want: 'Someone who travels', kind: 'wants', theirs: null, check: 'cant_check' },
     ]);
     expect(rows.map((r) => [r.prefix, r.theirs, r.dim])).toEqual([
-      [null, 'Matches', false], [null, "Doesn't match", false], [null, CANT_CHECK, true],
+      [null, 'Matches', false], [null, "Doesn't match", false],
+      [null, PRIVATE_TOPIC, true], [null, PRIVATE_TOPIC, true], [null, CANT_CHECK, true],
     ]);
+    expect(PRIVATE_TOPIC).toBe('A private topic. Their answer is never shown.');
+    expect(PRIVATE_TOPIC, 'the private line says how it compared').not.toMatch(/\b(match|matches|fits|passes)\b/i);
     expect(rows.some((r) => r.theirs.includes('“'))).toBe(false);
   });
 });

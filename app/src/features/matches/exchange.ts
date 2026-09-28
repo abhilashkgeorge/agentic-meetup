@@ -168,6 +168,14 @@ export const sharedSaid = (x: { mine: string; theirs: string; practice?: boolean
 
 export const NOTHING_YET = "Nothing they've said covers this yet.";
 export const CANT_CHECK = "We can't check this one yet.";
+/**
+ * A want on a private topic -- faith, drinking, smoking, kids, food, one person or open.
+ * The same words whatever the check found, or whether it ran (the founder, 2026-09-28):
+ * "Matches" beside "Someone who doesn't drink" told you their card answer, which they
+ * were promised nobody ever sees. The check still moves people later in your agent's
+ * list, quietly.
+ */
+export const PRIVATE_TOPIC = 'A private topic. Their answer is never shown.';
 
 /**
  * One of your wants on the card: your words, then theirs -- or, for a private topic, only
@@ -180,16 +188,18 @@ export interface WantRowView { label: string; want: string; prefix: string | nul
  * Your wants as the card lists them. Your own words in quotation marks, then theirs in
  * quotation marks (a practice profile's labelled), or that nothing they said covers it.
  * Whether an ordinary want was met is never said -- the server does not send it. A want
- * about a private topic says only "Matches" or "Doesn't match", never beside a quote;
- * one nothing could check says so, and is never left off.
+ * tied to a question says only "Matches" or "Doesn't match", never beside a quote; one
+ * about a private topic says only that it was checked privately; one nothing could
+ * check says so. None is ever left off.
  */
 export function wantRowsView(wants: MatchCard['wants']): WantRowView[] {
   return (wants ?? []).map((w) => {
     const label = w.kind === 'not' ? "You couldn't be with" : 'You asked for';
     const want = `“${w.want}”`;
     if (w.check) {
-      const theirs = w.check === 'matches' ? 'Matches' : w.check === 'doesnt_match' ? "Doesn't match" : CANT_CHECK;
-      return { label, want, prefix: null, theirs, dim: w.check === 'cant_check' };
+      const theirs = w.check === 'private' ? PRIVATE_TOPIC
+        : w.check === 'matches' ? 'Matches' : w.check === 'doesnt_match' ? "Doesn't match" : CANT_CHECK;
+      return { label, want, prefix: null, theirs, dim: w.check === 'cant_check' || w.check === 'private' };
     }
     return {
       label, want, prefix: 'They said',

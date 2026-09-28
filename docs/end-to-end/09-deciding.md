@@ -10,21 +10,21 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Cards are written | The person with more open cards becomes first mover (a tie goes to the lower account id) | Code | `rendezvous.first_mover`, `answer_by` = now + 3 days | Nobody sees the rule's result directly | [server/src/matching/brief.ts:777] `if (na !== nb) return na > nb ? a : b;` |
+| Cards are written | The person with more open cards becomes first mover (a tie goes to the lower account id) | Code | `rendezvous.first_mover`, `answer_by` = now + 3 days | Nobody sees the rule's result directly | [server/src/matching/brief.ts:792] `if (na !== nb) return na > nb ? a : b;` |
 | First mover taps "Yes, share my profile with them" | Their photos, first name and profile open to the other person; the other gets a fresh 3 days | Code | Their yes on their card row | The other person, from then on | [app/src/features/matches/turn.ts:35] `shareFirst: 'Yes, share my profile with them',` |
 | The other taps "Yes, share mine back" | Their profile opens to the first mover; the pair is introduced; chat opens | Code | Pair `introduced` | Both | [app/src/features/matches/turn.ts:44] `shareBack: 'Yes, share mine back',` |
 | Either says no ("Not this one", "Not for me") | The pair ends at once, silently; anything shared closes | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | [server/src/matching/orchestrator.ts:567] `UPDATE rendezvous SET status = 'lapsed' WHERE id = $1 AND status <> 'introduced'` |
 | Nobody answers in 3 days | The pair expires; anything shared closes | Code (a timer every 10 minutes) | Pair `expired` | Nobody is told | [server/src/matching/expiry.ts:26] `UPDATE rendezvous SET status = 'expired', expired_at = now()` |
-| An answer out of turn | Refused by the server | Code | Nothing | — | [server/src/api/dating.ts:849] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);` |
+| An answer out of turn | Refused by the server | Code | Nothing | — | [server/src/api/dating.ts:873] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);` |
 
 ### 9.1 Who decides first, and why
 
 - **The rule:** whoever has more open cards (waiting for an answer) is the first mover; a
-  tie goes to the lower account id ([server/src/matching/brief.ts:770] `AND r.status IN ('decided', 'shown_a', 'shown_b')`,
-  [server/src/matching/brief.ts:778] `return a < b ? a : b;`).
+  tie goes to the lower account id ([server/src/matching/brief.ts:785] `AND r.status IN ('decided', 'shown_a', 'shown_b')`,
+  [server/src/matching/brief.ts:793] `return a < b ? a : b;`).
 - **The reason, in the code:** dating apps are lopsided; the flooded side decides alone and
   first so it is not flooded again; both must still say yes
-  ([server/src/matching/brief.ts:602] `THE ASYMMETRY IS THE POINT. Whichever side has the larger inbox decides ALONE and`).
+  ([server/src/matching/brief.ts:615] `THE ASYMMETRY IS THE POINT. Whichever side has the larger inbox decides ALONE and`).
 - **In our example** Meera already has cards from other men's rounds, so she is the first
   mover. If Arjun had more open cards, or they tied and his id sorted first, the roles would
   swap. Practice profiles are not excluded from being first mover; since they never answer,
@@ -32,8 +32,8 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 - **Turn order is enforced by the server:** the decide route refuses an answer that is not the
   caller's turn ("not_your_turn") or a second answer ("already_decided"), and the database write
   in `decide()` repeats the same test, so no caller can answer out of turn
-  ([server/src/api/dating.ts:847] `if (seat.status !== 'decided' || seat.mine !== null) return c.json({ error: 'already_decided' }, 409);`,
-  [server/src/api/dating.ts:849] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);`,
+  ([server/src/api/dating.ts:871] `if (seat.status !== 'decided' || seat.mine !== null) return c.json({ error: 'already_decided' }, 409);`,
+  [server/src/api/dating.ts:873] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);`,
   [server/src/matching/orchestrator.ts:557] `AND (r.first_mover = $2 OR r.first_mover IS NULL`).
   Two old open pairs have no first mover recorded; either side may go first there.
 
@@ -48,13 +48,13 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
   [app/src/features/matches/turn.ts:37] `shareFirstNote: 'This shows them your photos and first name. Nothing is shared until you tap it.',`).
 - If she opens his profile screen anyway, it says "Not yet — Their photos and name show only after
   they share them. You decide first, on the card."
-  ([server/src/api/dating.ts:188] `if (seat.first_mover === me) return 'Their photos and name show only after they share them. You decide first, on the card.';`).
+  ([server/src/api/dating.ts:195] `if (seat.first_mover === me) return 'Their photos and name show only after they share them. You decide first, on the card.';`).
 
 **Meanwhile Arjun** sees the plain card (stage 8) with "They decide first. If they share their
 profile, you will see it here.", no buttons, and in the town "They decide first. If they share
 their profile, you will see it."
 ([app/src/features/matches/turn.ts:43] `theyFirst: 'They decide first. If they share their profile, you will see it here.',`,
-[server/src/api/dating.ts:189] `return 'They decide first. If they share their profile, you will see it here.';`).
+[server/src/api/dating.ts:196] `return 'They decide first. If they share their profile, you will see it here.';`).
 He cannot answer yet: the server refuses it.
 
 **Step 2 — Meera taps "Yes, share my profile with them".** Her card now says "You shared your
@@ -62,7 +62,7 @@ profile. If they share theirs back, you can talk.", and her town seat "You share
 Waiting on them." Arjun gets his turn: a fresh three days, and a live event
 ([app/src/features/matches/turn.ts:41] `youShared: 'You shared your profile. If they share theirs back, you can talk.',`,
 [app/src/features/world/agent-sheet.tsx:46] `: agent.state === 'shared' ? 'You shared your profile. Waiting on them.'`,
-[server/src/matching/world.ts:111] `if (seat.humanSaysYes === true) return 'shared';`).
+[server/src/matching/world.ts:127] `if (seat.humanSaysYes === true) return 'shared';`).
 
 **Step 3 — Arjun sees who shared.** His card fills in with her words, and "See who it is" opens
 her profile: her photos (or her character and "No photos yet"), "WHO THEY ARE": "Meera, 27" (or
@@ -85,14 +85,17 @@ not go through. Try again." instead of confirming it
 
 ### 9.3 When Meera's profile and photos become visible to Arjun
 
-**What is shown.** The reveal returns first name, age, city, up to 8 interest and work
-tags, her character and her photos
-([server/src/api/dating.ts:172] `name,                         // FIRST NAME ONLY (0027)`,
-[server/src/api/dating.ts:155] `.filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))`).
+**What is shown.** The reveal returns the first name she typed on the setup screen ("Someone"
+without one), age, city, up to 8 interest and work tags, her character and her photos. The tags
+come only from facts she made shareable and never name a private topic (since 2026-09-28; they
+used to come from the matching row, chat-learned and hidden ones included)
+([server/src/api/dating.ts:179] `name,                         // FIRST NAME ONLY (0027)`,
+[server/src/api/dating.ts:162] `.filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))`,
+[server/src/api/dating.ts:145] `return { ...row, attribute_tags: await publicTags(db, row.user_id), look: await lookOf(db, row.user_id, synthetic) };`).
 
 **When: only after Meera has said yes to Arjun.** The reveal route opens a person's profile only
 when they said yes in that pair; otherwise it answers "waiting" with no name in it
-([server/src/api/dating.ts:707] `if (seat.other_said_yes !== true) {`). The database photo rule is
+([server/src/api/dating.ts:731] `if (seat.other_said_yes !== true) {`). The database photo rule is
 the same test: a person's photos show only to someone they said yes to, and only while the pair
 has not ended in a no or expired
 ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
@@ -100,7 +103,12 @@ has not ended in a no or expired
 Photos are served only through signed-in routes that ask that rule
 ([server/src/api/photos.ts:72] `const allowed = await tenantSession(ctx, (db) => photos.visibleTo(db, owner, ctx.userId));`).
 The town shows a first name under the same test
-([server/src/api/world.ts:197] `const entitled = own.seats.filter((s) => s.status !== 'running' && s.other_said_yes === true);`).
+([server/src/api/world.ts:202] `const entitled = own.seats.filter((s) => s.status !== 'running' && s.other_said_yes === true);`).
+It stands a met person on their own neighbourhood only where the card already names the place
+(Arjun decides first, or Meera has said yes); otherwise the seat stands in the viewer's own
+neighbourhood, so the second mover does not learn where the first mover lives
+([server/src/api/world.ts:212] `.filter((s) => s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true))`,
+[server/src/api/world.ts:246] `area: seatAreas.get(s.other_id) ?? own.myArea ?? CENTRAL_AREA,`).
 
 | Case | When Arjun sees Meera's profile and photos |
 |---|---|
@@ -128,9 +136,9 @@ until you share your profile with them." and "Only people you share your profile
 - **The other person** is sent nothing
   ([server/src/matching/orchestrator.ts:570] `// NOTHING is sent to anybody. The town on the other phone keeps showing`),
   but their card disappears from Matches at once, because both people's lists hide ended pairs
-  ([server/src/api/dating.ts:559] `AND r.status NOT IN ('lapsed', 'expired')`).
+  ([server/src/api/dating.ts:583] `AND r.status NOT IN ('lapsed', 'expired')`).
 - **Whatever was shared closes:** after a no, the profile screen answers "not found" and the photos
-  stop ([server/src/api/dating.ts:693] `WHERE r.id = $1 AND r.status NOT IN ('expired', 'lapsed')`).
+  stop ([server/src/api/dating.ts:717] `WHERE r.id = $1 AND r.status NOT IN ('expired', 'lapsed')`).
 - **A first-mover no ends it**: the second mover never gets a turn and never saw anything.
 - **Never again:** a pair can exist only once, so they are never matched again
   ([server/migrations/0022_rendezvous.sql:44] `CREATE UNIQUE INDEX rendezvous_pair ON rendezvous (user_a, user_b);`).
@@ -168,7 +176,3 @@ until you share your profile with them." and "Only people you share your profile
 - HOW-IT-WORKS.md says an expiry leaves "both answers" empty. When the second mover's turn
   runs out, the first mover's yes stays recorded
   ([HOW-IT-WORKS.md:501] `(a no): both answers stay empty, and compare-scorers leaves it out`).
-- The reveal's tag chips read all of a person's interest and work tags, not only the
-  public ones, unlike the card and HOW-IT-WORKS.md's "Learned is not shared"
-  ([HOW-IT-WORKS.md:361] `whose button says "Save and share". Tags shown to others are chosen per fact, not per`,
-  [server/src/api/dating.ts:155] `.filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))`).

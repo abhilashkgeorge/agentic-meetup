@@ -355,6 +355,7 @@ export default function WorldScreen() {
            band={band} size={size} frame={frame}
            onHome={() => control.current?.flyHome()} onCity={() => control.current?.flyCity()}
            onArea={() => router.push({ pathname: setupRoute(['area']), params: { finish: '1' } })}
+           onName={() => router.push({ pathname: setupRoute(['first_name']), params: { finish: '1' } })}
            walking={walking} venue={realm.venue} transitioning={transitioning}
            onEnterVenue={enterVenue} onLeaveVenue={leaveVenue}
            onDirections={() => void Linking.openURL(directionsUrl(CUBBON_PARK))}

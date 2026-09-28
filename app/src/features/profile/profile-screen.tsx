@@ -109,7 +109,9 @@ export default function ProfileScreen() {
   const look = useLook((s) => s.look);
   const lookSaved = useLook((s) => s.saved);
   const points = useLook((s) => s.balance);
-  const name = valueOf(k, 'preferred_name') ?? valueOf(k, 'full_name');
+  // The name other people see, and only that: what was typed on "What should people
+  // call you?". A name the clone heard in chat is never shown as yours (2026-09-28).
+  const name = valueOf(k, 'first_name');
   const city = valueOf(k, 'lives_in');
   const work = valueOf(k, 'works_in') ?? valueOf(k, 'industry');
   const interests = allOf(k, 'interest');
@@ -227,6 +229,9 @@ export default function ProfileScreen() {
             <>
               {/* Every row here opens an editor. They used to be inert: Height and
                   Diet read "Not set" with nothing in the app able to set them. */}
+              <Row title="First name" value={name ?? 'Not set'}
+                   subtitle="Seen only by people you share your profile with."
+                   onPress={() => router.push('/edit/first_name')} />
               <Row title="Age" value={age(valueOf(k, 'birth_date'))}
                    onPress={() => router.push('/edit/birth_date')} />
               <Row title="Lives in" value={city ?? 'Not set'}

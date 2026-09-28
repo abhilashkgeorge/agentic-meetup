@@ -162,8 +162,25 @@ export const messageRoutes = new Hono()
     if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
     const before = c.req.query('before');
 
-    // RLS decides whether this person is in the conversation. An id they are not part
-    // of returns an empty list, which is the same answer as one that does not exist.
+    // A CONVERSATION, OR NOTHING (2026-09-28). This answered for ANY pair the caller
+    // was in -- before it was their turn, after a no, after the three days ran out, after
+    // a block -- and the answer carried the other person's first name and account id:
+    // everything the reveal withholds until both have said yes, one request away from
+    // anybody holding a card's id. The app never asked early; the API did not care. Now
+    // it is exactly the inbox's rule: introduced, and not kept apart (a block either
+    // way, or a ban). Anything else is the same 404 as an id that does not exist.
+    const pair = await tenantSession(ctx, async (db) => {
+      const { rows } = await db.query<{ other: string }>(
+        `SELECT CASE WHEN user_a = $2 THEN user_b ELSE user_a END AS other
+           FROM rendezvous
+          WHERE id = $1 AND (user_a = $2 OR user_b = $2) AND status = 'introduced'
+            AND NOT apart($2, CASE WHEN user_a = $2 THEN user_b ELSE user_a END)`,
+        [id, ctx.userId],
+      );
+      return rows[0]?.other ?? null;
+    });
+    if (!pair) return c.json({ error: 'not found' }, 404);
+
     const rows = await tenantSession(ctx, (db) =>
       messages.history(db, id, 50, before && /^\d+$/.test(before) ? before : undefined),
     );
@@ -173,15 +190,6 @@ export const messageRoutes = new Hono()
     // and a conversation screen that does not know whose it is cannot show a name or
     // offer a block.
     const { other, name, photoId, look } = await (async () => {
-      const pair = await tenantSession(ctx, async (db) => {
-        const { rows } = await db.query<{ other: string }>(
-          `SELECT CASE WHEN user_a = $2 THEN user_b ELSE user_a END AS other
-             FROM rendezvous WHERE id = $1`,
-          [id, ctx.userId],
-        );
-        return rows[0]?.other ?? null;
-      });
-      if (!pair) return { other: null, name: null, photoId: null, look: null };
       const { named, look } = await matchmakerSession(async (db) => {
         const { rows } = await db.query<{ display_name: string | null; is_synthetic: boolean }>(
           'SELECT display_name, is_synthetic FROM match_profile WHERE user_id = $1', [pair]);

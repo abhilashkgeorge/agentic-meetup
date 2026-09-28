@@ -208,10 +208,11 @@ export function mayRepeat(text: string): boolean {
  *
  * A QUOTE MUST BE FOUND, NOT CLAIMED. `source_quote` is whatever the writer of the fact
  * said the person said, and three writers get it wrong in three ways: the interview
- * writes "Question? value"; the chat extractor reads the CLONE's turns as well as the
- * person's, so a line the clone made up in the first person ("I do stand-up every
- * Friday") comes back as the person's own; and a model asked for a span can
- * paraphrase. So a fact's sentence is quotable only if it appears word for word --
+ * writes "Question? value"; the chat extractor read the CLONE's turns as well as the
+ * person's until 2026-09-28 (it reads only theirs now, extract.ts), so a line the clone
+ * made up in the first person ("I do stand-up every Friday") could come back as the
+ * person's own -- and facts from before then still carry it; and a model asked for a
+ * span can paraphrase. So a fact's sentence is quotable only if it appears word for word --
  * case and runs of whitespace aside -- in an episode with role 'user': something this
  * person typed or said themselves.
  *
@@ -425,12 +426,24 @@ export interface WantRow {
 }
 
 /**
- * What a phone is told about one want, beside the want itself. A private want gets the
- * only verdict a card ever carries -- matches or not, never why, never a quote -- and any
- * want nothing could check says so. An ordinary want gets no word at all: the reader
- * judges from the quote.
+ * What a phone is told about one want, beside the want itself. A want tied to a question
+ * says matches or not -- never why, never a quote -- and any want nothing could check
+ * says so. An ordinary want gets no word at all: the reader judges from the quote.
+ *
+ * A PRIVATE TOPIC SAYS NOTHING (the founder, 2026-09-28). A want about faith, drinking,
+ * smoking, kids, food or one-person-or-open is checked against the other person's card
+ * answer, and "Matches" / "Doesn't match" beside it told the reader that answer -- to a
+ * want that accepts one answer, exactly -- while the other person had been told "Nobody
+ * ever sees your answer". Even "can't check" said something: that they declined the
+ * card. So such a want gets one word, the same whatever the check found; the check
+ * still moves a not-met person later in the round (wants.ts), silently. Decided by the
+ * want's words, the same test that made it private (loadWants), so a card stored
+ * before this rule reads the same way.
  */
-export function wantCheck(w: Pick<WantRow, 'status' | 'private'>): 'matches' | 'doesnt_match' | 'cant_check' | null {
+export function wantCheck(
+  w: Pick<WantRow, 'want' | 'status' | 'private'>,
+): 'matches' | 'doesnt_match' | 'cant_check' | 'private' | null {
+  if (namesCoreValue(w.want)) return 'private';
   if (w.status === 'cant_check') return 'cant_check';
   if (!w.private) return null;
   return w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match' : 'cant_check';
@@ -649,11 +662,12 @@ export interface BriefCard {
   talk: TalkView | null;
   /**
    * The reader's wants beside the other's sentences -- WITHOUT the status. `check` is set
-   * only for a private want (matches or not) or one nothing could check (wantCheck).
+   * only for a want checked by code: 'private' for a private topic whatever it found,
+   * matches or not for one tied to a question, or one nothing could check (wantCheck).
    */
   wants: {
     want: string; kind: 'wants' | 'not'; theirs: string | null;
-    check?: 'matches' | 'doesnt_match' | 'cant_check'; practice?: boolean;
+    check?: 'matches' | 'doesnt_match' | 'cant_check' | 'private'; practice?: boolean;
   }[];
 }
 
@@ -691,12 +705,13 @@ export function readBrief(row: { headline: string; overlap_quotes: unknown; ques
       q: l.q, ask: l.ask ?? l.q, theirs: l.theirs, mine: l.mine, ...(l.practice ? { practice: true } : {}),
     })),
     talk: readTalk(parsed.data.talk),
-    // NO STATUS. The want and the quote, side by side; the reader judges. Only a private
-    // want says matches or not -- and it never has a quote beside it.
+    // NO STATUS. The want and the quote, side by side; the reader judges. A want tied to
+    // a question says matches or not, a private topic only that it is private -- and
+    // neither ever has a quote beside it.
     wants: parsed.data.wants.map((w) => {
-      const check = wantCheck({ status: w.status, ...(w.private ? { private: true } : {}) });
+      const check = wantCheck({ want: w.want, status: w.status, ...(w.private ? { private: true } : {}) });
       return {
-        want: w.want, kind: w.kind, theirs: w.private ? null : w.theirs,
+        want: w.want, kind: w.kind, theirs: w.private || check === 'private' ? null : w.theirs,
         ...(check ? { check } : {}), ...(w.practice ? { practice: true } : {}),
       };
     }),

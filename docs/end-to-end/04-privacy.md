@@ -20,30 +20,35 @@ details), and **database roles** that limit what each part of the server can rea
   she seeks, place, distance, intent, tags and card answers, to filter and count
   ([server/migrations/0019_match_role.sql:40] `USING (in_pool);`). Arjun himself sees at most her 3D
   character and neighbourhood in the town: no name, age, tags or photo
-  ([server/src/api/world.ts:240] `area: strangers.areas.get(id) ?? CENTRAL_AREA`).
+  ([server/src/api/world.ts:256] `area: strangers.areas.get(id) ?? CENTRAL_AREA`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
   ([server/src/matching/orchestrator.ts:365] `loadQuotes(pair.b, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`).
 - **On Arjun's card** (his turn): her headline, shared tags, up to two of her sentences, the talk,
-  Arjun's wants against her sentences or "Matches"/"Doesn't match", an opener (stage 8).
-- **On the reveal**: first name, age, city, up to eight interest and work tags, photos (stage 9).
-- **Arjun never sees** her facts list, her chat, her hidden or match-only sentences (except as reveal
-  tags, see Known gaps), her rules and wants, her card answers as values, her check-in answers, her
-  reports or blocks, her exact location, her birth year or her phone number
-  ([server/src/matching/brief.ts:264] `AND f.disclosure = ANY($3::text[])`,
+  Arjun's wants against her sentences ("Matches"/"Doesn't match" only on a want tied to a question;
+  a private-topic want says only "A private topic. Their answer is never shown."), an opener (stage 8)
+  ([app/src/features/matches/exchange.ts:178] `export const PRIVATE_TOPIC = 'A private topic. Their answer is never shown.';`).
+- **On the reveal**: the first name she typed on the setup screen, age, city, up to eight interest and
+  work tags from facts she made shareable (no private-topic word), photos (stage 9)
+  ([server/src/api/dating.ts:145] `return { ...row, attribute_tags: await publicTags(db, row.user_id), look: await lookOf(db, row.user_id, synthetic) };`,
+  [server/src/api/dating.ts:164] `.filter((t) => t.word && mayRepeat(t.word))`).
+- **Arjun never sees** her facts list, her chat, her hidden or match-only sentences, her rules and
+  wants, her card answers as values, her check-in answers, her reports or blocks, her exact location,
+  her birth year or her phone number
+  ([server/src/matching/brief.ts:265] `AND f.disclosure = ANY($3::text[])`,
   [app/src/features/consent/consent-screen.tsx:38] `'We keep the year you were born. Other people only ever see your age.',`).
 
 ### 4.1 The three levels
 
 | Founder's word | Code name | Meaning | Code |
 |---|---|---|---|
-| share | `public` | May be quoted to other people through cards and agents | [server/src/matching/brief.ts:278] `opts.includeHidden ? ['public', 'private'] : ['public']` |
-| match-only | `matchable_only` | Used for matching, never said to anyone | [server/src/memory/extract.ts:237] `...learnedDisclosure(f.predicate),` |
-| never | `private` | Set only by the person's own "Hide" | [server/src/matching/brief.ts:275] `// 'private' is only ever set by the person hiding a quote (POST` |
+| share | `public` | May be quoted to other people through cards and agents | [server/src/matching/brief.ts:279] `opts.includeHidden ? ['public', 'private'] : ['public']` |
+| match-only | `matchable_only` | Used for matching, never said to anyone | [server/src/memory/extract.ts:245] `...learnedDisclosure(f.predicate),` |
+| never | `private` | Set only by the person's own "Hide" | [server/src/matching/brief.ts:276] `// 'private' is only ever set by the person hiding a quote (POST` |
 
 - **Defaults.** Some kinds of fact start public (city, work field, interests, story answers,
   intent, kids and one-person-or-open answers, diet, exercise...), the rest start match-only
-  ([shared/src/facts.ts:96] `export const defaultDisclosure = (predicate: string): 'public' | 'matchable_only' =>`).
+  ([shared/src/facts.ts:98] `export const defaultDisclosure = (predicate: string): 'public' | 'matchable_only' =>`).
   Some kinds can **never** be made public: medical conditions, allergies, religion, politics,
   ethnicity, full name, birth date, employer, children, relationships, drugs
   ([shared/src/facts.ts:90] `'medical_condition', 'allergy', 'religion', 'politics', 'ethnicity',`,
@@ -59,13 +64,13 @@ details), and **database roles** that limit what each part of the server can rea
   transport; the agents also use goals and dislikes), was typed by the person (found word for word
   in their messages), is 12 to 300 characters, is not an interview tap, and passes the word filters
   ([server/src/matching/brief.ts:87] `'interest', 'did', 'topic', 'media_taste', 'pet', 'prompt_answer',`,
-  [server/src/matching/brief.ts:265] `AND f.extractor_model <> 'interview'`).
+  [server/src/matching/brief.ts:266] `AND f.extractor_model <> 'interview'`).
   Card answers (kids, one person or open, smoking, drinking, food, faith) are never quoted; they are
   only used to filter.
 - **Where levels are not applied:** the matching row is built from every live fact whatever its level,
   so match-only and hidden facts still filter and rank; and the reveal's tags come from that row (Known
   gaps) ([server/src/matching/profile.ts:45] `WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL`,
-  [server/src/api/dating.ts:155] `.filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))`).
+  [server/src/api/dating.ts:162] `.filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))`).
 
 ### 4.2 Private topics and contact details
 
@@ -81,7 +86,7 @@ details), and **database roles** that limit what each part of the server can rea
   [shared/src/contact.ts:21] `export type ContactKind = 'phone' | 'email' | 'handle' | 'link' | 'invite' | 'address';`).
 - **Where the filters run:** every path that repeats a person's words to someone else: card quotes,
   shared tags, answer sheets, the agents' talk, the date idea (twice), want quotes, the recap, and every
-  time a card is shown ([server/src/matching/brief.ts:283] `return rows.filter((r) => mayRepeat(r.source_quote)).map((r) => ({`,
+  time a card is shown ([server/src/matching/brief.ts:284] `return rows.filter((r) => mayRepeat(r.source_quote)).map((r) => ({`,
   [server/src/matching/talk.ts:193] `PERSON.test(idea) || CLAIM.test(idea) || VERDICT.test(idea) || !mayRepeat(idea)`).
 - **Where they do not run:** direct messages after both say yes (by design: people swap details there),
   report text, and the reveal's name, city and tags ([server/src/messaging/store.ts:106] `INSERT INTO messages (id, rendezvous_id, sender_id, body, seq, kind)`).
@@ -99,12 +104,12 @@ details), and **database roles** that limit what each part of the server can rea
   [app/src/features/appearance/appearance-screen.tsx:181] `Only you see these. Your agent uses them to find people`).
   Opening it can refresh the answer sheet, one model call ({AI:sheet}).
 - **Not shown there**, though others see it: the reveal (first name, tags, photos), the character, the
-  neighbourhood, and "Matches"/"Doesn't match" answers ([server/src/api/me.ts:89] `const quotes = all.slice(0, 8).map((q) => {`).
+  neighbourhood, and "Matches"/"Doesn't match" on wants tied to a question ([server/src/api/me.ts:89] `const quotes = all.slice(0, 8).map((q) => {`).
 - **"Hide this?"** is a suggestion under any sentence that names a company, college or building, found
   by word lists; it never blocks ([shared/src/identifying.ts:11] `A SUGGESTION, NEVER A BLOCK. Nothing here stops a sentence; it only lets the screen`).
 - **Hiding** makes the fact private: new cards, sheets, talk and want checks skip it; cards already
   written drop it at the next load; a date idea resting on it is withdrawn. It stays usable for
-  matching ([server/src/matching/brief.ts:742] `const date = talk.date && keep(talk.date.theirs) ? talk.date : null;`).
+  matching ([server/src/matching/brief.ts:757] `const date = talk.date && keep(talk.date.theirs) ? talk.date : null;`).
 - **Other controls:** remove a photo ("It is deleted from the server as well."); answer a story again
   (the old answer is kept but replaced); no per-fact delete; no message unsend
   ([app/src/features/photos/photos-screen.tsx:110] `'Remove this photo?', 'It is deleted from the server as well.'`,
@@ -130,7 +135,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **One important exception to "the database decides":** in a round, a person's quotable sentences are
   read under **that person's own** session, where they can see all their facts; one SQL clause
   (`disclosure = public`) is what keeps the rest off a stranger's card
-  ([server/src/matching/brief.ts:257] `// private, matchable_only and the NEVER_PUBLIC kinds alike. Nothing but this`).
+  ([server/src/matching/brief.ts:258] `// private, matchable_only and the NEVER_PUBLIC kinds alike. Nothing but this`).
 - **Phone numbers** are never stored, only a keyed hash; the screen shows only the last two digits
   ([server/migrations/0045_phone_identity.sql:22] `so it works as a lookup key and as a ban key`,
   [shared/src/phone.ts:95] `What to print back at somebody: the last two digits, nothing else.`).
@@ -163,7 +168,8 @@ Row-level security is the boundary. Each part of the server connects as its own 
   [server/src/api/admin.ts:25] `import { hide, unhide } from '../photos/store.js';`).
 - **Logs** carry user ids, not message text; the redaction list covers text fields. In development the
   console SMS sender logs full numbers and codes ([server/src/log.ts:8] `redact: { paths: ['*.rawText', '*.raw_text', '*.text', 'req.headers.authorization']`).
-- **AI providers** receive: everything typed to the clone (and its replies) for extraction and chat,
+- **AI providers** receive: everything typed to the clone, and its replies, for chat; only the
+  person's own lines for extraction ([server/src/memory/extract.ts:187] `const said = input.transcript.filter((t) => t.role === 'user');`);
   every message's text for embeddings, and in a round the other person's public sentences and both
   people's wants. The per-session notice names the provider: "You are talking to an AI. Your messages are
   processed by…" ([server/src/api/config.ts:50] `You are talking to an AI. Your messages are processed by`).
@@ -184,8 +190,10 @@ Row-level security is the boundary. Each part of the server connects as its own 
   every live preference ([HOW-IT-WORKS.md:830] `and dealbreaker preferences only`).
 - HOW-IT-WORKS.md and CLAUDE.md say the discovery role reads "never content". It can read each account's
   device name, which often contains a person's name ([HOW-IT-WORKS.md:834] `background work: ids, counts and times across tenants, never content (0066)`).
-- The consent screen says "Only things marked public ever leave your account." Reveal tags, a first name
-  learned from chat, and private-want answers also reach other people
+- The consent screen says "Only things marked public ever leave your account." Since 2026-09-28 reveal
+  tags are public-only and private-topic wants show nothing, but the first name (typed for this), age
+  and city on the reveal, and "Matches" on a want tied to a situation question (which says how the other
+  person answered it) also reach other people
   ([app/src/features/consent/consent-screen.tsx:46] `Only things marked public ever leave your account.`).
 - The consent screen says you can "change" everything the clone knows. There is no per-fact edit or delete,
   only hide, confirm/reject and answering again ([app/src/features/consent/consent-screen.tsx:48] `You can read everything it knows about you, change it, or delete the whole account, from Settings.`).

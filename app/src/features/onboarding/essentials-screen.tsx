@@ -16,7 +16,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { MIN_AGE, POOL_REQUIRED, isAdult } from '@clone/shared';
+import { MIN_AGE, POOL_REQUIRED, firstName, isAdult } from '@clone/shared';
 import { getKnowledge, getPool, setEssential } from '../../lib/api';
 import { cityFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
@@ -40,6 +40,8 @@ interface Question {
   hint?: string;
   kind: FieldKind;
   options?: { value: string; label: string }[];
+  placeholder?: string;
+  note?: string;
 }
 
 export default function EssentialsScreen() {
@@ -181,6 +183,13 @@ export default function EssentialsScreen() {
       }
     }
 
+    // A name the server would refuse, said here rather than as "That did not save".
+    // `firstName` is the shared rule the server applies, so the two cannot drift.
+    if (!skipped && q.key === 'first_name' && !firstName(String(answers[q.key] ?? ''))) {
+      setNote({ text: 'Just your first name, in letters.', bad: true });
+      return;
+    }
+
     // The two boxes go out as the {min, max} the fact is stored as, never as text.
     const raw = answers[q.key];
     const range = q.kind === 'range' && isRangeText(raw) ? parseAgeRange(raw.min, raw.max) : null;
@@ -316,8 +325,9 @@ export default function EssentialsScreen() {
             key={q.key}
             value={value === undefined || value === null ? '' : String(value)}
             onChangeText={(t) => setAnswers((a) => ({ ...a, [q.key]: t }))}
-            placeholder={q.kind === 'number' ? '1994' : 'Bangalore'}
+            placeholder={q.placeholder ?? (q.kind === 'number' ? '1994' : undefined)}
             keyboardType={q.kind === 'number' ? 'number-pad' : 'default'}
+            {...(q.key === 'first_name' ? { autoComplete: 'given-name', textContentType: 'givenName' } as const : {})}
             autoFocus
           />
         )}
@@ -361,13 +371,13 @@ export default function EssentialsScreen() {
           The specific note wins where there is one: it says everything the general one
           says, about the field actually on screen. */}
       <Text style={[type.callout, { color: p.textTertiary }]}>
-        {q.key === 'birth_date'
+        {q.note ?? (q.key === 'birth_date'
           ? `You must be ${MIN_AGE} or older. Your birthday is never shown to anybody — only your age.`
           : q.kind === 'range'
             // True both ways: the candidate query tests their age against this range
             // AND yours against theirs.
             ? 'Nobody outside these ages is brought to you, and your age has to fit their range too.'
-            : 'Your agent cannot go out without these. It is not a form — nothing here is shown on a profile until you say so.'}
+            : 'Your agent cannot go out without these. It is not a form — nothing here is shown on a profile until you say so.')}
       </Text>
     </Screen>
   );

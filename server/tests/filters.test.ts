@@ -187,10 +187,14 @@ describe('defect 2: ordering', () => {
 });
 
 describe('defect 3: names', () => {
-  it('gives a real person a display name from their full_name fact', async () => {
-    // full_name is deliberately unmatchable, and the builder filtered on matchable,
-    // so the branch that set the name was dead code. Every real human was "Someone".
+  it('gives a real person the name they typed on the setup screen, never one heard in chat', async () => {
+    // Every real human was "Someone": the name came only from a full_name the chat
+    // extractor heard. Since 2026-09-28 it comes from "What should people call you?"
+    // (first_name, written by the screen) and from nowhere else -- a full name said
+    // in passing is a never-public kind (reveal-privacy.test.ts has the rest).
     const p = await makeUser('named');
+    const shown = async () => (await owner.query<{ display_name: string | null; traits: Record<string, unknown> }>(
+      'SELECT display_name, traits FROM match_profile WHERE user_id = $1', [p.userId])).rows[0]!;
     await tenantSession(p, async (c) => {
       await commit(c, p, {
         predicate: 'full_name', objectText: 'Priya Raman', objectValue: 'Priya Raman',
@@ -199,11 +203,19 @@ describe('defect 3: names', () => {
       });
       await rebuildMatchProfile(c, p);
     });
-    const { rows } = await owner.query<{ display_name: string | null; traits: Record<string, unknown> }>(
-      'SELECT display_name, traits FROM match_profile WHERE user_id = $1', [p.userId]);
-    expect(rows[0]!.display_name).toBe('Priya');
-    // First name only, and it must NOT leak into the matchable traits.
-    expect(rows[0]!.traits).not.toHaveProperty('full_name');
+    expect((await shown()).display_name, 'a name heard in chat was shown').toBeNull();
+    await tenantSession(p, async (c) => {
+      await commit(c, p, {
+        predicate: 'first_name', objectText: 'Priya', stance: 'asserted', originClass: 'owner', sourceQuote: 'Priya',
+        sourceEpisodeIds: [], extractorModel: 'direct', extractorVersion: '1', promptVersion: 'essentials.1',
+      });
+      await rebuildMatchProfile(c, p);
+    });
+    const row = await shown();
+    expect(row.display_name).toBe('Priya');
+    // And a name is never something a rule is tested against.
+    expect(row.traits).not.toHaveProperty('full_name');
+    expect(row.traits).not.toHaveProperty('first_name');
   });
 });
 

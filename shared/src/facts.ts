@@ -90,6 +90,8 @@ export const NEVER_PUBLIC: ReadonlySet<string> = new Set([
   'medical_condition', 'allergy', 'religion', 'politics', 'ethnicity',
   'full_name', 'birth_date', 'works_at', 'has_children', 'close_to', 'lives_with',
   'relationship_status', 'drugs',
+  // Shown on the reveal, after the person shares their profile -- never by an agent.
+  'first_name',
 ]);
 
 /** The disclosure a fact starts at. */
@@ -217,6 +219,35 @@ export const SITUATION_PREDICATES: readonly PredicateDef[] = [
   { name: 'last_minute_plan', cardinality: 'single', durability: 'soft', matchable: true },
 ] as const;
 export const SITUATION_PREDICATE_NAMES: ReadonlySet<string> = new Set(SITUATION_PREDICATES.map((p) => p.name));
+
+/**
+ * SET ON A SCREEN, NEVER FROM CHAT (the founder, 2026-09-28).
+ *
+ * The name another person sees used to be the first word of `full_name`, which only
+ * the chat extractor ever wrote: no screen asked for a name, so a full name heard in
+ * passing -- a NEVER_PUBLIC kind -- became the word on a stranger's reveal. Now the
+ * shown name is `first_name`, typed by the person on "What should people call you?"
+ * and nowhere else. Not in CORE_PREDICATES, so the extraction prompt never offers it,
+ * and `commit` (server memory/facts.ts) refuses it from any writer but the setup and
+ * edit screens. Never volunteered by an agent: it reaches another person only on the
+ * reveal, after the person has shared their profile with them.
+ */
+export const SCREEN_PREDICATES: readonly PredicateDef[] = [
+  { name: 'first_name', cardinality: 'single', durability: 'hard', matchable: false },
+] as const;
+export const SCREEN_ONLY: ReadonlySet<string> = new Set(SCREEN_PREDICATES.map((p) => p.name));
+
+/**
+ * The first name as it will be shown, or null when what was typed is not a name.
+ *
+ * One word -- "first name" is the promise every screen makes -- of letters in any
+ * script, with the marks, apostrophes, hyphens and dots names carry. No digits and no
+ * "@", so a phone number or a handle cannot ride along as somebody's name.
+ */
+export function firstName(typed: string): string | null {
+  const word = typed.trim().split(/\s+/)[0] ?? '';
+  return /^[\p{L}][\p{L}\p{M}'’.-]{0,29}$/u.test(word) ? word : null;
+}
 
 export const CORE_PREDICATE_NAMES = CORE_PREDICATES.map((p) => p.name);
 export const SINGLE_VALUED = new Set(

@@ -11,7 +11,7 @@ can meet it.
 |---|---|---|---|---|---|
 | "Tell it one true thing" (one sentence) | Facts are pulled out of it; the clone then answers a question as the person | AI ({AI:extract}, then {AI:selftest}) | An episode (the words) and facts | The person; public facts can later reach others (stage 4) | [server/src/api/tell.ts:71] `out = await metered(ctx, 'extract', () => extractSessionFacts(` |
 | The interview: basics, five cards, faith, one sentence | Each tap is saved; card "who's fine" rows become hard rules | Code (the sentence also goes to {AI:dealbreaker}) | `question_answers`, facts, `preferences` | The person; rules are used by matching | [server/src/api/interview.ts:276] `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)` |
-| Essentials: birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | [server/src/api/dating.ts:357] `extractorModel: 'direct',` |
+| Essentials: birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | [server/src/api/dating.ts:376] `extractorModel: 'direct',` |
 | Voice (optional): a WhatsApp export | Only the person's own lines are read; a style note is written | AI ({AI:voice}) | A "voice" note; the chat itself is not kept | The person's own clone | [server/src/memory/chatImport.ts:127] `VALUES ($1,$2,'voice',$3,$4,$5,'{}', now())` |
 | Self-test (optional) | The clone writes as the person; they grade it | AI ({AI:selftest}) | Grades | The person | [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), db));` |
 | Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | [app/src/features/onboarding/photos-step.tsx:168] `Nobody sees these until you share your profile with them. Your agent never does,` |
@@ -45,7 +45,7 @@ In order, each sees:
    ([app/src/features/onboarding/interview-screen.tsx:233] `{state.ready ? "That's enough to start" : 'A few things missing'}`).
 6. **Essentials**: "What year were you born?", "Who would you like to meet?" (ages, pre-filled ±5 from
    their own), "Where are you now?", "How far would you travel?"
-   ([app/src/features/profile/fields.ts:51] `{ key: 'birth_date', title: 'What year were you born?', kind: 'number',`,
+   ([app/src/features/profile/fields.ts:63] `{ key: 'birth_date', title: 'What year were you born?', kind: 'number',`,
    [app/src/features/profile/age-range.ts:42] `return { min: clamp(age - AGE_SPREAD), max: clamp(age + AGE_SPREAD) };`).
    Both type "Bangalore", which resolves to the city centre.
 7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Make your character"**, **"One
@@ -58,7 +58,7 @@ In order, each sees:
 
 For a new person: start → (optional paste) → interview → essentials → voice → self-test →
 character → photos → Home ([app/src/features/onboarding/interview-screen.tsx:214] `router.replace(state.ready ? '/onboarding/stories' : '/onboarding/essentials');`,
-[app/src/features/onboarding/essentials-screen.tsx:71] `router.push('/onboarding/voice');`,
+[app/src/features/onboarding/essentials-screen.tsx:73] `router.push('/onboarding/voice');`,
 [app/src/features/onboarding/character-step.tsx:23] `const next = () => router.replace('/onboarding/photos');`).
 The Stories screen is shown only when someone is already in the pool when the interview ends, so a
 new person does not see it during setup; it is reached later from the You tab.
@@ -131,36 +131,47 @@ around?", "Would you move cities for the right person?"
 when someone else's want needs the answer (stages 3 and 5)
 ([server/src/onboarding/next-question.ts:113] `if (q.tier === 'situation') return false;`).
 
-**Essentials** (the setup wizard): "What year were you born?", "Who would you like to meet?" (age
-range), "Where are you now?" ("Your city is enough. Nobody sees your exact location."), "How far would
-you travel?" (10 km, 25 km, 50 km, 200 km, Anywhere). Only distance can be declined here
-([app/src/features/profile/fields.ts:70] `hint: 'Your city is enough. Nobody sees your exact location.' },`,
-[app/src/features/profile/fields.ts:82] `{ value: '20000', label: 'Anywhere' },`).
+**Essentials** (the setup wizard): "What should people call you?" (asked first; "Just your first
+name." and "People see it only after you share your profile with them."), "What year were you
+born?", "Who would you like to meet?" (age range), "Where are you now?" ("Your city is enough. Nobody
+sees your exact location."), "How far would you travel?" (10 km, 25 km, 50 km, 200 km, Anywhere).
+Only the first name and distance can be declined here
+([app/src/features/profile/fields.ts:59] `{ key: 'first_name', title: 'What should people call you?', kind: 'text', essential: true,`,
+[app/src/features/profile/fields.ts:62] `note: 'People see it only after you share your profile with them.' },`,
+([app/src/features/profile/fields.ts:82] `hint: 'Your city is enough. Nobody sees your exact location.' },`,
+[app/src/features/profile/fields.ts:94] `{ value: '20000', label: 'Anywhere' },`).
 A city among 46 listed ones becomes that city's centre; an unlisted city becomes a point only if
 "Use my location" was used ([shared/src/places.ts:36] `export const PLACES: readonly Place[] = [`,
-[server/src/api/dating.ts:106] `if (place) return { city: place.city, lat: place.lat, lon: place.lon, precision_km: 20 };`).
+[server/src/api/dating.ts:107] `if (place) return { city: place.city, lat: place.lat, lon: place.lon, precision_km: 20 };`).
 
 **Wants** are not asked during setup. "What would you love in someone?" is on the Stories screen and
 "What you're looking for" is reached from the You tab or Settings (stage 5)
 ([app/src/features/settings/settings-screen.tsx:238] `<Row title="What you're looking for" onPress={() => router.push('/preferences')} />`).
 
-**No screen ever asks for a name.** A first name appears on the reveal only if the clone picked one up
-from something the person wrote; otherwise the other person sees "Someone"
-([server/src/api/dating.ts:159] `const name = other.display_name ?? 'Someone';`).
+**The name others see comes only from that screen** (since 2026-09-28). One word of letters is kept
+(a number or an "@" gets "Just your first name, in letters."); the fact store refuses a first name
+from any other writer, so a name said in chat never becomes it; and without one the other person sees
+"Someone" ([server/src/api/dating.ts:296] `return c.json({ error: 'bad_name', message: 'Just your first name, in letters.' }, 400);`,
+[server/src/memory/facts.ts:103] `if (SCREEN_ONLY.has(cand.predicate) && cand.extractorModel !== 'direct') {`,
+[server/src/matching/profile.ts:76] `if (f.extractor_model === 'direct') displayName = firstName(f.object_text);`,
+[server/src/api/dating.ts:166] `const name = other.display_name ?? 'Someone';`). People who set up
+before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
+("First name") ([app/src/features/world/hud.tsx:153] `{askName && <Chip label="Add your first name" selected={false} onPress={onName} />}`,
+[app/src/features/profile/profile-screen.tsx:232] `<Row title="First name" value={name ?? 'Not set'}`).
 
 ### 2.3 Required vs optional, and "ready to send"
 
 The server recomputes readiness on every profile rebuild. A person is **in the pool** when all of
-these hold ([server/src/matching/profile.ts:206] `const inPool = missing.length === 0 && adult;`,
+these hold ([server/src/matching/profile.ts:207] `const inPool = missing.length === 0 && adult;`,
 [shared/src/values.ts:77] `export const POOL_REQUIRED = [`):
 
 - gender, who they want to meet, birth year, city **with a map point**, and what they are here for,
   each from a confirmed (not held) fact ([server/src/matching/profile.ts:45] `WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL`,
-  [server/src/matching/profile.ts:151] `if (p === 'lives_in') return lat === null;`);
+  [server/src/matching/profile.ts:152] `if (p === 'lives_in') return lat === null;`);
 - an answer (or "prefer not to say") on each of the five cards
-  ([server/src/matching/profile.ts:177] `for (const k of CORE_CARDS) if (!done.has(k.id)) missing.push(k.predicate);`);
-- all three consent documents ([server/src/matching/profile.ts:204] `if (!agreed) missing.push('consent');`);
-- age 18 or over, computed from the birth year alone ([server/src/matching/profile.ts:189] `const adult = age !== null && age >= MIN_AGE;`).
+  ([server/src/matching/profile.ts:178] `for (const k of CORE_CARDS) if (!done.has(k.id)) missing.push(k.predicate);`);
+- all three consent documents ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');`);
+- age 18 or over, computed from the birth year alone ([server/src/matching/profile.ts:190] `const adult = age !== null && age >= MIN_AGE;`).
 
 Not required: photos, a name, age range, distance, neighbourhood, faith, the sentence, stories,
 voice, self-test, character. The self-test's "It's ready. It can go out and meet people for you."
@@ -170,7 +181,7 @@ is a separate notion and gates nothing ([app/src/features/onboarding/self-test-s
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
-([app/src/features/world/hud.tsx:178] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
+([app/src/features/world/hud.tsx:183] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
 [app/src/features/matches/matches-screen.tsx:227] `It needs a few more things before it can talk to anyone.`).
 
 ### 2.4 Model calls during setup
@@ -192,7 +203,7 @@ day one (counted from the code, not observed)
 - HOW-IT-WORKS.md §2a describes the partner row as "Anyone is fine" or "Let me choose". The screen shows
   "All are okay" and every answer, unticked ([HOW-IT-WORKS.md:82] `one explicit tap -- "Anyone is fine" or "Let me choose".`).
 - HOW-IT-WORKS.md §2b says "which part of town" is asked in setup; it is not asked until the person has
-  a map point ([server/src/matching/profile.ts:348] `if (!p || p.lat === null || p.lon === null) return false;`).
+  a map point ([server/src/matching/profile.ts:350] `if (!p || p.lat === null || p.lon === null) return false;`).
 - HOW-IT-WORKS.md §2c calls the voice step free paragraphs "extracted into facts"; it is a WhatsApp
   import that writes a style note, not facts ([HOW-IT-WORKS.md:150] `free paragraphs, extracted into facts.`).
 - The location code and the phone's permission text say only the city is kept. For an unlisted city,

@@ -9,8 +9,9 @@
  *                      would run, ranked, real before invented. Ids and tags never
  *                      leave the server; each becomes a per-viewer ref and a seed.
  *   matchmakerSession  a first name, and only for a met seat the reveal rule already
- *                      entitles the caller to (first mover, or the other side said
- *                      yes). Exactly the check GET /v1/matches/:id makes.
+ *                      entitles the caller to: the other side has said yes to them
+ *                      (consent first, 0073). Exactly the check GET /v1/matches/:id
+ *                      makes.
  *
  * Nothing here calls a model. Nothing here returns a coordinate, an age, a tag, an id,
  * or a word anybody wrote. A stranger in the square is a shape and a colour and the
@@ -29,7 +30,10 @@
  * itself. A neighbourhood is hundreds of thousands of people and is what people put
  * in a bio; somebody the map does not cover, or who never said, stands in the
  * central tile. The sample of strangers is the forty nearest plus the twenty-four
- * most recent, so a tile has its neighbours in it.
+ * most recent, so a tile has its neighbours in it. A MET person is not a stranger:
+ * their seat stands on their own tile only where the caller's card already names the
+ * place -- the caller decides first, or the other side has said yes -- and otherwise
+ * in the caller's own tile (2026-09-28).
  */
 import { Hono } from 'hono';
 import { CENTRAL_AREA, nearestArea } from '@clone/shared';
@@ -37,7 +41,7 @@ import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { currentState } from '../memory/facts.js';
 import { candidateCount, candidateIds, candidateIdsNear, shownCount } from '../matching/candidates.js';
-import { poolNow, shouldAskArea, touchActive } from '../matching/profile.js';
+import { poolNow, shouldAskArea, shouldAskName, touchActive } from '../matching/profile.js';
 import { rank } from '../matching/score.js';
 import { latestRound } from '../matching/rounds.js';
 import { looksFor } from '../looks/store.js';
@@ -110,6 +114,7 @@ export const worldRoutes = new Hono()
         'SELECT traits FROM match_profile WHERE user_id = $1', [me]);
       const myArea = typeof prof[0]?.traits?.area === 'string' ? (prof[0].traits.area as string) : null;
       const askArea = await shouldAskArea(db, me);
+      const askName = await shouldAskName(db, me);
       const round = await latestRound(db, me);
       const knows = (await currentState(db, me)).length;
       const { rows: city } = await db.query<{ object_text: string }>(
@@ -152,7 +157,7 @@ export const worldRoutes = new Hono()
             AND NOT apart($1, CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END)
             AND (r.status <> 'running' OR r.created_at > now() - interval '30 minutes')
           ORDER BY r.created_at DESC`, [me]);
-      return { state, round, knows, city: city[0]?.object_text ?? null, myArea, askArea,
+      return { state, round, knows, city: city[0]?.object_text ?? null, myArea, askArea, askName,
                targetedToday: Number(targeted[0]?.n ?? 0), seats };
     });
 
@@ -195,11 +200,22 @@ export const worldRoutes = new Hono()
     // this one. Being first mover opens nothing (the founder, 2026-09-28: nobody's name
     // reaches anyone until that person has said yes to them).
     const entitled = own.seats.filter((s) => s.status !== 'running' && s.other_said_yes === true);
+    // A MET PERSON'S NEIGHBOURHOOD IS CARD CONTENT (2026-09-28). It stood on their tile
+    // for every seat "as for any stranger" -- but a stranger is anonymous, and a seat is
+    // somebody this person has a card about. The second mover's card is the plain one
+    // until the first mover shares (no place on it), yet the town put the first mover
+    // in their own neighbourhood. Now a seat stands on its owner's tile only where this
+    // person's card already names the place: they decide first (their words card's
+    // headline carries it), or the other person has said yes. Anywhere else it stands
+    // in the viewer's own neighbourhood, which says nothing about them.
+    const placed = new Set(own.seats
+      .filter((s) => s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true))
+      .map((s) => s.other_id));
     const names = new Map<string, string>();
     const seatAreas = new Map<string, string>();
     // Characters and neighbourhoods for the people met and for me, in the same read
-    // as the names. The name is taken only for an entitled seat; the neighbourhood
-    // for every seat, as for any stranger.
+    // as the names. The name only for an entitled seat; the neighbourhood only for a
+    // placed one.
     const seatLooks = await matchmakerSession(async (db) => {
       if (own.seats.length) {
         const entitledIds = new Set(entitled.map((s) => s.other_id));
@@ -208,7 +224,7 @@ export const worldRoutes = new Hono()
           [own.seats.map((s) => s.other_id)]);
         for (const r of rows) {
           if (r.display_name && entitledIds.has(r.user_id)) names.set(r.user_id, r.display_name);
-          seatAreas.set(r.user_id, areaOf(r.lat, r.lon));
+          if (placed.has(r.user_id)) seatAreas.set(r.user_id, areaOf(r.lat, r.lon));
         }
       }
       return looksFor(db, [me, ...own.seats.map((s) => s.other_id)],
@@ -227,7 +243,7 @@ export const worldRoutes = new Hono()
       agents.push({
         ref, kind: 'met', practice: s.other_is_synthetic === true, seed: seedOf(ref), state,
         look: seatLooks.get(s.other_id)!,
-        area: seatAreas.get(s.other_id) ?? CENTRAL_AREA,
+        area: seatAreas.get(s.other_id) ?? own.myArea ?? CENTRAL_AREA,
         rendezvousId: s.id,
         ...(name ? { name } : {}),
         yourTurn: s.human_says_yes === null && myTurn,
@@ -244,7 +260,8 @@ export const worldRoutes = new Hono()
       square: { city: own.city, area: own.myArea ?? CENTRAL_AREA },
       me: {
         inPool: own.state.inPool, knows: own.knows,
-        missing: own.state.missing, need: [...own.state.missing, ...(own.askArea ? ['area'] : [])],
+        missing: own.state.missing,
+        need: [...(own.askName ? ['first_name'] : []), ...own.state.missing, ...(own.askArea ? ['area'] : [])],
         look: seatLooks.get(me)!,
         area: own.myArea,
       },

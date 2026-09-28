@@ -14,7 +14,7 @@
  */
 import type { PoolClient } from 'pg';
 import {
-  MIN_AGE, SINGLE_VALUED, defaultDisclosure, deriveValue, isAdult,
+  MIN_AGE, SCREEN_ONLY, SINGLE_VALUED, defaultDisclosure, deriveValue, isAdult,
   type OriginClass, type Stance,
 } from '@clone/shared';
 
@@ -95,6 +95,14 @@ export async function commit(
     return { factId: null, outcome: 'rejected', reason: `unknown predicate '${cand.predicate}'` };
   }
   const isSingle = meta.rows[0]!.cardinality === 'single';
+
+  // SCREEN-ONLY KINDS (the first name). Refused here, where every writer passes, from
+  // any writer but the setup and edit screens (`direct`, api/dating.ts essentials):
+  // the extractor, a paste import and a "Yes, that's right" all end at this function,
+  // and a name heard in chat must never become the word on somebody's reveal.
+  if (SCREEN_ONLY.has(cand.predicate) && cand.extractorModel !== 'direct') {
+    return { factId: null, outcome: 'rejected', reason: `${cand.predicate} is set on a screen, never from chat` };
+  }
 
   // THE AGE GATE, and it lives here because here is the only place every write path
   // passes through. Typing a year into setup, editing it on the profile, an import,

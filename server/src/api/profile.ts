@@ -105,7 +105,7 @@ export const knowledgeRoutes = new Hono()
     // Unsorted, "did" sorts near the top and the first thing the app shows is four
     // debugging war stories rather than where the person lives.
     const RANK: Record<string, number> = {
-      preferred_name: 0, full_name: 1, birth_date: 2, gender: 3, seeking_gender: 4,
+      first_name: 0, preferred_name: 0, full_name: 1, birth_date: 2, gender: 3, seeking_gender: 4,
       lives_in: 5, relationship_intent: 6, works_in: 7, industry: 8, education_level: 9,
       relationship_status: 10, has_children: 11, wants_children: 12, height_cm: 13,
       diet: 14, exercise_habit: 15, religion_importance: 16, politics_importance: 17,

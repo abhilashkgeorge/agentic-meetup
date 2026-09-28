@@ -16,7 +16,9 @@
  *
  * Negative controls, run by hand and recorded in the commit: return display_name
  * for every seat -> the two "no name" assertions fail; use the raw id as the ref ->
- * the three ref assertions fail.
+ * the three ref assertions fail. 2026-09-28, each restored byte-identical: every met
+ * seat back on its owner's tile -> "where a met person stands" fails; the Home's need
+ * without the first name -> "neighbourhoods in the square" fails.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
@@ -307,6 +309,9 @@ describe('neighbourhoods in the square', () => {
     expect(w.square.area).toBe('mg-road');
     // ...and the question is still open, so the Home can ask it.
     expect(w.me.need).toContain('area');
+    // So is the first name, typed on no screen yet: the Home's chip asks it (item 3,
+    // 2026-09-28). A name is never taken from chat, so this is the only way it is set.
+    expect(w.me.need).toContain('first_name');
   });
 
   it('fills the square with the viewer\'s neighbours before the recently active', async () => {
@@ -331,5 +336,31 @@ describe('neighbourhoods in the square', () => {
     expect(w.me.area).toBe('koramangala');
     expect(w.square.area).toBe('koramangala');
     expect(w.me.need).not.toContain('area');
+  });
+});
+
+describe('where a met person stands', () => {
+  it('on their own tile only where the card names the place; otherwise on mine', async () => {
+    // WHAT WAS WRONG (2026-09-28): every seat stood on its owner's tile, so the second
+    // mover saw the first mover's neighbourhood before the first mover had shared
+    // anything -- while that person's card is the plain one, with no place on it.
+    const t3 = `${tag}-where`;
+    const kor = AREAS.find((a) => a.id === 'koramangala')!;
+    const wf = AREAS.find((a) => a.id === 'whitefield')!;
+    const viewer = await person('Where', { gender: 'man', seeking_gender: ['woman'], intent: [t3], lat: kor.lat, lon: kor.lon,
+                                           traits: JSON.stringify({ area: 'koramangala' }) });
+    const away = { intent: [t3], lat: wf.lat, lon: wf.lon };
+    const theyFirst = await person('W1', away);
+    const theyShared = await person('W2', away);
+    const meFirst = await person('W3', away);
+    const hidden = await seat(viewer, theyFirst, { firstMover: theyFirst });
+    const shared = await seat(viewer, theyShared, { firstMover: theyShared, bYes: true });
+    const mine = await seat(viewer, meFirst, { firstMover: viewer });
+
+    const w = await fetchWorld(viewer.token);
+    const at = (id: string) => w.agents.find((a) => a.rendezvousId === id)?.area;
+    expect(at(hidden), 'the town showed where the first mover lives before they shared').toBe('koramangala');
+    expect(at(shared)).toBe('whitefield');
+    expect(at(mine), 'the first mover\'s own card names the place').toBe('whitefield');
   });
 });

@@ -6,8 +6,8 @@
    (each member has 3). Then you agree to three short documents: age, terms, privacy.
 3. **Set up.** You write one true sentence about yourself. You answer 3 basics (who you are, who you want to meet, what
    you're here for) and 5 cards (kids, one person or open, smoking, drinking, food). Each card has a "who's fine for my
-   partner" row. You add your birth year, age range, city and distance. Faith, voice, a character and photos are
-   optional.
+   partner" row. You add your first name, birth year, age range, city and distance. Faith, voice, a character and
+   photos are optional.
 4. **Ready.** When the basics, the five cards, birth year, city and consent are in and you are 18 or over, your agent
    can go out.
 5. **Learning.** Nothing is trained. The app stores what you tap and type as facts. A model pulls facts out of your
@@ -19,7 +19,7 @@
 7. **Wants.** You write what you want and who you couldn't be with. If a want fits one of 12 questions, you tick the
    answers you'd accept. "Must have" hides people who answered differently, both ways. People who haven't answered
    still pass. Other wants are checked by a model against the other person's own sentences, or against their private
-   card.
+   card; a want on a private topic never shows how it came out.
 8. **Sending out.** Tap "Send my agent out" (once a day) or send it to one person in the town (5 a day). Code finds
    people who pass every rule both ways. Real people come before practice profiles, and nobody is met twice. It picks
    up to three.
@@ -39,5 +39,7 @@
     person's number and phone.
 13. **Numbers.** The founder's page counts real people and how far their matches get. Another list shows which wants
     no question covers yet, as topic words, so the founder knows which questions to add.
-14. **Biggest risks today.** Some private details can leak through reveal tags, want answers, the first name
-    (taken from chat) and timing. The development server's log holds phone numbers and sign-in codes.
+14. **Biggest risks today.** Timing can still give away a no, "Matches" on a situation want can say how someone
+    answered, and the town's strangers can be probed by changing your own rules. The development server's log holds
+    phone numbers and sign-in codes. (Reveal tags, chat-heard names, private-want answers, the message history, the
+    send-over probe, the town's neighbourhoods and the clone's own words were closed on 2026-09-28.)

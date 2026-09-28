@@ -90,15 +90,30 @@ async function extractSessionInner(
 
   if (!prep) return null;
 
+  // THE PERSON'S OWN TURNS ONLY (the founder, 2026-09-28): the clone's replies are not
+  // facts about them (extract.ts filters again, for any other caller). Nothing typed
+  // since the last pass -- a session of the clone's greeting alone -- is recorded as
+  // done without a model call.
+  const said = prep.turns.filter((t) => t.role === 'user');
+  if (!said.length) {
+    await tenantSession(ctx, (c) => c.query(
+      `INSERT INTO session_extractions (tenant_id, user_id, session_id, last_turn_index, facts_staged)
+       VALUES ($1,$2,$3,$4,0)
+       ON CONFLICT (tenant_id, user_id, session_id) DO UPDATE
+         SET last_turn_index = EXCLUDED.last_turn_index, extracted_at = now()`,
+      [ctx.tenantId, ctx.userId, sessionId, prep.lastIndex]));
+    return null;
+  }
+
   // --- Model phase. NO transaction open. ---
   const out = await extractSessionFacts(
     {
-      transcript: prep.turns.map((t) => ({ role: t.role, content: t.raw_text })),
+      transcript: said.map((t) => ({ role: t.role, content: t.raw_text })),
       currentFacts: prep.facts.map((f) => ({ predicate: f.predicate, objectText: f.objectText })),
       tenantId: ctx.tenantId,
       userId: ctx.userId,
     },
-    prep.turns.map((t) => t.id),
+    said.map((t) => t.id),
   );
 
   // --- Write phase. New short transaction; all commits atomic together. ---

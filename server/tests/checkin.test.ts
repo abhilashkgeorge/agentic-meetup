@@ -50,6 +50,16 @@ async function person(label: string, over: Record<string, unknown> = {}): Promis
   };
   const keys = Object.keys(cols);
   await owner.query(`INSERT INTO match_profile (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')})`, keys.map((k) => cols[k]));
+  // The tags a reveal may show are the ones backed by a fact the person made shareable
+  // (2026-09-28: publicTags, never the matching row's raw list). religion:jain has no
+  // such fact, so it never reaches the reveal whatever the row holds.
+  for (const [predicate, value] of [['interest', 'climbing'], ['works_in', 'ai'], ['interest', 'cooking'], ['interest', 'chess']]) {
+    await tenantSession({ tenantId, userId }, (c) => commit(c, { tenantId, userId }, {
+      predicate: predicate!, objectText: value!, objectValue: value, stance: 'asserted', originClass: 'owner',
+      sourceQuote: value!, sourceEpisodeIds: [], disclosure: 'public',
+      extractorModel: 't', extractorVersion: '0', promptVersion: '0',
+    }));
+  }
   const sessionId = newSessionId();
   await owner.query(
     `INSERT INTO device_sessions (id, tenant_id, user_id, label, expires_at)

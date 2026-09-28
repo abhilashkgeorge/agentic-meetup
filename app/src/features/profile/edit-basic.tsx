@@ -13,6 +13,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import { firstName } from '@clone/shared';
 import { getKnowledge, setEssential } from '../../lib/api';
 import { useSession } from '../../store/session';
 import { FIELD_BY_KEY } from './fields';
@@ -72,6 +73,11 @@ export default function EditBasic() {
 
   const save = async (answer: unknown): Promise<void> => {
     if (!token) return;
+    // The server's own rule (shared firstName), said here as a sentence.
+    if (field.key === 'first_name' && answer !== null && !firstName(String(answer))) {
+      setNote('Just your first name, in letters.');
+      return;
+    }
     setBusy(true);
     const r = await setEssential(token, field.key, answer);
     setBusy(false);
@@ -137,13 +143,15 @@ export default function EditBasic() {
         <Field
           value={text}
           onChangeText={setText}
-          placeholder={field.kind === 'number' ? 'A number' : 'Type it'}
+          placeholder={field.placeholder ?? (field.kind === 'number' ? 'A number' : 'Type it')}
           keyboardType={field.kind === 'number' ? 'number-pad' : 'default'}
+          {...(field.key === 'first_name' ? { autoComplete: 'given-name', textContentType: 'givenName' } as const : {})}
           autoFocus
         />
       )}
 
       {note && <Text style={[type.callout, { color: p.danger }]}>{note}</Text>}
+      {field.note && <Text style={[type.callout, { color: p.textTertiary }]}>{field.note}</Text>}
     </Screen>
   );
 }

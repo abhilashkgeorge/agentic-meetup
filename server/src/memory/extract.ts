@@ -25,7 +25,7 @@ import { learnedDisclosure } from '../matching/brief.js';
 
 /** Bumped on any change below. Recorded on every fact, so a bad prompt is findable
  *  and reversible after the fact rather than merely regrettable. */
-export const PROMPT_VERSION = '2026-09-09.2';
+export const PROMPT_VERSION = '2026-09-28.1';
 export const EXTRACTOR_VERSION = '1';
 
 /** Kept inside Anthropic's grammar subset: no recursion, no min/max, no minLength,
@@ -64,7 +64,7 @@ const VOCAB = CORE_PREDICATES.map(
  * Nothing volatile may enter it -- no date, no name, no session id. One changed
  * byte invalidates the cache for everyone, and a cache miss is silent.
  */
-export const EXTRACTION_PROMPT = `You extract durable facts about ONE person from a transcript of them talking to their AI clone.
+export const EXTRACTION_PROMPT = `You extract durable facts about ONE person from what they typed to their AI clone. Only their own lines are here: the clone's replies are left out on purpose, because nothing the clone said is a fact about the person.
 
 ## Predicates
 
@@ -178,9 +178,17 @@ export async function extractSessionFacts(
     ? input.currentFacts.map((f) => `- ${f.predicate}: ${f.objectText}`).join('\n')
     : '(nothing known yet)';
 
-  const transcript = input.transcript
-    .map((t) => `${t.role === 'user' ? 'PERSON' : 'CLONE'}: ${t.content}`)
-    .join('\n');
+  // THE PERSON'S OWN WORDS, NEVER THE CLONE'S (the founder, 2026-09-28). The clone's
+  // replies used to go in as CLONE lines, and a reply in the first person -- "I do
+  // stand-up every Friday" -- could come back as a fact about the person, then as
+  // their "own" sentence. Filtered here, where every caller passes through, so no
+  // caller can hand the model a reply. The cost is context: a bare "yes" to the clone's
+  // question now teaches nothing -- the tapped cards ask the fields that matter.
+  const said = input.transcript.filter((t) => t.role === 'user');
+  if (!said.length) {
+    return { candidates: [], possiblyFalse: [], intents: [], costUsd: 0, model: modelIdOf(model) };
+  }
+  const transcript = said.map((t) => `PERSON: ${t.content}`).join('\n');
 
   const res = await llm.complete(
     {

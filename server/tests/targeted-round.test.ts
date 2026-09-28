@@ -3,18 +3,23 @@
  *
  * WHAT IS BEING GUARDED. A tap on somebody in the square sends your agent to them.
  * It used to start a real conversation (~$0.02); since 2026-09-23 it holds none and
- * costs no model call, and it is still bounded three ways before a row exists: the
- * day's budget, five visits a day counted in the database, and the same candidate
- * rules as an open round -- a block or a filter answers "not here" exactly as it
- * would to a scan of the square. The run itself checks the rules again, because the
- * tap and the run are minutes apart.
+ * costs no model call, and it is still bounded before a row exists: the day's budget,
+ * five visits a day counted in the database, and a block, somebody already met or a
+ * ref never given out answers "not here". The RULES are the run's to check, after the
+ * visit is counted (2026-09-28): when the tap checked them itself, a filter answered
+ * "not here" at once and for free, and flipping your own must-have and tapping again
+ * read somebody's card answer off the difference. Now the tap says the same thing
+ * whatever anybody's card says.
  *
  * Fixtures go in through the owner connection; the endpoint is hit through its real
  * route with a real token; the model is stubbed as in labels.test.ts.
  *
  * Negative controls, run by hand and recorded in the commit: drop the count in
  * enqueueRound -> the sixth tap is accepted; drop the isCandidate check in runRound
- * -> the out-of-filter person is met.
+ * -> the out-of-filter person is met. 2026-09-28, each restored byte-identical:
+ * resolveAgentRef back on the candidate list -> "the same answer whatever their card
+ * says" fails (a free "not here"); the route without its met set -> "not here"
+ * fails for the person already met.
  */
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { Pool } from 'pg';
@@ -141,14 +146,18 @@ describe('send my agent over', () => {
     expect(JSON.stringify(frames)).not.toContain(them.userId);
   });
 
-  it('answers "not here" for somebody a block or a filter keeps apart, before any row', async () => {
+  it('answers "not here" for a block, somebody already met, or a ref never given, before any row', async () => {
     const tag = `tr-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const me = await person('me', { gender: 'man', seeking_gender: ['woman'], intent: [tag] });
     const blocked = await person('blocked', { intent: [tag] });
     await owner.query('INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1,$2)', [me.userId, blocked.userId]);
-    const wrong = await person('rohan', { intent: [tag], gender: 'man', seeking_gender: ['woman'] });
+    const met = await person('met', { intent: [tag] });
+    const [lo, hi] = me.userId < met.userId ? [me, met] : [met, me];
+    await owner.query(
+      `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, status)
+       VALUES ($1,$2,$3,$4,0,'lapsed')`, [lo.userId, hi.userId, lo.tenantId, hi.tenantId]);
 
-    for (const who of [blocked, wrong]) {
+    for (const who of [blocked, met]) {
       const res = await tap(me, agentRef(me.userId, who.userId));
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({ error: 'not_here' });
@@ -156,6 +165,35 @@ describe('send my agent over', () => {
     expect(await tap(me, 'deadbeefdeadbeefdeadbeefdeadbeef').then((r) => r.status)).toBe(404);
     expect(await tap(me, 'not-a-ref').then((r) => r.status)).toBe(400);
     expect(await roundsOf(me)).toBe('0');
+  });
+
+  it('gives the same answer whatever their card says: every tap is a counted visit', async () => {
+    // Somebody seen in the square, then a must-have flipped to test their card: "no
+    // smokers". She smokes, he does not. Both taps are visits, both count, and only the
+    // run -- a visit already spent -- finds out who fits.
+    const tag = `tr-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const me = await person('me', { gender: 'man', seeking_gender: ['woman', 'man'], intent: [tag] });
+    const smokes = await person('smokes', { intent: [tag], traits: JSON.stringify({ smoking: 'often' }) });
+    const never = await person('never', { intent: [tag], gender: 'man', seeking_gender: ['man'],
+                                          traits: JSON.stringify({ smoking: 'never' }) });
+    await owner.query(
+      `INSERT INTO preferences (tenant_id, user_id, predicate, operator, value, strength, source_quote)
+       VALUES ($1,$2,'smoking','in','["never"]','dealbreaker','no smokers')`, [me.tenantId, me.userId]);
+
+    const answers: number[] = [];
+    for (const who of [smokes, never]) {
+      const res = await tap(me, agentRef(me.userId, who.userId));
+      answers.push(res.status);
+      const { roundId } = (await res.json()) as { roundId?: string };
+      // The worker's turn, done here so the next tap is not the same round in flight.
+      if (roundId) await runOneQueuedRound(roundId);
+    }
+    expect(answers, 'the tap said who passes the rule').toEqual([202, 202]);
+    const { rows } = await owner.query<{ target_user_id: string; skipped: string | null }>(
+      `SELECT target_user_id, result->>'skipped' AS skipped FROM rounds WHERE user_id = $1 ORDER BY requested_at`, [me.userId]);
+    expect(rows.map((r) => r.target_user_id), 'both taps counted').toEqual([smokes.userId, never.userId]);
+    expect(rows[0]!.skipped).toBe('they are not someone your agent can meet');
+    expect(rows[1]!.skipped).toBeNull();
   });
 
   it('is refused by the run itself when the rules changed since the tap', async () => {

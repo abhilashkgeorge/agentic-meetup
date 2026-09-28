@@ -7,16 +7,17 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { MIN_AGE, ageFromYear, deriveValue, findArea, findPlace, isAdult, canFilterOn, type Look } from '@clone/shared';
+import { MIN_AGE, ageFromYear, deriveValue, findArea, findPlace, firstName, isAdult, canFilterOn, type Look } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession, type TenantCtx } from '../db/client.js';
 import { commit } from '../memory/facts.js';
-import { poolNow, rebuildMatchProfile, shouldAskArea, touchActive } from '../matching/profile.js';
+import { poolNow, rebuildMatchProfile, shouldAskArea, shouldAskName, touchActive } from '../matching/profile.js';
 import { candidateCount, poolBreakdown, shownBreakdown, shownCount } from '../matching/candidates.js';
 import { decide, runRound } from '../matching/orchestrator.js';
 import { DailyRoundsExceeded, DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
 import { resolveAgentRef } from '../matching/world.js';
-import { liveCard, plainCard, readBrief, sentenceKey } from '../matching/brief.js';
+import { liveCard, mayRepeat, plainCard, readBrief, sentenceKey } from '../matching/brief.js';
+import { publicTags } from '../matching/rendezvous.js';
 import { expireDue } from '../matching/expiry.js';
 import { roundRecap } from '../matching/recap.js';
 import { ruleLabel } from '../matching/want-questions.js';
@@ -137,7 +138,11 @@ async function otherOf(id: string, me: string, synthetic: boolean): Promise<Othe
     );
     const row = rows[0];
     if (!row) return null;
-    return { ...row, look: await lookOf(db, row.user_id, synthetic) };
+    // SHAREABLE TAGS ONLY (the founder, 2026-09-28). The profile row's tags are built
+    // from every live fact, for matching -- chat-learned ones the person never shared,
+    // and ones they hid, included. Shown to another person, a tag must come from a fact
+    // they made shareable, like every other thing a card says (publicTags, per fact).
+    return { ...row, attribute_tags: await publicTags(db, row.user_id), look: await lookOf(db, row.user_id, synthetic) };
   });
 }
 
@@ -151,10 +156,12 @@ async function otherOf(id: string, me: string, synthetic: boolean): Promise<Othe
 export function revealOf(other: OtherRow, practice: boolean, photosVisible: boolean) {
   // Tags, not sentences. What they have said in their own words belongs in the
   // brief, where it comes with a date and is quoted rather than summarised.
+  // Shareable facts only (otherOf passes publicTags), and never a word on a private
+  // topic -- "temple visits" or "whisky" is a sentence no card would say.
   const tags = other.attribute_tags
     .filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))
     .map((raw) => ({ raw, word: raw.split(':')[1]?.replace(/[-_]/g, ' ') ?? '' }))
-    .filter((t) => t.word)
+    .filter((t) => t.word && mayRepeat(t.word))
     .slice(0, 8);
   const name = other.display_name ?? 'Someone';
   const livesIn = typeof other.traits.lives_in === 'string' ? other.traits.lives_in : null;
@@ -278,6 +285,18 @@ export const datingRoutes = new Hono()
       ageRange = r.data;
     }
 
+    // THE FIRST NAME, the only writer of it (commit refuses every other). One word of
+    // letters, stored as the shared rule shows it, so what the person reads back on
+    // their profile is exactly what somebody sees once they share it. A phone number
+    // or a handle is a 400 with a sentence, never somebody's name.
+    let name: string | null = null;
+    if (predicate === 'first_name' && value !== null && value !== '') {
+      name = typeof value === 'string' ? firstName(value) : null;
+      if (!name) {
+        return c.json({ error: 'bad_name', message: 'Just your first name, in letters.' }, 400);
+      }
+    }
+
     // A neighbourhood is typed or picked by name; what is stored is the id from the
     // public list of thirty. A name the list does not know is a 400 with a sentence,
     // not a silently dropped fact.
@@ -327,7 +346,7 @@ export const datingRoutes = new Hono()
       // because the predicate is multi-valued and each value stands alone. An age
       // range is ONE answer that happens to be an object, and is stored as its words
       // ("26-34") with the checked {min,max} as the value.
-      const values = ageRange ? [`${ageRange.min}-${ageRange.max}`] : Array.isArray(value) ? value : [value];
+      const values = ageRange ? [`${ageRange.min}-${ageRange.max}`] : name ? [name] : Array.isArray(value) ? value : [value];
       for (const v of values) {
         const text = String(v);
         // The two that cannot be derived from the words alone.
@@ -385,7 +404,7 @@ export const datingRoutes = new Hono()
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);
 
-    const { state, askDistance, askArea } = await tenantSession(ctx, async (db) => {
+    const { state, askDistance, askArea, askName } = await tenantSession(ctx, async (db) => {
       const s = await rebuildMatchProfile(db, ctx);
       // Distance is the one optional essential and is settable only in the setup
       // wizard, so the server -- not a client heuristic -- decides whether it is still
@@ -400,7 +419,11 @@ export const datingRoutes = new Hono()
       );
       // The neighbourhood is the other optional one, and only for a person the map
       // covers. It is asked right after the city, so the wizard's list keeps that order.
-      return { state: s, askDistance: rows.length === 0, askArea: await shouldAskArea(db, ctx.userId) };
+      // The first name is optional too, and asked first (app fields.ts order).
+      return {
+        state: s, askDistance: rows.length === 0,
+        askArea: await shouldAskArea(db, ctx.userId), askName: await shouldAskName(db, ctx.userId),
+      };
     });
     if (!state.inPool) {
       // `missing` is the friendly sentences the cards print, and stays REQUIRED-only so
@@ -408,7 +431,7 @@ export const datingRoutes = new Hono()
       // keys the setup wizard asks -- the required ones, plus the neighbourhood and
       // distance while they are still worth offering -- so the wizard asks ONLY what
       // is left instead of all six.
-      const need = [...state.missing, ...(askArea ? ['area'] : []), ...(askDistance ? ['max_distance_km'] : [])];
+      const need = [...(askName ? ['first_name'] : []), ...state.missing, ...(askArea ? ['area'] : []), ...(askDistance ? ['max_distance_km'] : [])];
       return c.json({
         total: null, steps: [], inPool: false,
         missing: friendly(state.missing), need,
@@ -421,11 +444,12 @@ export const datingRoutes = new Hono()
       await poolBreakdown(db, ctx.userId),
     ]);
 
-    // In the pool, the only open question is the neighbourhood: the Home's chip asks it.
+    // In the pool, the only open questions are the first name and the neighbourhood:
+    // the Home's chips ask them.
     // Every count through shownCount: rounded to ten, nothing under twenty.
     return c.json({
       total: shownCount(total), steps: shownBreakdown(steps), inPool: true, missing: [],
-      need: askArea ? ['area'] : [],
+      need: [...(askName ? ['first_name'] : []), ...(askArea ? ['area'] : [])],
     });
   })
 
@@ -947,9 +971,10 @@ export const datingRoutes = new Hono()
     // per-viewer ref the roster gave out. It costs nothing in model calls now -- no
     // conversation is held -- and is still five a day, which now bounds how often
     // one person can put themselves in front of another rather than spend.
-    // The ref resolves only among people the candidate rules already allow, so a
-    // block or a filter answers "not here" exactly as it would to a scan of the
-    // square. No body at all is the plain "send my agent out".
+    // The ref resolves WITHOUT the rules (world.ts resolveAgentRef): a block, somebody
+    // already met, or a ref never given out is "not here"; anybody else is a counted
+    // visit, and the round checks the rules -- so no card answer can be read off the
+    // tap for free. No body at all is the plain "send my agent out".
     const body = z.object({ target: z.string().regex(/^[0-9a-f]{32}$/).optional() })
       .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: 'bad request' }, 400);
@@ -965,7 +990,12 @@ export const datingRoutes = new Hono()
         throw err;
       }
       const ref = body.data.target;
-      const id = await matchSession((db) => resolveAgentRef(db, ctx.userId, ref));
+      // Everybody this person has already met, from their own rows: a pair meets once,
+      // so a ref for one of them is "not here" whatever either card says.
+      const met = await tenantSession(ctx, async (db) => new Set((await db.query<{ other: string }>(
+        `SELECT CASE WHEN user_a = $1 THEN user_b ELSE user_a END AS other
+           FROM rendezvous WHERE user_a = $1 OR user_b = $1`, [ctx.userId])).rows.map((r) => r.other)));
+      const id = await matchSession((db) => resolveAgentRef(db, ctx.userId, ref, met));
       if (!id) return c.json({ error: 'not_here' }, 404);
       targetUserId = id;
     }

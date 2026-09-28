@@ -145,7 +145,10 @@ export async function completion(c: PoolClient, userId: string): Promise<Complet
     softCovered,
     softTotal: SOFT_CORE.length,
     textureFacts,
-    nextQuestion: ASK_ORDER.find((a) => !have.has(a.predicate)) ?? null,
+    // "What should I call you?" is not asked of somebody who has already typed their
+    // first name on the setup screen.
+    nextQuestion: ASK_ORDER.find((a) =>
+      !have.has(a.predicate) && !(a.predicate === 'preferred_name' && have.has('first_name'))) ?? null,
     awaitingConfirmation: Number(pending[0]?.n ?? 0),
   };
 }

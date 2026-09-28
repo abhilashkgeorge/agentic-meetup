@@ -59,21 +59,23 @@ $0.02; not measured, because no round has run since the talk was added.
   ([server/src/api/tell.ts:71] `out = await metered(ctx, 'extract', () => extractSessionFacts(`,
   [server/src/memory/session.ts:28] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);`).
   Story and question-of-the-day answers are also swept later, and a first-screen sentence is extracted a second
-  time by the sweeper ([server/src/memory/session.ts:287] `AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)`).
-- **What goes in:** the whole session, both the person's and the clone's lines, plus the person's current
-  facts. Key instructions: "You extract durable facts about ONE person from a transcript", "NEVER generalise the
-  object.", "when in doubt choose the weaker stance", "Silence is not evidence."
-  ([server/src/memory/extract.ts:67] `You extract durable facts about ONE person from a transcript`,
+  time by the sweeper ([server/src/memory/session.ts:302] `AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)`).
+- **What goes in:** the person's own lines from the session -- never the clone's (since 2026-09-28) --
+  plus their current facts; a session with nothing they typed makes no call. Key instructions: "You extract
+  durable facts about ONE person from what they typed to their AI clone.", "NEVER generalise the object.",
+  "when in doubt choose the weaker stance", "Silence is not evidence."
+  ([server/src/memory/extract.ts:187] `const said = input.transcript.filter((t) => t.role === 'user');`,
+  [server/src/memory/extract.ts:67] `You extract durable facts about ONE person from what they typed to their AI clone.`,
   [server/src/memory/extract.ts:79] `NEVER generalise the object.`,
   [server/src/memory/extract.ts:91] `when in doubt choose the weaker stance`,
   [server/src/memory/extract.ts:99] `Silence is not evidence.`).
 - **What comes out:** a list of facts (field, words, how sure, the exact quote, when), facts that may now be
-  false, and what the session was for ([server/src/memory/extract.ts:195] `outputSchemaName: 'extraction',`).
+  false, and what the session was for ([server/src/memory/extract.ts:203] `outputSchemaName: 'extraction',`).
 - **Code checks:** the reply must parse, or nothing is kept; unknown fields and under-18 birth years are
   refused; tapped fields are held; anything not asserted is held; learned facts start match-only
-  ([server/src/memory/extract.ts:205] `const parsed = Extraction.safeParse(res.parsed);`,
-  [server/src/memory/facts.ts:111] `if (!isAdult(parsed)) {`). Nothing checks that a quote came from the person
-  rather than the clone.
+  ([server/src/memory/extract.ts:213] `const parsed = Extraction.safeParse(res.parsed);`,
+  [server/src/memory/facts.ts:119] `if (!isAdult(parsed)) {`). The model never sees the clone's words, so a
+  fact cannot come from them; a first name is refused whatever the model says (it is set on a screen).
 - **Stored:** facts, an audit trail, questions the clone wants to ask, session intents.
 
 <a id="ai-2"></a>
@@ -155,7 +157,7 @@ $0.02; not measured, because no round has run since the talk was added.
 
 - **Model:** Gemini Embedding 001, 768 numbers per text ([server/src/llm/adapters/google.ts:216] `model: env.EMBEDDING_MODEL.replace(/^google:/, ''),`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
-  are embedded and stored ([server/src/memory/retrieval.ts:59] `[vector] = await embed([query]);`,
+  are embedded and stored ([server/src/memory/retrieval.ts:64] `[vector] = await embed([query]);`,
   [server/src/api/chat.ts:467] `const vectors = await embed(todo.map(([, t]) => t));`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   ([server/src/llm/embeddings.ts:26] `export async function embed(texts: readonly string[]): Promise<number[][]> {`).
@@ -170,14 +172,14 @@ $0.02; not measured, because no round has run since the talk was added.
   ([server/src/memory/resolve.ts:41] `Return three lists of INTEGERS, referring to positions in EXISTING. Never return text.`,
   [server/src/memory/resolve.ts:63] `When you cannot decide, choose uncertain_ids.`).
 - **Checks:** must parse; out-of-range numbers dropped. **Stored:** contradicted facts are retired; uncertain ones
-  become a question ([server/src/memory/session.ts:127] `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'`).
+  become a question ([server/src/memory/session.ts:142] `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'`).
 
 <a id="ai-9"></a>
 ### AI-9. Profile summary
 
 - **Task / model:** `render_profile` → Flash-Lite ([server/src/memory/profile.ts:146] `modelFor('render_profile'),`).
 - **When:** inside AI-1, when 3 or more facts changed, and only if the new summary would not drop more than a
-  quarter of the old ([server/src/memory/session.ts:166] `if (asserted + superseded + resolvedContradictions >= 3) {`).
+  quarter of the old ([server/src/memory/session.ts:181] `if (asserted + superseded + resolvedContradictions >= 3) {`).
 - **In:** up to 60 confirmed facts, any visibility. Instructions: "Write a short profile of this person from the
   facts given." "Use ONLY the facts given. Add nothing." ([server/src/memory/profile.ts:71] `Write a short profile of this person from the facts given.`,
   [server/src/memory/profile.ts:82] `Use ONLY the facts given. Add nothing.`).

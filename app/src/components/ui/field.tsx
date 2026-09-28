@@ -51,8 +51,8 @@ export function Field({
    * is the difference between a five-second step and a thirty-second one, and it is
    * also the only thing that stops people screenshotting the SMS.
    */
-  autoComplete?: 'tel' | 'one-time-code' | 'off';
-  textContentType?: 'telephoneNumber' | 'oneTimeCode' | 'none';
+  autoComplete?: 'tel' | 'one-time-code' | 'given-name' | 'off';
+  textContentType?: 'telephoneNumber' | 'oneTimeCode' | 'givenName' | 'none';
   onSubmitEditing?: () => void;
   minHeight?: number;
   textStyle?: TextStyle;

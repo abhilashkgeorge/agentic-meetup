@@ -20,8 +20,12 @@
  *   - the other side's wants are checked against the starter for their own card.
  *
  *   - a want about a private topic (kids, drinking, faith...) is CHECK-ONLY: matched
- *     against the other person's card answer by code, shown as matches / doesn't match,
- *     and never beside a quote -- not even a sentence of theirs about exactly that;
+ *     against the other person's card answer by code, and never beside a quote -- not
+ *     even a sentence of theirs about exactly that. Since 2026-09-28 the card does not
+ *     say whether it matched either: "Matches" told the reader the other person's card
+ *     answer, which they were promised nobody sees. It says 'private', the same word
+ *     whatever the check found or whether it ran; the stored status still records the
+ *     result and still moves a not-met person later, silently;
  *   - NO WANT IS DROPPED: one nothing can check -- no card covers it, they never
  *     answered the card, the check failed -- is on the card as "can't check".
  *
@@ -35,6 +39,8 @@
  *     never beside it" and "never quotes his sentence" fail. Behind it, wantRows,
  *     composeBrief and readBrief each null a private want's quote again, by design.
  *   - the orchestrator dropping a failed check      -> "never dropped" fails
+ *   - wantCheck without its private-topic line (2026-09-28) -> "never says whether it
+ *     matched" and "one word for a private topic" fail
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Pool } from 'pg';
@@ -100,6 +106,7 @@ const { commit } = await import('../src/memory/facts.js');
 const episodes = await import('../src/memory/episodes.js');
 const { demote, notMetCounts, readWantChecks, splitWants } = await import('../src/matching/wants.js');
 const { runRound } = await import('../src/matching/orchestrator.js');
+const { wantCheck } = await import('../src/matching/brief.js');
 const { datingRoutes } = await import('../src/api/dating.js');
 const { mintToken, newSessionId } = await import('../src/tokens.js');
 
@@ -345,7 +352,7 @@ describe('in a round, private topics and nothing dropped', () => {
     return (await res.json() as { matches: { wants?: { want: string; theirs: string | null; check?: string }[] }[] }).matches;
   };
 
-  it('never quotes his sentence, only matches or doesn\'t -- and a want no card covers says so', async () => {
+  it('never quotes his sentence, and never says whether it matched -- one word, whatever the check found', async () => {
     const { her, men } = await privateScene(`wt-private-${Date.now()}`);
     stub.cardRules = [{ contains: "doesn't drink", card: 'drinking', values: ['never'] }];
     const r = await runRound(her.userId);
@@ -361,9 +368,12 @@ describe('in a round, private topics and nothing dropped', () => {
     const text = JSON.stringify(cards);
     expect(text, 'his sentence about drinking reached her card').not.toContain(DRY);
     const rows = cards.flatMap((m) => m.wants ?? []);
-    expect(rows).toContainEqual({ want: "Someone who doesn't drink", kind: 'wants', theirs: null, check: 'matches' });
-    expect(rows).toContainEqual({ want: "Someone who doesn't drink", kind: 'wants', theirs: null, check: 'doesnt_match' });
-    expect(rows).toContainEqual({ want: 'Someone politically on the left', kind: 'wants', theirs: null, check: 'cant_check' });
+    // Met for one man, not met for the next, unanswered for the third -- and the three
+    // cards read the same. Six rows: two wants on each of three cards.
+    expect(rows).toHaveLength(6);
+    expect(rows.filter((w) => w.want === "Someone who doesn't drink")).toEqual(Array(3).fill(
+      { want: "Someone who doesn't drink", kind: 'wants', theirs: null, check: 'private' }));
+    expect(rows.filter((w) => w.check !== 'private'), 'a card said how his answer compared').toEqual([]);
     expect(rows.every((w) => w.theirs === null)).toBe(true);
   });
 
@@ -377,6 +387,24 @@ describe('in a round, private topics and nothing dropped', () => {
     ]);
     const rows = (await herCards(her)).flatMap((m) => m.wants ?? []);
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((w) => w.check === 'cant_check')).toBe(true);
+    // Still on the card, and a private topic still says only that it is private: "can't
+    // check" there would tell her he declined the card.
+    expect(rows.every((w) => w.check === 'private')).toBe(true);
+  });
+});
+
+describe('one word for a private topic', () => {
+  it('whatever the check found; a want tied to a question still says matches or not', () => {
+    for (const status of ['met', 'not_met', 'unknown', 'cant_check'] as const) {
+      for (const want of ["Someone who doesn't drink", 'Same faith as me', 'Wants kids someday', 'A vegetarian']) {
+        expect(wantCheck({ want, status, private: true }), `${want} / ${status}`).toBe('private');
+      }
+    }
+    // Checked by code against a situation or a tapped question: not a private topic.
+    expect(wantCheck({ want: 'Someone who reads', status: 'met', private: true })).toBe('matches');
+    expect(wantCheck({ want: 'Someone who reads', status: 'not_met', private: true })).toBe('doesnt_match');
+    expect(wantCheck({ want: 'Someone who reads', status: 'cant_check', private: true })).toBe('cant_check');
+    // An ordinary want: no word at all -- the reader judges from the quote.
+    expect(wantCheck({ want: 'Must love dogs', status: 'met' })).toBeNull();
   });
 });

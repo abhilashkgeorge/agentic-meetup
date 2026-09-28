@@ -29,6 +29,11 @@ const RRF_K = 60;
 /**
  * Reciprocal rank fusion across the vector and FTS channels.
  *
+ * THE PERSON'S OWN TURNS ONLY (the founder, 2026-09-28). The chat labels what this
+ * returns "things they said before" (api/chat.ts), and it used to search the clone's
+ * replies too -- so the clone's own words came back to it as the person's. Every
+ * query below reads role 'user'.
+ *
  * RRF blends the two CHANNELS only. It is deliberately not the primary fusion for
  * the index itself: index-time key merging (embedding raw text || extracted facts)
  * measured 0.732 vs 0.618 for retrieval-time rank fusion.
@@ -73,7 +78,7 @@ export async function recall(
        SELECT id, raw_text, occurred_at,
               ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
          FROM episodes
-        WHERE user_id = $1 AND embedding IS NOT NULL
+        WHERE user_id = $1 AND role = 'user' AND embedding IS NOT NULL
           AND ($7::uuid IS NULL OR id <> $7)
         ORDER BY embedding <=> $2::halfvec
         LIMIT $3
@@ -84,7 +89,7 @@ export async function recall(
                 ORDER BY ts_rank_cd(fts, websearch_to_tsquery('english', $4)) DESC
               ) AS rank
          FROM episodes
-        WHERE user_id = $1 AND fts @@ websearch_to_tsquery('english', $4)
+        WHERE user_id = $1 AND role = 'user' AND fts @@ websearch_to_tsquery('english', $4)
           AND ($7::uuid IS NULL OR id <> $7)
         ORDER BY ts_rank_cd(fts, websearch_to_tsquery('english', $4)) DESC
         LIMIT $3
@@ -123,7 +128,7 @@ async function lexicalOnly(
     `SELECT id, raw_text, occurred_at,
             ts_rank_cd(fts, websearch_to_tsquery('english', $2)) AS score
        FROM episodes
-      WHERE user_id = $1 AND fts @@ websearch_to_tsquery('english', $2)
+      WHERE user_id = $1 AND role = 'user' AND fts @@ websearch_to_tsquery('english', $2)
         AND ($4::uuid IS NULL OR id <> $4)
       ORDER BY score DESC
       LIMIT $3`,

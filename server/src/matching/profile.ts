@@ -12,7 +12,7 @@
  * coordinates rounded to the precision the person actually gave.
  */
 import type { PoolClient } from 'pg';
-import { MIN_AGE, POOL_REQUIRED, canFilterOn, findArea, haversineKm, nearestArea } from '@clone/shared';
+import { MIN_AGE, POOL_REQUIRED, canFilterOn, findArea, firstName, haversineKm, nearestArea } from '@clone/shared';
 // Aliased: this file already has its own REQUIRED -- the five structural answers --
 // and importing a second one under the same name silently shadowed it, emptying
 // `missing` for every profile. tsc accepted it; a test caught it.
@@ -38,17 +38,15 @@ export async function rebuildMatchProfile(
   // that the only thing that can be active, so this inherits the guarantee for free:
   // a staged paste can never reach the matcher.
   const { rows: facts } = await c.query<{
-    predicate: string; object_text: string; object_value: unknown;
+    predicate: string; object_text: string; object_value: unknown; extractor_model: string;
   }>(
-    `SELECT f.predicate, f.object_text, f.object_value
+    `SELECT f.predicate, f.object_text, f.object_value, f.extractor_model
        FROM facts f JOIN predicates p ON p.name = f.predicate
       WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL
-        -- full_name is deliberately NOT matchable -- nobody is filtered on a name --
+        -- first_name is deliberately NOT matchable -- nobody is filtered on a name --
         -- but it is the one unmatchable predicate this function needs, for the
-        -- display name. Without this clause the \`case 'full_name'\` below was dead
-        -- code: 5,008 of 5,013 pooled profiles had a name and every one of them was
-        -- invented, while every real human rendered as "Someone".
-        AND (p.matchable OR p.name = 'full_name')`,
+        -- display name.
+        AND (p.matchable OR p.name = 'first_name')`,
     [ctx.userId],
   );
 
@@ -66,6 +64,18 @@ export async function rebuildMatchProfile(
   let displayName: string | null = null;
 
   for (const f of facts) {
+    // THE NAME ANOTHER PERSON SEES, from one place only: the words the person typed on
+    // "What should people call you?" (the founder, 2026-09-28). It used to be the first
+    // word of a full_name the chat extractor heard -- no screen asked -- so a name said
+    // in passing was the word on a stranger's reveal. `commit` refuses a first_name
+    // from any writer but the screens; the writer is checked again here, so a row
+    // written some other way (a restored dump, a direct insert) still shows nothing.
+    // Before the value check: a typed name is words, with no structured value. And it
+    // stops here, so a name never becomes a trait a preference is tested against.
+    if (f.predicate === 'first_name') {
+      if (f.extractor_model === 'direct') displayName = firstName(f.object_text);
+      continue;
+    }
     const v = f.object_value;
     if (v === null || v === undefined) continue;
 
@@ -73,15 +83,6 @@ export async function rebuildMatchProfile(
       case 'gender':
         gender = String(v);
         break;
-      case 'full_name':
-        // First name only, and it stops here. The rest of the name never reaches the
-        // matching role, so a person who has not decided whether to meet you cannot
-        // be looked up before they do.
-        displayName = String(v).trim().split(/\s+/)[0] ?? null;
-        // `continue`, not `break`: the line after the switch back-fills every string
-        // value into traits, and a name must never become something a preference can
-        // be tested against or a tag two people are compared on.
-        continue;
       case 'seeking_gender':
         seeking.push(String(v));
         break;
@@ -219,9 +220,10 @@ export async function rebuildMatchProfile(
        max_distance_km = EXCLUDED.max_distance_km,
        intent = EXCLUDED.intent, attribute_tags = EXCLUDED.attribute_tags,
        traits = EXCLUDED.traits, in_pool = EXCLUDED.in_pool,
-       -- Never overwrite a name with nothing. A rebuild that ran before the person
-       -- told us their name would otherwise blank it on every later pass.
-       display_name = coalesce(EXCLUDED.display_name, match_profile.display_name),
+       -- What the screen says NOW, nothing kept. A name taken off the screen goes, and
+       -- one written before 2026-09-28 from a chat-heard full name is cleared by the
+       -- next rebuild. (Practice profiles never pass through here: synthetic.ts.)
+       display_name = EXCLUDED.display_name,
        -- A rebuild only ever happens because the person is here, so it is a heartbeat.
        -- This column was previously written once at insert and never again, which
        -- silently dropped every profile out of everyone else's pool sixty days after
@@ -352,6 +354,27 @@ export async function shouldAskArea(c: PoolClient, userId: string): Promise<bool
     `SELECT 1 FROM predicate_status
       WHERE user_id = $1 AND predicate = 'area' AND state IN ('known', 'declined')`, [userId]);
   return st.length === 0;
+}
+
+/**
+ * Is the first name still worth asking? Until the person has typed one on the screen
+ * or said they would rather not. Optional, like the neighbourhood: the pool never waits
+ * on it, and a reveal without one says "Someone". Asked in setup, and on the Home for
+ * everybody who set up before the screen existed (the founder, 2026-09-28).
+ *
+ * The fact, not the "known" status, decides "has one": a name taken away again leaves
+ * the status behind, and must be asked for again rather than quietly missing. The same
+ * fact the rebuild shows -- typed on the screen -- or it is not a name anybody sees.
+ */
+export async function shouldAskName(c: PoolClient, userId: string): Promise<boolean> {
+  const { rows } = await c.query<{ named: boolean; declined: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM facts
+                     WHERE user_id = $1 AND predicate = 'first_name' AND extractor_model = 'direct'
+                       AND status = 'active' AND valid_to IS NULL) AS named,
+            EXISTS (SELECT 1 FROM predicate_status
+                     WHERE user_id = $1 AND predicate = 'first_name' AND state = 'declined') AS declined`,
+    [userId]);
+  return !rows[0]!.named && !rows[0]!.declined;
 }
 
 /** Thrown for a dealbreaker on a predicate the candidate query cannot test. */

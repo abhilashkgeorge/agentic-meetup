@@ -14,7 +14,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 |---|---|---|---|---|---|
 | A tap in the interview or setup | Saved as a fact, live at once | Code | `facts` (+ `question_answers`) | The person; matching | [server/src/api/interview.ts:456] `extractorModel: 'interview',` |
 | A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | {AI:extract} | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | [server/src/memory/session.ts:28] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);` |
-| A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | [server/src/memory/extract.ts:229] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',` |
+| A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | [server/src/memory/extract.ts:237] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',` |
 | A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | [server/src/onboarding/stories.ts:150] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Question of the day | Saved like a story and put on the answer sheet | Code | Episode + fact + answer sheet | Others, via the agents | [server/src/matching/unknowns.ts:212] `INSERT INTO answer_sheets (user_id, tenant_id, answers, basis)` |
 | A paste from another AI | A model extracts facts; every one is held for checking | {AI:paste} | `facts` (all `staged`); the pasted text is not kept | The person | [server/src/memory/pasteImport.ts:188] `originClass: 'untrusted',` |
@@ -32,9 +32,9 @@ used only to **extract** facts from what a person typed, to **point** at their o
   ([server/src/onboarding/questions.ts:415] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
-  ([app/src/features/profile/profile-screen.tsx:124] `<Card label="Your agent heard something">`,
-  [app/src/features/profile/profile-screen.tsx:130] `Is that right? Nothing changes until you say so.`,
-  [app/src/features/profile/profile-screen.tsx:133] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
+  ([app/src/features/profile/profile-screen.tsx:126] `<Card label="Your agent heard something">`,
+  [app/src/features/profile/profile-screen.tsx:132] `Is that right? Nothing changes until you say so.`,
+  [app/src/features/profile/profile-screen.tsx:135] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
 - **If he taps Yes**, the claim becomes his live answer, and it stays match-only: "that's right" is
   not "OK to share", so nobody else hears his work sentence until he shares it on "How you appear"
   ([server/src/memory/pasteImport.ts:337] `...learnedDisclosure(row.predicate),`,
@@ -50,7 +50,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   Until she confirms, nothing from the paste affects matching, her cards or her clone's "true right
   now" list. Even after she confirms, a pasted fact can never be quoted to anyone, because the
   quote check needs her own typed words and the paste was not kept
-  ([server/src/matching/brief.ts:270] `WHERE e.user_id = $1 AND e.role = 'user'`).
+  ([server/src/matching/brief.ts:271] `WHERE e.user_id = $1 AND e.role = 'user'`).
 - **Arjun never sees** anything of Meera's paste or chat unless she made it shareable and it passed the
   quote rules (stage 4).
 
@@ -59,7 +59,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 One row per claim about the person ([server/migrations/0002_facts.sql:29] `-- VERBATIM. never generalised.`):
 
 - **The words** exactly as said, plus a comparable value derived by code, never by a model
-  ([server/src/memory/facts.ts:203] `JSON.stringify(cand.objectValue ?? deriveValue(cand.predicate, cand.objectText)),`).
+  ([server/src/memory/facts.ts:211] `JSON.stringify(cand.objectValue ?? deriveValue(cand.predicate, cand.objectText)),`).
 - **Status:** live (`active`), held (`staged`), replaced, or withdrawn
   ([server/migrations/0002_facts.sql:42] `CHECK (status IN ('staged','active','superseded','retracted','needs_recheck','quarantined'))`).
   The database refuses to make an untrusted row live
@@ -72,8 +72,8 @@ One row per claim about the person ([server/migrations/0002_facts.sql:29] `-- VE
 A single-answer field keeps one live fact; a new one replaces the old, which is kept
 ([server/migrations/0002_facts.sql:90] `CREATE UNIQUE INDEX facts_single_valued_current ON facts`).
 The vocabulary is closed: 59 core fields, 4 open ones, and 8 situation fields
-([shared/src/facts.ts:194] `export const OPEN_PREDICATES = ['topic', 'owns', 'did', 'believes'] as const;`,
-[shared/src/facts.ts:209] `export const SITUATION_PREDICATES: readonly PredicateDef[] = [`).
+([shared/src/facts.ts:196] `export const OPEN_PREDICATES = ['topic', 'owns', 'did', 'believes'] as const;`,
+[shared/src/facts.ts:211] `export const SITUATION_PREDICATES: readonly PredicateDef[] = [`).
 
 **The matching profile** is one row per person rebuilt from **live** facts only; held facts never
 reach it ([server/src/matching/profile.ts:45] `WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL`).
@@ -88,7 +88,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   cities; plus **everything** from a paste ([server/src/onboarding/questions.ts:403] `'gender', 'seeking_gender', 'birth_date', 'lives_in', 'relationship_intent',`).
 - **What goes live at once:** everything else heard in chat (interests, things done, employer, wants
   and "could not be with" sentences...), but **match-only**: it may help matching, it is never said to
-  anyone until "OK to share" ([server/src/memory/extract.ts:237] `...learnedDisclosure(f.predicate),`).
+  anyone until "OK to share" ([server/src/memory/extract.ts:245] `...learnedDisclosure(f.predicate),`).
   A Yes on a held fact keeps it match-only too; only a tapped field that nothing ever quotes (the basics,
   the cards, faith, the situations) keeps its own default
   ([server/src/matching/brief.ts:108] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
@@ -100,8 +100,8 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   exceptions: the person's own clone still sees the sentence in its recent chat, and a background
   resolver ({AI:resolve}) can retire a live answer on a multi-answer field (for example who they want to
   meet, or work field) on the strength of an unconfirmed sentence, with no Yes and no record of the
-  change ([server/src/memory/session.ts:118] `const existing = await multiValuedExisting(c, ctx.userId, out.candidates);`,
-  [server/src/memory/session.ts:127] `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'`).
+  change ([server/src/memory/session.ts:133] `const existing = await multiValuedExisting(c, ctx.userId, out.candidates);`,
+  [server/src/memory/session.ts:142] `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'`).
   Unverified whether this happens in practice.
 
 ### 3.3 Question of the day
@@ -167,8 +167,10 @@ that is not in the fragments." ([server/src/api/chat.ts:33] `You are this person
 profile summary, the style note, the last 20 messages of this chat, **every** live fact (private ones
 included, since it talks only to its own person), and up to 5 recalled old messages
 ([server/src/api/chat.ts:96] `[...core, ...style, ...recent, ...truth, ...fragments,`). Its replies are not
-checked by code. They are stored and later read by the extractor and by recall, where they are labelled as
-things the person said (Known gaps) ([server/src/api/chat.ts:89] `Fragments recalled from things they said before:`).
+checked by code. They are stored, but since 2026-09-28 neither the extractor nor recall reads them: facts
+and "things they said before" come only from the person's own lines
+([server/src/api/chat.ts:89] `Fragments recalled from things they said before:`,
+[server/src/memory/retrieval.ts:81] `WHERE user_id = $1 AND role = 'user' AND embedding IS NOT NULL`).
 
 ### Docs vs code
 

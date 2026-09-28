@@ -718,7 +718,7 @@ export interface MatchCard {
      * Only for a want about a private topic (kids, drinking, faith...), checked against a
      * card and never quoted: matches or not. And for any want nothing could check yet.
      */
-    check?: 'matches' | 'doesnt_match' | 'cant_check';
+    check?: 'matches' | 'doesnt_match' | 'cant_check' | 'private';
     practice?: boolean;
   }[];
   waitingOnYou: boolean;

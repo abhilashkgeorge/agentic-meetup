@@ -32,6 +32,7 @@ export function Hud({
   onHome,
   onCity,
   onArea,
+  onName,
   walking,
   venue,
   transitioning,
@@ -64,6 +65,8 @@ export function Hud({
   onCity: () => void;
   /** "Which part of town?" -- the one question the map adds. */
   onArea: () => void;
+  /** "Add your first name" -- for everybody who set up before the screen asked it. */
+  onName: () => void;
   /** Walking your own agent: the stick is out and the camera is behind its head. */
   walking: boolean;
   /** Null on the city overview; set after the named venue transition begins. */
@@ -90,6 +93,7 @@ export function Hud({
   const myArea = world?.me.area ?? CENTRAL_AREA;
   const here = world?.agents.filter((a) => (a.area ?? CENTRAL_AREA) === myArea).length ?? 0;
   const askArea = world?.me.need.includes('area') ?? false;
+  const askName = world?.me.need.includes('first_name') ?? false;
 
   // The thirty names, laid over the city at its zoomed-out pose, faded in and out
   // with the band. Real text in the app's own type, not a texture.
@@ -146,6 +150,7 @@ export function Hud({
                 </>
               ) : (
                 <>
+                  {askName && <Chip label="Add your first name" selected={false} onPress={onName} />}
                   {askArea && <Chip label="Which part of town?" selected={false} onPress={onArea} />}
                   {question && onQuestion && <Chip label="A question for you" selected onPress={onQuestion} />}
                   <Chip label="Visit Cubbon Park" selected={false} onPress={onEnterVenue} />

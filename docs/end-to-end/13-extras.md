@@ -2,7 +2,7 @@
 
 | Feature | What it does | Who can reach it | Code |
 |---|---|---|---|
-| **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about; tap your own agent to talk to it | Everyone | [app/src/features/world/map.ts:4] `One JSON file, built once from OpenStreetMap by server/scripts/build-map.ts and`, [server/src/matching/world.ts:51] `export const STRANGERS_IN_SQUARE = 40;` |
+| **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about; tap your own agent to talk to it | Everyone | [app/src/features/world/map.ts:4] `One JSON file, built once from OpenStreetMap by server/scripts/build-map.ts and`, [server/src/matching/world.ts:50] `export const STRANGERS_IN_SQUARE = 40;` |
 | **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search | Everyone, "Visit Cubbon Park" | [app/src/features/world/venue.ts:61] `export const MAX_VENUE_AGENTS = 32;` |
 | **"Who's here"** | A list of the same people as the town, practice profiles marked "Not a real person" | Everyone | [app/src/features/world/people.ts:52] `a.practice ? 'Not a real person' : undefined` |
 | **Character builder** | The 3D figure others see in the town and on cards until you share your profile with them; items bought with points | Everyone | [app/src/features/look/builder-screen.tsx:28] `This is you in the square, and what people see on your card until you share your profile with them.` |

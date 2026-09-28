@@ -9,16 +9,15 @@
  * REFS, NOT IDS. Each agent is addressed by a per-viewer HMAC of the viewer and the
  * other person, so two accounts looking at the same person hold two different
  * handles that cannot be joined, nobody can enumerate the pool by walking ids, and
- * rotating AUTH_SECRET simply re-keys the town. A ref is resolved back to a person
- * only through the candidate query the round itself would run, so it can never name
- * somebody a round could not have met.
+ * rotating AUTH_SECRET simply re-keys the town. A ref resolves back to a person only
+ * among those who could stand in a square (resolveAgentRef), and only a round -- which
+ * checks every rule, both ways -- ever meets them.
  */
 import { createHmac } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import type { ServerEvent } from '@clone/shared';
 import { env } from '../env.js';
 import { pushTo } from '../messaging/hub.js';
-import { candidateIds } from './candidates.js';
 
 /**
  * Targeted rounds allowed per person per rolling day, counted in the database. It was
@@ -62,18 +61,35 @@ export const isAgentRef = (s: unknown): s is string => typeof s === 'string' && 
 /**
  * The person behind a ref, or null.
  *
- * Scans the viewer's own candidate list rather than the whole pool: a ref for
- * somebody the filters exclude resolves to nothing, which is the same answer as a
- * ref that was never issued. Runs under the matching role, like the list it scans.
+ * FOUND WITHOUT YOUR RULES (2026-09-28). This used to scan the viewer's candidate list
+ * -- every rule, both ways -- so a ref for somebody who failed them answered "not here"
+ * at once and for free, while one who passed became a visit that counted. Change your
+ * own must-have and tap again, and the difference said which card answer somebody
+ * gave: a probe on a person you could recognise in the square by their character. Now a
+ * ref resolves among everybody who could stand in anybody's square -- in the pool,
+ * visible to you (practice profiles only while you see them), not blocked, not
+ * somebody you have already met (`met`, from your own rows: a pair meets once) -- and
+ * the rules are the round's to check (orchestrator.ts isCandidate), after the visit is
+ * counted. Whatever a card says, a tap costs one of the day's five.
+ *
+ * Runs under the matching role, which reads profiles across tenants and nothing else.
  */
 export async function resolveAgentRef(
   c: PoolClient,
   viewerId: string,
   ref: string,
+  met: ReadonlySet<string> = new Set(),
 ): Promise<string | null> {
   if (!isAgentRef(ref)) return null;
-  for (const id of await candidateIds(c, viewerId, 500)) {
-    if (agentRef(viewerId, id) === ref) return id;
+  const { rows } = await c.query<{ user_id: string }>(
+    `SELECT b.user_id FROM match_profile a, match_profile b
+      WHERE a.user_id = $1 AND b.user_id <> a.user_id AND a.in_pool AND b.in_pool
+        AND (a.is_synthetic = b.is_synthetic OR (a.sees_synthetic AND b.is_synthetic))
+        AND NOT block_exists(a.user_id, b.user_id)`,
+    [viewerId],
+  );
+  for (const { user_id: id } of rows) {
+    if (!met.has(id) && agentRef(viewerId, id) === ref) return id;
   }
   return null;
 }
