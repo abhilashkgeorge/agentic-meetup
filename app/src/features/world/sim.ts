@@ -218,6 +218,10 @@ export interface AgentInput {
   area?: string | null;
 }
 
+/** The crowd test's refs (addCrowd). Never a roster ref, which is 32 hex characters. */
+export const CROWD = 'crowd-';
+export const isCrowd = (ref: string): boolean => ref.startsWith(CROWD);
+
 /** Plaza radius in scene units, for the town with no map. */
 export const PLAZA = 8;
 /** The fountain's footprint. Nobody is placed inside it. */
@@ -776,6 +780,33 @@ export class WorldSim {
 
   private radiusOf(area: string | null): number {
     return this.areaOf(area)?.radius ?? PLAZA;
+  }
+
+  // ── The park's crowd test ────────────────────────────────────────────────
+
+  /**
+   * `n` walkers for the park's frame-rate test (the founder, 2026-09-28: "put 1000
+   * people in the park, I want to see how well it renders"). Development builds
+   * only, from a chip in the park (hud.tsx). Every fourth is a practice ghost, as in
+   * the bench, because see-through bodies cost more to draw and the pool is full of
+   * them. They wander the park's spots like anybody else; refs start CROWD, so the
+   * roster never mistakes them for people and never removes them.
+   */
+  addCrowd(n: number, area: string | null): void {
+    const list: AgentInput[] = [];
+    for (let i = 0; i < n; i++) {
+      const seed = Math.floor(this.rnd() * 1e9);
+      list.push({ ref: `${CROWD}${i}`, kind: i % 4 === 0 ? 'practice' : 'stranger', seed, look: lookFor(seed), area });
+    }
+    this.upsert(list);
+  }
+
+  /** Everybody `addCrowd` put here, gone at once. Nobody else is touched. */
+  removeCrowd(): void {
+    const keep = this.order.filter((ref) => !isCrowd(ref));
+    for (const ref of this.order) if (isCrowd(ref)) { this.byRef.delete(ref); this.visits.delete(ref); }
+    this.order.length = 0;
+    this.order.push(...keep);
   }
 
   // ── Bench ────────────────────────────────────────────────────────────────

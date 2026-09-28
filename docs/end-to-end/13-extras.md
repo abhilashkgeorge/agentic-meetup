@@ -3,7 +3,7 @@
 | Feature | What it does | Who can reach it | Code |
 |---|---|---|---|
 | **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about; tap your own agent to talk to it | Everyone | [app/src/features/world/map.ts:4] `One JSON file, built once from OpenStreetMap by server/scripts/build-map.ts and`, [server/src/matching/world.ts:50] `export const STRANGERS_IN_SQUARE = 40;` |
-| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search | Everyone, "Visit Cubbon Park" | [app/src/features/world/venue.ts:61] `export const MAX_VENUE_AGENTS = 32;` |
+| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Development builds add a "Test: add 1000 people" chip, to watch the frame rate | Everyone, "Visit Cubbon Park" | [app/src/features/world/venue.ts:61] `export const MAX_VENUE_AGENTS = 32;`, [app/src/features/world/venue-mesh.ts:55] `export const NEAR = 24;`, [app/src/features/world/hud.tsx:161] `<Chip label={crowd ? 'Remove the test crowd' : 'Test: add 1000 people'}` |
 | **"Who's here"** | A list of the same people as the town, practice profiles marked "Not a real person" | Everyone | [app/src/features/world/people.ts:52] `a.practice ? 'Not a real person' : undefined` |
 | **Character builder** | The 3D figure others see in the town and on cards until you share your profile with them; items bought with points | Everyone | [app/src/features/look/builder-screen.tsx:28] `This is you in the square, and what people see on your card until you share your profile with them.` |
 | **Points** | +50 for a check-in, +10 for "did you meet", +20 first look, +30 photos checked; only the person sees the balance | Everyone | [server/src/points/ledger.ts:13] `export const POINTS = { checkin: 50, met: 10, look: 20, photos_checked: 30 } as const;` |
@@ -21,7 +21,7 @@
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | [server/src/api/stats.ts:53] `<title>How small this is</title>` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | [app/src/features/settings/settings-screen.tsx:39] `if (t.n >= 5) { t.n = 0; router.push('/dev/gl'); }` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | [server/src/db/seed-synthetic.ts:16] `const count = Number(process.argv[2] ?? 500);` |
-| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | [app/src/features/world/world-screen.tsx:336] `if (renderer === null) return <ChatScreen />;` |
+| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | [app/src/features/world/world-screen.tsx:353] `if (renderer === null) return <ChatScreen />;` |
 
 Also present in the code but not visible anywhere: a "how well it knows you" score that the YOU tab fetches but
 never draws ([server/src/memory/completion.ts:83] `band: 'just met' | 'getting to know you' | 'knows you fairly well' | 'knows you well';`),

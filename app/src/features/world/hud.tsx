@@ -33,6 +33,8 @@ export function Hud({
   onCity,
   onArea,
   onName,
+  crowd = 0,
+  onCrowd,
   walking,
   venue,
   transitioning,
@@ -67,6 +69,14 @@ export function Hud({
   onArea: () => void;
   /** "Add your first name" -- for everybody who set up before the screen asked it. */
   onName: () => void;
+  /** Test walkers in the park right now (world-screen.tsx), 0 when the test is off. */
+  crowd?: number;
+  /**
+   * Development builds only: fill the park with test walkers, or clear them -- the
+   * founder's "put 1000 people in the park, I want to see how well it renders"
+   * (2026-09-28). The red meter over the world gives the frame rate while you walk.
+   */
+  onCrowd?: () => void;
   /** Walking your own agent: the stick is out and the camera is behind its head. */
   walking: boolean;
   /** Null on the city overview; set after the named venue transition begins. */
@@ -145,8 +155,12 @@ export function Hud({
                 <>
                   <Chip label="Back to Bengaluru" selected={false} onPress={onLeaveVenue} />
                   <Chip label="Directions" selected={false} onPress={onDirections} />
-                  <Chip label={`${Math.min(here + 1, MAX_VENUE_AGENTS)} people in the park`}
+                  <Chip label={crowd ? `${crowd} test people in the park` : `${Math.min(here + 1, MAX_VENUE_AGENTS)} people in the park`}
                         selected onPress={() => {}} disabled />
+                  {onCrowd && (
+                    <Chip label={crowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
+                          selected={crowd > 0} onPress={onCrowd} />
+                  )}
                 </>
               ) : (
                 <>

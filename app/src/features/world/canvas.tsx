@@ -120,6 +120,12 @@ export interface WorldCanvasProps {
   venueSim?: WorldSim;
   /** The real place represented by the local walkable world. */
   venue?: Venue;
+  /**
+   * How many people can be drawn at once (SLOTS, 64, by default). Only the park's
+   * crowd test raises it: every slot is a row in each instanced buffer that is sent
+   * to the GPU every frame, so the everyday town keeps the small number.
+   */
+  slots?: number;
 }
 
 /**
@@ -324,10 +330,10 @@ interface PartSet {
  */
 const worldSphere = () => new THREE.Sphere(new THREE.Vector3(0, 0, 0), 500);
 
-function buildParts(g: Geometry, material: THREE.Material): PartSet {
+function buildParts(g: Geometry, material: THREE.Material, slots = SLOTS): PartSet {
   const mk = (geo: THREE.BufferGeometry, per = 1): Part => {
-    const mesh = new THREE.InstancedMesh(geo, material, SLOTS * per);
-    mesh.count = SLOTS * per;
+    const mesh = new THREE.InstancedMesh(geo, material, slots * per);
+    mesh.count = slots * per;
     mesh.frustumCulled = false;
     mesh.boundingSphere = worldSphere();
     return { mesh, per };
@@ -709,7 +715,7 @@ const FOLLOW = 3;
 
 function Town({
   sim, colors, cap30, onStats, onTapAgent, onTapVenue, onFirstFrame, onBand, onWalking,
-  stick, venueSim, venue = CUBBON_PARK, cam,
+  stick, venueSim, venue = CUBBON_PARK, cam, slots = SLOTS,
 }: WorldCanvasProps & { cam: CamState }) {
   const { gl, scene, invalidate, size, set } = useThree();
   const mapCamera = useMemo(() => new THREE.OrthographicCamera(), []);
@@ -740,8 +746,9 @@ function Town({
   );
   useEffect(() => () => garden.dispose(), [garden]);
 
-  // Detailed CC0 furniture loads after the world is already visible. If the bundle
-  // ever fails, terrain and people remain usable; only the authored props are absent.
+  // Detailed CC0 furniture loads after the world is already visible: the models near
+  // the camera, plain stand-ins further out (venue-mesh.ts). If the bundle ever fails,
+  // terrain and people remain usable; only the benches, lamps and bins are absent.
   const furnitureHolder = useMemo(() => new THREE.Group(), []);
   const furniture = useRef<BuiltVenueFurniture | null>(null);
   useEffect(() => {
@@ -753,7 +760,7 @@ function Town({
       furniture.current = built;
       furnitureHolder.add(built.group);
     }).catch((e: unknown) => {
-      console.warn('[world] no venue furniture, using the procedural park:', e);
+      console.warn('[world] no venue furniture: the park has no benches or lamps this visit:', e);
     });
     return () => {
       alive = false;
@@ -827,16 +834,16 @@ function Town({
       return im;
     };
     return {
-      solid: buildParts(g, solid),
-      ghost: buildParts(g, ghost),
-      discs: mk(g.disc, SLOTS),
-      dots: mk(g.dot, SLOTS * DOTS_PER),
-      bars: mk(g.bar, SLOTS * BARS_PER),
-      rings: mk(g.ring, SLOTS),
+      solid: buildParts(g, solid, slots),
+      ghost: buildParts(g, ghost, slots),
+      discs: mk(g.disc, slots),
+      dots: mk(g.dot, slots * DOTS_PER),
+      bars: mk(g.bar, slots * BARS_PER),
+      rings: mk(g.ring, slots),
       geometries: Object.values(g),
       materials: [solid, ghost],
     };
-  }, []);
+  }, [slots]);
 
   useEffect(() => () => {
     for (const g of meshes.geometries) g.dispose();
@@ -982,6 +989,8 @@ function Town({
       camera.lookAt(look[0], look[1], look[2]);
       focus.set(look[0], 0, look[2]);
       skyFollow(garden, eye[0], 0, eye[2]);
+      // Detailed benches and lamps near the camera, plain ones further out (venue-mesh).
+      furniture.current?.follow(eye[0], eye[2]);
     } else {
       // The angle follows the zoom: a map seen from above out at the city, a game
       // camera looking along the street once you are down in it.
@@ -1012,7 +1021,7 @@ function Town({
     // it costs whatever the fifteen in front of you cost.
     view.update(camera);
     const used = visible(live.agents(), view, shown, {
-      limit: SLOTS,
+      limit: slots,
       radius: SEEN_R,
       fx: focus.x,
       fz: focus.z,

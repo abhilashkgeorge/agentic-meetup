@@ -48,7 +48,7 @@ import { PeopleSheet } from './people-sheet';
 import { gardenSpots } from './garden';
 import { MAP, spotsFrom } from './map';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
-import { WorldSim } from './sim';
+import { WorldSim, isCrowd } from './sim';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
 import {
   CITY_REALM, CUBBON_PARK, agentsForVenue, directionsUrl, transitionRealm, venueGarden,
@@ -62,6 +62,9 @@ import {
  */
 const sim = new WorldSim(20260918);
 sim.setMap(spotsFrom(MAP));
+
+/** How many walkers the park's crowd test adds (development builds; see toggleCrowd). */
+const CROWD_TEST = 1000;
 
 export default function WorldScreen() {
   const p = usePalette();
@@ -166,6 +169,19 @@ export default function WorldScreen() {
     return s;
   }, [venueLayout]);
 
+  /**
+   * THE PARK'S CROWD TEST, development builds only (the founder, 2026-09-28: "put 1000
+   * people in the park, I want to see how well it renders"). A chip in the park adds
+   * or clears the walkers; the canvas gets slots for all of them, which it only has
+   * while the test is on (see `slots` in canvas.tsx). The red meter reads the result.
+   */
+  const [crowd, setCrowd] = useState(0);
+  const toggleCrowd = useCallback(() => {
+    if (crowd) { venueSim.removeCrowd(); setCrowd(0); return; }
+    venueSim.addCrowd(CROWD_TEST, CUBBON_PARK.id);
+    setCrowd(CROWD_TEST);
+  }, [crowd, venueSim]);
+
   // Roster -> sim. Only what changed since the last roster, so a poll never restarts
   // a walk-over already under way.
   const applied = useRef(new Map<string, WorldAgent['state']>());
@@ -176,7 +192,8 @@ export default function WorldScreen() {
     const local = agentsForVenue(roster, CUBBON_PARK);
     venueSim.upsert(local);
     const localRefs = new Set(local.map((a) => a.ref));
-    for (const a of venueSim.agents()) if (!localRefs.has(a.ref)) venueSim.remove(a.ref);
+    // The crowd test's walkers are nobody's roster entry: they stay until cleared.
+    for (const a of venueSim.agents()) if (!localRefs.has(a.ref) && !isCrowd(a.ref)) venueSim.remove(a.ref);
     for (const ref of departed(applied.current, world.agents)) { sim.remove(ref); venueSim.remove(ref); }
     for (const t of planTransitions(applied.current, world.agents)) {
       if (t.op === 'meet') sim.meet(YOU, t.ref);
@@ -350,6 +367,7 @@ export default function WorldScreen() {
                             control={control} onBand={setBand} frame={frame}
                             stick={stick} onWalking={setWalking}
                             venueSim={venueSim} venue={CUBBON_PARK}
+                            slots={crowd ? crowd + 64 : undefined}
                             inVenue={realm.phase === 'venue' || realm.phase === 'leaving'}
                             onTapVenue={() => enterVenue()} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
@@ -360,6 +378,7 @@ export default function WorldScreen() {
            onHome={() => control.current?.flyHome()} onCity={() => control.current?.flyCity()}
            onArea={() => router.push({ pathname: setupRoute(['area']), params: { finish: '1' } })}
            onName={() => router.push({ pathname: setupRoute(['first_name']), params: { finish: '1' } })}
+           crowd={crowd} onCrowd={FPS_METER ? toggleCrowd : undefined}
            walking={walking} venue={realm.venue} transitioning={transitioning}
            onEnterVenue={enterVenue} onLeaveVenue={leaveVenue}
            onDirections={() => void Linking.openURL(directionsUrl(CUBBON_PARK))}

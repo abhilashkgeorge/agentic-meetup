@@ -418,7 +418,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 `server/src/matching/profile.ts:76`,
 `server/src/api/dating.ts:166`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
-("First name") (`app/src/features/world/hud.tsx:153`,
+("First name") (`app/src/features/world/hud.tsx:167`,
 `app/src/features/profile/profile-screen.tsx:232`).
 
 ### 2.3 Required vs optional, and "ready to send"
@@ -443,7 +443,7 @@ is a separate notion and gates nothing (`app/src/features/onboarding/self-test-s
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
-(`app/src/features/world/hud.tsx:183`,
+(`app/src/features/world/hud.tsx:197`,
 `app/src/features/matches/matches-screen.tsx:229`).
 
 ### 2.4 Model calls during setup
@@ -950,7 +950,7 @@ three shapes:
 - **What Meera sees** later, if it is her most-asked gap: a "A question for you" chip in
   the town; the screen says "MONEY", the question, and "Other agents needed this once
   lately to check who fits, and yours could not say. One tap. Nobody ever sees your
-  answer." (`app/src/features/world/hud.tsx:155`,
+  answer." (`app/src/features/world/hud.tsx:169`,
   `app/src/features/question/question-state.ts:45`).
   She is never told whose want it was, or what the want said.
 - **If Meera had answered** "Saved or invested", Arjun's card says "Matches"; if she
@@ -1240,7 +1240,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") (`app/src/app/(tabs)/index.tsx:1`,
-   `app/src/features/world/hud.tsx:185`).
+   `app/src/features/world/hud.tsx:199`).
    The same button is on the Matches tab (`app/src/features/matches/matches-screen.tsx:273`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
@@ -1248,7 +1248,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    `server/src/api/dating.ts:968`,
    `server/src/api/dating.ts:1011`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
-   heading out…" (`app/src/features/world/hud.tsx:116`).
+   heading out…" (`app/src/features/world/hud.tsx:126`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
    all of them (`server/src/matching/rounds.ts:158`).
@@ -1256,11 +1256,11 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
    start this (`server/src/matching/orchestrator.ts:276`,
-   `app/src/features/world/hud.tsx:118`,
+   `app/src/features/world/hud.tsx:128`,
    `app/src/features/world/agent-sheet.tsx:43`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   (`app/src/features/world/world-screen.tsx:239`,
+   (`app/src/features/world/world-screen.tsx:256`,
    `app/src/features/world/exchange-strip.tsx:83`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).
@@ -1858,7 +1858,7 @@ Each moment that asks something of a person wakes their phone, whether or not th
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
 (`server/src/push/index.ts:31`). The phone asks for
 permission when the person first sends their agent out, not at launch
-(`app/src/features/world/world-screen.tsx:254`), and a
+(`app/src/features/world/world-screen.tsx:271`), and a
 tap opens the card, their profile or the chat
 (`app/src/features/push/route.ts:14`).
 **Not yet reaching phones:** the app has no Expo project id yet and the server sends with
@@ -2465,7 +2465,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | Feature | What it does | Who can reach it | Code |
 |---|---|---|---|
 | **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about; tap your own agent to talk to it | Everyone | `app/src/features/world/map.ts:4`, `server/src/matching/world.ts:50` |
-| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61` |
+| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Development builds add a "Test: add 1000 people" chip, to watch the frame rate | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/venue-mesh.ts:55`, `app/src/features/world/hud.tsx:161` |
 | **"Who's here"** | A list of the same people as the town, practice profiles marked "Not a real person" | Everyone | `app/src/features/world/people.ts:52` |
 | **Character builder** | The 3D figure others see in the town and on cards until you share your profile with them; items bought with points | Everyone | `app/src/features/look/builder-screen.tsx:28` |
 | **Points** | +50 for a check-in, +10 for "did you meet", +20 first look, +30 photos checked; only the person sees the balance | Everyone | `server/src/points/ledger.ts:13` |
@@ -2483,7 +2483,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:39` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
-| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:336` |
+| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:353` |
 
 Also present in the code but not visible anywhere: a "how well it knows you" score that the YOU tab fetches but
 never draws (`server/src/memory/completion.ts:83`),
