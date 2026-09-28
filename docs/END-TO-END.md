@@ -48,9 +48,9 @@ something else, a **Docs vs code** note says so. Where something could not be co
 | Typed decision model, separate judge model | Not set (off) | `server/src/env.ts:104` |
 | Agent conversations | Off (`RENDEZVOUS_RUNS` not set, default 0) | `server/src/matching/rendezvous.ts:75` |
 | The agents' talk | On (`AGENT_TALK` not set, default on) | `server/src/matching/talk.ts:49` |
-| SMS | `console`: no text is sent, the code goes to the server log; `SMS_DEV_ECHO=true` also returns it | `server/src/env.ts:221` |
+| SMS | `console`: no text is sent, the code goes to the server log only (`SMS_DEV_ECHO=false` since 2026-09-28) | `server/src/env.ts:221` |
 | Reusable dev invite `KNOX-1010` | Works (`ALLOW_REUSABLE_INVITES=true`) | `server/src/env.ts:299` |
-| Old-style sign-in (account id as token) | On (not set, default true) | `server/src/env.ts:199` |
+| Old-style sign-in (account id as token) | Off (`ALLOW_LEGACY_TOKENS=false` since 2026-09-28; the code default is on) | `server/src/env.ts:199` |
 | Face check | Off | `server/src/env.ts:318` |
 | Spend per person per day | $2.00 and 10 model calls | `server/src/env.ts:321` |
 
@@ -135,8 +135,10 @@ Nothing in sign-up differs by gender. Both see, in order:
    only a scrambled version of it." (`app/src/features/auth/phone-screen.tsx:92`,
    `app/src/features/auth/phone-screen.tsx:85`).
 2. **"Check your texts"**, "We sent six digits to the number ending <last two digits>." In the
-   development setup the code arrives already filled in, with a red warning: "The server is
-   echoing codes back (SMS_DEV_ECHO). Turn that off before anyone else uses this."
+   development setup no text is sent: the founder reads the code from the server's log. (If the
+   server were echoing codes back, the box would arrive filled in under a red warning, "The
+   server is echoing codes back (SMS_DEV_ECHO). Turn that off before anyone else uses this.";
+   that switch is off since 2026-09-28.)
    (`app/src/features/auth/verify-screen.tsx:149`,
    `app/src/features/auth/verify-screen.tsx:182`).
 3. **"You need a code"**: "Your number is confirmed. Now someone has to let you in. If a friend
@@ -163,7 +165,8 @@ Nothing in sign-up differs by gender. Both see, in order:
   full number and the code to the server log; `msg91` and `twilio` send real texts
   (`server/src/env.ts:221`,
   `server/src/sms.ts:51`).
-  With `SMS_DEV_ECHO=true` (on in development) the server also returns the code in its reply
+  With `SMS_DEV_ECHO=true` the server would also return the code in its reply; it is off in the
+  development setup since 2026-09-28
   (`server/src/api/auth.ts:451`).
 - **Limits:** per IP 10 codes per 15 minutes; per number 3 per 15 minutes; 500 texts a day in
   total (`server/src/ratelimit.ts:204`,
@@ -224,10 +227,10 @@ Consent is also a condition for being sent out (stage 2).
   (`server/src/tokens.ts:18`,
   `server/src/auth.ts:33`,
   `server/src/env.ts:203`).
-- **An older sign-in method is still on in development:** with `ALLOW_LEGACY_TOKENS` at its default
-  (true, not set in the development configuration), a bare account id is accepted as a sign-in
-  token (`server/src/env.ts:199`, `server/src/auth.ts:72`).
-  See Known gaps.
+- **An older sign-in method is off:** with `ALLOW_LEGACY_TOKENS` on, a bare account id would be
+  accepted as a sign-in token (`server/src/auth.ts:72`). The
+  development setup turns it off (since 2026-09-28), but the code default is still on
+  (`server/src/env.ts:199`). See Known gaps.
 - **The phone's id:** at sign-in the app sends a stable phone id (Android ID; on iPhone a random id
   kept in the keychain). The server keeps only a keyed hash
   (`app/src/lib/device.ts:12`,
@@ -285,22 +288,21 @@ The screens and questions are the same for both; only their taps differ. Arjun t
 In order, each sees:
 
 1. **"Tell it one true thing"** — "Anything about you. One sentence is enough to start." Arjun types
-   "I work in AI and run most mornings." The screen moves on only if at least one fact was
-   learned: "Got it. N things learned."
-   (`app/src/features/onboarding/start-screen.tsx:139`,
-   `app/src/features/onboarding/start-screen.tsx:46`).
-   But his work field and exercise are fields a must-have can depend on, so both facts are
-   **held for his Yes** and do not count as learned (`server/src/api/tell.ts:88`).
-   He reads "Got it. 2 to check on the You screen before it changes an answer you gave." and the
-   screen does **not** move on; he has to type another sentence about something else
-   (`server/src/api/tell.ts:106`).
-   The first example sentence on that screen, "I live in Bangalore and I work at an ISP.", can hit
-   the same wall (Known gaps) (`app/src/features/onboarding/start-screen.tsx:25`).
-2. **"Now it's you"** — "Someone asks you", the clone's first reply in his name, "Is that you?",
-   "That's me" / "Not even close" (`app/src/features/onboarding/start-screen.tsx:86`).
+   "I work in AI and run most mornings."
+   (`app/src/features/onboarding/start-screen.tsx:140`).
+   His work field and exercise are fields a must-have can depend on, so both facts are
+   **held for his Yes** rather than learned (`server/src/api/tell.ts:88`).
+   Anything heard moves him on: with only held facts the screen skips the sample reply (the
+   clone has nothing live to answer from) and goes straight to the questions
+   (`app/src/features/onboarding/start-state.ts:24`,
+   `app/src/features/onboarding/start-screen.tsx:47`).
+   It asks again only when nothing at all was heard.
+2. **"Now it's you"** (only when something was learned; Arjun's sentence skips it) — "Someone asks
+   you", the clone's first reply in his name, "Is that you?", "That's me" / "Not even close"
+   (`app/src/features/onboarding/start-screen.tsx:87`).
 3. **"Now it asks you some things"**, with an optional "Paste from another AI"
-   (`app/src/features/onboarding/start-screen.tsx:105`,
-   `app/src/features/onboarding/start-screen.tsx:121`).
+   (`app/src/features/onboarding/start-screen.tsx:106`,
+   `app/src/features/onboarding/start-screen.tsx:122`).
 4. **The interview** (below).
 5. **"A few things missing"**, because birth year and city are asked next
    (`app/src/features/onboarding/interview-screen.tsx:233`).
@@ -449,7 +451,7 @@ day one (counted from the code, not observed)
   character → photos → home`, skipping the middle only after a paste. The code skips to Stories when the
   person is already in the pool, and a paste can never put a new person in the pool, because pasted
   facts are held until confirmed (`HOW-IT-WORKS.md:63`,
-  `server/src/memory/pasteImport.ts:187`).
+  `server/src/memory/pasteImport.ts:188`).
 - HOW-IT-WORKS.md §2a describes the partner row as "Anyone is fine" or "Let me choose". The screen shows
   "All are okay" and every answer, unticked (`HOW-IT-WORKS.md:82`).
 - HOW-IT-WORKS.md §2b says "which part of town" is asked in setup; it is not asked until the person has
@@ -479,10 +481,10 @@ used only to **extract** facts from what a person typed, to **point** at their o
 |---|---|---|---|---|---|
 | A tap in the interview or setup | Saved as a fact, live at once | Code | `facts` (+ `question_answers`) | The person; matching | `server/src/api/interview.ts:456` |
 | A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | [AI-1](#ai-1) | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | `server/src/memory/session.ts:28` |
-| A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | `server/src/memory/extract.ts:228` |
+| A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | `server/src/memory/extract.ts:229` |
 | A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | `server/src/onboarding/stories.ts:150` |
 | Question of the day | Saved like a story and put on the answer sheet | Code | Episode + fact + answer sheet | Others, via the agents | `server/src/matching/unknowns.ts:212` |
-| A paste from another AI | A model extracts facts; every one is held for checking | [AI-4](#ai-4) | `facts` (all `staged`); the pasted text is not kept | The person | `server/src/memory/pasteImport.ts:187` |
+| A paste from another AI | A model extracts facts; every one is held for checking | [AI-4](#ai-4) | `facts` (all `staged`); the pasted text is not kept | The person | `server/src/memory/pasteImport.ts:188` |
 | A WhatsApp export | A model describes how the person writes | [AI-5](#ai-5) | A style note only | The person's own clone | `server/src/memory/chatImport.ts:55` |
 
 ### Arjun and Meera
@@ -500,20 +502,22 @@ used only to **extract** facts from what a person typed, to **point** at their o
   (`app/src/features/profile/profile-screen.tsx:124`,
   `app/src/features/profile/profile-screen.tsx:130`,
   `app/src/features/profile/profile-screen.tsx:133`).
-- **If he taps Yes**, the claim becomes his live answer. Two side effects (Known gaps): the work
-  sentence becomes shareable with strangers without an "OK to share" tap, and "runs most mornings"
-  is not one of the exercise answers, so his exercise answer becomes "unknown" for matching
-  (`server/src/memory/pasteImport.ts:335`,
-  `shared/src/values.ts:37`).
+- **If he taps Yes**, the claim becomes his live answer, and it stays match-only: "that's right" is
+  not "OK to share", so nobody else hears his work sentence until he shares it on "How you appear"
+  (`server/src/memory/pasteImport.ts:337`,
+  `server/src/matching/brief.ts:108`).
+  One side effect remains (Known gaps): "runs most mornings" is not one of the exercise answers, so
+  his exercise answer becomes "unknown" for matching
+  (`shared/src/values.ts:37`).
 - **Meera pastes** a paragraph about herself from another AI. One model call pulls facts out of it
   ([AI-4](#ai-4)); **every** fact is held for checking, and the paragraph itself is not stored. She sees
   "Held for checking" and "Nothing is treated as true until you say so."
-  (`server/src/memory/pasteImport.ts:182`,
+  (`server/src/memory/pasteImport.ts:183`,
   `app/src/features/onboarding/paste-screen.tsx:60`).
   Until she confirms, nothing from the paste affects matching, her cards or her clone's "true right
   now" list. Even after she confirms, a pasted fact can never be quoted to anyone, because the
   quote check needs her own typed words and the paste was not kept
-  (`server/src/matching/brief.ts:249`).
+  (`server/src/matching/brief.ts:270`).
 - **Arjun never sees** anything of Meera's paste or chat unless she made it shareable and it passed the
   quote rules (stage 4).
 
@@ -551,7 +555,10 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   cities; plus **everything** from a paste (`server/src/onboarding/questions.ts:403`).
 - **What goes live at once:** everything else heard in chat (interests, things done, employer, wants
   and "could not be with" sentences...), but **match-only**: it may help matching, it is never said to
-  anyone until "OK to share" (`server/src/memory/extract.ts:236`).
+  anyone until "OK to share" (`server/src/memory/extract.ts:237`).
+  A Yes on a held fact keeps it match-only too; only a tapped field that nothing ever quotes (the basics,
+  the cards, faith, the situations) keeps its own default
+  (`server/src/matching/brief.ts:108`).
 - **Where the question appears:** the YOU tab, one at a time ("Your agent heard something"), and "What it
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
   that.") (`app/src/features/knowledge/you-screen.tsx:112`,
@@ -585,7 +592,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **Paste** (onboarding "Bring what it knows", YOU → "In your words", "Catch it up fast"): up to 60,000
   characters; one model call; every fact held; guesses become questions the clone "won't guess" about; the
   pasted text is thrown away (`shared/src/paste.ts:72`,
-  `server/src/memory/pasteImport.ts:85`).
+  `server/src/memory/pasteImport.ts:86`).
 - **WhatsApp export** ("Now, how you talk"): parsed on the phone; the person picks which speaker they are;
   only their own lines (at least 20, at most the last 2,000) are sent; one model call writes a style note;
   the messages are not stored (`app/src/features/onboarding/voice-screen.tsx:93`,
@@ -646,8 +653,6 @@ things the person said (Known gaps) (`server/src/api/chat.ts:89`).
   `server/src/memory/consolidate.ts:26`).
 - ARCHITECTURE.md says extracted candidates "land staged". An asserted claim by the person goes live on first
   write (`ARCHITECTURE.md:450`).
-- A code comment on the confirm step says "'Yes, that's true' is not 'OK to share'". For work field, exercise
-  and sleep, a Yes now makes the sentence public (`server/src/memory/pasteImport.ts:334`).
 
 ### Unverified
 
@@ -670,7 +675,7 @@ details), and **database roles** that limit what each part of the server can rea
 | A fact is written | It gets a level: public, match-only or private | Code | `facts.disclosure` | Public: can be quoted to others. Match-only: used for matching, never said. Private: hidden by the person | `server/migrations/0018_dating_schema.sql:39` |
 | "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | `app/src/features/appearance/appearance-screen.tsx:187` |
 | "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | `server/src/api/me.ts:177` |
-| A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | `server/src/matching/brief.ts:182` |
+| A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | `server/src/matching/brief.ts:203` |
 | A sentence naming a company, college or building | A suggestion: "This names a company. Hide this?" | Code | Nothing unless hidden | The person | `app/src/features/appearance/appearance-state.ts:72` |
 
 ### Arjun and Meera
@@ -689,16 +694,16 @@ details), and **database roles** that limit what each part of the server can rea
 - **Arjun never sees** her facts list, her chat, her hidden or match-only sentences (except as reveal
   tags, see Known gaps), her rules and wants, her card answers as values, her check-in answers, her
   reports or blocks, her exact location, her birth year or her phone number
-  (`server/src/matching/brief.ts:243`,
+  (`server/src/matching/brief.ts:264`,
   `app/src/features/consent/consent-screen.tsx:38`).
 
 ### 4.1 The three levels
 
 | Founder's word | Code name | Meaning | Code |
 |---|---|---|---|
-| share | `public` | May be quoted to other people through cards and agents | `server/src/matching/brief.ts:257` |
-| match-only | `matchable_only` | Used for matching, never said to anyone | `server/src/memory/extract.ts:236` |
-| never | `private` | Set only by the person's own "Hide" | `server/src/matching/brief.ts:254` |
+| share | `public` | May be quoted to other people through cards and agents | `server/src/matching/brief.ts:278` |
+| match-only | `matchable_only` | Used for matching, never said to anyone | `server/src/memory/extract.ts:237` |
+| never | `private` | Set only by the person's own "Hide" | `server/src/matching/brief.ts:275` |
 
 - **Defaults.** Some kinds of fact start public (city, work field, interests, story answers,
   intent, kids and one-person-or-open answers, diet, exercise...), the rest start match-only
@@ -710,13 +715,15 @@ details), and **database roles** that limit what each part of the server can rea
 - **Learned is private.** Anything learned from chat, the first sentence or a paste starts match-only,
   until the person taps "OK to share" on "How you appear"
   (`server/migrations/0063_learned_is_private.sql:25`).
+  A "Yes, that's right" on something held keeps it match-only too: it confirms, it does not share
+  (`server/src/matching/brief.ts:107`).
   Stories and question-of-the-day answers start public, because the person typed them to be said.
 - **Public is not enough to be quoted.** A sentence reaches another person only if it is also of an
   allowed kind (interests, things done, topics, media, pets, story answers, work, exercise, sleep,
   transport; the agents also use goals and dislikes), was typed by the person (found word for word
   in their messages), is 12 to 300 characters, is not an interview tap, and passes the word filters
-  (`server/src/matching/brief.ts:86`,
-  `server/src/matching/brief.ts:244`).
+  (`server/src/matching/brief.ts:87`,
+  `server/src/matching/brief.ts:265`).
   Card answers (kids, one person or open, smoking, drinking, food, faith) are never quoted; they are
   only used to filter.
 - **Where levels are not applied:** the matching row is built from every live fact whatever its level,
@@ -728,8 +735,8 @@ details), and **database roles** that limit what each part of the server can rea
 
 - **Private topics** are matched by a list of about 150 word stems: smoking, drinking, kids, family and
   marriage words, monogamy, diet, faith and caste, politics, health and drugs. A sentence with one is
-  saved but never repeated (`server/src/matching/brief.ts:170`,
-  `server/src/matching/brief.ts:155`).
+  saved but never repeated (`server/src/matching/brief.ts:191`,
+  `server/src/matching/brief.ts:176`).
   The stories screen says so as you type: "This one mentions something private, like kids or drinking,
   so your agent will not repeat it." (`app/src/features/stories/stories-screen.tsx:94`).
 - **Contact details** ("when unsure, block"): phone numbers (8+ digits, or spelled out), emails
@@ -738,7 +745,7 @@ details), and **database roles** that limit what each part of the server can rea
   `shared/src/contact.ts:21`).
 - **Where the filters run:** every path that repeats a person's words to someone else: card quotes,
   shared tags, answer sheets, the agents' talk, the date idea (twice), want quotes, the recap, and every
-  time a card is shown (`server/src/matching/brief.ts:262`,
+  time a card is shown (`server/src/matching/brief.ts:283`,
   `server/src/matching/talk.ts:193`).
 - **Where they do not run:** direct messages after both say yes (by design: people swap details there),
   report text, and the reveal's name, city and tags (`server/src/messaging/store.ts:106`).
@@ -761,7 +768,7 @@ details), and **database roles** that limit what each part of the server can rea
   by word lists; it never blocks (`shared/src/identifying.ts:11`).
 - **Hiding** makes the fact private: new cards, sheets, talk and want checks skip it; cards already
   written drop it at the next load; a date idea resting on it is withdrawn. It stays usable for
-  matching (`server/src/matching/brief.ts:721`).
+  matching (`server/src/matching/brief.ts:742`).
 - **Other controls:** remove a photo ("It is deleted from the server as well."); answer a story again
   (the old answer is kept but replaced); no per-fact delete; no message unsend
   (`app/src/features/photos/photos-screen.tsx:110`,
@@ -787,7 +794,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **One important exception to "the database decides":** in a round, a person's quotable sentences are
   read under **that person's own** session, where they can see all their facts; one SQL clause
   (`disclosure = public`) is what keeps the rest off a stranger's card
-  (`server/src/matching/brief.ts:236`).
+  (`server/src/matching/brief.ts:257`).
 - **Phone numbers** are never stored, only a keyed hash; the screen shows only the last two digits
   (`server/migrations/0045_phone_identity.sql:22`,
   `shared/src/phone.ts:95`).
@@ -958,7 +965,7 @@ three shapes:
   person's "Keep this" writes it ([AI-3](#ai-3); `server/src/api/interview.ts:359`).
 - **Chat.** The chat extractor may also write `seeking` or `dealbreaker` facts. These fields
   are not "tapped" fields, so they go live at once, without a confirm step
-  (`server/src/memory/extract.ts:228`).
+  (`server/src/memory/extract.ts:229`).
   Unverified: how often this happens in practice.
 - **How a want is read.** Only live `seeking` and `dealbreaker` facts count
   (`server/src/matching/wants.ts:43`).
@@ -1056,7 +1063,7 @@ three shapes:
   even for a Must have (`server/migrations/0020_match_functions.sql:22`,
   `server/migrations/0071_must_have_fields_wait_for_yes.sql:40`).
   Every card carries the same line: "Passes your rules both ways, on everything they've
-  answered" (`server/src/matching/brief.ts:64`).
+  answered" (`server/src/matching/brief.ts:65`).
 - **The card says** "We can't check this one yet." for that want
   (`app/src/features/matches/exchange.ts:170`).
 - **The other person may be asked.** A tied want that could not be checked records
@@ -1072,7 +1079,7 @@ three shapes:
   (`server/src/matching/orchestrator.ts:415`).
 - **A written card is not updated** when the answer arrives later: the want results are
   stored with the card when the round runs
-  (`server/src/matching/brief.ts:599`).
+  (`server/src/matching/brief.ts:620`).
 
 ### 5.5 Untied and private wants: the model check
 
@@ -1090,9 +1097,9 @@ three shapes:
 - **Whose words go in.** The reader's own want text, and the other person's own public
   sentences: never interview answers, 12 to 300 characters, found word for word in
   something they typed, with no private topic and no contact detail
-  (`server/src/matching/brief.ts:244`,
-  `server/src/matching/brief.ts:246`,
-  `server/src/matching/brief.ts:257`).
+  (`server/src/matching/brief.ts:265`,
+  `server/src/matching/brief.ts:267`,
+  `server/src/matching/brief.ts:278`).
   Another person's wants are never sent as sentences.
 - **Code checks the answer.** A "met" or "not met" survives only with the number of one of
   that person's sentences; the quote shown is looked up by that number, never copied from
@@ -1124,10 +1131,10 @@ Section "WHAT YOU ASKED FOR", with each of the reader's own wants
 Sources: `app/src/features/matches/exchange.ts:188`,
 `app/src/features/matches/exchange.ts:191`.
 An untied want shows no verdict: "met" and "not met" look the same, and the reader judges
-the sentence (`server/src/matching/brief.ts:673`).
+the sentence (`server/src/matching/brief.ts:694`).
 Never shown: the other person's wants, their actual card or situation answer, and any
 quote beside a tied or private want
-(`server/src/matching/brief.ts:678`).
+(`server/src/matching/brief.ts:699`).
 
 ### 5.7 After a date
 
@@ -1150,7 +1157,7 @@ If a tied want showed "Matches" on the reader's card, the after-date check-in ma
 - HOW-IT-WORKS.md says a want's status is "never sent to a phone". That is true only for
   untied wants: "Matches"/"Doesn't match" and "can't check" are sent
   (`HOW-IT-WORKS.md:545`,
-  `server/src/matching/brief.ts:415`).
+  `server/src/matching/brief.ts:436`).
 - The app says wants "move people up the list". Nothing moves anybody up in a round: the
   score no longer picks, and the want check only moves people down
   (`app/src/features/preferences/preferences-screen.tsx:141`).
@@ -1194,7 +1201,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | The candidate list | Real people first, then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | `server/src/matching/candidates.ts:119` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | [AI-12](#ai-12) + code | Want results kept for the cards | Arjun (on his cards) | `server/src/matching/orchestrator.ts:216` |
 | The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | `server/src/matching/orchestrator.ts:237` |
-| Each pair | The agents' exchange and the two cards (stages 7 and 8) | [AI-11](#ai-11) + code | Two card rows per pair | Each person, their own card | `server/src/matching/brief.ts:603` |
+| Each pair | The agents' exchange and the two cards (stages 7 and 8) | [AI-11](#ai-11) + code | Two card rows per pair | Each person, their own card | `server/src/matching/brief.ts:624` |
 
 ### Arjun and Meera
 
@@ -1402,10 +1409,10 @@ person ever reads are the **date idea**, and code checks those.
   "I spend Sunday mornings at the Cubbon Park run club." A sentence qualifies only if it
   is public, current, not an interview tap, 12 to 300 characters, found word for word in
   something he typed, and names no private topic and no contact detail
-  (`server/src/matching/brief.ts:243`,
-  `server/src/matching/brief.ts:246`,
-  `server/src/matching/brief.ts:249`,
-  `server/src/matching/brief.ts:182`).
+  (`server/src/matching/brief.ts:264`,
+  `server/src/matching/brief.ts:267`,
+  `server/src/matching/brief.ts:270`,
+  `server/src/matching/brief.ts:203`).
   Things his clone learned in chat stay private until he taps "OK to share" (stage 4), so
   they do not go in (`server/migrations/0063_learned_is_private.sql:25`).
 - **The same for Meera,** loaded under her own session.
@@ -1476,7 +1483,7 @@ will know next time." (`app/src/features/matches/recap.ts:22`).
   `server/src/matching/talk.ts:156`).
 - **Checked again** when the card is written, every time it is read (it disappears if the
   other person's sentence is no longer shareable), and when someone proposes it in chat
-  (`server/src/matching/brief.ts:721`,
+  (`server/src/matching/brief.ts:742`,
   `server/src/api/date-idea.ts:87`).
 
 ### 7.4 The fallback: answer sheets
@@ -1496,7 +1503,7 @@ they did not (`server/src/matching/answer-sheet.ts:346`,
 - **Saved:** one `rendezvous` row per pair and one card row per person (headline, shared tags,
   work, quotes, the talk or the sheet exchange, wants with their status, an opener). No
   transcript is saved on the default path, and the model's raw reply is not kept
-  (`server/src/matching/brief.ts:598`,
+  (`server/src/matching/brief.ts:619`,
   `server/src/matching/rendezvous.ts:625`).
 - **Readable:** each person reads only their own card, and only on their turn (stage 9)
   (`server/src/api/dating.ts:613`).
@@ -1543,8 +1550,8 @@ For every pair a round creates, **code** writes two cards: Arjun's card about Me
 Meera's card about Arjun. No model writes any card text
 (`server/src/matching/brief.ts:4`). The two cards
 differ, because each is built for its reader
-(`server/src/matching/brief.ts:529`,
-`server/src/matching/brief.ts:530`).
+(`server/src/matching/brief.ts:550`,
+`server/src/matching/brief.ts:551`).
 A card never shows the other person's name or photos; those are on the "reveal"
 (stage 9).
 
@@ -1552,12 +1559,12 @@ A card never shows the other person's name or photos; those are on the "reveal"
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Meera's age, intent and neighbourhood | Become the headline, e.g. "Here for something long-term · 27 · Jayanagar" | Code | Card row (`headline`) | Arjun, on his turn | `server/src/matching/brief.ts:311` |
-| Tags both share | "You both like …" (up to 5), "You both work in …" (up to 2), public tags only | Code | Card row | Arjun, on his turn | `server/src/matching/brief.ts:459` |
-| Meera's own public sentences | Up to 2 quotes, "In their words, <month year>" | Code | Card row | Arjun, on his turn | `server/src/matching/brief.ts:427` |
+| Meera's age, intent and neighbourhood | Become the headline, e.g. "Here for something long-term · 27 · Jayanagar" | Code | Card row (`headline`) | Arjun, on his turn | `server/src/matching/brief.ts:332` |
+| Tags both share | "You both like …" (up to 5), "You both work in …" (up to 2), public tags only | Code | Card row | Arjun, on his turn | `server/src/matching/brief.ts:480` |
+| Meera's own public sentences | Up to 2 quotes, "In their words, <month year>" | Code | Card row | Arjun, on his turn | `server/src/matching/brief.ts:448` |
 | The talk or the answer sheets | Shown as the agents' exchange (stage 7) | [AI-11](#ai-11) earlier, code now | Card row | Arjun, on his turn | `app/src/features/matches/matches-screen.tsx:351` |
 | Arjun's wants | "WHAT YOU ASKED FOR" (stage 5) | [AI-12](#ai-12) earlier, code now | Card row, with each want's status | Arjun only | `app/src/features/matches/matches-screen.tsx:370` |
-| Every time the card is opened | Each of Meera's sentences is re-checked; anything she hid or changed comes off | Code | Nothing | | `server/src/matching/brief.ts:707` |
+| Every time the card is opened | Each of Meera's sentences is re-checked; anything she hid or changed comes off | Code | Nothing | | `server/src/matching/brief.ts:728` |
 
 ### Arjun and Meera
 
@@ -1579,7 +1586,7 @@ In this example Meera decides first (stage 9 explains why).
   character, "WAITING ON THEM", "Your agent met someone", the fixed line, and "They are
   looking first. Whoever gets more matches decides first — it stops one side being
   buried." Nothing else: no age, no area, no quotes, no talk, no wants
-  (`server/src/matching/brief.ts:645`,
+  (`server/src/matching/brief.ts:666`,
   `app/src/features/matches/matches-screen.tsx:408`).
 - **After Meera says yes**, Arjun's card fills in: the same sections, built for him.
 
@@ -1589,15 +1596,15 @@ In this example Meera decides first (stage 9 explains why).
 |---|---|---|---|
 | 1 | Their character (a small 3D look) | The look they built; sent even on a plain card | `app/src/features/matches/matches-screen.tsx:308` |
 | 2 | "WAITING ON YOU" / "WAITING ON THEM" | Whose turn it is | `app/src/features/matches/matches-screen.tsx:310` |
-| 3 | Headline | Intent · age · neighbourhood (or city) of the other person; nothing known → "Your agent met someone" | `server/src/matching/brief.ts:313` |
-| 4 | "Passes your rules both ways, on everything they've answered" | The same fixed words on every card | `server/src/matching/brief.ts:64` |
+| 3 | Headline | Intent · age · neighbourhood (or city) of the other person; nothing known → "Your agent met someone" | `server/src/matching/brief.ts:334` |
+| 4 | "Passes your rules both ways, on everything they've answered" | The same fixed words on every card | `server/src/matching/brief.ts:65` |
 | 5 | "Practice match — this one is not a real person." | Practice profiles only | `app/src/features/matches/matches-screen.tsx:323` |
 | 6 | "You both like …" / "You both work in …" | Tags both have, only from **public** facts, each word checked for private topics | `server/src/matching/rendezvous.ts:384` |
-| 7 | "In their words, <month year>" + a quote | Up to 2 of their own public sentences, typed by them, 12–300 characters, of allowed kinds (interests, things done, topics, media, pets, story answers, work, exercise, sleep, transport) | `server/src/matching/brief.ts:86` |
+| 7 | "In their words, <month year>" + a quote | Up to 2 of their own public sentences, typed by them, 12–300 characters, of allowed kinds (interests, things done, topics, media, pets, story answers, work, exercise, sleep, transport) | `server/src/matching/brief.ts:87` |
 | 8a | "DATE IDEA", "SOMETHING YOU SHARE", "Read what your agents said" | The talk (stage 7) | `app/src/features/matches/matches-screen.tsx:78` |
 | 8b | or "WHAT YOUR AGENTS ASKED EACH OTHER" | The answer sheets, when there is no talk | `app/src/features/matches/matches-screen.tsx:354` |
 | 9 | "WHAT YOU ASKED FOR" | The reader's own wants (stage 5) | `app/src/features/matches/exchange.ts:188` |
-| 10 | "Ask them about …" | First that applies: a question they could not answer in the talk; one from the sheets; a shared interest; a quote; a shared work field; one of their tags | `server/src/matching/brief.ts:502` |
+| 10 | "Ask them about …" | First that applies: a question they could not answer in the talk; one from the sheets; a shared interest; a quote; a shared work field; one of their tags | `server/src/matching/brief.ts:523` |
 | 11 | "Fades tomorrow if you don't answer." / "Fades today if you don't answer." | Days left on the reader's turn | `app/src/features/matches/fade.ts:15` |
 | 12 | "Show me who it is" and "Not this one" | Only on the reader's turn | `app/src/features/matches/matches-screen.tsx:397` |
 | 13 | "Block or report" | On every card | `app/src/features/matches/matches-screen.tsx:417` |
@@ -1612,26 +1619,26 @@ newest round first, then by a hash of the pair's id, never by a score
 When a card is shown, each of the other person's sentences on it must still be one of
 their current public facts and pass the private-topic and contact-detail check. Anything
 that fails comes off: a quote, an answer, a talk line, the date idea, or an opener that
-used it (`server/src/matching/brief.ts:707`,
+used it (`server/src/matching/brief.ts:728`,
 `server/src/api/dating.ts:583`).
 Not re-checked: the headline and the shared tags, which stay as written when the round ran
-(`server/src/matching/brief.ts:725`).
+(`server/src/matching/brief.ts:746`).
 
 ### 8.3 What a card never shows
 
 - **No score, percentage or verdict about the pair.** The query for cards does not even
   select the score columns, and the stored "concern" is always empty
   (`server/src/api/dating.ts:532`,
-  `server/src/matching/brief.ts:604`). One exception is per want, not
+  `server/src/matching/brief.ts:625`). One exception is per want, not
   per pair: "Matches" / "Doesn't match" (stage 5).
 - **No transcript**: no app role can read the conversation table
   (`server/migrations/0028_matchmaker.sql:68`).
 - **Not the other person's card about you**: database row-level security
   (`server/migrations/0022_rendezvous.sql:105`).
 - **Nothing learned in chat, nothing hidden**: quotes read public facts only
-  (`server/src/matching/brief.ts:257`).
+  (`server/src/matching/brief.ts:278`).
 - **No card answers** (kids, one person or open, smoking, drinking, food, faith) as text.
-- **No name, no photo** (`server/src/matching/brief.ts:620`).
+- **No name, no photo** (`server/src/matching/brief.ts:641`).
 - **Not whether they said no** (`server/migrations/0031_other_said_yes.sql:15`), although timing can give it away (Known gaps).
 
 ### Docs vs code
@@ -1656,7 +1663,7 @@ here; no model is involved.
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Cards are written | The person with more open cards becomes first mover (a tie goes to the lower account id) | Code | `rendezvous.first_mover`, `answer_by` = now + 3 days | Nobody sees the rule's result directly | `server/src/matching/brief.ts:756` |
+| Cards are written | The person with more open cards becomes first mover (a tie goes to the lower account id) | Code | `rendezvous.first_mover`, `answer_by` = now + 3 days | Nobody sees the rule's result directly | `server/src/matching/brief.ts:777` |
 | First mover taps "Show me who it is" | The reveal: first name, age, city, tag chips, photos | Code | Nothing | The first mover | `server/src/api/dating.ts:688` |
 | First mover taps "Yes" | The turn passes; the other person gets a fresh 3 days and the full card | Code | Their answer on their card row | The second mover, from then on | `server/src/matching/orchestrator.ts:596` |
 | Either taps "No" | The pair ends at once, silently | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | `server/src/matching/orchestrator.ts:555` |
@@ -1666,11 +1673,11 @@ here; no model is involved.
 ### 9.1 Who decides first, and why
 
 - **The rule:** whoever has more open cards (waiting for an answer) is the first mover; a
-  tie goes to the lower account id (`server/src/matching/brief.ts:749`,
-  `server/src/matching/brief.ts:757`).
+  tie goes to the lower account id (`server/src/matching/brief.ts:770`,
+  `server/src/matching/brief.ts:778`).
 - **The reason, in the code:** dating apps are lopsided; the flooded side decides alone and
   first so it is not flooded again; both must still say yes
-  (`server/src/matching/brief.ts:581`).
+  (`server/src/matching/brief.ts:602`).
 - **In our example** Meera already has cards from other men's rounds, so she is the first
   mover. If Arjun had more open cards, or they tied and his id sorted first, the roles would
   swap. Practice profiles are not excluded from being first mover; since they never answer,
@@ -1856,7 +1863,7 @@ words are the date idea, written earlier (stage 7).
   `server/src/ratelimit.ts:216`).
 - **Contact details are allowed in chat.** The contact-detail filter guards what agents say,
   not what people type to each other; the app itself tells people to swap details in chat
-  (`server/src/matching/brief.ts:177`,
+  (`server/src/matching/brief.ts:198`,
   `app/src/features/stories/stories-state.ts:29`).
 - **Receipts:** "Sent", "Delivered", "Read", "typing…", always on
   (`app/src/features/dm/thread-screen.tsx:40`).
@@ -2116,7 +2123,7 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-1"></a>
 ### AI-1. Fact extraction
 
-- **Task / model:** `extract` → Gemini 3.5 Flash-Lite (`server/src/memory/extract.ts:174`).
+- **Task / model:** `extract` → Gemini 3.5 Flash-Lite (`server/src/memory/extract.ts:175`).
 - **When:** the first setup screen, at once; and for every chat session, about 5 minutes after it goes quiet
   (`server/src/api/tell.ts:71`,
   `server/src/memory/session.ts:28`).
@@ -2125,15 +2132,15 @@ $0.02; not measured, because no round has run since the talk was added.
 - **What goes in:** the whole session, both the person's and the clone's lines, plus the person's current
   facts. Key instructions: "You extract durable facts about ONE person from a transcript", "NEVER generalise the
   object.", "when in doubt choose the weaker stance", "Silence is not evidence."
-  (`server/src/memory/extract.ts:66`,
-  `server/src/memory/extract.ts:78`,
-  `server/src/memory/extract.ts:90`,
-  `server/src/memory/extract.ts:98`).
+  (`server/src/memory/extract.ts:67`,
+  `server/src/memory/extract.ts:79`,
+  `server/src/memory/extract.ts:91`,
+  `server/src/memory/extract.ts:99`).
 - **What comes out:** a list of facts (field, words, how sure, the exact quote, when), facts that may now be
-  false, and what the session was for (`server/src/memory/extract.ts:194`).
+  false, and what the session was for (`server/src/memory/extract.ts:195`).
 - **Code checks:** the reply must parse, or nothing is kept; unknown fields and under-18 birth years are
   refused; tapped fields are held; anything not asserted is held; learned facts start match-only
-  (`server/src/memory/extract.ts:204`,
+  (`server/src/memory/extract.ts:205`,
   `server/src/memory/facts.ts:111`). Nothing checks that a quote came from the person
   rather than the clone.
 - **Stored:** facts, an audit trail, questions the clone wants to ask, session intents.
@@ -2172,14 +2179,14 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-4"></a>
 ### AI-4. Paste import
 
-- **Task / model:** `extract` → Flash-Lite, 8,192 tokens (`server/src/memory/pasteImport.ts:158`).
+- **Task / model:** `extract` → Flash-Lite, 8,192 tokens (`server/src/memory/pasteImport.ts:159`).
 - **When:** "Paste from another AI", "In your words", "Catch it up fast".
 - **In:** the pasted text, up to 60,000 characters. Instructions: "Extract only what the text actually says." "A
-  guess is NEVER a fact." (`server/src/memory/pasteImport.ts:79`,
-  `server/src/memory/pasteImport.ts:85`).
+  guess is NEVER a fact." (`server/src/memory/pasteImport.ts:80`,
+  `server/src/memory/pasteImport.ts:86`).
 - **Out:** facts, and guesses with a question for each.
 - **Checks:** must parse; every fact is forced to "reported" and "untrusted", so it is held
-  (`server/src/memory/pasteImport.ts:182`).
+  (`server/src/memory/pasteImport.ts:183`).
 - **Stored:** held facts and questions; the pasted text is thrown away.
 
 <a id="ai-5"></a>
@@ -2411,146 +2418,125 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 Ordered by how much they matter. Items marked **(read, not run)** come from reading the code; they were not
 reproduced.
 
-### 15.1 Security: before anyone else uses the development server
+### 15.1 Security: the development server
 
-The development server is reachable through a public tunnel so friends' phones can use it (stage 1). Three
-development switches are on there. A production server refuses to start with any of them, but the development
-server does not:
+The development server is reachable through a public tunnel so friends' phones can use it (stage 1).
+On 2026-09-28 the two switches that let a stranger sign in as a member were turned off in
+`server/.env`: an account id no longer works as a sign-in token (`ALLOW_LEGACY_TOKENS=false`), and
+the SMS code is no longer sent back in the reply (`SMS_DEV_ECHO=false`). What remains:
 
-1. **A person's account id works as their password.** `ALLOW_LEGACY_TOKENS` defaults to on and is not set in the
-   development configuration, so a bare account id is accepted as a sign-in token. The reveal and chat
-   endpoints give each person the other's account id
-   (`server/src/env.ts:199`, `server/src/auth.ts:72`,
-   `server/src/api/dating.ts:171`). Fix: set `ALLOW_LEGACY_TOKENS=false` once no phone
-   still holds an old-style token.
-2. **The SMS code is sent back in the reply** (`SMS_DEV_ECHO=true`). Anyone who knows the tunnel address and a
-   member's phone number can sign in as that member; the reply also shows whether a number has an account
-   (`server/src/api/auth.ts:451`,
-   `server/src/api/auth.ts:610`).
-   Fix: turn it off; with the console sender the code is still in the server log for the founder.
-3. **Full phone numbers and codes in the server log** (console sender)
+1. **Full phone numbers and codes in the server log** (the console SMS sender). Anyone who can read
+   the server's log can sign in as that number while a code is fresh
    (`server/src/sms.ts:51`).
+2. **The code default is still on.** A new development setup whose `.env` lacks the line turns the
+   old sign-in method back on; only a production server refuses it
+   (`server/src/env.ts:199`,
+   `server/src/env.ts:344`).
 
-### 15.2 Introduced on 2026-09-28 (commit 34f33cf, "chat changes wait for a yes")
+### 15.2 Private information that can reach another person
 
-4. **A "Yes, that's right" now also shares.** Work field, exercise and sleep became held-for-confirmation fields.
-   Confirming one keeps that field's default visibility, which is public, and those kinds are quotable, so a
-   sentence the person said to their clone can reach strangers' cards, sheets and the talk without "OK to share".
-   Before this change the same sentence stayed match-only
-   (`server/src/memory/pasteImport.ts:335`,
-   `shared/src/facts.ts:77`,
-   `server/src/matching/brief.ts:87`).
-5. **The first setup screen can refuse to move on.** It advances only if a fact went live; a first sentence about
-   work, exercise, sleep or moving cities (and, as before, city, gender or age) is only held, so the person reads
-   "Got it. N to check on the You screen…" and stays on the screen. The first example sentence offered there can
-   do this. Depends on how the model files the sentence (read, not run)
-   (`app/src/features/onboarding/start-screen.tsx:46`,
-   `server/src/api/tell.ts:88`).
-
-### 15.3 Private information that can reach another person
-
-6. **Reveal tags skip every privacy rule.** The reveal's up to eight interest and work tags come straight from the
+3. **Reveal tags skip every privacy rule.** The reveal's up to eight interest and work tags come straight from the
    matching row: chat-learned (match-only) and hidden facts included, with no private-topic filter. "How you appear"
    does not show them (`server/src/api/dating.ts:155`,
    `server/src/matching/profile.ts:127`).
-7. **The first name comes from chat.** No screen asks for a name; if the clone hears a full name, its first word is
+4. **The first name comes from chat.** No screen asks for a name; if the clone hears a full name, its first word is
    shown to matches, though a full name is a never-public kind (`server/src/matching/profile.ts:80`,
    `shared/src/facts.ts:91`).
-8. **"Matches" / "Doesn't match" reveals card answers.** A want like "someone Hindu" or "never drinks" is checked
+5. **"Matches" / "Doesn't match" reveals card answers.** A want like "someone Hindu" or "never drinks" is checked
    against the other person's card answer and the result is shown; a want that accepts one answer reveals it. The
    other person was told "Nobody ever sees your answer." (`server/src/matching/wants.ts:198`,
    `server/src/onboarding/questions.ts:202`).
-9. **Profiles and photos before any yes.** The first mover sees the other's first name, age, city, tags and photos
+6. **Profiles and photos before any yes.** The first mover sees the other's first name, age, city, tags and photos
    before the other person does anything; several first movers can see the same photos at once. Sign-up and the
    photo screens promise "after both said yes" and "one person at a time" (stage 9)
    (`server/migrations/0032_photos.sql:76`,
    `app/src/features/photos/photos-screen.tsx:133`).
    The yes screen also says "Either way, they are never told what you chose", but a first mover's yes opens their
    profile to the other person (`app/src/features/matches/reveal-screen.tsx:151`).
-10. **A "no" shows by timing.** A no removes the other person's card at once; an unanswered card lasts three days
+7. **A "no" shows by timing.** A no removes the other person's card at once; an unanswered card lasts three days
     (`server/src/api/dating.ts:549`).
-11. **The message-history endpoint returns the other person's first name and account id for any pair**, before it
+8. **The message-history endpoint returns the other person's first name and account id for any pair**, before it
     is their turn, after a no, after expiry or a block. The app does not call it early, but anyone using the API
     directly can (`server/src/api/messages.ts:187`).
-12. **"Send my agent over" can test a known person's card answer** (read, not run): the server says "That person has
+9. **"Send my agent over" can test a known person's card answer** (read, not run): the server says "That person has
     moved on." for free when the target fails your rules, so flipping your own must-have and asking again reveals
     their answer (`server/src/api/dating.ts:939`).
-13. **The town shows the first mover's neighbourhood** to the second mover, which the plain card deliberately hides
+10. **The town shows the first mover's neighbourhood** to the second mover, which the plain card deliberately hides
     (`server/src/api/world.ts:202`).
-14. **Word lists have gaps.** The private-topic list is finite ("family", "wedding", "Diwali" are not on it), and the
+11. **Word lists have gaps.** The private-topic list is finite ("family", "wedding", "Diwali" are not on it), and the
     talk and answer sheets also use "goal" and "dislikes" sentences, which the card's own rule leaves out as the place
     "where faith, politics and children are said in prose"
     (`server/src/matching/answer-sheet.ts:79`,
-    `server/src/matching/brief.ts:80`).
-15. **The clone's words can become "the person's".** The extractor reads the clone's replies too, and recall labels
-    them "things they said before" (`server/src/memory/extract.ts:181`,
+    `server/src/matching/brief.ts:81`).
+12. **The clone's words can become "the person's".** The extractor reads the clone's replies too, and recall labels
+    them "things they said before" (`server/src/memory/extract.ts:182`,
     `server/src/api/chat.ts:89`).
-16. **Deleting an account deletes reports against that person and both halves of their chats**
+13. **Deleting an account deletes reports against that person and both halves of their chats**
     (`server/migrations/0025_messaging_fixes.sql:100`).
     If deletion fails part way, the app still says "Nothing was removed."
     (`app/src/features/settings/settings-screen.tsx:137`).
-17. **Promises that are broader than the code.** "Nobody else has ever seen what your clone knows about you." and
+14. **Promises that are broader than the code.** "Nobody else has ever seen what your clone knows about you." and
     "Only things marked public ever leave your account." sit beside reveal tags, chat-learned first names, want
     answers, the reviewer's want topics, and AI providers processing the text
     (`app/src/features/settings/settings-screen.tsx:292`).
-18. **Latent:** the matchmaker role can read every profile summary, which is written from all facts including private
+15. **Latent:** the matchmaker role can read every profile summary, which is written from all facts including private
     ones; nothing reads it in a round today (`server/migrations/0028_matchmaker.sql:51`).
-19. **AI providers** receive everything typed to the clone and every message's text (embeddings); the in-app notice
+16. **AI providers** receive everything typed to the clone and every message's text (embeddings); the in-app notice
     names the chat providers but not the embedding provider, and its privacy links point to pages the server does not
     serve (`server/src/api/config.ts:51`).
 
-### 15.4 Behaviour a person would not expect
+### 15.3 Behaviour a person would not expect
 
-20. **Ten model calls a day, for everyone**, counting chat, learning and rounds together. Setup alone can use most of
+17. **Ten model calls a day, for everyone**, counting chat, learning and rounds together. Setup alone can use most of
     them; then a round fails with "Your agent has been out enough for today", setup screens say "Could not reach the
     server.", and in chat the reason is never shown (`server/src/env.ts:321`,
     `app/src/lib/api.ts:361`).
-21. **Stuck behind a practice profile.** A practice profile can be the first mover; it never answers, so the real
+18. **Stuck behind a practice profile.** A practice profile can be the first mover; it never answers, so the real
     person waits three days on "They are looking first", then the card disappears (read, not run)
-    (`server/src/matching/brief.ts:757`).
-22. **The wrong waiting line.** A first mover who said yes reads "They are looking first…", not the intended "You said
+    (`server/src/matching/brief.ts:778`).
+19. **The wrong waiting line.** A first mover who said yes reads "They are looking first…", not the intended "You said
     yes…" (`server/src/api/dating.ts:637`).
-23. **Turn order is not enforced by the server.** A second mover can decide through the API before seeing anything
+20. **Turn order is not enforced by the server.** A second mover can decide through the API before seeing anything
     (`server/src/api/dating.ts:815`).
-24. **Distance is not "both ways".** If either person has no maximum distance, neither limit applies, yet every card
+21. **Distance is not "both ways".** If either person has no maximum distance, neither limit applies, yet every card
     says "Passes your rules both ways" (`server/src/matching/candidates.ts:74`).
-25. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
+22. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
     list" (stage 5).
-26. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does
+23. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does
     not know where you are." (`server/src/matching/profile.ts:151`).
-27. **Someone who turns 18 this year is refused all year**, because only the birth year is asked
+24. **Someone who turns 18 this year is refused all year**, because only the birth year is asked
     (`shared/src/values.ts:118`).
-28. **A mistyped invite code burns the sign-in ticket**; the retry says "That took too long. Ask for a new code.", and the
+25. **A mistyped invite code burns the sign-in ticket**; the retry says "That took too long. Ask for a new code.", and the
     invite screen has no back button (`server/src/api/auth.ts:194`).
-29. **"Yes, that's right" can do more than agree.** A confirmed free phrase replaces a card answer with "unknown" (for
+26. **"Yes, that's right" can do more than agree.** A confirmed free phrase replaces a card answer with "unknown" (for
     example "socially" for drinking), and a confirmed city phrase without a map point takes the person out of the pool
-    (`server/src/memory/pasteImport.ts:328`).
-30. **Unconfirmed chat can still retire answers** on multi-answer fields such as who they want to meet or work field, with
+    (`server/src/memory/pasteImport.ts:329`).
+27. **Unconfirmed chat can still retire answers** on multi-answer fields such as who they want to meet or work field, with
     no Yes and no record (read, not run) (`server/src/memory/session.ts:127`).
-31. **Rule clashes.** Two wants tied to the same question overwrite each other's rule; a must-have outlives its want
+28. **Rule clashes.** Two wants tied to the same question overwrite each other's rule; a must-have outlives its want
     sentence and cannot be deleted, only changed in strength (`server/src/matching/profile.ts:391`).
-32. **Cards can expire unseen.** Only one "waiting on you" card shows at a time, and there are no push notifications
+29. **Cards can expire unseen.** Only one "waiting on you" card shows at a time, and there are no push notifications
     (`app/src/features/matches/matches-screen.tsx:302`).
-33. **Check-in details.** "Not yet" is final; tapping Block from "Did you feel safe?" drops the unsafe answer; "Not sure"
+30. **Check-in details.** "Not yet" is final; tapping Block from "Did you feel safe?" drops the unsafe answer; "Not sure"
     counts toward "Confirmed by N people" (`app/src/features/dm/checkin.tsx:77`,
     `server/migrations/0058_date_checkins.sql:67`).
-34. **Access does not always end with the match.** Photos stay visible to the first mover after a card expires; the
+31. **Access does not always end with the match.** Photos stay visible to the first mover after a card expires; the
     reveal's details stay readable after a no (`server/migrations/0032_photos.sql:73`,
     `server/src/api/dating.ts:672`).
-35. **The practice pool will disappear around 2026-11-11.** Its 5,008 profiles keep their seeding date (2026-09-12 to
+32. **The practice pool will disappear around 2026-11-11.** Its 5,008 profiles keep their seeding date (2026-09-12 to
     14) as "last active", and the 60-day activity rule then removes them all, unless the pool is reseeded (query run
     2026-09-28) (`server/src/matching/candidates.ts:98`).
-36. **The reveal screen can confirm a decision that failed** (offline, or the card expired): it still says "Sent" or
+33. **The reveal screen can confirm a decision that failed** (offline, or the card expired): it still says "Sent" or
     "Done" (`app/src/features/matches/reveal-screen.tsx:67`).
 
-### 15.5 Money and operations
+### 15.4 Money and operations
 
-37. Embeddings are not metered or priced; Gemini's thinking tokens are recorded but not priced; Gemini calls have no
+34. Embeddings are not metered or priced; Gemini's thinking tokens are recorded but not priced; Gemini calls have no
     retry and no timeout; the per-session output cap is not enforced; the in-repo spend report (`npm run stats`)
     reads through a role that sees no rows, so it shows zero; a first-screen sentence is extracted twice
     (`server/src/llm/adapters/google.ts:31`,
     `server/src/db/stats.ts:5`).
-38. **Documentation drift.** HOW-IT-WORKS.md, ARCHITECTURE.md, ENGINE-DECISION.md, both READMEs and several code
+35. **Documentation drift.** HOW-IT-WORKS.md, ARCHITECTURE.md, ENGINE-DECISION.md, both READMEs and several code
     comments describe older designs; the "Docs vs code" notes in each stage list the specific disagreements.
 
 ---
@@ -2596,7 +2582,6 @@ server does not:
     person's number and phone.
 13. **Numbers.** The founder's page counts real people and how far their matches get. Another list shows which wants
     no question covers yet, as topic words, so the founder knows which questions to add.
-14. **Biggest risks today.** Two development switches let someone who knows the tunnel address sign in as a member.
-    Photos and profiles reach the first person to decide before the other has said anything. Some private details
-    can leak through reveal tags, want answers and timing. A change made on 2026-09-28 lets a confirmed chat
-    sentence about work, exercise or sleep become shareable without "OK to share".
+14. **Biggest risks today.** Photos and profiles reach the first person to decide before the other has said
+    anything. Some private details can leak through reveal tags, want answers and timing. The development server's
+    log holds phone numbers and sign-in codes.

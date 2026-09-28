@@ -4,8 +4,8 @@ For every pair a round creates, **code** writes two cards: Arjun's card about Me
 Meera's card about Arjun. No model writes any card text
 ([server/src/matching/brief.ts:4] `THE BRIEF IS CODE. NO MODEL WRITES ANY OF IT.`). The two cards
 differ, because each is built for its reader
-([server/src/matching/brief.ts:529] `forA: composeBrief(a, b, qa.forA, talk.forA, wants.forA),`,
-[server/src/matching/brief.ts:530] `forB: composeBrief(b, a, qa.forB, talk.forB, wants.forB),`).
+([server/src/matching/brief.ts:550] `forA: composeBrief(a, b, qa.forA, talk.forA, wants.forA),`,
+[server/src/matching/brief.ts:551] `forB: composeBrief(b, a, qa.forB, talk.forB, wants.forB),`).
 A card never shows the other person's name or photos; those are on the "reveal"
 (stage 9).
 
@@ -13,12 +13,12 @@ A card never shows the other person's name or photos; those are on the "reveal"
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Meera's age, intent and neighbourhood | Become the headline, e.g. "Here for something long-term · 27 · Jayanagar" | Code | Card row (`headline`) | Arjun, on his turn | [server/src/matching/brief.ts:311] `Here for ${words.join(' or ')}` |
-| Tags both share | "You both like …" (up to 5), "You both work in …" (up to 2), public tags only | Code | Card row | Arjun, on his turn | [server/src/matching/brief.ts:459] `const shared = inCommon(LIKED).slice(0, 5);` |
-| Meera's own public sentences | Up to 2 quotes, "In their words, <month year>" | Code | Card row | Arjun, on his turn | [server/src/matching/brief.ts:427] `Up to two of the OTHER person's verified sentences.` |
+| Meera's age, intent and neighbourhood | Become the headline, e.g. "Here for something long-term · 27 · Jayanagar" | Code | Card row (`headline`) | Arjun, on his turn | [server/src/matching/brief.ts:332] `Here for ${words.join(' or ')}` |
+| Tags both share | "You both like …" (up to 5), "You both work in …" (up to 2), public tags only | Code | Card row | Arjun, on his turn | [server/src/matching/brief.ts:480] `const shared = inCommon(LIKED).slice(0, 5);` |
+| Meera's own public sentences | Up to 2 quotes, "In their words, <month year>" | Code | Card row | Arjun, on his turn | [server/src/matching/brief.ts:448] `Up to two of the OTHER person's verified sentences.` |
 | The talk or the answer sheets | Shown as the agents' exchange (stage 7) | {AI:talk} earlier, code now | Card row | Arjun, on his turn | [app/src/features/matches/matches-screen.tsx:351] `{m.talk ? <TalkOnCard talk={m.talk} /> : exchangeRows(m.qa).length > 0 && (` |
 | Arjun's wants | "WHAT YOU ASKED FOR" (stage 5) | {AI:wants} earlier, code now | Card row, with each want's status | Arjun only | [app/src/features/matches/matches-screen.tsx:370] `WHAT YOU ASKED FOR` |
-| Every time the card is opened | Each of Meera's sentences is re-checked; anything she hid or changed comes off | Code | Nothing | | [server/src/matching/brief.ts:707] `const ok = (t: string) => mayRepeat(t) && (live === null || live.has(sentenceKey(t)));` |
+| Every time the card is opened | Each of Meera's sentences is re-checked; anything she hid or changed comes off | Code | Nothing | | [server/src/matching/brief.ts:728] `const ok = (t: string) => mayRepeat(t) && (live === null || live.has(sentenceKey(t)));` |
 
 ### Arjun and Meera
 
@@ -40,7 +40,7 @@ In this example Meera decides first (stage 9 explains why).
   character, "WAITING ON THEM", "Your agent met someone", the fixed line, and "They are
   looking first. Whoever gets more matches decides first — it stops one side being
   buried." Nothing else: no age, no area, no quotes, no talk, no wants
-  ([server/src/matching/brief.ts:645] `({ headline: PLAIN_HEADLINE, line: BRIEF_LINE, shared: [], work: [], quotes: []`,
+  ([server/src/matching/brief.ts:666] `({ headline: PLAIN_HEADLINE, line: BRIEF_LINE, shared: [], work: [], quotes: []`,
   [app/src/features/matches/matches-screen.tsx:408] `? 'They are looking first. Whoever gets more matches decides first`).
 - **After Meera says yes**, Arjun's card fills in: the same sections, built for him.
 
@@ -50,15 +50,15 @@ In this example Meera decides first (stage 9 explains why).
 |---|---|---|---|
 | 1 | Their character (a small 3D look) | The look they built; sent even on a plain card | [app/src/features/matches/matches-screen.tsx:308] `{m.look && <CharacterAvatar look={m.look} size={40} />}` |
 | 2 | "WAITING ON YOU" / "WAITING ON THEM" | Whose turn it is | [app/src/features/matches/matches-screen.tsx:310] `{m.waitingOnYou ? 'WAITING ON YOU' : 'WAITING ON THEM'}` |
-| 3 | Headline | Intent · age · neighbourhood (or city) of the other person; nothing known → "Your agent met someone" | [server/src/matching/brief.ts:313] `const place = (card.area ? findArea(card.area)?.name : null) ?? card.city ?? null;` |
-| 4 | "Passes your rules both ways, on everything they've answered" | The same fixed words on every card | [server/src/matching/brief.ts:64] `export const BRIEF_LINE = "Passes your rules both ways, on everything they've answered";` |
+| 3 | Headline | Intent · age · neighbourhood (or city) of the other person; nothing known → "Your agent met someone" | [server/src/matching/brief.ts:334] `const place = (card.area ? findArea(card.area)?.name : null) ?? card.city ?? null;` |
+| 4 | "Passes your rules both ways, on everything they've answered" | The same fixed words on every card | [server/src/matching/brief.ts:65] `export const BRIEF_LINE = "Passes your rules both ways, on everything they've answered";` |
 | 5 | "Practice match — this one is not a real person." | Practice profiles only | [app/src/features/matches/matches-screen.tsx:323] `Practice match — this one is not a real person.` |
 | 6 | "You both like …" / "You both work in …" | Tags both have, only from **public** facts, each word checked for private topics | [server/src/matching/rendezvous.ts:384] `WHERE user_id = $1 AND status = 'active' AND valid_to IS NULL AND disclosure = 'public'` |
-| 7 | "In their words, <month year>" + a quote | Up to 2 of their own public sentences, typed by them, 12–300 characters, of allowed kinds (interests, things done, topics, media, pets, story answers, work, exercise, sleep, transport) | [server/src/matching/brief.ts:86] `'interest', 'did', 'topic', 'media_taste', 'pet', 'prompt_answer',` |
+| 7 | "In their words, <month year>" + a quote | Up to 2 of their own public sentences, typed by them, 12–300 characters, of allowed kinds (interests, things done, topics, media, pets, story answers, work, exercise, sleep, transport) | [server/src/matching/brief.ts:87] `'interest', 'did', 'topic', 'media_taste', 'pet', 'prompt_answer',` |
 | 8a | "DATE IDEA", "SOMETHING YOU SHARE", "Read what your agents said" | The talk (stage 7) | [app/src/features/matches/matches-screen.tsx:78] `open ? 'Hide the chat' : 'Read what your agents said'` |
 | 8b | or "WHAT YOUR AGENTS ASKED EACH OTHER" | The answer sheets, when there is no talk | [app/src/features/matches/matches-screen.tsx:354] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>` |
 | 9 | "WHAT YOU ASKED FOR" | The reader's own wants (stage 5) | [app/src/features/matches/exchange.ts:188] `const label = w.kind === 'not' ? "You couldn't be with" : 'You asked for';` |
-| 10 | "Ask them about …" | First that applies: a question they could not answer in the talk; one from the sheets; a shared interest; a quote; a shared work field; one of their tags | [server/src/matching/brief.ts:502] `Ask them about ${talkAsk.toLowerCase()}` |
+| 10 | "Ask them about …" | First that applies: a question they could not answer in the talk; one from the sheets; a shared interest; a quote; a shared work field; one of their tags | [server/src/matching/brief.ts:523] `Ask them about ${talkAsk.toLowerCase()}` |
 | 11 | "Fades tomorrow if you don't answer." / "Fades today if you don't answer." | Days left on the reader's turn | [app/src/features/matches/fade.ts:15] `"Fades tomorrow if you don't answer."` |
 | 12 | "Show me who it is" and "Not this one" | Only on the reader's turn | [app/src/features/matches/matches-screen.tsx:397] `<Button label={m.practice ? 'See the practice profile' : 'Show me who it is'}` |
 | 13 | "Block or report" | On every card | [app/src/features/matches/matches-screen.tsx:417] `{ color: p.textTertiary, textAlign: 'center' }]}>Block or report</Text>` |
@@ -73,26 +73,26 @@ newest round first, then by a hash of the pair's id, never by a score
 When a card is shown, each of the other person's sentences on it must still be one of
 their current public facts and pass the private-topic and contact-detail check. Anything
 that fails comes off: a quote, an answer, a talk line, the date idea, or an opener that
-used it ([server/src/matching/brief.ts:707] `const ok = (t: string) => mayRepeat(t) && (live === null || live.has(sentenceKey(t)));`,
+used it ([server/src/matching/brief.ts:728] `const ok = (t: string) => mayRepeat(t) && (live === null || live.has(sentenceKey(t)));`,
 [server/src/api/dating.ts:583] `AND disclosure = 'public' AND status = 'active' AND valid_to IS NULL`).
 Not re-checked: the headline and the shared tags, which stay as written when the round ran
-([server/src/matching/brief.ts:725] `return { ...card, quotes, qa, wants, talk, opener };`).
+([server/src/matching/brief.ts:746] `return { ...card, quotes, qa, wants, talk, opener };`).
 
 ### 8.3 What a card never shows
 
 - **No score, percentage or verdict about the pair.** The query for cards does not even
   select the score columns, and the stored "concern" is always empty
   ([server/src/api/dating.ts:532] `SELECT r.id, b.headline, b.overlap_quotes, b.questions,`,
-  [server/src/matching/brief.ts:604] `VALUES ($1,$2,$3,$4,'',$5)`). One exception is per want, not
+  [server/src/matching/brief.ts:625] `VALUES ($1,$2,$3,$4,'',$5)`). One exception is per want, not
   per pair: "Matches" / "Doesn't match" (stage 5).
 - **No transcript**: no app role can read the conversation table
   ([server/migrations/0028_matchmaker.sql:68] `-- No policy for clone_app, deliberately. A transcript is never shown to either human:`).
 - **Not the other person's card about you**: database row-level security
   ([server/migrations/0022_rendezvous.sql:105] `USING (for_user = NULLIF(current_setting('app.user_id', true), '')::uuid)`).
 - **Nothing learned in chat, nothing hidden**: quotes read public facts only
-  ([server/src/matching/brief.ts:257] `opts.disclosures ? [...opts.disclosures] : opts.includeHidden ? ['public', 'private'] : ['public'],`).
+  ([server/src/matching/brief.ts:278] `opts.disclosures ? [...opts.disclosures] : opts.includeHidden ? ['public', 'private'] : ['public'],`).
 - **No card answers** (kids, one person or open, smoking, drinking, food, faith) as text.
-- **No name, no photo** ([server/src/matching/brief.ts:620] `export interface BriefCard {`).
+- **No name, no photo** ([server/src/matching/brief.ts:641] `export interface BriefCard {`).
 - **Not whether they said no** ([server/migrations/0031_other_said_yes.sql:15] `-- A NO IS SILENT, AND THIS KEEPS IT SILENT.`), although timing can give it away (Known gaps).
 
 ### Docs vs code

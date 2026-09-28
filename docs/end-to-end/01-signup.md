@@ -39,8 +39,10 @@ Nothing in sign-up differs by gender. Both see, in order:
    only a scrambled version of it." ([app/src/features/auth/phone-screen.tsx:92] `What's your number?`,
    [app/src/features/auth/phone-screen.tsx:85] `We text you once. Your number is never shown to anybody, and we keep only a`).
 2. **"Check your texts"**, "We sent six digits to the number ending <last two digits>." In the
-   development setup the code arrives already filled in, with a red warning: "The server is
-   echoing codes back (SMS_DEV_ECHO). Turn that off before anyone else uses this."
+   development setup no text is sent: the founder reads the code from the server's log. (If the
+   server were echoing codes back, the box would arrive filled in under a red warning, "The
+   server is echoing codes back (SMS_DEV_ECHO). Turn that off before anyone else uses this.";
+   that switch is off since 2026-09-28.)
    ([app/src/features/auth/verify-screen.tsx:149] `Check your texts`,
    [app/src/features/auth/verify-screen.tsx:182] `The server is echoing codes back (SMS_DEV_ECHO). Turn that off before anyone`).
 3. **"You need a code"**: "Your number is confirmed. Now someone has to let you in. If a friend
@@ -67,7 +69,8 @@ Nothing in sign-up differs by gender. Both see, in order:
   full number and the code to the server log; `msg91` and `twilio` send real texts
   ([server/src/env.ts:221] `SMS_PROVIDER: z.enum(['console', 'msg91', 'twilio']).default('console'),`,
   [server/src/sms.ts:51] `log.warn({ to, code }, 'SMS (console sender) -- this is the code');`).
-  With `SMS_DEV_ECHO=true` (on in development) the server also returns the code in its reply
+  With `SMS_DEV_ECHO=true` the server would also return the code in its reply; it is off in the
+  development setup since 2026-09-28
   ([server/src/api/auth.ts:451] `...(env.SMS_DEV_ECHO ? { devCode: code, devEchoIsOn: true } : {}),`).
 - **Limits:** per IP 10 codes per 15 minutes; per number 3 per 15 minutes; 500 texts a day in
   total ([server/src/ratelimit.ts:204] `otpSend: { max: 10, windowMs: 15 * 60_000 },`,
@@ -128,10 +131,10 @@ Consent is also a condition for being sent out (stage 2).
   ([server/src/tokens.ts:18] `createHmac('sha256', env.AUTH_SECRET).update(sessionId).digest('base64url');`,
   [server/src/auth.ts:33] `WHERE id = $1 AND revoked_at IS NULL AND expires_at > now() AND NOT is_banned(user_id)`,
   [server/src/env.ts:203] `SESSION_TTL_DAYS: z.coerce.number().default(180),`).
-- **An older sign-in method is still on in development:** with `ALLOW_LEGACY_TOKENS` at its default
-  (true, not set in the development configuration), a bare account id is accepted as a sign-in
-  token ([server/src/env.ts:199] `.default('true')`, [server/src/auth.ts:72] `if (/^[0-9a-f-]{36}$/i.test(token)) {`).
-  See Known gaps.
+- **An older sign-in method is off:** with `ALLOW_LEGACY_TOKENS` on, a bare account id would be
+  accepted as a sign-in token ([server/src/auth.ts:72] `if (/^[0-9a-f-]{36}$/i.test(token)) {`). The
+  development setup turns it off (since 2026-09-28), but the code default is still on
+  ([server/src/env.ts:199] `.default('true')`). See Known gaps.
 - **The phone's id:** at sign-in the app sends a stable phone id (Android ID; on iPhone a random id
   kept in the keychain). The server keeps only a keyed hash
   ([app/src/lib/device.ts:12] `Sent only at the doors (phone verify, invite redeem, device signup, token upgrade)`,

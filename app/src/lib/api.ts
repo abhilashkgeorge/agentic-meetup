@@ -540,9 +540,15 @@ export const gradeSelfTest = (
 
 /** One sentence about yourself, learned immediately. The first sixty seconds. */
 export const tell = (token: string, text: string, sessionId: string) =>
-  post<{ learned: number; facts: { label: string; value: string }[]; message: string }>(
-    '/v1/tell', token, { text, sessionId },
-  );
+  post<TellResult>('/v1/tell', token, { text, sessionId });
+
+/** What "tell" heard: live facts, and facts on tapped fields held for the person's Yes. */
+export interface TellResult {
+  learned: number;
+  toConfirm: number;
+  facts: { label: string; value: string }[];
+  message: string;
+}
 
 /** Keep everything in the reviewed pile except the ids listed. */
 export const reviewFacts = (token: string, reject: string[]) =>

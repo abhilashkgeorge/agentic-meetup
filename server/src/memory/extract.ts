@@ -21,6 +21,7 @@ import { llm, modelFor } from '../llm/index.js';
 import { modelIdOf } from '../llm/caps.js';
 import type { FactCandidate } from './facts.js';
 import { TAPPED_PREDICATES } from '../onboarding/questions.js';
+import { learnedDisclosure } from '../matching/brief.js';
 
 /** Bumped on any change below. Recorded on every fact, so a bad prompt is findable
  *  and reversible after the fact rather than merely regrettable. */
@@ -231,9 +232,9 @@ export async function extractSessionFacts(
     // never quoted on a card or said in the agents' talk until they tap "OK to share"
     // on "How you appear". So it starts match-only. Only answers they wrote on purpose
     // for sharing -- the five set questions (stories.ts), and a question of the day they
-    // save and share -- start shareable. A tapped field keeps its own default: it is
-    // never quoted either way.
-    ...(TAPPED_PREDICATES.has(f.predicate) ? {} : { disclosure: 'matchable_only' as const }),
+    // save and share -- start shareable. A tapped field that nothing ever quotes keeps
+    // its own default; the rule and why live in brief.ts learnedDisclosure.
+    ...learnedDisclosure(f.predicate),
     extractorModel: modelIdOf(model),
     extractorVersion: EXTRACTOR_VERSION,
     promptVersion: PROMPT_VERSION,

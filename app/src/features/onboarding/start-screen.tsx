@@ -15,6 +15,7 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { gradeSelfTest, nextSelfTest, tell, type SelfTestItem } from '../../lib/api';
 import { useSession } from '../../store/session';
+import { afterTell } from './start-state';
 import {
   Animation, Bubble, Button, ButtonRow, Card, Field, Screen, space, type, usePalette,
 } from '../../components/ui';
@@ -41,9 +42,9 @@ export default function StartScreen() {
     setStage('thinking');
     setNote(null);
 
-    const learned = await tell(token, text.trim(), sessionId);
-    if (!learned) { setNote('Could not reach the server.'); return setStage('ask'); }
-    if (learned.learned === 0) { setNote(learned.message); return setStage('ask'); }
+    const after = afterTell(await tell(token, text.trim(), sessionId));
+    if (after.next === 'retry') { setNote(after.note); return setStage('ask'); }
+    if (after.next === 'questions') return setStage('done');
 
     const probe = await nextSelfTest(token);
     if (!probe) return setStage('done');

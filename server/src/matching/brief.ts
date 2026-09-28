@@ -41,6 +41,7 @@ import { z } from 'zod';
 import { findArea, contactDetail } from '@clone/shared';
 import { tenantSession } from '../db/client.js';
 import { log } from '../log.js';
+import { TAPPED_PREDICATES } from '../onboarding/questions.js';
 
 export interface Quote {
   id: string;
@@ -86,6 +87,26 @@ export const QUOTABLE: ReadonlySet<string> = new Set([
   'interest', 'did', 'topic', 'media_taste', 'pet', 'prompt_answer',
   'works_in', 'industry', 'exercise_habit', 'sleep_pattern', 'transport',
 ]);
+
+/**
+ * HOW VISIBLE A LEARNED FACT IS -- heard in chat or "tell", or pasted -- both when it
+ * is first written and after the person's "Yes, that's right".
+ *
+ * LEARNED IS NOT SHARED (the founder, 2026-09-25), and a Yes on the You screen means
+ * "that is true", not "OK to share" (2026-09-28). So: match-only. Matching may use it;
+ * nobody hears it until the person taps "OK to share" on "How you appear".
+ *
+ * The one exception is a tapped field that nothing ever quotes -- the basics, the five
+ * cards, faith, the situation answers. There the field keeps its own default, because
+ * no reader repeats it either way. It must not reach a tapped field that IS quotable:
+ * work field, exercise and sleep became tapped on 2026-09-28 (34f33cf), and with the old
+ * test -- "tapped, so keep the default" -- a confirmed "I work in AI" typed to the clone
+ * went public and onto strangers' cards, sheets and the agents' talk. (The talk and the
+ * sheets also say goal and dislikes; neither is tapped, so QUOTABLE is the whole test.)
+ */
+export function learnedDisclosure(predicate: string): { disclosure?: 'matchable_only' } {
+  return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };
+}
 
 /**
  * The kinds of tag a card may name as something you both LIKE.

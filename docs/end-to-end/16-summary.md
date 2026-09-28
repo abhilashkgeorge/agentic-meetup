@@ -39,7 +39,6 @@
     person's number and phone.
 13. **Numbers.** The founder's page counts real people and how far their matches get. Another list shows which wants
     no question covers yet, as topic words, so the founder knows which questions to add.
-14. **Biggest risks today.** Two development switches let someone who knows the tunnel address sign in as a member.
-    Photos and profiles reach the first person to decide before the other has said anything. Some private details
-    can leak through reveal tags, want answers and timing. A change made on 2026-09-28 lets a confirmed chat
-    sentence about work, exercise or sleep become shareable without "OK to share".
+14. **Biggest risks today.** Photos and profiles reach the first person to decide before the other has said
+    anything. Some private details can leak through reveal tags, want answers and timing. The development server's
+    log holds phone numbers and sign-in codes.

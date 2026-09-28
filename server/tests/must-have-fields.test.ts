@@ -122,10 +122,11 @@ describe('a sentence in chat about a must-have field', () => {
       expect(mustHaveAllowed(p), `${p}: a want tied to it could never be a must-have`).toBe(true);
       expect(canFilterOn(p), p).toBe(true);
     }
-    for (const file of ['extract.ts', 'pasteImport.ts']) {
-      const src = readFileSync(join(import.meta.dirname, '..', 'src', 'memory', file), 'utf8');
-      expect(src, `${file} does not stage the must-have fields`).toMatch(/TAPPED_PREDICATES\.has\(/);
-    }
+    // Chat and "tell" stage exactly the tapped fields; a paste stages everything.
+    const src = (file: string) => readFileSync(join(import.meta.dirname, '..', 'src', 'memory', file), 'utf8');
+    expect(src('extract.ts'), 'chat does not stage the must-have fields')
+      .toMatch(/originClass: TAPPED_PREDICATES\.has\(f\.predicate\) \? 'untrusted' : 'owner'/);
+    expect(src('pasteImport.ts'), 'a paste does not stage what it imports').toMatch(/originClass: 'untrusted',/);
   });
 });
 

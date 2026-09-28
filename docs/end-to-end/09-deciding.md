@@ -9,7 +9,7 @@ here; no model is involved.
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Cards are written | The person with more open cards becomes first mover (a tie goes to the lower account id) | Code | `rendezvous.first_mover`, `answer_by` = now + 3 days | Nobody sees the rule's result directly | [server/src/matching/brief.ts:756] `if (na !== nb) return na > nb ? a : b;` |
+| Cards are written | The person with more open cards becomes first mover (a tie goes to the lower account id) | Code | `rendezvous.first_mover`, `answer_by` = now + 3 days | Nobody sees the rule's result directly | [server/src/matching/brief.ts:777] `if (na !== nb) return na > nb ? a : b;` |
 | First mover taps "Show me who it is" | The reveal: first name, age, city, tag chips, photos | Code | Nothing | The first mover | [server/src/api/dating.ts:688] `const mine = seat.first_mover === ctx.userId;` |
 | First mover taps "Yes" | The turn passes; the other person gets a fresh 3 days and the full card | Code | Their answer on their card row | The second mover, from then on | [server/src/matching/orchestrator.ts:596] `notify(other, { type: 'match.turn', rendezvousId, agent: agentRef(other, userId) });` |
 | Either taps "No" | The pair ends at once, silently | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | [server/src/matching/orchestrator.ts:555] `UPDATE rendezvous SET status = 'lapsed' WHERE id = $1 AND status <> 'introduced'` |
@@ -19,11 +19,11 @@ here; no model is involved.
 ### 9.1 Who decides first, and why
 
 - **The rule:** whoever has more open cards (waiting for an answer) is the first mover; a
-  tie goes to the lower account id ([server/src/matching/brief.ts:749] `AND r.status IN ('decided', 'shown_a', 'shown_b')`,
-  [server/src/matching/brief.ts:757] `return a < b ? a : b;`).
+  tie goes to the lower account id ([server/src/matching/brief.ts:770] `AND r.status IN ('decided', 'shown_a', 'shown_b')`,
+  [server/src/matching/brief.ts:778] `return a < b ? a : b;`).
 - **The reason, in the code:** dating apps are lopsided; the flooded side decides alone and
   first so it is not flooded again; both must still say yes
-  ([server/src/matching/brief.ts:581] `THE ASYMMETRY IS THE POINT. Whichever side has the larger inbox decides ALONE and`).
+  ([server/src/matching/brief.ts:602] `THE ASYMMETRY IS THE POINT. Whichever side has the larger inbox decides ALONE and`).
 - **In our example** Meera already has cards from other men's rounds, so she is the first
   mover. If Arjun had more open cards, or they tied and his id sorted first, the roles would
   swap. Practice profiles are not excluded from being first mover; since they never answer,

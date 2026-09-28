@@ -25,22 +25,21 @@ The screens and questions are the same for both; only their taps differ. Arjun t
 In order, each sees:
 
 1. **"Tell it one true thing"** — "Anything about you. One sentence is enough to start." Arjun types
-   "I work in AI and run most mornings." The screen moves on only if at least one fact was
-   learned: "Got it. N things learned."
-   ([app/src/features/onboarding/start-screen.tsx:139] `Tell it one true thing`,
-   [app/src/features/onboarding/start-screen.tsx:46] `if (learned.learned === 0) { setNote(learned.message); return setStage('ask'); }`).
-   But his work field and exercise are fields a must-have can depend on, so both facts are
-   **held for his Yes** and do not count as learned ([server/src/api/tell.ts:88] `if (r.outcome === 'staged') staged++;`).
-   He reads "Got it. 2 to check on the You screen before it changes an answer you gave." and the
-   screen does **not** move on; he has to type another sentence about something else
-   ([server/src/api/tell.ts:106] `to check on the You screen before it changes an answer you gave.`).
-   The first example sentence on that screen, "I live in Bangalore and I work at an ISP.", can hit
-   the same wall (Known gaps) ([app/src/features/onboarding/start-screen.tsx:25] `'I live in Bangalore and I work at an ISP.',`).
-2. **"Now it's you"** — "Someone asks you", the clone's first reply in his name, "Is that you?",
-   "That's me" / "Not even close" ([app/src/features/onboarding/start-screen.tsx:86] `label="Someone asks you"`).
+   "I work in AI and run most mornings."
+   ([app/src/features/onboarding/start-screen.tsx:140] `Tell it one true thing`).
+   His work field and exercise are fields a must-have can depend on, so both facts are
+   **held for his Yes** rather than learned ([server/src/api/tell.ts:88] `if (r.outcome === 'staged') staged++;`).
+   Anything heard moves him on: with only held facts the screen skips the sample reply (the
+   clone has nothing live to answer from) and goes straight to the questions
+   ([app/src/features/onboarding/start-state.ts:24] `if ((r.toConfirm ?? 0) > 0) return { next: 'questions' };`,
+   [app/src/features/onboarding/start-screen.tsx:47] `if (after.next === 'questions') return setStage('done');`).
+   It asks again only when nothing at all was heard.
+2. **"Now it's you"** (only when something was learned; Arjun's sentence skips it) — "Someone asks
+   you", the clone's first reply in his name, "Is that you?", "That's me" / "Not even close"
+   ([app/src/features/onboarding/start-screen.tsx:87] `label="Someone asks you"`).
 3. **"Now it asks you some things"**, with an optional "Paste from another AI"
-   ([app/src/features/onboarding/start-screen.tsx:105] `Now it asks you some things`,
-   [app/src/features/onboarding/start-screen.tsx:121] `label="Paste from another AI"`).
+   ([app/src/features/onboarding/start-screen.tsx:106] `Now it asks you some things`,
+   [app/src/features/onboarding/start-screen.tsx:122] `label="Paste from another AI"`).
 4. **The interview** (below).
 5. **"A few things missing"**, because birth year and city are asked next
    ([app/src/features/onboarding/interview-screen.tsx:233] `{state.ready ? "That's enough to start" : 'A few things missing'}`).
@@ -189,7 +188,7 @@ day one (counted from the code, not observed)
   character → photos → home`, skipping the middle only after a paste. The code skips to Stories when the
   person is already in the pool, and a paste can never put a new person in the pool, because pasted
   facts are held until confirmed ([HOW-IT-WORKS.md:63] `start → interview → (essentials → voice → self-test) → character → photos → home`,
-  [server/src/memory/pasteImport.ts:187] `originClass: 'untrusted',`).
+  [server/src/memory/pasteImport.ts:188] `originClass: 'untrusted',`).
 - HOW-IT-WORKS.md §2a describes the partner row as "Anyone is fine" or "Let me choose". The screen shows
   "All are okay" and every answer, unticked ([HOW-IT-WORKS.md:82] `one explicit tap -- "Anyone is fine" or "Let me choose".`).
 - HOW-IT-WORKS.md §2b says "which part of town" is asked in setup; it is not asked until the person has

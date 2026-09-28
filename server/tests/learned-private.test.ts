@@ -14,6 +14,8 @@
  *   - "How you appear" lists it, with "OK to share"; sharing it (the disclosure route)
  *     makes it quotable and its tag public, and it leaves that list;
  *   - an answer to one of the five set questions is shareable from the start;
+ *   - a Yes on a heard work or exercise sentence (fields that wait for a Yes since
+ *     2026-09-28) keeps it match-only: "that is true" is not "OK to share";
  *   - public tags are decided per fact: one shared interest does not make every interest
  *     of theirs public.
  *
@@ -21,6 +23,8 @@
  *   - extract.ts without the match-only disclosure  -> "starts private" fails
  *   - publicTags filtering by kind, as it used to    -> "per fact" fails
  *   - the appearance route without `learned`        -> "OK to share" fails
+ *   - learnedDisclosure back to "any tapped field keeps its default" (the 34f33cf
+ *     behaviour), run 2026-09-28                    -> "not OK to share" fails
  */
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { Pool } from 'pg';
@@ -48,7 +52,9 @@ const { pool, tenantSession, closeMatchPool } = await import('../src/db/client.j
 const { env } = await import('../src/env.js');
 const { commit } = await import('../src/memory/facts.js');
 const episodes = await import('../src/memory/episodes.js');
-const { loadQuotes } = await import('../src/matching/brief.js');
+const { loadQuotes, learnedDisclosure } = await import('../src/matching/brief.js');
+const { knowledgeRoutes } = await import('../src/api/profile.js');
+const { TAPPED_PREDICATES } = await import('../src/onboarding/questions.js');
 const { publicTags } = await import('../src/matching/rendezvous.js');
 const { rebuildMatchProfile } = await import('../src/matching/profile.js');
 const { SHEET_SOURCES } = await import('../src/matching/answer-sheet.js');
@@ -149,6 +155,39 @@ describe('what the clone learns in chat', () => {
     const res = await storyRoutes.request('/v1/stories', { method: 'POST', headers: H(me), body: JSON.stringify({ id: 'story-sunday', text: SUNDAY }) });
     expect(res.status).toBe(200);
     expect((await loadQuotes(me)).map((q) => q.text)).toContain(SUNDAY);
+  });
+
+  it('a Yes on a heard work or exercise sentence means "true", not "OK to share"', async () => {
+    // Since 2026-09-28 (34f33cf) these fields wait for a Yes like a card -- and the old
+    // rule let a tapped field keep its default, which for them is public AND quotable.
+    const me = await person('confirm');
+    const SAID = 'I moved into AI research last year and I run most mornings before work';
+    const heard = (predicate: string, objectText: string) =>
+      ({ predicate, object_text: objectText, stance: 'asserted', hedge_span: '', source_quote: SAID, valid_from: '' });
+    stub.parsed = { facts: [heard('works_in', 'ai'), heard('exercise_habit', 'often'), heard('relationship_intent', 'long_term')],
+                    possibly_false: [], intents: [] };
+    const told = await tellRoutes.request('/v1/tell', { method: 'POST', headers: H(me), body: JSON.stringify({ text: `${SAID}.`, sessionId: crypto.randomUUID() }) });
+    expect(told.status).toBe(200);
+    const { rows: held } = await owner.query<{ id: string }>(
+      `SELECT id FROM facts WHERE user_id = $1 AND status = 'staged' AND valid_to IS NULL`, [me.userId]);
+    expect(held).toHaveLength(3);
+    for (const { id } of held) {
+      const yes = await knowledgeRoutes.request('/v1/knowledge/confirm', { method: 'POST', headers: H(me), body: JSON.stringify({ factId: id, verdict: 'yes' }) });
+      expect(yes.status).toBe(200);
+    }
+    const { rows } = await owner.query<{ predicate: string; disclosure: string }>(
+      `SELECT predicate, disclosure FROM facts WHERE user_id = $1 AND status = 'active' AND valid_to IS NULL`, [me.userId]);
+    const level = Object.fromEntries(rows.map((r) => [r.predicate, r.disclosure]));
+    expect(level.works_in, 'a confirmed chat sentence about work went public').toBe('matchable_only');
+    expect(level.exercise_habit).toBe('matchable_only');
+    // The exception still stands where nothing ever quotes the field: intent keeps its default.
+    expect(level.relationship_intent).toBe('public');
+    expect((await loadQuotes(me, { predicates: SHEET_SOURCES, limit: 40 })).map((q) => q.text), 'a stranger could hear it')
+      .not.toContain(SAID);
+    // And no tapped field that any reader says can ever start or end up shareable by itself.
+    for (const p of TAPPED_PREDICATES) {
+      if (SHEET_SOURCES.includes(p)) expect(learnedDisclosure(p), p).toEqual({ disclosure: 'matchable_only' });
+    }
   });
 
   it('public tags are per fact: one shared interest does not make every interest public', async () => {

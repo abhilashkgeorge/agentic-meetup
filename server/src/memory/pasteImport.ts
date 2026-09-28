@@ -20,6 +20,7 @@ import { modelIdOf } from '../llm/caps.js';
 import { commit, type FactCandidate } from './facts.js';
 import { EXTRACTOR_VERSION } from './extract.js';
 import { TAPPED_PREDICATES } from '../onboarding/questions.js';
+import { learnedDisclosure } from '../matching/brief.js';
 
 export const PASTE_PROMPT_VERSION = '2026-09-09.paste.2';
 
@@ -185,8 +186,8 @@ export async function importPastedText(
       // 'untrusted' regardless of source. A user's assistant is not this user, and
       // gate G3 will exclude untrusted facts from prompt assembly structurally.
       originClass: 'untrusted',
-      // Learned, not shared: match-only until "OK to share" (extract.ts says why).
-      ...(TAPPED_PREDICATES.has(f.predicate) ? {} : { disclosure: 'matchable_only' as const }),
+      // Learned, not shared: match-only until "OK to share" (brief.ts learnedDisclosure).
+      ...learnedDisclosure(f.predicate),
       extractorModel: modelIdOf(model),
       extractorVersion: EXTRACTOR_VERSION,
       promptVersion: `${PASTE_PROMPT_VERSION}:${source}`,
@@ -331,8 +332,9 @@ export async function confirmStagedFact(
     sourceQuote: row.source_quote,
     sourceEpisodeIds: [],
     originClass: 'owner',
-    // "Yes, that's true" is not "OK to share": a confirmed import stays match-only.
-    ...(TAPPED_PREDICATES.has(row.predicate) ? {} : { disclosure: 'matchable_only' as const }),
+    // "Yes, that's true" is not "OK to share": a confirmed import stays match-only, the
+    // work field, exercise and sleep included (brief.ts learnedDisclosure).
+    ...learnedDisclosure(row.predicate),
     extractorModel: 'user-confirmed',
     extractorVersion: EXTRACTOR_VERSION,
     promptVersion: PASTE_PROMPT_VERSION,

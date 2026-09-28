@@ -98,7 +98,7 @@ three shapes:
   person's "Keep this" writes it ({AI:dealbreaker}; [server/src/api/interview.ts:359] `const m = await metered(ctx, 'extract', () => mapDealbreaker(ctx, sentence));`).
 - **Chat.** The chat extractor may also write `seeking` or `dealbreaker` facts. These fields
   are not "tapped" fields, so they go live at once, without a confirm step
-  ([server/src/memory/extract.ts:228] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',`).
+  ([server/src/memory/extract.ts:229] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',`).
   Unverified: how often this happens in practice.
 - **How a want is read.** Only live `seeking` and `dealbreaker` facts count
   ([server/src/matching/wants.ts:43] `export const WANT_SOURCES = ['seeking', 'dealbreaker'] as const;`).
@@ -196,7 +196,7 @@ three shapes:
   even for a Must have ([server/migrations/0020_match_functions.sql:22] `WHEN actual IS NULL OR jsonb_typeof(actual) = 'null' THEN true`,
   [server/migrations/0071_must_have_fields_wait_for_yes.sql:40] `-- Nothing answered on this field: unknown, never a mismatch.`).
   Every card carries the same line: "Passes your rules both ways, on everything they've
-  answered" ([server/src/matching/brief.ts:64] `export const BRIEF_LINE = "Passes your rules both ways, on everything they've answered";`).
+  answered" ([server/src/matching/brief.ts:65] `export const BRIEF_LINE = "Passes your rules both ways, on everything they've answered";`).
 - **The card says** "We can't check this one yet." for that want
   ([app/src/features/matches/exchange.ts:170] `export const CANT_CHECK = "We can't check this one yet.";`).
 - **The other person may be asked.** A tied want that could not be checked records
@@ -212,7 +212,7 @@ three shapes:
   ([server/src/matching/orchestrator.ts:415] `(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId`).
 - **A written card is not updated** when the answer arrives later: the want results are
   stored with the card when the round runs
-  ([server/src/matching/brief.ts:599] `wants: made.wants,`).
+  ([server/src/matching/brief.ts:620] `wants: made.wants,`).
 
 ### 5.5 Untied and private wants: the model check
 
@@ -230,9 +230,9 @@ three shapes:
 - **Whose words go in.** The reader's own want text, and the other person's own public
   sentences: never interview answers, 12 to 300 characters, found word for word in
   something they typed, with no private topic and no contact detail
-  ([server/src/matching/brief.ts:244] `AND f.extractor_model <> 'interview'`,
-  [server/src/matching/brief.ts:246] `AND length(btrim(f.source_quote)) BETWEEN 12 AND 300`,
-  [server/src/matching/brief.ts:257] `opts.includeHidden ? ['public', 'private'] : ['public']`).
+  ([server/src/matching/brief.ts:265] `AND f.extractor_model <> 'interview'`,
+  [server/src/matching/brief.ts:267] `AND length(btrim(f.source_quote)) BETWEEN 12 AND 300`,
+  [server/src/matching/brief.ts:278] `opts.includeHidden ? ['public', 'private'] : ['public']`).
   Another person's wants are never sent as sentences.
 - **Code checks the answer.** A "met" or "not met" survives only with the number of one of
   that person's sentences; the quote shown is looked up by that number, never copied from
@@ -264,10 +264,10 @@ Section "WHAT YOU ASKED FOR", with each of the reader's own wants
 Sources: [app/src/features/matches/exchange.ts:188] `const label = w.kind === 'not' ? "You couldn't be with" : 'You asked for';`,
 [app/src/features/matches/exchange.ts:191] `w.check === 'matches' ? 'Matches' : w.check === 'doesnt_match' ? "Doesn't match"`.
 An untied want shows no verdict: "met" and "not met" look the same, and the reader judges
-the sentence ([server/src/matching/brief.ts:673] `// NO STATUS. The want and the quote, side by side; the reader judges. Only a private`).
+the sentence ([server/src/matching/brief.ts:694] `// NO STATUS. The want and the quote, side by side; the reader judges. Only a private`).
 Never shown: the other person's wants, their actual card or situation answer, and any
 quote beside a tied or private want
-([server/src/matching/brief.ts:678] `want: w.want, kind: w.kind, theirs: w.private ? null : w.theirs,`).
+([server/src/matching/brief.ts:699] `want: w.want, kind: w.kind, theirs: w.private ? null : w.theirs,`).
 
 ### 5.7 After a date
 
@@ -290,7 +290,7 @@ If a tied want showed "Matches" on the reader's card, the after-date check-in ma
 - HOW-IT-WORKS.md says a want's status is "never sent to a phone". That is true only for
   untied wants: "Matches"/"Doesn't match" and "can't check" are sent
   ([HOW-IT-WORKS.md:545] `brief for measurement and never sent to a phone.`,
-  [server/src/matching/brief.ts:415] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
+  [server/src/matching/brief.ts:436] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
 - The app says wants "move people up the list". Nothing moves anybody up in a round: the
   score no longer picks, and the want check only moves people down
   ([app/src/features/preferences/preferences-screen.tsx:141] `These never remove anybody. They move people up the list.`).

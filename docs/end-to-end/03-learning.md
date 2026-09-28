@@ -14,10 +14,10 @@ used only to **extract** facts from what a person typed, to **point** at their o
 |---|---|---|---|---|---|
 | A tap in the interview or setup | Saved as a fact, live at once | Code | `facts` (+ `question_answers`) | The person; matching | [server/src/api/interview.ts:456] `extractorModel: 'interview',` |
 | A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | {AI:extract} | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | [server/src/memory/session.ts:28] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);` |
-| A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | [server/src/memory/extract.ts:228] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',` |
+| A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | [server/src/memory/extract.ts:229] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',` |
 | A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | [server/src/onboarding/stories.ts:150] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Question of the day | Saved like a story and put on the answer sheet | Code | Episode + fact + answer sheet | Others, via the agents | [server/src/matching/unknowns.ts:212] `INSERT INTO answer_sheets (user_id, tenant_id, answers, basis)` |
-| A paste from another AI | A model extracts facts; every one is held for checking | {AI:paste} | `facts` (all `staged`); the pasted text is not kept | The person | [server/src/memory/pasteImport.ts:187] `originClass: 'untrusted',` |
+| A paste from another AI | A model extracts facts; every one is held for checking | {AI:paste} | `facts` (all `staged`); the pasted text is not kept | The person | [server/src/memory/pasteImport.ts:188] `originClass: 'untrusted',` |
 | A WhatsApp export | A model describes how the person writes | {AI:voice} | A style note only | The person's own clone | [server/src/memory/chatImport.ts:55] `Ignore the CONTENT of what they discuss. You are describing the voice, not the topics.` |
 
 ### Arjun and Meera
@@ -35,20 +35,22 @@ used only to **extract** facts from what a person typed, to **point** at their o
   ([app/src/features/profile/profile-screen.tsx:124] `<Card label="Your agent heard something">`,
   [app/src/features/profile/profile-screen.tsx:130] `Is that right? Nothing changes until you say so.`,
   [app/src/features/profile/profile-screen.tsx:133] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
-- **If he taps Yes**, the claim becomes his live answer. Two side effects (Known gaps): the work
-  sentence becomes shareable with strangers without an "OK to share" tap, and "runs most mornings"
-  is not one of the exercise answers, so his exercise answer becomes "unknown" for matching
-  ([server/src/memory/pasteImport.ts:335] `...(TAPPED_PREDICATES.has(row.predicate) ? {} : { disclosure: 'matchable_only' as const }),`,
-  [shared/src/values.ts:37] `export const FREQUENCY = ['never', 'rarely', 'sometimes', 'often', 'daily'] as const;`).
+- **If he taps Yes**, the claim becomes his live answer, and it stays match-only: "that's right" is
+  not "OK to share", so nobody else hears his work sentence until he shares it on "How you appear"
+  ([server/src/memory/pasteImport.ts:337] `...learnedDisclosure(row.predicate),`,
+  [server/src/matching/brief.ts:108] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
+  One side effect remains (Known gaps): "runs most mornings" is not one of the exercise answers, so
+  his exercise answer becomes "unknown" for matching
+  ([shared/src/values.ts:37] `export const FREQUENCY = ['never', 'rarely', 'sometimes', 'often', 'daily'] as const;`).
 - **Meera pastes** a paragraph about herself from another AI. One model call pulls facts out of it
   ({AI:paste}); **every** fact is held for checking, and the paragraph itself is not stored. She sees
   "Held for checking" and "Nothing is treated as true until you say so."
-  ([server/src/memory/pasteImport.ts:182] `stance: 'reported',`,
+  ([server/src/memory/pasteImport.ts:183] `stance: 'reported',`,
   [app/src/features/onboarding/paste-screen.tsx:60] `Nothing is treated as true until you say so.`).
   Until she confirms, nothing from the paste affects matching, her cards or her clone's "true right
   now" list. Even after she confirms, a pasted fact can never be quoted to anyone, because the
   quote check needs her own typed words and the paste was not kept
-  ([server/src/matching/brief.ts:249] `WHERE e.user_id = $1 AND e.role = 'user'`).
+  ([server/src/matching/brief.ts:270] `WHERE e.user_id = $1 AND e.role = 'user'`).
 - **Arjun never sees** anything of Meera's paste or chat unless she made it shareable and it passed the
   quote rules (stage 4).
 
@@ -86,7 +88,10 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   cities; plus **everything** from a paste ([server/src/onboarding/questions.ts:403] `'gender', 'seeking_gender', 'birth_date', 'lives_in', 'relationship_intent',`).
 - **What goes live at once:** everything else heard in chat (interests, things done, employer, wants
   and "could not be with" sentences...), but **match-only**: it may help matching, it is never said to
-  anyone until "OK to share" ([server/src/memory/extract.ts:236] `...(TAPPED_PREDICATES.has(f.predicate) ? {} : { disclosure: 'matchable_only' as const }),`).
+  anyone until "OK to share" ([server/src/memory/extract.ts:237] `...learnedDisclosure(f.predicate),`).
+  A Yes on a held fact keeps it match-only too; only a tapped field that nothing ever quotes (the basics,
+  the cards, faith, the situations) keeps its own default
+  ([server/src/matching/brief.ts:108] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
 - **Where the question appears:** the YOU tab, one at a time ("Your agent heard something"), and "What it
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
   that.") ([app/src/features/knowledge/you-screen.tsx:112] `<Card label="Is this right?">`,
@@ -120,7 +125,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **Paste** (onboarding "Bring what it knows", YOU → "In your words", "Catch it up fast"): up to 60,000
   characters; one model call; every fact held; guesses become questions the clone "won't guess" about; the
   pasted text is thrown away ([shared/src/paste.ts:72] `export const PASTE_MAX_CHARS = 60_000;`,
-  [server/src/memory/pasteImport.ts:85] `A guess is NEVER a fact.`).
+  [server/src/memory/pasteImport.ts:86] `A guess is NEVER a fact.`).
 - **WhatsApp export** ("Now, how you talk"): parsed on the phone; the person picks which speaker they are;
   only their own lines (at least 20, at most the last 2,000) are sent; one model call writes a style note;
   the messages are not stored ([app/src/features/onboarding/voice-screen.tsx:93] `const mine = chat.lines.filter((l) => l.speaker === speaker).map((l) => l.text);`,
@@ -181,8 +186,6 @@ things the person said (Known gaps) ([server/src/api/chat.ts:89] `Fragments reca
   [server/src/memory/consolidate.ts:26] `Deliberately deterministic: every step here is SQL.`).
 - ARCHITECTURE.md says extracted candidates "land staged". An asserted claim by the person goes live on first
   write ([ARCHITECTURE.md:450] `Output is schema-constrained. Candidates land`).
-- A code comment on the confirm step says "'Yes, that's true' is not 'OK to share'". For work field, exercise
-  and sleep, a Yes now makes the sentence public ([server/src/memory/pasteImport.ts:334] `// "Yes, that's true" is not "OK to share": a confirmed import stays match-only.`).
 
 ### Unverified
 

@@ -48,9 +48,9 @@ something else, a **Docs vs code** note says so. Where something could not be co
 | Typed decision model, separate judge model | Not set (off) | [server/src/env.ts:104] `DECIDE_MODEL: z.string().default(''),` |
 | Agent conversations | Off (`RENDEZVOUS_RUNS` not set, default 0) | [server/src/matching/rendezvous.ts:75] `export const RUNS = Number(process.env.RENDEZVOUS_RUNS ?? 0);` |
 | The agents' talk | On (`AGENT_TALK` not set, default on) | [server/src/matching/talk.ts:49] `export const talkOn = (): boolean => (process.env.AGENT_TALK ?? 'on') !== 'off';` |
-| SMS | `console`: no text is sent, the code goes to the server log; `SMS_DEV_ECHO=true` also returns it | [server/src/env.ts:221] `SMS_PROVIDER: z.enum(['console', 'msg91', 'twilio']).default('console'),` |
+| SMS | `console`: no text is sent, the code goes to the server log only (`SMS_DEV_ECHO=false` since 2026-09-28) | [server/src/env.ts:221] `SMS_PROVIDER: z.enum(['console', 'msg91', 'twilio']).default('console'),` |
 | Reusable dev invite `KNOX-1010` | Works (`ALLOW_REUSABLE_INVITES=true`) | [server/src/env.ts:299] `ALLOW_REUSABLE_INVITES: z` |
-| Old-style sign-in (account id as token) | On (not set, default true) | [server/src/env.ts:199] `.default('true')` |
+| Old-style sign-in (account id as token) | Off (`ALLOW_LEGACY_TOKENS=false` since 2026-09-28; the code default is on) | [server/src/env.ts:199] `.default('true')` |
 | Face check | Off | [server/src/env.ts:318] `FACE_CHECK: z.enum(['off', 'tfjs-node', 'wasm']).default('off'),` |
 | Spend per person per day | $2.00 and 10 model calls | [server/src/env.ts:321] `TRIAL_TURN_CAP_PER_DAY: z.coerce.number().default(10),` |
 
