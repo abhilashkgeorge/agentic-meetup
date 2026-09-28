@@ -157,7 +157,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 [server/src/api/dating.ts:166] `const name = other.display_name ?? 'Someone';`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
 ("First name") ([app/src/features/world/hud.tsx:173] `{askName && <Chip label="Add your first name" selected={false} onPress={onName} />}`,
-[app/src/features/profile/profile-screen.tsx:232] `<Row title="First name" value={name ?? 'Not set'}`).
+[app/src/features/profile/profile-screen.tsx:244] `<Row title="First name" value={name ?? 'Not set'}`).
 
 ### 2.3 Required vs optional, and "ready to send"
 

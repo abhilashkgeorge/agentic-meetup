@@ -419,7 +419,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 `server/src/api/dating.ts:166`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
 ("First name") (`app/src/features/world/hud.tsx:173`,
-`app/src/features/profile/profile-screen.tsx:232`).
+`app/src/features/profile/profile-screen.tsx:244`).
 
 ### 2.3 Required vs optional, and "ready to send"
 
@@ -510,9 +510,9 @@ used only to **extract** facts from what a person typed, to **point** at their o
   (`server/src/onboarding/questions.ts:415`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
-  (`app/src/features/profile/profile-screen.tsx:126`,
-  `app/src/features/profile/profile-screen.tsx:132`,
-  `app/src/features/profile/profile-screen.tsx:135`).
+  (`app/src/features/profile/profile-screen.tsx:130`,
+  `app/src/features/profile/profile-screen.tsx:136`,
+  `app/src/features/profile/profile-screen.tsx:139`).
 - **If he taps Yes**, the claim becomes his live answer, and it stays match-only: "that's right" is
   not "OK to share", so nobody else hears his work sentence until he shares it on "How you appear"
   (`server/src/memory/pasteImport.ts:337`,
@@ -1026,7 +1026,7 @@ three shapes:
   tied to the basics, the five core cards or the faith card.
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
   must-haves remove anybody. Everything else just ranks."
-  (`app/src/features/profile/profile-screen.tsx:273`,
+  (`app/src/features/profile/profile-screen.tsx:285`,
   `app/src/features/preferences/preferences-screen.tsx:68`).
   The "Your wants" card lists each want with one line
   (`app/src/features/preferences/wants-state.ts:38`,

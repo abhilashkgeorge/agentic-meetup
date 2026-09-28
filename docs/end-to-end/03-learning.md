@@ -32,9 +32,9 @@ used only to **extract** facts from what a person typed, to **point** at their o
   ([server/src/onboarding/questions.ts:415] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
-  ([app/src/features/profile/profile-screen.tsx:126] `<Card label="Your agent heard something">`,
-  [app/src/features/profile/profile-screen.tsx:132] `Is that right? Nothing changes until you say so.`,
-  [app/src/features/profile/profile-screen.tsx:135] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
+  ([app/src/features/profile/profile-screen.tsx:130] `<Card label="Your agent heard something">`,
+  [app/src/features/profile/profile-screen.tsx:136] `Is that right? Nothing changes until you say so.`,
+  [app/src/features/profile/profile-screen.tsx:139] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
 - **If he taps Yes**, the claim becomes his live answer, and it stays match-only: "that's right" is
   not "OK to share", so nobody else hears his work sentence until he shares it on "How you appear"
   ([server/src/memory/pasteImport.ts:337] `...learnedDisclosure(row.predicate),`,
