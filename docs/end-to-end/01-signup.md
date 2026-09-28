@@ -6,7 +6,7 @@ The app is called "Clone" (id `com.clone.app` on both platforms)
 ([app/app.json:3] `"name": "Clone",`, [app/app.json:22] `"package": "com.clone.app"`).
 Today it reaches a phone only as a **development build compiled on the founder's computer**
 (`expo run:android` / `expo run:ios`); there is no app-store pipeline in the repository
-([app/package.json:55] `"android": "expo run:android",`,
+([app/package.json:56] `"android": "expo run:android",`,
 [app/README.md:7] `dev build; Expo Go cannot load the native modules`). The daily loop `./dev.sh`
 starts the server, opens a **public tunnel** to it (cloudflared, else ngrok) so friends' phones
 can reach it off the founder's Wi-Fi, and starts the app's bundler
@@ -16,10 +16,10 @@ When the app opens, it first checks the server answers (4 seconds); if not, a "C
 server" screen lets the person type an address. With no saved sign-in it goes to the phone
 screen. After sign-in it sends the person to consent if that is not settled, then to setup until
 setup is finished on this phone
-([app/src/app/_layout.tsx:57] `let reachable = await pingServer(getApiBase());`,
-[app/src/app/_layout.tsx:92] `setRoute('phone');`,
-[app/src/app/_layout.tsx:145] `if (!consent || !consent.settled) {`,
-[app/src/app/_layout.tsx:151] `setRoute((await isOnboarded()) ? null : 'onboarding');`).
+([app/src/app/_layout.tsx:58] `let reachable = await pingServer(getApiBase());`,
+[app/src/app/_layout.tsx:93] `setRoute('phone');`,
+[app/src/app/_layout.tsx:146] `if (!consent || !consent.settled) {`,
+[app/src/app/_layout.tsx:152] `setRoute((await isOnboarded()) ? null : 'onboarding');`).
 
 ### At a glance
 
@@ -58,7 +58,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 
 - **Normalising:** spaces and dashes removed; a local number is completed for the chosen country
   only (+91: 10 digits) ([shared/src/phone.ts:31] `'+91': { trunk: '0', digits: [10] },`).
-  Only +91, +1 and +44 can be texted ([server/src/env.ts:269] `SMS_COUNTRIES: z.string().default('+91,+1,+44'),`).
+  Only +91, +1 and +44 can be texted ([server/src/env.ts:279] `SMS_COUNTRIES: z.string().default('+91,+1,+44'),`).
 - **The code:** six random digits, valid 5 minutes, at most 5 guesses
   ([server/src/phone.ts:85] `return String(randomInt(0, max)).padStart(OTP_LENGTH, '0');`,
   [shared/src/phone.ts:110] `export const OTP_TTL_SEC = 300;`,
@@ -75,7 +75,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **Limits:** per IP 10 codes per 15 minutes; per number 3 per 15 minutes; 500 texts a day in
   total ([server/src/ratelimit.ts:204] `otpSend: { max: 10, windowMs: 15 * 60_000 },`,
   [server/src/ratelimit.ts:206] `otpSendPerPhone: { max: 3, windowMs: 15 * 60_000 },`,
-  [server/src/env.ts:276] `SMS_DAILY_CAP: z.coerce.number().default(500),`). These counters live in
+  [server/src/env.ts:286] `SMS_DAILY_CAP: z.coerce.number().default(500),`). These counters live in
   the server's memory and reset when it restarts.
 - **Three outcomes** after a right code: a signed-in person adds the number to their account; a
   known number signs straight in (no invite, no consent screen); an unknown number gets a ticket
@@ -90,16 +90,16 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **Three per person, in all.** An invite that expires unused comes back; the reviewer has no
   limit. In Settings: "Invites · N left", "Make an invite", shared as "Here's a code for Clone:
   <code>" ([server/src/env.ts:212] `INVITES_PER_USER: z.coerce.number().default(3),`,
-  [app/src/features/settings/settings-screen.tsx:82] `Here's a code for Clone: ${r.code}`).
+  [app/src/features/settings/settings-screen.tsx:83] `Here's a code for Clone: ${r.code}`).
 - **KNOX-1010** is a reusable development code made by a script; it works only while
   `ALLOW_REUSABLE_INVITES=true` (on in development) and each use makes a new account
   ([server/scripts/dev-invite.ts:25] `VALUES ($1, 'reusable dev code', true, now() + interval '100 years')`,
   [server/src/api/auth.ts:218] `if (env.ALLOW_REUSABLE_INVITES) {`).
 - **A production server refuses to start** with any development shortcut on: reusable invites,
   echoed codes, the console SMS sender, legacy tokens, unverified or device sign-up, practice
-  profiles saying yes, or a development secret ([server/src/env.ts:344] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`,
-  [server/src/env.ts:348] `if (env.NODE_ENV === 'production' && env.ALLOW_REUSABLE_INVITES) {`,
-  [server/src/env.ts:382] `if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {`).
+  profiles saying yes, or a development secret ([server/src/env.ts:363] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`,
+  [server/src/env.ts:367] `if (env.NODE_ENV === 'production' && env.ALLOW_REUSABLE_INVITES) {`,
+  [server/src/env.ts:401] `if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {`).
 
 ### 1.3 Consent
 

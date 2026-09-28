@@ -9,11 +9,11 @@ can meet it.
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| "Tell it one true thing" (one sentence) | Facts are pulled out of it; the clone then answers a question as the person | AI ({AI:extract}, then {AI:selftest}) | An episode (the words) and facts | The person; public facts can later reach others (stage 4) | [server/src/api/tell.ts:71] `out = await metered(ctx, 'extract', () => extractSessionFacts(` |
+| "Tell it one true thing" (one sentence) | Facts are pulled out of it; the clone then answers a question as the person | AI ({AI:extract}, then {AI:selftest}) | An episode (the words) and facts | The person; public facts can later reach others (stage 4) | [server/src/api/tell.ts:73] `out = await metered(ctx, 'extract', () => extractSessionFacts(` |
 | The interview: basics, five cards, faith, one sentence | Each tap is saved; card "who's fine" rows become hard rules | Code (the sentence also goes to {AI:dealbreaker}) | `question_answers`, facts, `preferences` | The person; rules are used by matching | [server/src/api/interview.ts:276] `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)` |
 | Essentials: birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | [server/src/api/dating.ts:376] `extractorModel: 'direct',` |
 | Voice (optional): a WhatsApp export | Only the person's own lines are read; a style note is written | AI ({AI:voice}) | A "voice" note; the chat itself is not kept | The person's own clone | [server/src/memory/chatImport.ts:127] `VALUES ($1,$2,'voice',$3,$4,$5,'{}', now())` |
-| Self-test (optional) | The clone writes as the person; they grade it | AI ({AI:selftest}) | Grades | The person | [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), db));` |
+| Self-test (optional) | The clone writes as the person; they grade it | AI ({AI:selftest}) | Grades | The person | [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), { db, setup: true }));` |
 | Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | [app/src/features/onboarding/photos-step.tsx:168] `Nobody sees these until you share your profile with them. Your agent never does,` |
 
 ### Arjun and Meera
@@ -28,7 +28,7 @@ In order, each sees:
    "I work in AI and run most mornings."
    ([app/src/features/onboarding/start-screen.tsx:140] `Tell it one true thing`).
    His work field and exercise are fields a must-have can depend on, so both facts are
-   **held for his Yes** rather than learned ([server/src/api/tell.ts:88] `if (r.outcome === 'staged') staged++;`).
+   **held for his Yes** rather than learned ([server/src/api/tell.ts:90] `if (r.outcome === 'staged') staged++;`).
    Anything heard moves him on: with only held facts the screen skips the sample reply (the
    clone has nothing live to answer from) and goes straight to the questions
    ([app/src/features/onboarding/start-state.ts:24] `if ((r.toConfirm ?? 0) > 0) return { next: 'questions' };`,
@@ -146,7 +146,7 @@ A city among 46 listed ones becomes that city's centre; an unlisted city becomes
 
 **Wants** are not asked during setup. "What would you love in someone?" is on the Stories screen and
 "What you're looking for" is reached from the You tab or Settings (stage 5)
-([app/src/features/settings/settings-screen.tsx:238] `<Row title="What you're looking for" onPress={() => router.push('/preferences')} />`).
+([app/src/features/settings/settings-screen.tsx:243] `<Row title="What you're looking for" onPress={() => router.push('/preferences')} />`).
 
 **The name others see comes only from that screen** (since 2026-09-28). One word of letters is kept
 (a number or an "@" gets "Just your first name, in letters."); the fact store refuses a first name
@@ -182,15 +182,16 @@ first missing item ("Your birth year", "Where you live"...); the Matches tab say
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
 ([app/src/features/world/hud.tsx:183] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
-[app/src/features/matches/matches-screen.tsx:227] `It needs a few more things before it can talk to anyone.`).
+[app/src/features/matches/matches-screen.tsx:229] `It needs a few more things before it can talk to anyone.`).
 
 ### 2.4 Model calls during setup
 
 The first screen already calls a model (fact extraction, then a sample reply); so do the paste, the
-"couldn't be with" sentence, the voice import and each self-test. Every call counts against the
-person's allowance of 10 model calls a day, so a person who does everything can use most of it on
-day one (counted from the code, not observed)
-([server/src/metering.ts:99] `[tenantId, userId, usage.costUsd, env.TRIAL_TURN_CAP_PER_DAY, env.DAILY_COST_CAP_USD],`,
+"couldn't be with" sentence, the voice import and each self-test. Since 2026-09-28 these setup calls
+are counted apart, up to 40 a day, and never use the 10 a day that chat, learning and rounds share;
+the $2.00 daily cost cap still covers them. Measured before the change: real people's setup used 1 to
+4 of the 10 on their first day ([server/src/api/tell.ts:76] `), { setup: true });`,
+[server/src/metering.ts:59] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {`,
 [server/src/memory/selftest.ts:24] `export const TEST_SIZE = 5;`).
 
 ### Docs vs code

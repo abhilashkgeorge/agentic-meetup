@@ -24,6 +24,7 @@ import { liveCard, readBrief, sentenceKey } from '../matching/brief.js';
 import { safeIdea } from '../matching/talk.js';
 import * as hub from '../messaging/hub.js';
 import * as messages from '../messaging/store.js';
+import { wake } from '../push/index.js';
 import { log } from '../log.js';
 
 /** The message a proposal sends. The idea, framed as a question -- nothing added. */
@@ -175,7 +176,8 @@ export const dateIdeaRoutes = new Hono()
     if (result.fresh) {
       // To both: the sender's other devices, and the other person -- as the socket does.
       hub.pushTo(ctx.userId, { type: 'dm.message', message: wire });
-      hub.pushTo(found.otherId, { type: 'dm.message', message: wire });
+      // A message like any other: a closed phone is woken for it (push/index.ts).
+      if (!hub.pushTo(found.otherId, { type: 'dm.message', message: wire })) void wake(found.otherId, 'message', id.data);
       log.info({ rendezvousId: id.data }, 'date proposed');
     }
     return c.json({ message: wire });

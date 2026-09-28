@@ -9,9 +9,9 @@ words are the date idea, written earlier (stage 7).
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| The second yes | Pair becomes `introduced`; chat opens | Code | `rendezvous.introduced_at` | Both | [server/src/matching/orchestrator.ts:583] `UPDATE rendezvous r SET status = 'introduced', introduced_at = now()` |
+| The second yes | Pair becomes `introduced`; chat opens | Code | `rendezvous.introduced_at` | Both | [server/src/matching/orchestrator.ts:592] `UPDATE rendezvous r SET status = 'introduced', introduced_at = now()` |
 | A message | Sent over a live connection; delivered, read receipts | Code | `messages` row | The two people | [server/migrations/0025_messaging_fixes.sql:37] `AND r.status = 'introduced'));` |
-| "Propose this date" | Sends "How about this: <idea>?" as the person's own message, once per chat | Code | `messages` row (kind `date_idea`) | The two people | [server/src/api/date-idea.ts:30] `How about this: ${idea}?` |
+| "Propose this date" | Sends "How about this: <idea>?" as the person's own message, once per chat | Code | `messages` row (kind `date_idea`) | The two people | [server/src/api/date-idea.ts:31] `How about this: ${idea}?` |
 | Two quiet days | A one-time nudge for each person | Code | `nudged_at` on each person's card row | Each person, once | [app/src/features/dm/date-idea.ts:17] `export const QUIET_LINE = 'Quiet for two days. Say hello?';` |
 | 72 hours after the introduction | The after-date check-in inside the chat | Code | `date_checkins` row per person | The person who answered; one bit is shared if both say "see again" | [server/src/api/dating.ts:121] `const MET_ASK_AFTER_MS = Number(process.env.MET_ASK_AFTER_HOURS ?? 72) * 60 * 60_000;` |
 | Block or report | Both are kept apart everywhere; a report is queued for the reviewer | Code | `blocks` row, and `reports` row | Reviewer sees reports | [server/src/messaging/store.ts:220] `await block(c, args.reporterId, args.reportedId);` |
@@ -27,10 +27,12 @@ words are the date idea, written earlier (stage 7).
 2. **Meera gets no moment.** Her waiting card disappears and "Arjun" appears in Chats with
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
-   [server/src/matching/orchestrator.ts:596] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
-   [app/src/features/dm/conversations-screen.tsx:94] `: 'Say something'`). There are no push
-   notifications, so if her app is closed she finds out the next time she opens it
-   ([server/src/api/chat.ts:267] `// Offline: no receipt, and a push notification is what wakes them. Marking it`).
+   [server/src/matching/orchestrator.ts:605] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
+   [app/src/features/dm/conversations-screen.tsx:94] `: 'Say something'`). If her app is closed,
+   her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
+   too, at most once every two minutes per chat, saying only "New message"
+   ([server/src/api/chat.ts:270] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,
+   [server/src/push/index.ts:39] `const MESSAGE_QUIET_MS = 2 * 60_000;`).
 3. **The chat** opens with the agents' date idea at the top: "YOUR AGENTS' DATE IDEA", the idea,
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
    both said yes. Nobody else can message you here."
@@ -50,7 +52,7 @@ words are the date idea, written earlier (stage 7).
 - **Only introduced pairs can write**, enforced by the database policy and by the live
   connection; a message can only be addressed to a pair, never to a person, so nobody can
   message a stranger ([server/migrations/0024_messages.sql:12] `-- there is. Unsolicited contact is not policed, it is unrepresentable.`,
-  [server/src/api/chat.ts:221] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'not introduced yet' });`).
+  [server/src/api/chat.ts:222] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'not introduced yet' });`).
 - **Limits:** 1 to 4,000 characters; 60 events a minute per person ("Slow down a moment."); no
   daily cap ([shared/src/events.ts:53] `text: z.string().min(1).max(4000),`,
   [server/src/ratelimit.ts:216] `message: { max: 60, windowMs: 60_000 },`).
@@ -70,7 +72,7 @@ The server rebuilds the idea from the caller's own card, checks it again, and se
 Either person can do it, once per conversation in total; a second try gets "A date has
 already been proposed here."
 ([server/src/api/date-idea.ts:10] `THE WORDS ARE BUILT HERE, NEVER TAKEN FROM THE PHONE. The idea is the one the two`,
-[server/src/api/date-idea.ts:172] `message: 'A date has already been proposed here.'`).
+[server/src/api/date-idea.ts:173] `message: 'A date has already been proposed here.'`).
 If there is no checked idea, there is no button.
 
 ### 10.3 The nudge
@@ -78,8 +80,8 @@ If there is no checked idea, there is no button.
 Due when the pair was introduced at least 2 days ago, nobody has written in the last 2 days,
 and this person has not been nudged for this match. It is shown in the app only (no push), once
 per person per match; opening the chat marks it seen for good
-([server/src/api/date-idea.ts:42] `AND r.introduced_at <= now() - interval '${QUIET_DAYS} days'`,
-[server/src/api/date-idea.ts:135] `UPDATE rendezvous_briefs SET nudged_at = now()`).
+([server/src/api/date-idea.ts:43] `AND r.introduced_at <= now() - interval '${QUIET_DAYS} days'`,
+[server/src/api/date-idea.ts:136] `UPDATE rendezvous_briefs SET nudged_at = now()`).
 The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with its button, or
 "Say hello? You both said yes." ([app/src/features/dm/date-idea.ts:34] `'Say hello? You both said yes.'`).
 
@@ -139,7 +141,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   both; sends are refused; they are never matched again
   ([server/migrations/0064_bans_and_apart.sql:54] `SELECT block_exists(me, other) OR is_banned(other)`).
   The blocked person is told nothing; a message they try to send shows "not sent"
-  ([server/src/api/chat.ts:241] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'cannot send' });`).
+  ([server/src/api/chat.ts:242] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'cannot send' });`).
 - **No automatic action on reports**; a reviewer looks at them
   ([server/migrations/0039_trust_and_safety.sql:21] `--    AUTO-HIDING ON REPORT IS DELIBERATELY NOT DONE HERE. One malicious report would`).
 

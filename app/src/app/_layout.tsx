@@ -1,4 +1,4 @@
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -8,6 +8,7 @@ import { getConsent, isLegacyToken, onTokenRejected, upgradeToken } from '../lib
 import { defaultBase, getApiBase, pingServer, setApiBase } from '../lib/env';
 import { useSession } from '../store/session';
 import { startSocket } from '../lib/socket';
+import { listenForTaps, registerForPush } from '../lib/push';
 import {
   SourceSans3_400Regular, SourceSans3_600SemiBold, SourceSans3_700Bold, useFonts,
 } from '@expo-google-fonts/source-sans-3';
@@ -184,6 +185,18 @@ export default function RootLayout() {
   const token = useSession((s) => s.token);
   const sessionId = useSession((s) => s.sessionId);
   useEffect(() => startSocket(token, sessionId), [token, sessionId]);
+
+  // PUSH, once the person is fully in (lib/push.ts): send this phone's token if
+  // notifications are already allowed -- the question itself is asked when they first
+  // send their agent out -- and open the screen a tapped notification points at.
+  const signedIn = checked && route === null && token !== null;
+  useEffect(() => {
+    if (!signedIn || !token) return;
+    void registerForPush(token, { ask: false });
+    let stop = () => {};
+    void listenForTaps((to) => router.push(to as Href)).then((s) => { stop = s; });
+    return () => stop();
+  }, [signedIn, token, router]);
 
   if (!fontsReady || !themeLoaded) return null;
 

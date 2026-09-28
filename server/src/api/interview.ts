@@ -356,7 +356,7 @@ export const interviewRoutes = new Hono()
         // in llm_calls after it. The whole point of the free-text dealbreaker is that
         // everybody answers it, which makes it the last call site that should have
         // been invisible to the cap.
-        const m = await metered(ctx, 'extract', () => mapDealbreaker(ctx, sentence));
+        const m = await metered(ctx, 'extract', () => mapDealbreaker(ctx, sentence), { setup: true });
 
         // A PROPOSAL, NOT A RULE. Nothing is written here: see proposeFromSentence.
         // The proposal lands on the card the person has already answered, starting

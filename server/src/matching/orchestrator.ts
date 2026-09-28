@@ -58,6 +58,7 @@ import { recordUnknowns, unknownAsksOf, unknownCardsOf, unknownsOf } from './unk
 import { voiceText } from '../memory/profile.js';
 import { agentRef, notify } from './world.js';
 import { ANSWER_BY, expireDue } from './expiry.js';
+import { wake, type PushKind } from '../push/index.js';
 
 /**
  * What a pair "said" when no conversation was held -- the default. Zero runs, zero
@@ -408,14 +409,20 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       // runs if any were held -- before the next pair is looked at, so a crash
       // mid-round keeps what was done, and the town's event and the roster's poll can
       // never disagree about a pair: the event is sent only once the row says the same.
-      await matchmakerSession(async (c) => {
+      const firstMover = await matchmakerSession(async (c) => {
         await writePair(c, plan.a, o);
         await recordUnknowns(c, [
           { tenantId: plan.a.tenantId, userId: plan.a.userId, questionIds: o.gaps.a },
           ...(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId, userId: pair.b.userId, questionIds: o.gaps.b }]),
         ]);
+        const { rows: fm } = await c.query<{ first_mover: string | null }>(
+          `SELECT first_mover FROM rendezvous WHERE id = $1 AND status = 'decided'`, [pair.rendezvousId]);
+        return fm[0]?.first_mover ?? null;
       });
       written.add(pair.rendezvousId);
+      // A new card, and whoever decides first is woken for it -- the other person, when
+      // this round was somebody else's (a practice profile has no phone to wake).
+      if (firstMover) void wake(firstMover, 'turn', pair.rendezvousId);
       // "They met", and nothing about how it went: the event carries no verdict and
       // no words, so the square draws the same small moment for every pair.
       notify(userId, { type: 'round.decided', roundId, rendezvousId: pair.rendezvousId,
@@ -536,7 +543,9 @@ export async function decide(
   rendezvousId: string,
   yes: boolean,
 ): Promise<{ introduced: boolean }> {
-  return matchmakerSession(async (c) => {
+  // Pushes go out AFTER the answer is committed (push/index.ts), never from inside it.
+  const wakes: [string, PushKind][] = [];
+  const out = await matchmakerSession(async (c) => {
     // TIME IS UP FIRST (0069). A card past its three days is expired before anything
     // is written, and an expired card takes no answer -- not a yes that would introduce
     // two people after the other had been told nothing for days, and not a no that
@@ -594,6 +603,9 @@ export async function decide(
       if (other) {
         notify(userId, { type: 'match.introduced', rendezvousId, agent: agentRef(userId, other) });
         notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });
+        // The other person's phone: they said yes first and have been waiting. The one
+        // who just tapped needs no buzz.
+        wakes.push([other, 'introduced']);
       }
     } else {
       // A yes that did not introduce hands the turn on: the other person gets their
@@ -606,7 +618,10 @@ export async function decide(
       // one moment a yes is visible to the other side -- as it must be, since their
       // reveal opens on it -- and it says nothing they could not already see there.
       notify(other, { type: 'match.turn', rendezvousId, agent: agentRef(other, userId) });
+      wakes.push([other, 'shared']);
     }
     return { introduced: rows.length > 0 };
   });
+  for (const [who, kind] of wakes) void wake(who, kind, rendezvousId);
+  return out;
 }

@@ -41,7 +41,7 @@ export const selfTestRoutes = new Hono()
     let item;
     try {
       item = await tenantSession(ctx, (db) =>
-        metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), db));
+        metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), { db, setup: true }));
     } catch (err) {
       if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
       throw err;

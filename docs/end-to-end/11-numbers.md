@@ -5,7 +5,7 @@ Both are for the **reviewer** only: an account listed in `ADMIN_USER_IDS`. For a
 ([server/src/api/admin.ts:44] `return admins().has(ctx.userId) ? ctx : null;`,
 [server/src/env.ts:190] `ADMIN_USER_IDS: z.string().default(''),`).
 The way in: YOU → Manage → Settings → "Help and safety" → "Numbers" ("How far matches get, real people only")
-([app/src/features/settings/settings-screen.tsx:267] `<Row title="Numbers" subtitle="How far matches get, real people only"`).
+([app/src/features/settings/settings-screen.tsx:272] `<Row title="Numbers" subtitle="How far matches get, real people only"`).
 
 ### At a glance
 

@@ -219,6 +219,16 @@ const Env = z.object({
    * is therefore the default.
    */
   SMS_PROVIDER: z.enum(['console', 'msg91', 'twilio']).default('console'),
+  /**
+   * PUSH_PROVIDER picks how a closed phone is woken (push/send.ts). 'console' writes one
+   * line per push to the log -- who and what kind, never a token -- and sends nothing:
+   * the default, and all that works before the app has an Expo project and a Firebase
+   * key. 'expo' sends through Expo's push service (free; no model is involved). 'off'
+   * does nothing.
+   */
+  PUSH_PROVIDER: z.enum(['off', 'console', 'expo']).default('console'),
+  /** Optional: Expo's "enhanced push security" access token. Never logged. */
+  EXPO_ACCESS_TOKEN: z.string().default(''),
 
   /**
    * Return the code in the HTTP response.
@@ -319,6 +329,15 @@ const Env = z.object({
   /** Similarity at or above which two faces are the same person. Set from scripts/face-spike.ts. */
   FACE_MATCH_MIN: z.coerce.number().min(0).max(1).default(0.45),
   TRIAL_TURN_CAP_PER_DAY: z.coerce.number().default(10),
+  /**
+   * Setup and onboarding calls a day -- the first sentence, "Is this you?", the
+   * "couldn't be with" reading, a paste or chat import. They used to count against the
+   * ten above, so setting up could use most of a day's calls and the first round then
+   * failed (the founder, 2026-09-28: setup must not count). Their own bound instead,
+   * roomy for one honest setup and still a stop for a looping client. The daily cost
+   * cap covers them as it covers everything.
+   */
+  SETUP_CALLS_PER_DAY: z.coerce.number().default(40),
   MAX_SESSION_OUTPUT_TOKENS: z.coerce.number().default(60_000),
 });
 

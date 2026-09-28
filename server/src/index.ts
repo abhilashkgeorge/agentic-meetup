@@ -31,10 +31,12 @@ import { validateRouting } from './llm/index.js';
 import { embeddingsAvailable } from './llm/embeddings.js';
 import { adminRoutes, hasReviewer } from './api/admin.js';
 import { consentRoutes } from './api/consent.js';
+import { pushRoutes } from './api/push.js';
 import { log } from './log.js';
 import { LIMITS, callerIp, take } from './ratelimit.js';
 import { SESSION_IDLE_MS, sweepOnce } from './memory/session.js';
 import { expireMatches } from './matching/expiry.js';
+import { warnFading } from './push/index.js';
 import { consolidateAll } from './memory/consolidate.js';
 
 // Fail at boot, not at 3am on an invoice: refuses to start on a routed model with
@@ -71,6 +73,7 @@ app.route('/', storyRoutes);
 app.route('/', questionOfDayRoutes);
 app.route('/', adminRoutes);
 app.route('/', consentRoutes);
+app.route('/', pushRoutes);
 
 // serve() builds the http.Server AND attaches Hono as its request listener, then
 // returns it. Handing it a pre-made bare server instead leaves it with no request
@@ -187,6 +190,8 @@ consolidator.unref();
 // what is due first; this records it for the people who never open the app.
 const expirer = setInterval(() => {
   void expireMatches().catch((err: unknown) => log.error({ err }, 'match expiry failed'));
+  // And the day before: "A card fades today", once per card per person (push/index.ts).
+  void warnFading().catch((err: unknown) => log.error({ err }, 'fade warning failed'));
 }, 10 * 60 * 1000);
 expirer.unref();
 

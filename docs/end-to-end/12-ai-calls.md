@@ -16,10 +16,12 @@ holds 8,158 calls and $7.02 in total, all since 2026-09-08. Where a call has nev
 is an estimate from its output limit.
 
 **Metering.** Each call is recorded against one person (`llm_calls`) and counted against their day: at most
-$2.00 and at most **10 model calls** per person per day, for every account; the day resets at midnight UTC
-([server/src/metering.ts:47] `if (spent >= costCap) throw new BudgetExceeded('daily_cost', spent, costCap);`,
-[server/src/metering.ts:50] `throw new BudgetExceeded('daily_turns', row.turns_used, row.turn_cap);`,
-[server/src/metering.ts:38] `WHERE tenant_id = $1 AND user_id = $2 AND day = CURRENT_DATE`). Embeddings are not
+$2.00 and at most **10 model calls** per person per day, for every account; setup calls (AI-1 on the first screen,
+AI-2 to AI-5, and the answer sheet the first sentence builds) are counted apart, up to 40 a day, since 2026-09-28
+([server/src/metering.ts:59] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {`); the day resets at midnight UTC
+([server/src/metering.ts:56] `if (spent >= costCap) throw new BudgetExceeded('daily_cost', spent, costCap);`,
+[server/src/metering.ts:65] `throw new BudgetExceeded('daily_turns', row.turns_used, row.turn_cap);`,
+[server/src/metering.ts:47] `WHERE tenant_id = $1 AND user_id = $2 AND day = CURRENT_DATE`). Embeddings are not
 metered. The server refuses to start if a routed model has no verified price or retires within 90 days
 ([server/src/llm/index.ts:118] `if (!caps.price.verified && !env.ALLOW_UNVERIFIED_PRICING) {`).
 
@@ -56,7 +58,7 @@ $0.02; not measured, because no round has run since the talk was added.
 
 - **Task / model:** `extract` → Gemini 3.5 Flash-Lite ([server/src/memory/extract.ts:175] `const model = modelFor('extract');`).
 - **When:** the first setup screen, at once; and for every chat session, about 5 minutes after it goes quiet
-  ([server/src/api/tell.ts:71] `out = await metered(ctx, 'extract', () => extractSessionFacts(`,
+  ([server/src/api/tell.ts:73] `out = await metered(ctx, 'extract', () => extractSessionFacts(`,
   [server/src/memory/session.ts:28] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);`).
   Story and question-of-the-day answers are also swept later, and a first-screen sentence is extracted a second
   time by the sweeper ([server/src/memory/session.ts:302] `AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)`).
@@ -83,7 +85,7 @@ $0.02; not measured, because no round has run since the talk was added.
 
 - **Task / model:** `chat` → Flash-Lite; recorded under the label `render_profile`
   ([server/src/memory/selftest.ts:86] `const model = modelFor('chat');`,
-  [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), db));`).
+  [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), { db, setup: true }));`).
 - **When:** right after the first sentence ("Now it's you"), on "Test it" in setup, and Settings → "Test it again".
 - **In:** the profile summary, every live fact, the style note, and a fixed question such as "A friend asks
   what you have been up to lately. What do you say?". Instructions: "You are answering AS this person, in a
@@ -138,18 +140,18 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-6"></a>
 ### AI-6. Own-clone chat reply
 
-- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens ([server/src/api/chat.ts:364] `const model = modelFor('chat');`,
-  [server/src/api/chat.ts:389] `maxOutputTokens: 2048,`).
+- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens ([server/src/api/chat.ts:366] `const model = modelFor('chat');`,
+  [server/src/api/chat.ts:391] `maxOutputTokens: 2048,`).
 - **When:** every message a person sends to their own clone.
 - **In:** the profile summary, style note, last 20 messages, **every** live fact (including private ones: it
   talks only to its own person), up to 5 recalled old messages. Instructions: "You are this person's clone: an
   agent that knows them and speaks with their voice and judgement." "Never invent a detail about them that is not
   in the fragments." "Speak plainly, in their register."
-  ([server/src/api/chat.ts:33] `You are this person's clone: an agent that knows them and speaks with their voice and judgement.`,
-  [server/src/api/chat.ts:39] `Never invent a detail about them that is not in the fragments.`,
-  [server/src/api/chat.ts:41] `Speak plainly, in their register. No preamble, no hedging, no restating the question.`).
+  ([server/src/api/chat.ts:34] `You are this person's clone: an agent that knows them and speaks with their voice and judgement.`,
+  [server/src/api/chat.ts:40] `Never invent a detail about them that is not in the fragments.`,
+  [server/src/api/chat.ts:42] `Speak plainly, in their register. No preamble, no hedging, no restating the question.`).
 - **Out:** free text. **Checks:** none; streamed straight to the phone
-  ([server/src/api/chat.ts:396] `send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });`).
+  ([server/src/api/chat.ts:398] `send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });`).
 - **Stored:** the reply, as a message in the person's history.
 
 <a id="ai-7"></a>
@@ -158,7 +160,7 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Model:** Gemini Embedding 001, 768 numbers per text ([server/src/llm/adapters/google.ts:216] `model: env.EMBEDDING_MODEL.replace(/^google:/, ''),`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
   are embedded and stored ([server/src/memory/retrieval.ts:64] `[vector] = await embed([query]);`,
-  [server/src/api/chat.ts:467] `const vectors = await embed(todo.map(([, t]) => t));`).
+  [server/src/api/chat.ts:469] `const vectors = await embed(todo.map(([, t]) => t));`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   ([server/src/llm/embeddings.ts:26] `export async function embed(texts: readonly string[]): Promise<number[][]> {`).
 
@@ -189,9 +191,9 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-10"></a>
 ### AI-10. Answer sheet
 
-- **Task / model:** `extract` → Flash-Lite, 600 tokens ([server/src/matching/answer-sheet.ts:198] `maxOutputTokens: 600,`).
+- **Task / model:** `extract` → Flash-Lite, 600 tokens ([server/src/matching/answer-sheet.ts:200] `maxOutputTokens: 600,`).
 - **When:** only when the person's shareable sentences changed: after learning, when "How you appear" opens, and
-  when they tap "Send my agent out" ([server/src/matching/answer-sheet.ts:183] `if (had.rows[0]?.basis === basis) return { built: false, answered: -1 };`).
+  when they tap "Send my agent out" ([server/src/matching/answer-sheet.ts:185] `if (had.rows[0]?.basis === basis) return { built: false, answered: -1 };`).
 - **In:** up to 40 of the person's own public, verified sentences, numbered, and the 12 bank questions.
   Instructions: "For each question, give the number of the ONE sentence that answers it directly, or null."
   "Never write any words of your own." "Null is always safe. A wrong number is shown to another person as
@@ -263,7 +265,7 @@ shown ([server/src/matching/score.ts:292] `if (!model) return { score: null, cos
 With `FACE_CHECK` on, two selfie frames are compared with the person's photos by a face model that runs on the
 server itself, with no vendor; the frames are deleted and only the verdict is kept
 ([server/src/photos/face.ts:7] `Models load from node_modules over file://, never from the network.`,
-[server/src/env.ts:318] `FACE_CHECK: z.enum(['off', 'tfjs-node', 'wasm']).default('off'),`).
+[server/src/env.ts:328] `FACE_CHECK: z.enum(['off', 'tfjs-node', 'wasm']).default('off'),`).
 
 ### Docs vs code
 
@@ -272,7 +274,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 - HOW-IT-WORKS.md §10 says "One meter wraps a whole round". There are two meters, each with its own budget check
   ([HOW-IT-WORKS.md:807] `One meter wraps a whole round`).
 - `MAX_SESSION_OUTPUT_TOKENS` is configured but nothing enforces it
-  ([server/src/env.ts:322] `MAX_SESSION_OUTPUT_TOKENS: z.coerce.number().default(60_000),`).
+  ([server/src/env.ts:341] `MAX_SESSION_OUTPUT_TOKENS: z.coerce.number().default(60_000),`).
 - ARCHITECTURE.md plans chat on GPT-5.6-luna, nightly batch jobs and a paid tier with a 10-turn trial. The code
   runs every task on one model, has no batch jobs and no payment code; the 10-call cap applies to everyone
   ([ARCHITECTURE.md:24] `Chat on GPT-5.6-luna, write path on Claude Sonnet 5.`,

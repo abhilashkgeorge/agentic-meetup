@@ -15,6 +15,7 @@ import Constants from 'expo-constants';
 import {
   createInvite, eraseAccount, exportAccount, getAdminReports, getInvites, isAdmin, type Invite, logout, phoneLinked,
 } from '../../lib/api';
+import { unregisterPush } from '../../lib/push';
 import { SUPPORT_EMAIL, supportMailto } from '../safety/reasons';
 import { inviteCard } from './invites';
 import { clearToken, getFps30, getGlFuse, setFps30, setGlFuse } from '../../lib/storage';
@@ -162,7 +163,11 @@ export default function SettingsScreen() {
           // until it expired on its own, months later. Best effort on purpose: if the
           // network is down the device still signs out, because somebody who taps this
           // has asked for something a dead connection must not be able to refuse.
-          if (token) await logout(token);
+          if (token) {
+            // This phone stops waking for this account's matches (lib/push.ts).
+            await unregisterPush(token);
+            await logout(token);
+          }
           await clearToken();
           setToken(null);
           router.replace('/phone');

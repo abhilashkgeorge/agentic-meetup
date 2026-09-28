@@ -21,7 +21,7 @@ three shapes:
 | Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | [server/src/onboarding/stories.ts:150] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Answer to "Anyone else you couldn't be with?" | Saved as a `dealbreaker` fact; a model may also propose a card change | Code, plus {AI:dealbreaker} | `facts` row | Same as above | [server/src/api/interview.ts:341] `predicate: 'dealbreaker',` |
 | A want's words match a question | The question is offered; Arjun ticks the answers he accepts | Code (word patterns) | `preferences` row: field, ticked values, strength | Arjun, on "Looking for" | [server/src/matching/want-questions.ts:84] `if (w.pattern.test(text)) return { want: w` |
-| Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:81] `// The only place a personal rule excludes anybody. Both directions.` |
+| Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:88] `// The only place a personal rule excludes anybody. Both directions.` |
 | A round meets Meera: tied want | Her answer is compared with his ticks | Code | Status on the card record | Arjun sees "Matches", "Doesn't match" or "We can't check this one yet." | [server/src/matching/want-questions.ts:113] `return ask.accepted.includes(v) ? 'met' : 'not_met';` |
 | A round meets Meera: untied or private want | One model call checks all of Arjun's untied wants against his first 12 candidates | {AI:wants}, then code | Status (+ her sentence) on the card record | Untied: her sentence, or "Nothing they've said covers this yet." Private: only "A private topic. Their answer is never shown." | [server/src/matching/wants.ts:257] `task: 'extract',` |
 | Meera never answered the question | The want reads "can't check"; a request to ask Meera is recorded | Code | `unknown_asks` row about Meera | Meera may get it as a question of the day; the asker is never named | [server/src/matching/unknowns.ts:127] `INSERT INTO unknown_asks (tenant_id, user_id, question_id)` |
@@ -66,8 +66,8 @@ three shapes:
   ([server/src/matching/wants.ts:297] `[c.synthetic ? 1 : 0, notMet.get(c.userId) ?? 0, i]`).
 - **If Arjun had tapped "Must have"**, a Meera who answered "A treat" would never be met by
   Arjun's agent, and Arjun would never be met by hers: each person's must-haves apply to
-  both searches ([server/src/matching/candidates.ts:91] `AND NOT ${passes('b')})`,
-  [server/src/matching/candidates.ts:95] `AND NOT ${passes('a')})`). A Meera who never answered
+  both searches ([server/src/matching/candidates.ts:98] `AND NOT ${passes('b')})`,
+  [server/src/matching/candidates.ts:102] `AND NOT ${passes('a')})`). A Meera who never answered
   still passes.
 - **"Someone kind"** goes to the model with up to 10 of Meera's own public sentences. If
   the model points at one, Arjun's card shows "You asked for “Someone kind”" and "They
@@ -75,7 +75,7 @@ three shapes:
   this yet." ([app/src/features/matches/exchange.ts:205] `label, want, prefix: 'They said',`,
   [app/src/features/matches/exchange.ts:169] `export const NOTHING_YET = "Nothing they've said covers this yet.";`).
 - **Meera never sees Arjun's wants**, or that he has any. Her card about Arjun lists only
-  her own wants ([server/src/matching/orchestrator.ts:386] `forB: wantRows(bChecked ? bChecked.results[0] : cantCheck(wantsB)),`).
+  her own wants ([server/src/matching/orchestrator.ts:387] `forB: wantRows(bChecked ? bChecked.results[0] : cantCheck(wantsB)),`).
 
 ### 5.1 Where wants come from
 
@@ -96,7 +96,7 @@ three shapes:
   [server/src/api/interview.ts:209] `text: z.string().max(400).optional(),`). Several can
   stay live at once ([shared/src/facts.ts:138] `{ name: 'dealbreaker',`). The same sentence
   also goes to a model that may propose a change to one card's "Who's fine" row; only the
-  person's "Keep this" writes it ({AI:dealbreaker}; [server/src/api/interview.ts:359] `const m = await metered(ctx, 'extract', () => mapDealbreaker(ctx, sentence));`).
+  person's "Keep this" writes it ({AI:dealbreaker}; [server/src/api/interview.ts:359] `const m = await metered(ctx, 'extract', () => mapDealbreaker(ctx, sentence), { setup: true });`).
 - **Chat.** The chat extractor may also write `seeking` or `dealbreaker` facts. These fields
   are not "tapped" fields, so they go live at once, without a confirm step
   ([server/src/memory/extract.ts:237] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',`).
@@ -171,14 +171,14 @@ three shapes:
   ([server/src/api/dating.ts:524] `A must-have only hides someone over an answer they tapped`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
   checked both ways: Arjun's must-haves on Meera, and Meera's must-haves on Arjun
-  ([server/src/matching/candidates.ts:90] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
-  [server/src/matching/candidates.ts:94] `WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`).
+  ([server/src/matching/candidates.ts:97] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
+  [server/src/matching/candidates.ts:101] `WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`).
   A field with several answers (the work field) passes if any of the other person's
   answers is ticked ([server/src/matching/candidates.ts:30] `THEN match_pref_satisfied_multi(p.predicate, p.operator, p.value,`).
 - **What Really want and Nice to have do.** They feed a score (weight 3 and 1) that is
   recorded on each pair but **no longer decides who a round meets**
   ([server/src/matching/score.ts:25] `dealbreaker: 0, // already enforced by the filter; counting it again double-dips`,
-  [server/src/matching/orchestrator.ts:167] `it just no longer decides who is met.`). The one place the
+  [server/src/matching/orchestrator.ts:168] `it just no longer decides who is met.`). The one place the
   score still orders people is the town's square, where the 40 strangers shown are the top
   of the score ([server/src/api/world.ts:180] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
   In a round, what moves a person later is the want check: each "not met" want pushes that
@@ -187,7 +187,7 @@ three shapes:
 - **The pool count.** "Who your agent can reach" shows how many people pass every filter,
   rounded to the nearest 10; below 20 it says "Under 20" and a warning such as "Very few
   people fit. Turn a must-have into a want to reach more."
-  ([server/src/matching/candidates.ts:213] `export const SHOWN_FLOOR = 20;`,
+  ([server/src/matching/candidates.ts:226] `export const SHOWN_FLOOR = 20;`,
   [app/src/lib/counts.ts:12] `return n === null || n === undefined ? 'Under 20' : n.toLocaleString();`,
   [app/src/features/preferences/preferences-screen.tsx:98] `Very few people fit. Turn a must-have into a want to reach more.`).
 
@@ -210,7 +210,7 @@ three shapes:
   [server/src/matching/unknowns.ts:31] `export const QUIET_DAYS = 7;`,
   [server/src/matching/unknowns.ts:33] `export const WINDOW_DAYS = 14;`).
   Practice profiles are never asked
-  ([server/src/matching/orchestrator.ts:415] `(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId`).
+  ([server/src/matching/orchestrator.ts:416] `(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId`).
 - **A written card is not updated** when the answer arrives later: the want results are
   stored with the card when the round runs
   ([server/src/matching/brief.ts:633] `wants: made.wants,`).
@@ -223,8 +223,8 @@ three shapes:
   starter's sentences, for that person's card. Both calls are charged to the starter
   ([server/src/matching/wants.ts:307] `export const WANT_WINDOW = 12;`,
   [server/src/matching/wants.ts:308] `export const WANT_SENTENCES = 10;`,
-  [server/src/matching/orchestrator.ts:214] `await metered(spender, 'rendezvous', () => checkShortlist(spender, wantsA, shortlist.order))`,
-  [server/src/matching/orchestrator.ts:372] `await checkWants(spender, wantsB, [sentencesA],`).
+  [server/src/matching/orchestrator.ts:215] `await metered(spender, 'rendezvous', () => checkShortlist(spender, wantsA, shortlist.order))`,
+  [server/src/matching/orchestrator.ts:373] `await checkWants(spender, wantsB, [sentencesA],`).
   If every want is tied, no call is made
   ([server/src/matching/wants.ts:231] `wants.map((w) => asked(w, pi))), costUsd: 0`).
   Full details are in {AI:wants}.
@@ -257,7 +257,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-([app/src/features/matches/matches-screen.tsx:388] `WHAT YOU ASKED FOR`):
+([app/src/features/matches/matches-screen.tsx:390] `WHAT YOU ASKED FOR`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|

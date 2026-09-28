@@ -1,0 +1,20 @@
+-- 0075: setup and onboarding model calls are counted apart from the day's ten.
+--
+-- WHAT WAS WRONG. Every model call a person caused counted against one daily number
+-- (TRIAL_TURN_CAP_PER_DAY = 10), chat, learning, rounds and setup alike. Setup alone --
+-- the first sentence, "Is this you?", the "couldn't be with" reading, a paste or chat
+-- import -- could use most of it, and the first round of the day then failed with "Your
+-- agent has been out enough for today" (docs/END-TO-END.md 15.3).
+--
+-- HOW IT WAS MEASURED (dev database, 2026-09-28, read-only, llm_calls): on their first
+-- day, real people's setup made 1 to 4 calls (the fullest: three extractions and one
+-- "Is this you?") out of the day's ten, before any chat or round; and on 6 person-days a
+-- real person reached ten calls or more. The setup steps are five routes: api/tell.ts,
+-- selftest.ts, interview.ts's dealbreaker reading, import.ts's paste and voice.
+--
+-- WHY THIS FIX (the founder, 2026-09-28: "setup and onboarding calls shouldn't count
+-- against the 10-calls-a-day limit"). A second counter on the same row: a setup call adds
+-- to setup_used instead of turns_used, and is bounded by SETUP_CALLS_PER_DAY (env.ts)
+-- rather than the ten. The daily cost cap still counts every call. Same table, same
+-- row-level policy, same grants: a new column carries them.
+ALTER TABLE tenant_budget ADD COLUMN setup_used int NOT NULL DEFAULT 0;

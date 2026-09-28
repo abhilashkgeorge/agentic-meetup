@@ -30,6 +30,7 @@ import {
 } from '../../lib/api';
 import { countLabel, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
+import { registerForPush } from '../../lib/push';
 import {
   Button, Card, Crease, Empty, Screen, ScreenTitle, StatRow, Surface,
   radius, space, type, usePalette,
@@ -167,6 +168,7 @@ export default function MatchesScreen() {
   const go = useCallback(async () => {
     if (!token || active) return;
     setSaid(null);
+    void registerForPush(token, { ask: true });   // as on the Home (lib/push.ts)
     const r = await runRound(token);
     if (!r) { setSaid('Cannot reach the server.'); return; }
     if ('error' in r) {

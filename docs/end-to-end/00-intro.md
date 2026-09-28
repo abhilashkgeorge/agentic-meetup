@@ -49,13 +49,14 @@ something else, a **Docs vs code** note says so. Where something could not be co
 | Agent conversations | Off (`RENDEZVOUS_RUNS` not set, default 0) | [server/src/matching/rendezvous.ts:75] `export const RUNS = Number(process.env.RENDEZVOUS_RUNS ?? 0);` |
 | The agents' talk | On (`AGENT_TALK` not set, default on) | [server/src/matching/talk.ts:49] `export const talkOn = (): boolean => (process.env.AGENT_TALK ?? 'on') !== 'off';` |
 | SMS | `console`: no text is sent, the code goes to the server log only (`SMS_DEV_ECHO=false` since 2026-09-28) | [server/src/env.ts:221] `SMS_PROVIDER: z.enum(['console', 'msg91', 'twilio']).default('console'),` |
-| Reusable dev invite `KNOX-1010` | Works (`ALLOW_REUSABLE_INVITES=true`) | [server/src/env.ts:299] `ALLOW_REUSABLE_INVITES: z` |
+| Reusable dev invite `KNOX-1010` | Works (`ALLOW_REUSABLE_INVITES=true`) | [server/src/env.ts:309] `ALLOW_REUSABLE_INVITES: z` |
 | Old-style sign-in (account id as token) | Off (`ALLOW_LEGACY_TOKENS=false` since 2026-09-28; the code default is on) | [server/src/env.ts:199] `.default('true')` |
-| Face check | Off | [server/src/env.ts:318] `FACE_CHECK: z.enum(['off', 'tfjs-node', 'wasm']).default('off'),` |
-| Spend per person per day | $2.00 and 10 model calls | [server/src/env.ts:321] `TRIAL_TURN_CAP_PER_DAY: z.coerce.number().default(10),` |
+| Face check | Off | [server/src/env.ts:328] `FACE_CHECK: z.enum(['off', 'tfjs-node', 'wasm']).default('off'),` |
+| Spend per person per day | $2.00 and 10 model calls, plus up to 40 setup calls counted apart (since 2026-09-28) | [server/src/env.ts:331] `TRIAL_TURN_CAP_PER_DAY: z.coerce.number().default(10),`, [server/src/env.ts:340] `SETUP_CALLS_PER_DAY: z.coerce.number().default(40),` |
+| Push notifications | `console`: each push is written to the server log, nothing is sent, until the app has an Expo project and `PUSH_PROVIDER=expo` is set | [server/src/env.ts:229] `PUSH_PROVIDER: z.enum(['off', 'console', 'expo']).default('console'),` |
 
 The development values come from `server/.env`, which is not in git. A production server refuses to start with the
-development shortcuts on ([server/src/env.ts:344] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`).
+development shortcuts on ([server/src/env.ts:363] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`).
 
 **The development database today** (queried 2026-09-28): 11 real people, 4 of them ready to be sent out; 5,008
 practice profiles; no pair between two real people yet; no round since 2026-09-22.

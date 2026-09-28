@@ -65,13 +65,15 @@ export const tellRoutes = new Hono().post('/v1/tell', async (c) => {
   //
   // The meter checks the budget before the call and records what it actually cost
   // after, per call and with real token counts -- replacing a hand-written row of
-  // zeroes that could never be reconciled against an invoice.
+  // zeroes that could never be reconciled against an invoice. A SETUP step: counted
+  // apart from the day's ten (metering.ts, 0075), so setting up never uses the calls
+  // a first round or a chat needs.
   let out;
   try {
     out = await metered(ctx, 'extract', () => extractSessionFacts(
       { transcript: [{ role: 'user', content: text }], currentFacts: known, tenantId: ctx.tenantId, userId: ctx.userId },
       stored ? [stored.id] : [],
-    ));
+    ), { setup: true });
   } catch (err) {
     if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
     throw err;
@@ -94,7 +96,7 @@ export const tellRoutes = new Hono().post('/v1/tell', async (c) => {
   log.info({ userId: ctx.userId, learned, toConfirm }, 'told');
   // Something new about them may be an answer another agent will ask for. Only when
   // something was actually learned; a no-op when no sentence it could point at changed.
-  if (learned > 0) await ensureSheet(ctx);
+  if (learned > 0) await ensureSheet(ctx, { setup: true });
   return c.json({
     learned,
     toConfirm,

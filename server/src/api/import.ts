@@ -66,7 +66,7 @@ export const importRoutes = new Hono()
     let result;
     try {
       result = await tenantSession(ctx, (db) =>
-        metered(ctx, 'extract', () => importPastedText(db, ctx, parsed.data.text, parsed.data.source), db));
+        metered(ctx, 'extract', () => importPastedText(db, ctx, parsed.data.text, parsed.data.source), { db, setup: true }));
     } catch (err) {
       if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
       throw err;
@@ -116,7 +116,7 @@ export const chatImportRoutes = new Hono()
 
     let voice;
     try {
-      voice = await metered(ctx, 'extract', () => extractVoice(ctx, messages));
+      voice = await metered(ctx, 'extract', () => extractVoice(ctx, messages), { setup: true });
     } catch (err) {
       if (err instanceof BudgetExceeded) return c.json({ error: 'budget_exceeded' }, 429);
       throw err;

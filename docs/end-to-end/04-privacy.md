@@ -23,7 +23,7 @@ details), and **database roles** that limit what each part of the server can rea
   ([server/src/api/world.ts:256] `area: strangers.areas.get(id) ?? CENTRAL_AREA`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
-  ([server/src/matching/orchestrator.ts:365] `loadQuotes(pair.b, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`).
+  ([server/src/matching/orchestrator.ts:366] `loadQuotes(pair.b, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`).
 - **On Arjun's card** (his turn): her headline, shared tags, up to two of her sentences, the talk,
   Arjun's wants against her sentences ("Matches"/"Doesn't match" only on a want tied to a question;
   a private-topic want says only "A private topic. Their answer is never shown."), an opener (stage 8)
@@ -149,15 +149,15 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **Settings → "Delete everything"** ("Cannot be undone. The clone and all of its memory go.") deletes the
   person's rows from 23 tables, their photo folder, every pair they were in (including **both** sides of
   their conversations) and reports about them; then it counts what is left and deletes the account last
-  ([app/src/features/settings/settings-screen.tsx:285] `subtitle="Cannot be undone. The clone and all of its memory go."`,
+  ([app/src/features/settings/settings-screen.tsx:290] `subtitle="Cannot be undone. The clone and all of its memory go."`,
   [server/src/memory/erasure.ts:35] `'answer_sheets', 'unknown_asks', 'question_prompts', 'look_items', 'looks', 'photo_checks',`,
-  [server/src/memory/erasure.ts:198] `if (!remaining.length) await c.query('DELETE FROM app_users WHERE id = $1'`).
+  [server/src/memory/erasure.ts:200] `if (!remaining.length) await c.query('DELETE FROM app_users WHERE id = $1'`).
 - **It leaves:** a receipt with counts, invites, reports they filed (without their name), bans and the
   phone and device hashes of a ban, the account's device name, and anything already sent to AI providers
   or written to server logs ([server/migrations/0007_erasure.sql:12] `counts, never rows.`).
 - **"Download everything"** exports their facts, all their messages with their clone, their profile,
   questions, their own messages to matches and their model usage, as plain text to the share sheet
-  ([app/src/features/settings/settings-screen.tsx:119] `await Share.share({ message: data });`).
+  ([app/src/features/settings/settings-screen.tsx:120] `await Share.share({ message: data });`).
 
 ### 4.6 Operators, logs and AI providers
 
@@ -173,8 +173,13 @@ Row-level security is the boundary. Each part of the server connects as its own 
   every message's text for embeddings, and in a round the other person's public sentences and both
   people's wants. The per-session notice names the provider: "You are talking to an AI. Your messages are
   processed by…" ([server/src/api/config.ts:50] `You are talking to an AI. Your messages are processed by`).
+- **Push notifications** (since 2026-09-28) pass through Expo's push service and, on Android, Google's:
+  each carries the kind of event and the card's id, never a name or anybody's words. A phone's push
+  token is kept against its account only (row-level security), dropped at sign-out, and deleted with
+  the account ([server/src/api/push.ts:36] `await tenantSession(ctx, (db) => db.query('SELECT claim_push_token($1, $2)', [body.data.token, body.data.platform]));`,
+  [server/src/memory/erasure.ts:41] `'push_tokens',`).
 - **The Settings promise** reads "Nobody else has ever seen what your clone knows about you."
-  ([app/src/features/settings/settings-screen.tsx:292] `Nobody else has ever seen what your clone knows about you.`).
+  ([app/src/features/settings/settings-screen.tsx:297] `Nobody else has ever seen what your clone knows about you.`).
   By design, other members see public sentences, tags and a first name; the reviewer sees want topic
   words; AI providers process the text. Read literally, the promise is broader than the code.
 
@@ -200,7 +205,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately ([ARCHITECTURE.md:391] `from the first migration, on every table.`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
-  ([server/src/memory/erasure.ts:163] `// erasure is therefore a way out of a ban.`).
+  ([server/src/memory/erasure.ts:165] `// erasure is therefore a way out of a ban.`).
 
 ### Unverified
 

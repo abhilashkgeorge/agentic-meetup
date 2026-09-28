@@ -24,6 +24,7 @@ import { log } from '../log.js';
 import { LIMITS, take } from '../ratelimit.js';
 import * as hub from '../messaging/hub.js';
 import * as messages from '../messaging/store.js';
+import { wake } from '../push/index.js';
 
 /**
  * The stable prefix. NOTHING volatile may appear here -- no date, no user name, no
@@ -266,6 +267,7 @@ async function handleDm(
   }
   // Offline: no receipt, and a push notification is what wakes them. Marking it
   // delivered here would show two ticks for a message nobody has received.
+  if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);
 }
 
 async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void> {

@@ -22,6 +22,7 @@ import ChatScreen from '../chat/chat-screen';
 import { getMatches, getQuestionOfDay, runRound, type MatchCard, type WorldAgent } from '../../lib/api';
 import { getFps30, getGlFuse, setGlFuse, strikeGlFuse } from '../../lib/storage';
 import { useSession } from '../../store/session';
+import { registerForPush } from '../../lib/push';
 import { setupRoute } from '../profile/fields';
 import { Screen, useIsDark, usePalette } from '../../components/ui';
 import { FPS_METER, FpsMeter, feedFps } from '../dev/fps';
@@ -248,6 +249,9 @@ export default function WorldScreen() {
     if (!token || active) return;
     setSaid(null);
     setExchange(null);
+    // The moment to ask about notifications: a card is about to wait on this person.
+    // Asked once; after that it only re-sends the token (lib/push.ts).
+    void registerForPush(token, { ask: true });
     const r = await runRound(token, target);
     if (!r) { setSaid('Cannot reach the server.'); return; }
     if ('error' in r) {

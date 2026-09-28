@@ -12,7 +12,7 @@ person ever reads are the **date idea**, and code checks those.
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun's and Meera's own sentences (up to 20 each) | Loaded under each person's own database session, filtered | Code | Nothing | Nobody | [server/src/matching/orchestrator.ts:312] `loadQuotes(plan.a, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })` |
+| Arjun's and Meera's own sentences (up to 20 each) | Loaded under each person's own database session, filtered | Code | Nothing | Nobody | [server/src/matching/orchestrator.ts:313] `loadQuotes(plan.a, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })` |
 | Both lists, 12 questions, 4 reactions | The model picks questions and sentence numbers, and writes one date idea | {AI:talk} | Nothing yet | Nobody | [server/src/matching/talk.ts:105] `You never write a sentence about a person. You choose:` |
 | The model's reply | Code rebuilds the lines from the real sentences and drops anything that breaks a rule | Code | The talk, inside both cards | Each person, on their own card, on their turn | [server/src/matching/talk.ts:244] `lines.push({ by, kind: 'say', text: s.text, ...(s.practice ? { practice: true } : {}) });` |
 | The date idea | Checked for length, person words, claims, verdict words, private topics, contact details, and made-up facts | Code | Inside both cards | Both, then in chat after both say yes | [server/src/matching/talk.ts:193] `PERSON.test(idea) || CLAIM.test(idea) || VERDICT.test(idea) || !mayRepeat(idea)` |
@@ -42,9 +42,9 @@ person ever reads are the **date idea**, and code checks those.
 - **What Arjun reads on his card** (when it is his turn): "DATE IDEA", "SOMETHING YOU SHARE",
   and "Read what your agents said", which opens the lines as "Your agent" and "Their agent".
   Every answer line is Meera's or Arjun's own sentence, word for word
-  ([app/src/features/matches/matches-screen.tsx:58] `{ color: p.textSecondary }]}>DATE IDEA</Text>`,
-  [app/src/features/matches/matches-screen.tsx:67] `SOMETHING YOU SHARE</Text>`,
-  [app/src/features/matches/matches-screen.tsx:79] `open ? 'Hide the chat' : 'Read what your agents said'`,
+  ([app/src/features/matches/matches-screen.tsx:59] `{ color: p.textSecondary }]}>DATE IDEA</Text>`,
+  [app/src/features/matches/matches-screen.tsx:68] `SOMETHING YOU SHARE</Text>`,
+  [app/src/features/matches/matches-screen.tsx:80] `open ? 'Hide the chat' : 'Read what your agents said'`,
   [app/src/features/matches/exchange.ts:153] `speaker: l.who === 'you' ? 'Your agent' : 'Their agent',`).
 - **Meera reads the same talk** with the sides swapped, on her own card
   ([server/src/matching/talk.ts:286] `const who = (by: 'a' | 'b'): TalkLine['who'] => (by === reader ? 'you' : 'them');`).
@@ -100,7 +100,7 @@ will know next time." ([app/src/features/matches/recap.ts:22] `It had to say "I 
 - **Checked again** when the card is written, every time it is read (it disappears if the
   other person's sentence is no longer shareable), and when someone proposes it in chat
   ([server/src/matching/brief.ts:757] `const date = talk.date && keep(talk.date.theirs) ? talk.date : null;`,
-  [server/src/api/date-idea.ts:87] `const idea = raw ? safeIdea(raw) : null;`).
+  [server/src/api/date-idea.ts:88] `const idea = raw ? safeIdea(raw) : null;`).
 
 ### 7.4 The fallback: answer sheets
 
@@ -108,11 +108,11 @@ Each person has an **answer sheet**: for each of the 12 bank questions, a pointe
 their own sentences, or nothing. A model builds it outside the round, whenever their
 shareable sentences change ({AI:sheet};
 [server/src/matching/answer-sheet.ts:104] `For each question, give the number of the ONE sentence that answers it directly, or null.`,
-[server/src/matching/answer-sheet.ts:183] `if (had.rows[0]?.basis === basis) return { built: false, answered: -1 };`).
+[server/src/matching/answer-sheet.ts:185] `if (had.rows[0]?.basis === basis) return { built: false, answered: -1 };`).
 Only fact ids are stored. When there is no talk, the card shows "WHAT YOUR AGENTS ASKED EACH
 OTHER": questions both answered, then only theirs, then up to two the reader answered and
-they did not ([server/src/matching/answer-sheet.ts:346] `const answered = [...both, ...onlyTheirs].slice(0, LINES);`,
-[app/src/features/matches/matches-screen.tsx:372] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
+they did not ([server/src/matching/answer-sheet.ts:348] `const answered = [...both, ...onlyTheirs].slice(0, LINES);`,
+[app/src/features/matches/matches-screen.tsx:374] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
 
 ### 7.5 What is saved, and what people can read
 
@@ -136,14 +136,14 @@ told about your person. Never invent a detail to keep it going."; a second model
 each transcript and return yes, no or not enough ([server/src/matching/rendezvous.ts:116] `Only say things you were actually told about your person. Never invent a detail to keep it going.`,
 [server/src/matching/rendezvous.ts:153] `verdict: z.enum(['yes', 'no', 'not_enough']),`). Transcripts
 would be stored but never shown, and the verdicts gate nothing
-([server/src/matching/orchestrator.ts:352] `const ok = RUNS > 0 && passes(runs.bothYes, runs.counted, RUNS);`).
+([server/src/matching/orchestrator.ts:353] `const ok = RUNS > 0 && passes(runs.bothYes, runs.counted, RUNS);`).
 Details: {AI:converse}.
 
 ### Docs vs code
 
 - HOW-IT-WORKS.md calls the talk "the only model call in a round". The want checks are
   model calls in the same round ([HOW-IT-WORKS.md:27] `That talk is **the only model call in a round** -- one small call a pair`,
-  [server/src/matching/orchestrator.ts:372] `await checkWants(spender, wantsB, [sentencesA],`).
+  [server/src/matching/orchestrator.ts:373] `await checkWants(spender, wantsB, [sentencesA],`).
 - HOW-IT-WORKS.md §6 describes "Five runs per pair". That is only true if the switch is set
   to 5; the code default is 0 ([HOW-IT-WORKS.md:273] `**Five runs per pair, five messages each side.** One is politeness; a thousand is a`).
 - HOW-IT-WORKS.md §7 says the model phase does "nothing by default". The talk and want checks

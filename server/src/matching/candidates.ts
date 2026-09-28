@@ -68,12 +68,19 @@ export const CLAUSES: Record<string, string> = {
    AND (b.age_min IS NULL OR a.age IS NULL OR a.age >= b.age_min)
    AND (b.age_max IS NULL OR a.age IS NULL OR a.age <= b.age_max)`,
 
-  // The SHORTER of the two willingnesses. Somebody willing to cross a country should
-  // not be matched across it with somebody who will not leave their neighbourhood.
+  // EACH SIDE'S OWN LIMIT, BOTH WAYS -- so the shorter of the two willingnesses wins.
+  // Somebody willing to cross a country should not be matched across it with somebody
+  // who will not leave their neighbourhood. It used to be one test that passed whenever
+  // EITHER side had no limit: a person who never answered "How far would you travel?"
+  // switched off the other person's 10 km as well, while every card said "Passes your
+  // rules both ways" (docs/END-TO-END.md 15.3, fixed 2026-09-28). Now a missing limit
+  // passes only its own side. No point at all still passes: distance cannot be tested.
   distance: `
-   AND (a.lat IS NULL OR b.lat IS NULL OR a.max_distance_km IS NULL OR b.max_distance_km IS NULL
-        OR earth_distance(ll_to_earth(a.lat, a.lon), ll_to_earth(b.lat, b.lon))
-           <= LEAST(a.max_distance_km, b.max_distance_km) * 1000.0)`,
+   AND (a.lat IS NULL OR b.lat IS NULL OR (
+        (a.max_distance_km IS NULL
+         OR earth_distance(ll_to_earth(a.lat, a.lon), ll_to_earth(b.lat, b.lon)) <= a.max_distance_km * 1000.0)
+    AND (b.max_distance_km IS NULL
+         OR earth_distance(ll_to_earth(a.lat, a.lon), ll_to_earth(b.lat, b.lon)) <= b.max_distance_km * 1000.0)))`,
 
   intent: `
    AND (a.intent = '{}' OR b.intent = '{}' OR a.intent && b.intent)`,
@@ -94,8 +101,14 @@ export const CLAUSES: Record<string, string> = {
       WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL
         AND NOT ${passes('a')})`,
 
+  // A real person away for sixty days is not somebody to send an agent to. A practice
+  // profile is never "away": it keeps the date it was seeded as its last visit, so the
+  // whole practice pool (5,008, seeded 2026-09-12 to 14) would have left everybody's
+  // pool around 2026-11-11 (the founder, 2026-09-28: keep it from expiring). Exempt
+  // here rather than reseeded: the seed script deletes and recreates, which would take
+  // every open practice card with it.
   active: `
-   AND b.last_active_at > now() - interval '60 days'`,
+   AND (b.is_synthetic OR b.last_active_at > now() - interval '60 days')`,
 };
 
 export const ALL_CLAUSES = ['gender', 'age', 'distance', 'intent', 'dealbreakers', 'active'];

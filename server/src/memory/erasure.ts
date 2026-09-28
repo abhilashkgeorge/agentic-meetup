@@ -37,6 +37,8 @@ export const USER_TABLES = [
   'self_tests', 'device_sessions', 'rounds',
   'facts', 'episodes', 'memory_audit', 'fact_conflicts', 'session_extractions',
   'intent_signals', 'core_profile', 'llm_calls', 'tenant_budget',
+  // A phone's push token (0076): nothing may wake a deleted account's phone.
+  'push_tokens',
 ] as const;
 
 /**

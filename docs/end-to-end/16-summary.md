@@ -29,11 +29,12 @@
 10. **The card.** Code writes a card for each person from real sentences: headline, what you share, their words, what
     the agents said, your wants checked, and a question to ask them. There is no score and no model-written text,
     except the date idea.
-11. **Deciding.** Nobody's photos or name reach anyone until that person says yes to them. Whoever has more open
-    cards decides first, on the words and the other's character alone, with "Yes, share my profile with them". Then
+11. **Deciding.** Nobody's photos or name reach anyone until that person says yes to them. A real person always
+    decides before a practice profile; between two real people, whoever has more open cards decides first, on the words and the other's character alone, with "Yes, share my profile with them". Then
     the other person sees that profile and answers "Yes, share mine back" or "Not for me". The server takes answers
     only in that order. Each turn lasts 3 days. A no is never announced. A card nobody answers expires.
-12. **After both say yes.** Chat opens between the two people. Either can send the agents' date idea as a message,
+12. **After both say yes.** Chat opens between the two people. Phones are woken for a new card, a share, an
+    introduction, a message and a card fading today (once the founder's Expo push setup is done). Either can send the agents' date idea as a message,
     once. If nobody writes for 2 days, each gets one gentle nudge. After 3 days, each is asked privately whether they
     met, how it went, and whether they felt safe. Block and report are on every card and chat. A reviewer can ban a
     person's number and phone.

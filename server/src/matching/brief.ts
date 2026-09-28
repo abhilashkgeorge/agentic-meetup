@@ -643,7 +643,7 @@ export async function saveBriefs(
     written++;
   }
 
-  const first = await busierSide(c, a.userId, b.userId);
+  const first = await firstMoverOf(c, a.userId, b.userId);
   await c.query('UPDATE rendezvous SET first_mover = $2 WHERE id = $1', [rendezvousId, first]);
 
   log.info({ rendezvousId, written, firstMover: first }, 'briefs written');
@@ -770,6 +770,25 @@ function readTalk(t: z.infer<typeof Stored>['talk']): TalkView | null {
     shared: t.shared.map((x) => ({ mine: x.mine, theirs: x.theirs, ...flag(x.practice) })),
     date: t.date ? { idea: t.date.idea, mine: t.date.mine, theirs: t.date.theirs, ...flag(t.date.practice) } : null,
   };
+}
+
+/**
+ * Who decides first.
+ *
+ * A PRACTICE PROFILE NEVER DOES (the founder, 2026-09-28). It never answers, and the
+ * busier side -- the rule below -- can be the practice profile, whose open cards are
+ * other people's practice: the real person then waited three days on "They decide first"
+ * and watched the card fade. Measured that day: 1 open card had a real person waiting
+ * behind a practice profile (migration 0074 moved it); 37 more were between two practice
+ * profiles, with nobody waiting. Between a real person and a practice profile, the real
+ * person decides first; between two real people, the busier side, as before.
+ */
+export async function firstMoverOf(c: PoolClient, a: string, b: string): Promise<string> {
+  const { rows } = await c.query<{ user_id: string }>(
+    'SELECT user_id FROM match_profile WHERE user_id = ANY($1::uuid[]) AND is_synthetic', [[a, b]]);
+  const practice = new Set(rows.map((r) => r.user_id));
+  if (practice.has(a) !== practice.has(b)) return practice.has(a) ? b : a;
+  return busierSide(c, a, b);
 }
 
 /**

@@ -174,6 +174,8 @@ export function withExplicit(
  */
 export async function ensureSheet(
   who: { tenantId: string; userId: string },
+  /** Built as part of setting up (the first sentence): counted as setup (metering.ts). */
+  opts: { setup?: boolean } = {},
 ): Promise<{ built: boolean; answered: number }> {
   try {
     const sentences = await loadQuotes(who, { predicates: SHEET_SOURCES, limit: MAX_SENTENCES });
@@ -199,7 +201,7 @@ export async function ensureSheet(
           thinking: false,
         },
         modelFor('extract'),
-      ));
+      ), opts);
       answers = pointedToAnswers(res.parsed, sentences);
     }
     // THEIR OWN ANSWERS WIN: a sentence typed in answer to a question stays its answer.
