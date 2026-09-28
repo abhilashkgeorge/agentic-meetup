@@ -108,10 +108,12 @@ describe('Cubbon Park', () => {
     expect(out(g.benches)).toBe(0);
   });
 
-  it('brings the real place with it: buildings, statues, water', () => {
+  it('brings the real place with it: buildings, statues, water -- and no cage', () => {
     const named = g.buildings.map((b) => b.name);
     expect(named).toContain('State Central Library');
-    expect(named).toContain('Band Stand');
+    // The Band Stand was seven metres of thin posts round a ring where you arrive, and
+    // read as a cage (the founder, 2026-09-29): it is not built.
+    expect(named).not.toContain('Band Stand');
     expect(g.ponds.length).toBeGreaterThan(2);
     const statues = g.landmarks.filter((l) => l.kind === 'statue').map((l) => l.name);
     expect(statues.join(' ')).toMatch(/Cubbon|Seshadri|Chamarajendra/);
@@ -122,11 +124,12 @@ describe('Cubbon Park', () => {
     for (const b of g.buildings) {
       expect(inRing(g.home, b.ring), `you arrive inside ${b.name || 'a building'}`).toBe(false);
     }
-    const band = g.buildings.find((b) => /band/i.test(b.name))!;
-    const mid: Pt = [
-      band.ring.reduce((a, p) => a + p[0], 0) / band.ring.length,
-      band.ring.reduce((a, p) => a + p[1], 0) / band.ring.length,
-    ];
+    // Where it stood is still the middle of the park: you arrive near it, not on the
+    // other side. Measured off the survey itself, since the building is gone.
+    const park = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'assets', 'venues', 'cubbon-park', 'park.json'), 'utf8')) as
+      { buildings: { name: string; ring: [number, number][] }[] };
+    const ring = park.buildings.find((b) => b.name === 'Band Stand')!.ring.map(([x, z]) => [x / METRES_PER_UNIT, z / METRES_PER_UNIT] as Pt);
+    const mid: Pt = [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length];
     // ...and near it, not on the other side of the park.
     expect(Math.hypot(g.home[0] - mid[0], g.home[1] - mid[1])).toBeLessThan(12);
   });

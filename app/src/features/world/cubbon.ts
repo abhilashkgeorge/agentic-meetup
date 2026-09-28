@@ -201,13 +201,25 @@ export function makeCubbon(): Garden {
   const paths = lines.map((line, i) => ({ line, width: roads.has(i) ? CUBBON_ROAD_W : CUBBON_PATH_W }));
   const ponds: Pt[][] = asset.water.map((w) => w.ring.map(scale));
 
-  const buildings: Building[] = asset.buildings.map((b) => ({
+  // THE BAND STAND IS NOT BUILT. It stood where you arrive -- the middle of the real
+  // park -- as seven metres of thin posts every two metres round an eleven-metre ring
+  // under a flat slab, which from the ground is a cage, and the founder asked for it to
+  // go: "a random cage placed at the centre of the park" (2026-09-29). Its footprint
+  // still says where the middle of the park is (bandAt below).
+  const band = asset.buildings.find((b) => b.name === 'Band Stand');
+  const bandMid: Pt | null = band?.ring.length
+    ? (() => {
+        const ring = band.ring.map(scale);
+        return [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length];
+      })()
+    : null;
+  const buildings: Building[] = asset.buildings.filter((b) => b !== band).map((b) => ({
     name: b.name,
     ring: b.ring.map(scale),
-    // Guessed, and only the named ones matter: the library is a tall Gothic hall, the
-    // bandstand is a roof on poles, everything else is a shed. Nothing here claims to
-    // be the real elevation -- OSM has no heights for these.
-    height: b.name === 'State Central Library' ? 2.2 : b.name === 'Band Stand' ? 0.9 : 0.7,
+    // Guessed, and only the named ones matter: the library is a tall Gothic hall,
+    // everything else is a shed. Nothing here claims to be the real elevation -- OSM
+    // has no heights for these.
+    height: b.name === 'State Central Library' ? 2.2 : 0.7,
   }));
 
   const landmarks: Landmark[] = asset.features
@@ -394,14 +406,7 @@ export function makeCubbon(): Garden {
   const bandAt: Pt = (() => {
     const mark = landmarks.find((l) => /band/i.test(l.name));
     if (mark) return [mark.x, mark.z];
-    const built = buildings.find((b) => /band/i.test(b.name));
-    if (built?.ring.length) {
-      return [
-        built.ring.reduce((a, p) => a + p[0], 0) / built.ring.length,
-        built.ring.reduce((a, p) => a + p[1], 0) / built.ring.length,
-      ];
-    }
-    return [0, 0];
+    return bandMid ?? [0, 0];
   })();
 
   // Beside a path, and THICKEST AROUND THE BAND STAND, thinning with distance.
