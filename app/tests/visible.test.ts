@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { Viewport, visible, type Placed } from '../src/features/world/visible';
+import { Viewport, pickAlong, visible, type Placed } from '../src/features/world/visible';
 
 /** A person, as this module sees one. */
 const at = (x: number, z: number, ref = `${x},${z}`) => ({ x, z, ref });
@@ -127,5 +127,56 @@ describe('drawing only who is on screen', () => {
     const out: Placed[] = [];
     expect(visible([at(0, -5)], view, out, { limit: 0, radius: RADIUS, fx: 0, fz: 0 })).toBe(0);
     expect(out).toHaveLength(0);
+  });
+});
+
+/**
+ * A tap on somebody drawn by the graphics chip.
+ *
+ * THE BUG THIS EXISTS FOR. The crowd is placed in the vertex shader (crowd-gpu.ts), so
+ * there is no mesh where anybody stands and three's raycast finds nobody: every person
+ * in the town would be untappable, and tapping somebody is how you open their card.
+ *
+ * Negative control, run 2026-09-28 and restored byte-identical: keep the first ball
+ * the ray crosses instead of the nearest -> "the one in front" fails.
+ */
+describe('tapping somebody', () => {
+  const H = 0.215;
+  const tap = (camera: THREE.Camera, x: number, y: number) => {
+    const r = new THREE.Raycaster();
+    r.setFromCamera(new THREE.Vector2(x, y), camera);
+    return r.ray;
+  };
+  const hit = new THREE.Vector3();
+
+  it('lands on the person under the finger', () => {
+    const c = walkCamera();
+    c.position.set(0, H / 2, 0); c.lookAt(0, H / 2, -10); c.updateMatrixWorld();
+    const people = [at(3, -6), at(0, -4), at(-3, -6)];
+    expect(pickAlong(tap(c, 0, 0), people, people.length, H, hit)).toBe(1);
+    expect(hit.z).toBeGreaterThan(-4.2);
+    expect(hit.z).toBeLessThan(-3.8);
+  });
+
+  it('lands on the one in front when two stand in a line', () => {
+    const c = walkCamera();
+    c.position.set(0, H / 2, 0); c.lookAt(0, H / 2, -10); c.updateMatrixWorld();
+    const people = [at(0, -9), at(0, -5), at(0, -7)];
+    expect(pickAlong(tap(c, 0, 0), people, people.length, H, hit)).toBe(1);
+  });
+
+  it('lands on nobody when the finger is on the grass', () => {
+    const c = walkCamera();
+    const people = [at(3, -6), at(-3, -6)];
+    expect(pickAlong(tap(c, 0, -0.9), people, people.length, H, hit)).toBe(-1);
+  });
+
+  it('never lands on somebody who was not drawn', () => {
+    // Only people[0..count) have a body this frame; the rest are past the last
+    // level's cap, and a tap must not open the card of somebody you cannot see.
+    const c = walkCamera();
+    c.position.set(0, H / 2, 0); c.lookAt(0, H / 2, -10); c.updateMatrixWorld();
+    const people = [at(5, -6), at(0, -4)];
+    expect(pickAlong(tap(c, 0, 0), people, 1, H, hit)).toBe(-1);
   });
 });

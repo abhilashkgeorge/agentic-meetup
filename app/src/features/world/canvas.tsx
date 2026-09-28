@@ -5,21 +5,24 @@
  * reached through `loadWorldRenderer()` in ./r3f.ts. Import it statically from a screen
  * and tests/native-imports.test.ts fails the build, on purpose.
  *
- * Budget, and why it is shaped like this: one draw call per kind of part. A person is
- * a body, a head, a hair piece or two, eyes, brows, and whatever their outfit and
- * extra add -- each an InstancedMesh with one slot per agent, written every frame,
- * scale zero when that person does not wear it. Practice profiles get a translucent
- * twin of every part. Sixty-four slots, no textures, no shadows, Lambert lighting;
- * about forty draw calls at worst against sixteen measured at 116 fps, and the bench
- * (features/dev/gl-bench.tsx) is what says whether that holds. The modernised city
- * under them (./map-mesh.ts) is seventeen meshes and 42–48 K triangles, built once
- * and never touched per frame except the water's opacity.
+ * Budget, and why it is shaped like this: draw calls are what a phone pays for (on
+ * expo-gl each one is a pile of commands carried across to native), so everything
+ * that repeats is instanced. No textures, no shadows, Lambert lighting. The modernised
+ * city (./map-mesh.ts) is seventeen meshes and 42–48 K triangles, built once and never
+ * touched per frame except the water's opacity; the bench (features/dev/gl-bench.tsx)
+ * is what says whether a change holds.
  *
- * On top of that, the nearest RIGS people are drawn instead as real rigged characters
- * with a walk cycle (./character-mesh.ts) -- one draw call and about five thousand
- * triangles each, because a person with bones cannot be instanced. Those people get
- * their capsule hidden for the frame. Everything that says who somebody IS -- the disc
- * at their feet, the speech bubble, the ring -- keeps running for all sixty-four.
+ * PEOPLE ARE REAL BODIES, NOT CAPSULES. Everybody the camera can see is a walking body
+ * drawn by the graphics chip (./crowd-gpu.ts): three draw calls for the whole crowd at
+ * three levels of detail, animation baked, outfits picked in the shader, a few numbers
+ * a person written per frame. The capsules below -- one instanced mesh per body part,
+ * a translucent twin for practice profiles -- are only the fallback for a phone that
+ * cannot read the model. Everything that says who somebody IS -- the disc at their
+ * feet, the speech bubble, the ring -- is drawn for the people it is true of, packed,
+ * so a crowd of strangers costs nothing there.
+ *
+ * In the park a mist hides everything past VIEW (./camera.ts), and past it nothing is
+ * drawn: people, trees, benches.
  *
  * The camera follows your agent, softly, so a walk to Whitefield is a walk you watch,
  * until a finger takes over: drag to pan, pinch to zoom, tap a tile to fly there, and
@@ -32,23 +35,25 @@
  * state per frame would measure React, not the renderer."
  */
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
-import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
 import { CENTRAL_AREA, HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
-  CITY_BAND, FLY_SECS, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget, driveVector,
-  rigsFor,
+  CITY_BAND, FLY_SECS, MIST_NEAR, VIEW, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget,
+  driveVector, mapDistance,
   elevationFor, eyeOffset, flyAt, followPose, orthographicBounds, pan, pinch, tileZoom, turnToward, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
 } from './camera';
-import { loadCrowd, type Crowd, type CrowdAgent } from './character-mesh';
+import { MODEL_SCALE, loadCrowd, type Crowd, type CrowdAgent } from './character-mesh';
+import { loadGpuCrowd, type CrowdFrame, type GpuCrowd } from './crowd-gpu';
+import { honourSubDataRanges } from './gl-subdata';
 import { hairOf, skirtOf, topOf } from '../look/silhouette';
 import { buildGarden, skyFollow } from './garden-mesh';
 import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
-import { Viewport, visible } from './visible';
+import { Viewport, pickAlong, visible } from './visible';
 import { CUBBON_PARK, venueGarden, type Venue } from './venue';
 import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
 
@@ -121,9 +126,9 @@ export interface WorldCanvasProps {
   /** The real place represented by the local walkable world. */
   venue?: Venue;
   /**
-   * How many people can be drawn at once (SLOTS, 64, by default). Only the park's
-   * crowd test raises it: every slot is a row in each instanced buffer that is sent
-   * to the GPU every frame, so the everyday town keeps the small number.
+   * How many people can be on screen at once (SLOTS, 64, by default). Only the park's
+   * crowd test raises it: every slot is a row in the markers' buffers, so the everyday
+   * town keeps the small number.
    */
   slots?: number;
 }
@@ -274,7 +279,6 @@ function flyToArea(cam: CamState, id: string | null, followAfter: boolean): void
 
 const SLOTS = 64;
 const DOTS_PER = 3;
-const BARS_PER = 2;
 
 // ── the parts ────────────────────────────────────────────────────────────────
 
@@ -296,7 +300,6 @@ function buildGeometry() {
     stud: new THREE.SphereGeometry(0.03, 5, 4),
     disc: new THREE.CylinderGeometry(0.45, 0.45, 0.04, 16),
     dot: new THREE.SphereGeometry(0.07, 6, 4),
-    bar: new THREE.BoxGeometry(0.5, 0.08, 0.08),
     ring: new THREE.TorusGeometry(0.55, 0.05, 6, 24),
   };
 }
@@ -473,15 +476,11 @@ function poseAgent(set: PartSet, i: number, a: Posed, bob: number, dummy: THREE.
   else hide(set.collar, 1);
 }
 
-/** The instanced meshes a crowd is drawn from. */
-interface Meshes {
-  solid: PartSet; ghost: PartSet;
-  discs: THREE.InstancedMesh; dots: THREE.InstancedMesh;
-  bars: THREE.InstancedMesh; rings: THREE.InstancedMesh;
-}
+/** The capsule crowd: only ever built when the real bodies cannot be. */
+interface Capsules { solid: PartSet; ghost: PartSet }
 
 /**
- * Tell every instanced mesh how many slots are actually in use this frame.
+ * Tell every capsule mesh how many slots are actually in use this frame.
  *
  * WITHOUT THIS, THE WHOLE THING IS POINTLESS. An InstancedMesh draws `count`
  * instances whatever their matrices say, so hiding somebody by scaling them to zero
@@ -489,7 +488,7 @@ interface Meshes {
  * frame no matter how many there were: benchmarked at forty-eight people and at
  * sixty-four, the numbers came out identical to the digit.
  */
-function setCounts(m: Meshes, used: number, solids: number) {
+function setCounts(m: Capsules, used: number, solids: number) {
   // An instanced mesh draws slots 0..count-1, so the smaller of the two crowds is
   // packed at the front and only has to reach as far as its own last member. The
   // other one still has to span everybody, but that is one set spanning the crowd
@@ -497,10 +496,24 @@ function setCounts(m: Meshes, used: number, solids: number) {
   // profiles, so this is very nearly a halving.
   for (const p of m.solid.all) p.mesh.count = solids * p.per;
   for (const p of m.ghost.all) p.mesh.count = used * p.per;
-  m.discs.count = used;
-  m.rings.count = used;
-  m.dots.count = used * DOTS_PER;
-  m.bars.count = used * BARS_PER;
+}
+
+/**
+ * Send the GPU the first `count` instances of a marker mesh and nothing past them,
+ * and draw nothing at all when there are none. The buffers are sized for the whole
+ * crowd test; a frame uses a handful of rows (gl-subdata.ts is why a range works on
+ * a phone).
+ */
+function upload(m: THREE.InstancedMesh) {
+  m.visible = m.count > 0;
+  if (!m.count) return;
+  m.instanceMatrix.clearUpdateRanges();
+  m.instanceMatrix.addUpdateRange(0, m.count * 16);
+  m.instanceMatrix.needsUpdate = true;
+  if (!m.instanceColor) return;
+  m.instanceColor.clearUpdateRanges();
+  m.instanceColor.addUpdateRange(0, m.count * 3);
+  m.instanceColor.needsUpdate = true;
 }
 
 function hideAgent(set: PartSet, i: number, hidden: THREE.Matrix4) {
@@ -657,35 +670,14 @@ export function WorldCanvas(props: WorldCanvasProps) {
  * shortest building is twice their height and a street is three of them across.
  */
 const PERSON = 0.16;
+/** How tall a body stands in the town: the model is 1.87 units (character-mesh.ts). */
+const BODY_H = 1.87 * MODEL_SCALE * PERSON;
 /**
- * How many people get a real body with legs, rather than a capsule -- and it is not
- * the same number in the two worlds.
- *
- * MEASURED, not chosen. Pixel 6a, `gl-bench.tsx`, one run each, about two minutes
- * apiece. The city is 64 people seen from above; the park is 24 people over your
- * shoulder.
- *
- *     world  people  rigs   fps   verdict    draws  triangles
- *     city     64     12    58.4  PASS         49     79,092
- *     city     64     24    58.6  PASS         56    139,380
- *     city     64     40    49.4  MARGINAL     54    119,178
- *     park     24     12    59.8  PASS         63    175,578
- *     park     24     24    49.4  MARGINAL     64    184,530
- *
- * The city takes 24 and still holds 60, so that is what it gets: at this zoom about
- * that many people are on screen, and the founder looked at both and said the little
- * walking figures read better than capsules even at thirteen pixels tall (2026-09-23).
- * The park cannot afford 24, because in the park far more of the crowd is genuinely
- * in front of you and each one is 331 pixels tall rather than 13.
- *
- * One trap already paid for: a SPARE rig used to cost as much as a used one, because
- * three walks every bone in the scene each frame whether it is visible or not. That is
- * why the park at 24 rigs read 30.1 fps before unused rigs were detached from the
- * scene rather than merely hidden, and 49.4 after.
+ * Where the walking camera stops drawing: just past the end of the mist, so nothing
+ * is clipped while it can still be seen. It was 90, drawing forty-five units of
+ * ground the mist had already painted over.
  */
-const RIGS_CITY = 24;
-const RIGS_PARK = 12;
-const RIGS = Math.max(RIGS_CITY, RIGS_PARK);
+const WALK_FAR = VIEW + 6;
 /**
  * How big a bubble around somebody counts as "on screen".
  *
@@ -719,7 +711,7 @@ function Town({
 }: WorldCanvasProps & { cam: CamState }) {
   const { gl, scene, invalidate, size, set } = useThree();
   const mapCamera = useMemo(() => new THREE.OrthographicCamera(), []);
-  const walkCamera = useMemo(() => new THREE.PerspectiveCamera(WALK_FOV, 1, 0.08, 90), []);
+  const walkCamera = useMemo(() => new THREE.PerspectiveCamera(WALK_FOV, 1, 0.08, WALK_FAR), []);
 
   const mode = useRef<'map' | 'walk' | null>(null);
   /** The last projection each camera was given, so it is rebuilt only when needed. */
@@ -728,6 +720,9 @@ function Town({
   useEffect(() => {
     scene.background = new THREE.Color(colors.bg);
   }, [scene, colors.bg]);
+  // The crowd and the markers send the GPU only the rows they wrote, and Expo's GL
+  // needs this to honour that (gl-subdata.ts). Their first upload is whole anyway.
+  useEffect(() => honourSubDataRanges(gl.getContext()), [gl]);
   useEffect(() => {
     gl.outputColorSpace = THREE.SRGBColorSpace;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -771,18 +766,25 @@ function Town({
   }, [layout, furnitureHolder]);
 
   /**
-   * The rigged people, read off disk after the canvas is already up.
+   * EVERYBODY AS A REAL BODY, drawn by the graphics chip (./crowd-gpu.ts), read off
+   * disk after the canvas is already up.
    *
-   * Until it arrives -- and for ever, if it fails -- everybody is a capsule, which is
-   * the same renderer that shipped before this and is a real fallback rather than a
-   * blank screen. The town must never depend on a 3.5 MB file having loaded.
+   * Until it arrives NOBODY is drawn -- a moment of an empty park -- rather than
+   * capsules that then turn into people one at a time, which is what the founder
+   * watched and asked about (2026-09-28). The capsules come back only if the model
+   * cannot be read at all: the town must never depend on a 3.5 MB file having loaded.
    */
   const crowdHolder = useMemo(() => new THREE.Group(), []);
-  const crowd = useRef<Crowd | null>(null);
-  const crowdList = useMemo<CrowdAgent[]>(() => [], []);
+  const people = useRef<GpuCrowd | null>(null);
+  const [fallback, setFallback] = useState(false);
+  /** This frame's camera and clock for the crowd, rewritten rather than rebuilt. */
+  const crowdFrame = useMemo<CrowdFrame>(() => ({ eyeX: 0, eyeZ: 0, flat: 0, time: 0, dt: 0, scale: PERSON }), []);
   /** What the camera can see, and the people it can see, both reused every frame. */
   const view = useMemo(() => new Viewport(), []);
+  const stepNear = useMemo(() => ({ x: 0, z: 0, r: VIEW }), []);
   const shown = useMemo<SimAgent[]>(() => [], []);
+  /** How many of `shown` have a body this frame: shown[0..bodied). What a tap can hit. */
+  const bodied = useRef(0);
   /**
    * The point on the ground the screen is centred on, which is NOT where the camera
    * is. On the map the camera sits 1,600 units away behind a 6-degree lens, so sorting
@@ -793,18 +795,19 @@ function Town({
   const focus = useMemo(() => new THREE.Vector3(), []);
   useEffect(() => {
     let alive = true;
-    let made: Crowd | null = null;
-    loadCrowd(RIGS)
+    let made: GpuCrowd | null = null;
+    loadGpuCrowd()
       .then((c) => {
         if (!alive) { c.dispose(); return; }
         made = c;
-        crowd.current = c;
+        people.current = c;
         crowdHolder.add(c.group);
       })
       .catch((e: unknown) => {
-        console.warn('[world] no rigged people, falling back to capsules:', e);
+        console.warn('[world] no bodies for the crowd, falling back to capsules:', e);
+        if (alive) setFallback(true);
       });
-    return () => { alive = false; crowd.current = null; crowdHolder.clear(); made?.dispose(); };
+    return () => { alive = false; people.current = null; crowdHolder.clear(); made?.dispose(); };
   }, [crowdHolder]);
   // Null, not false: the first frame has to apply the choice, not skip it as a no-op.
   const inGarden = useRef<boolean | null>(null);
@@ -828,22 +831,22 @@ function Town({
     const ghost = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.5 });
     const mk = (geo: THREE.BufferGeometry, n: number) => {
       const im = new THREE.InstancedMesh(geo, solid, n);
-      im.count = n;
+      im.count = 0;
+      im.visible = false;
       im.frustumCulled = false;
       im.boundingSphere = worldSphere();   // see worldSphere: count now varies
+      im.raycast = () => {};               // a tap on a marker is a tap on its person
       return im;
     };
     return {
-      solid: buildParts(g, solid, slots),
-      ghost: buildParts(g, ghost, slots),
+      capsules: fallback ? { solid: buildParts(g, solid, slots), ghost: buildParts(g, ghost, slots) } : null,
       discs: mk(g.disc, slots),
       dots: mk(g.dot, slots * DOTS_PER),
-      bars: mk(g.bar, slots * BARS_PER),
       rings: mk(g.ring, slots),
       geometries: Object.values(g),
       materials: [solid, ghost],
     };
-  }, [slots]);
+  }, [slots, fallback]);
 
   useEffect(() => () => {
     for (const g of meshes.geometries) g.dispose();
@@ -858,8 +861,6 @@ function Town({
     o.updateMatrix();
     return o.matrix;
   }, []);
-  /** Instance slot → agent ref, for taps. Written in the frame loop, read on click. */
-  const refAt = useRef<string[]>([]);
 
   // Frame-time ring buffer, in refs.
   const samples = useRef<number[]>([]);
@@ -868,6 +869,25 @@ function Town({
   const elapsed = useRef(0);
   const lastReport = useRef(0);
   const drawn = useRef(false);
+  /**
+   * WHERE A FRAME'S TIME GOES, in a debug build while the park's crowd test is on
+   * (slots above SLOTS): JS milliseconds per section, averaged and logged every two
+   * seconds as "[perf] ..." -- readable off a plugged-in phone with
+   * `adb logcat -s ReactNativeJS`. `render` is three issuing the draw calls; the
+   * gap between the sections' sum and the frame is the GPU and the native side.
+   */
+  const prof = useRef({ on: false, n: 0, at: 0, sim: 0, vis: 0, crowd: 0, marks: 0, render: 0, frame: 0 });
+  useEffect(() => {
+    if (!__DEV__) return;
+    const p = prof.current;
+    p.on = slots > SLOTS;
+    const orig = gl.render.bind(gl);
+    gl.render = (sc: THREE.Object3D, cm: THREE.Camera) => {
+      if (!p.on) { orig(sc, cm); return; }
+      const t0 = performance.now(); orig(sc, cm); p.render += performance.now() - t0;
+    };
+    return () => { gl.render = orig; };
+  }, [gl, slots]);
 
   useFrame((_, dt) => {
     if (!drawn.current) { drawn.current = true; onFirstFrame?.(); }
@@ -890,12 +910,18 @@ function Town({
       inGarden.current = walking;
       appliedGarden.current = garden;
       scene.fog = walking
-        ? new THREE.Fog(garden.horizon, 18, 92)
+        ? new THREE.Fog(garden.horizon, MIST_NEAR, VIEW)
         : new THREE.Fog(colors.bg, EYE * 0.82, EYE * 1.42);
       scene.background = new THREE.Color(walking ? garden.horizon : colors.bg);
       onWalking?.(walking);
     }
-    live.step(clamped);
+    const p0 = prof.current.on ? performance.now() : 0;
+    // On foot, the people behind the mist take their steps less often (WorldSim.step).
+    // Last frame's camera is near enough: this one has not been placed yet.
+    stepNear.x = walkCamera.position.x;
+    stepNear.z = walkCamera.position.z;
+    live.step(clamped, walking ? stepNear : undefined);
+    const p1 = prof.current.on ? performance.now() : 0;
     if (walking) garden.tick(t, clamped);
 
     // Your tile, lit once your agent knows which it is.
@@ -952,7 +978,7 @@ function Town({
       // down a street anyway, so the range is the one it actually uses.
       if (want === 'walk') {
         walkCamera.aspect = Math.max(0.1, size.width / Math.max(1, size.height));
-        walkCamera.fov = WALK_FOV; walkCamera.zoom = 1; walkCamera.near = 0.08; walkCamera.far = 90;
+        walkCamera.fov = WALK_FOV; walkCamera.zoom = 1; walkCamera.near = 0.08; walkCamera.far = WALK_FAR;
         walkCamera.updateProjectionMatrix();
       }
       else {
@@ -1009,73 +1035,82 @@ function Town({
     map.water.opacity = 0.72 + 0.16 * breath;
     if (colors.night) map.water.emissiveIntensity = 0.25 + 0.2 * breath;
 
-    const { solid, ghost, discs, dots, bars, rings } = meshes;
-    // ONLY THE PEOPLE ON SCREEN, and only as many slots as they need.
+    const { discs, dots, rings } = meshes;
+    // ONLY THE PEOPLE ON SCREEN -- and in the park, only the ones this side of the mist.
     //
     // The town used to draw sixty-four people every frame whatever was happening --
     // measured identical at forty-eight and at sixty-four, 205,044 triangles both
     // times, of which the city itself was only 41,972. Everyone else was empty slots
-    // and people standing behind the camera. Now the frustum decides, the nearest to
-    // the middle of the screen win when there are more than there are slots, and the
-    // meshes are told how many slots that came to. A park with two hundred people in
-    // it costs whatever the fifteen in front of you cost.
+    // and people standing behind the camera. Now the frustum decides, and walking the
+    // park so does the mist: nobody past VIEW is drawn, because nobody there could be
+    // seen. A park with a thousand people in it costs whatever the few dozen in front
+    // of you cost.
+    const p2 = prof.current.on ? performance.now() : 0;
     view.update(camera);
+    const ex = camera.position.x;
+    const ez = camera.position.z;
+    // The same question of the trees, hedges and flowers (garden-mesh.ts packByCell).
+    if (walking) garden.cull(view, ex, ez);
+    const reach = walking ? VIEW * VIEW : Infinity;
     const used = visible(live.agents(), view, shown, {
       limit: slots,
       radius: SEEN_R,
       fx: focus.x,
       fz: focus.z,
-      keep: (a) => a.state !== 'gone',
+      keep: (a) => a.state !== 'gone' && (a.x - ex) ** 2 + (a.z - ez) ** 2 <= reach,
     });
-    // Solid people first, ghosts after, so the two sets do not each have to span the
-    // whole crowd. `sort` on an array this size is nothing next to what it saves.
-    shown.sort((a, b) => Number(a.ghost) - Number(b.ghost));
-    let solids = 0;
-    while (solids < used && !shown[solids]!.ghost) solids++;
-    refAt.current.length = used;
-    setCounts(meshes, used, solids);
+    // NEAREST FIRST. The crowd gives the nearest the most detail: nearest the camera
+    // on foot, nearest the middle of the screen on the map, where the camera is far
+    // away behind everything and every person is the same size.
+    const onFoot = want === 'walk';
+    const ox = onFoot ? ex : focus.x;
+    const oz = onFoot ? ez : focus.z;
+    shown.sort((a, b) => ((a.x - ox) ** 2 + (a.z - oz) ** 2) - ((b.x - ox) ** 2 + (b.z - oz) ** 2));
 
-    // Real bodies for the nearest handful, capsules for everybody else. Practice
-    // profiles are included and drawn see-through, exactly as their capsules were:
-    // leaving them out meant forty of the forty-one people in the founder's town kept
-    // their capsule and only his own agent ever grew legs.
-    // RIGGED BODIES EVERYWHERE, INCLUDING THE CITY.
-    //
-    // They were park-only for a while, on my reasoning that a person is thirteen
-    // pixels tall on the city map against three hundred and thirty in the park, so a
-    // skeleton there buys nothing you can see. The founder looked at both on the phone
-    // and disagreed: the little walking figures read better than capsules even at that
-    // size (2026-09-23). He is the one holding the phone, and the measurement backs
-    // him -- the city holds 58.4 fps with all twelve, which is the same 16.6 ms frame
-    // as with none of them, because both sit against the 60 fps ceiling. The bone cut
-    // is what made them cheap enough for this to be a free choice.
-    const bodies = crowd.current;
+    const p3 = prof.current.on ? performance.now() : 0;
+    const bodies = people.current;
+    const caps = meshes.capsules;
     if (bodies) {
-      crowdList.length = 0;
-      for (const a of shown) {
-        crowdList.push({
-          ref: a.ref, x: a.x, z: a.z, facing: a.facing, look: a.look, seed: a.seed, ghost: a.ghost,
-          moving: a.state === 'walking' || a.state === 'approaching' || a.state === 'leaving',
-        });
+      crowdFrame.eyeX = ex;
+      crowdFrame.eyeZ = ez;
+      crowdFrame.flat = onFoot ? 0 : mapDistance(cam.pose.zoom, size.height);
+      crowdFrame.time = t;
+      crowdFrame.dt = clamped;
+      crowdFrame.scale = PERSON;
+      bodied.current = bodies.update(shown, used, crowdFrame);
+    } else if (caps) {
+      // THE FALLBACK: the model could not be read, so capsules, as the town was drawn
+      // before it had bodies. Solid people first and ghosts after, so each set of
+      // meshes only has to span its own.
+      shown.sort((a, b) => Number(a.ghost) - Number(b.ghost));
+      let solids = 0;
+      while (solids < used && !shown[solids]!.ghost) solids++;
+      setCounts(caps, used, solids);
+      for (let i = 0; i < used; i++) {
+        const a = shown[i]!;
+        const moving = a.state === 'walking' || a.state === 'approaching' || a.state === 'leaving';
+        const bob = Math.sin(t * (moving ? 9 : 2) + a.seed) * (moving ? 0.06 : 0.03);
+        hideAgent(a.ghost ? caps.solid : caps.ghost, i, hidden);
+        poseAgent(a.ghost ? caps.ghost : caps.solid, i, a, bob, dummy, hidden, col, PERSON);
       }
-      // Walking the park you are among them and every rig earns its keep; on the map
-      // the budget falls with the zoom, because at city scale they are pixels.
-      bodies.pose(crowdList, focus, clamped, PERSON,
-        walking ? RIGS_PARK : rigsFor(cam.pose.zoom, RIGS_CITY));
+      flag(caps.solid); flag(caps.ghost);
+      bodied.current = used;
+    } else {
+      // Still loading: nobody yet, rather than capsules that turn into people.
+      bodied.current = 0;
     }
 
-    for (let i = 0; i < used; i++) {
+    const p4 = prof.current.on ? performance.now() : 0;
+    // WHO THEY ARE TO YOU, drawn for the people it is true of and nobody else: the
+    // markers are packed, so a crowd of strangers writes nothing here at all. Each
+    // mesh draws exactly as many as were written this frame, so nothing is left over
+    // from the last one.
+    const top = 1.55 * PERSON;
+    let nd = 0;
+    let nt = 0;
+    let nr = 0;
+    for (let i = 0; i < bodied.current; i++) {
       const a = shown[i]!;
-      refAt.current[i] = a.ref;
-      const moving = a.state === 'walking' || a.state === 'approaching' || a.state === 'leaving';
-      const bob = Math.sin(t * (moving ? 9 : 2) + a.seed) * (moving ? 0.06 : 0.03);
-      const set = a.ghost ? ghost : solid;
-      hideAgent(a.ghost ? solid : ghost, i, hidden);
-      // The discs, bubbles and rings below still run for everybody: they say who a
-      // person is to you, and that is true whether they have legs this frame or not.
-      if (bodies?.drawn.has(a.ref)) hideAgent(set, i, hidden);
-      else poseAgent(set, i, a, bob, dummy, hidden, col, PERSON);
-
       // Who they are to you: a disc at the feet. You in the accent, people you have
       // met in the secondary grey, strangers nothing. The body no longer says it.
       //
@@ -1090,14 +1125,14 @@ function Town({
         dummy.rotation.set(0, 0, 0);
         dummy.scale.setScalar(PERSON);
         dummy.updateMatrix();
-        discs.setMatrixAt(i, dummy.matrix);
-        discs.setColorAt(i, a.kind === 'you' ? col.you : col.met);
-      } else discs.setMatrixAt(i, hidden);
+        discs.setMatrixAt(nd, dummy.matrix);
+        discs.setColorAt(nd, a.kind === 'you' ? col.you : col.met);
+        nd++;
+      }
 
       // Bubbles. Dots while two agents are together; then one still dot, the same for
       // every pair. It used to be a tick, a cross or a coloured dot -- a verdict on a
       // person, drawn over their head before either human had looked.
-      const top = (1.55 + bob) * PERSON;
       if (a.bubble === 'dots') {
         for (let k = 0; k < DOTS_PER; k++) {
           const phase = Math.sin(t * 6 + k * 1.1);
@@ -1105,22 +1140,18 @@ function Town({
           dummy.rotation.set(0, 0, 0);
           dummy.scale.setScalar((0.8 + 0.2 * Math.max(0, phase)) * PERSON);
           dummy.updateMatrix();
-          dots.setMatrixAt(i * DOTS_PER + k, dummy.matrix);
-          dots.setColorAt(i * DOTS_PER + k, col.prop);
+          dots.setMatrixAt(nt, dummy.matrix);
+          dots.setColorAt(nt, col.prop);
+          nt++;
         }
-        for (let k = 0; k < BARS_PER; k++) bars.setMatrixAt(i * BARS_PER + k, hidden);
       } else if (a.bubble === 'met') {
         dummy.position.set(a.x, top + 0.05 * PERSON, a.z);
         dummy.rotation.set(0, 0, 0);
         dummy.scale.setScalar(1.3 * PERSON);
         dummy.updateMatrix();
-        dots.setMatrixAt(i * DOTS_PER, dummy.matrix);
-        dots.setColorAt(i * DOTS_PER, col.prop);
-        for (let k = 1; k < DOTS_PER; k++) dots.setMatrixAt(i * DOTS_PER + k, hidden);
-        for (let k = 0; k < BARS_PER; k++) bars.setMatrixAt(i * BARS_PER + k, hidden);
-      } else {
-        for (let k = 0; k < DOTS_PER; k++) dots.setMatrixAt(i * DOTS_PER + k, hidden);
-        for (let k = 0; k < BARS_PER; k++) bars.setMatrixAt(i * BARS_PER + k, hidden);
+        dots.setMatrixAt(nt, dummy.matrix);
+        dots.setColorAt(nt, col.prop);
+        nt++;
       }
 
       if (a.ring) {
@@ -1129,17 +1160,26 @@ function Town({
         dummy.rotation.set(-Math.PI / 2, 0, 0);
         dummy.scale.setScalar(pulse);
         dummy.updateMatrix();
-        rings.setMatrixAt(i, dummy.matrix);
-        rings.setColorAt(i, col.accent);
-      } else {
-        rings.setMatrixAt(i, hidden);
+        rings.setMatrixAt(nr, dummy.matrix);
+        rings.setColorAt(nr, col.accent);
+        nr++;
       }
     }
+    discs.count = nd;
+    dots.count = nt;
+    rings.count = nr;
+    upload(discs); upload(dots); upload(rings);
 
-    flag(solid); flag(ghost);
-    for (const m of [discs, dots, bars, rings]) {
-      m.instanceMatrix.needsUpdate = true;
-      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    if (prof.current.on) {
+      const q = prof.current;
+      const p5 = performance.now();
+      q.sim += p1 - p0; q.vis += p3 - p2; q.crowd += p4 - p3; q.marks += p5 - p4; q.frame += clamped * 1000; q.n++;
+      if (t - q.at >= 2 && q.n) {
+        const f = (x: number) => (x / q.n).toFixed(1);
+        const lv = bodies ? `${bodies.stats.near}/${bodies.stats.middle}/${bodies.stats.far}` : '-';
+        console.log(`[perf] frame ${f(q.frame)} ms | sim ${f(q.sim)} | visible ${f(q.vis)} | crowd ${f(q.crowd)} | marks ${f(q.marks)} | render ${f(q.render)} | shown ${used} (${lv}) | calls ${gl.info.render.calls} | tris ${gl.info.render.triangles}`);
+        q.at = t; q.n = 0; q.sim = 0; q.vis = 0; q.crowd = 0; q.marks = 0; q.render = 0; q.frame = 0;
+      }
     }
 
     if (!onStats) return;
@@ -1170,8 +1210,25 @@ function Town({
     }
   });
 
-  const tap = (e: { instanceId?: number; stopPropagation(): void }) => {
-    const ref = e.instanceId === undefined ? undefined : refAt.current[e.instanceId];
+  /**
+   * TAPS ON PEOPLE. The crowd is placed by the graphics chip, so there is no mesh where
+   * anybody stands for three to hit: this object answers the ray itself, with whoever
+   * of this frame's bodies it passes through nearest (pickAlong in ./visible.ts). It is
+   * nearer the camera than the ground under them, so a tap on a person is never also a
+   * tap on the tile.
+   */
+  const picker = useMemo(() => {
+    const o = new THREE.Object3D();
+    o.name = 'people';
+    const at = new THREE.Vector3();
+    o.raycast = (raycaster, hits) => {
+      const i = pickAlong(raycaster.ray, shown, bodied.current, BODY_H, at);
+      if (i >= 0) hits.push({ distance: raycaster.ray.origin.distanceTo(at), point: at.clone(), object: o, instanceId: i });
+    };
+    return o;
+  }, [shown]);
+  const tapPerson = (e: { instanceId?: number; stopPropagation(): void }) => {
+    const ref = e.instanceId === undefined ? undefined : shown[e.instanceId]?.ref;
     if (ref && onTapAgent) { e.stopPropagation(); onTapAgent(ref); }
   };
 
@@ -1189,7 +1246,6 @@ function Town({
     flyToArea(cam, hit.id, hit.id === (sim.get('you')?.area ?? null));
   };
 
-  const rest = (set: PartSet) => set.all.filter((p) => p !== set.body && p !== set.head);
 
   return (
     <>
@@ -1205,27 +1261,12 @@ function Town({
       <primitive object={map.group} onClick={tapTile} />
       <primitive object={garden.group} />
       <primitive object={furnitureHolder} />
-      {/* Rigged bodies are tapped through the group: their capsule is hidden, so the
-          slot-indexed tap map below cannot see them. `e.object` is the body that was
-          actually hit and carries its own ref. */}
-      <primitive
-        object={crowdHolder}
-        onClick={(e: { object?: { userData?: { ref?: string | null } }; stopPropagation(): void }) => {
-          const ref = e.object?.userData?.ref;
-          if (ref && onTapAgent) { e.stopPropagation(); onTapAgent(ref); }
-        }}
-      />
-
-      {/* Taps land on bodies and heads, solid or ghost; the smaller parts pass through. */}
-      <primitive object={meshes.solid.body.mesh} onClick={tap} />
-      <primitive object={meshes.solid.head.mesh} onClick={tap} />
-      <primitive object={meshes.ghost.body.mesh} onClick={tap} />
-      <primitive object={meshes.ghost.head.mesh} onClick={tap} />
-      {rest(meshes.solid).map((p, i) => <primitive key={`s${i}`} object={p.mesh} />)}
-      {rest(meshes.ghost).map((p, i) => <primitive key={`g${i}`} object={p.mesh} />)}
+      <primitive object={crowdHolder} />
+      <primitive object={picker} onClick={tapPerson} />
+      {meshes.capsules?.solid.all.map((p, i) => <primitive key={`s${i}`} object={p.mesh} />)}
+      {meshes.capsules?.ghost.all.map((p, i) => <primitive key={`g${i}`} object={p.mesh} />)}
       <primitive object={meshes.discs} />
       <primitive object={meshes.dots} />
-      <primitive object={meshes.bars} />
       <primitive object={meshes.rings} />
     </>
   );

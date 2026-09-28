@@ -45,6 +45,23 @@ export const WALK_AIM = 1.6;
 export const WALK_EYE = 0.22;
 export const WALK_FOV = 62;
 
+/**
+ * HOW FAR YOU CAN SEE IN THE PARK. The mist starts at MIST_NEAR and is total at VIEW,
+ * and past VIEW nothing is drawn at all -- no person, no tree, no bench -- because
+ * nothing there could be seen.
+ *
+ * WHY A MIST (the founder, 2026-09-28: "what if we put a fog/mist to show only the
+ * viewable people ... render only in view"). Every open-world game hides its draw
+ * distance the same way. The park's haze used to run from 18 to 92 units with the
+ * camera drawing to 90, and with the thousand-person test crowd that was 183 people on
+ * screen at once, most of them specks. What a lens sees grows with the square of how
+ * far it sees, so half the distance is a quarter of the people, trees and benches.
+ * Forty-five units is 365 metres of Cubbon Park -- further than you can pick out a
+ * face in the real one.
+ */
+export const MIST_NEAR = 10;
+export const VIEW = 45;
+
 export interface Follow { eye: [number, number, number]; look: [number, number, number] }
 
 /**
@@ -262,40 +279,22 @@ export function bandOf(zoom: number, cityZoom: number): Band {
   return 'mid';
 }
 
-/** How tall a person is on the ground, in world units: 1.5 x the 0.16 body scale. */
-const PERSON_UNITS = 0.24;
-/** Below this many pixels tall, a rig is indistinguishable from a capsule. */
-const RIG_FLOOR_PX = 4;
-/** ...and by this many it is worth every triangle. */
-const RIG_FULL_PX = 18;
-
 /**
- * How many people are worth drawing as real rigged characters at this zoom.
+ * How far away somebody on the MAP counts as being, for choosing how much of their
+ * body to draw (crowd-gpu.ts LEVELS are distances from the walking camera).
  *
- * A RIG IS NOT FREE AND IT IS NOT SMALL: one draw call and about five thousand
- * triangles each, plus a walk up its whole bone tree every frame, because a person
- * with bones cannot be instanced. Twenty-four of them is a hundred and twenty thousand
- * triangles and twenty-four draw calls -- and on expo-gl a draw call is not a GPU cost
- * at all, it is a pile of commands marshalled across the JS/native bridge. That is why
- * the city view sat at 29 fps with a p95 of 38 ms and 14% of frames janky while
- * `dumpsys gfxinfo` had the UI thread idle at 11 ms: the phone was not drawing, it was
- * talking (Pixel 6a, 2026-09-23 -- 89 draw calls, 242 K triangles).
+ * The map's camera is orthographic: a person is the same size on screen wherever they
+ * stand, `zoom` pixels to a unit. So the question is where the walking camera would
+ * have to stand to see them that big -- its focal length, in pixels, over the zoom.
  *
  * THE MEASURE IS HOW BIG A PERSON IS ON THE SCREEN, not which zoom band we are in.
- * Bands are three steps and the step landed in the wrong place: the default street
- * view sits at zoom 55, which is `mid`, so a banded budget quietly halved the quality
- * of the view people actually use. Pixels are the thing that decides whether a rig can
- * be told from a capsule, so pixels are what this counts. Pulled out to the whole city
- * a person is a pixel and a half and gets nothing.
- *
- * Everyone is still there whatever this returns: the instanced capsules draw all
- * sixty-four in one call, and the discs, rings and bubbles never stopped.
+ * The rig budget this replaces learned that the hard way (2026-09-23): keyed off the
+ * three bands, the default street view at zoom 55 is `mid`, and a banded budget
+ * quietly halved the quality of the view people actually use.
  */
-export function rigsFor(zoom: number, max = 24): number {
-  const px = PERSON_UNITS * zoom;
-  if (px < RIG_FLOOR_PX) return 0;
-  const t = (px - RIG_FLOOR_PX) / (RIG_FULL_PX - RIG_FLOOR_PX);
-  return Math.max(1, Math.min(max, Math.round(max * t)));
+export function mapDistance(zoom: number, screenHeight: number): number {
+  const focal = screenHeight / 2 / Math.tan((WALK_FOV * Math.PI) / 360);
+  return focal / Math.max(1e-3, zoom);
 }
 
 export interface Fly { from: Pose; to: Pose; start: number; secs: number }

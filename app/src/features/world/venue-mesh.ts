@@ -17,7 +17,7 @@
  *
  * NOW: only the nearest pieces get the detailed model, nearest first, while they are
  * inside NEAR and the detailed triangles stay inside the manifest's budget. Everything
- * else out to FAR -- the walking camera's far plane -- is a plain grey stand-in of a
+ * else out to FAR -- where the park's mist is total -- is a plain grey stand-in of a
  * few boxes, the same size and colour as the model, which is all a bench is through
  * the haze. Past FAR, nothing. The choice is redone when the camera has moved RESORT,
  * which at walking pace is about once a second, and costs one sort of 417 numbers.
@@ -28,6 +28,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { VIEW } from './camera';
 import type { Garden } from './garden';
 
 interface Manifest {
@@ -47,14 +48,17 @@ export interface BuiltVenueFurniture {
 
 const SCALE = 0.16;
 /**
- * How close a piece has to be for the detailed model. The haze starts at 18 units
- * (canvas.tsx), so the change from model to stand-in happens where the haze is
+ * How close a piece has to be for the detailed model. The mist starts at MIST_NEAR
+ * (camera.ts, 10 units), so the change from model to stand-in happens where it is
  * already softening both; and at this radius the park's densest stretch still fits
  * the budget, which the nearest-first order enforces anyway.
  */
 export const NEAR = 24;
-/** Past the walking camera's far plane (canvas.tsx: 90) nothing is drawn at all. */
-export const FAR = 90;
+/**
+ * Past the end of the mist nothing is drawn at all (VIEW, camera.ts). It was 90, the
+ * old far plane: 175 lamps and 180 benches drawn where nobody could see them.
+ */
+export const FAR = VIEW;
 /** How far the camera moves before the choice is made again. */
 const RESORT = 1;
 

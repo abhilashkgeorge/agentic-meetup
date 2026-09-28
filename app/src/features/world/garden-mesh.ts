@@ -17,6 +17,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { VIEW } from './camera';
 import { PATH_WIDTH, type Garden } from './garden';
 import type { Pt } from './sim';
 
@@ -35,8 +36,108 @@ export interface BuiltGarden {
   tick(t: number, dt: number): void;
   /** Where the person looking is, so the sky, the leaves and the grass follow them. */
   follow(x: number, y: number, z: number): void;
+  /**
+   * Draw only the trees, hedges and flowers the camera at (x, z) can see this side of
+   * the mist. Call after the camera has been placed for the frame.
+   */
+  cull(view: Sees, x: number, z: number): void;
   stats(): { meshes: number; triangles: number };
   dispose(): void;
+}
+
+/** Can the camera see a ball this big standing here? (Viewport, ./visible.ts.) */
+export interface Sees { sees(x: number, z: number, radius: number): boolean }
+
+/**
+ * Trees, hedges and flowers are filed in squares this many units across, and drawn a
+ * square at a time: small enough that the squares in view are not much more than the
+ * view, big enough that there are a couple of hundred of them to ask about, not
+ * thousands of trees.
+ */
+export const SCENERY_CELL = 12;
+
+/**
+ * ONLY THE TREES YOU CAN SEE (the founder, 2026-09-28: "render only in view ... pubg
+ * doesnt render the entire map").
+ *
+ * WHAT WAS WRONG. Every tree, hedge and flower in Cubbon Park was drawn every frame,
+ * wherever you stood and whichever way you looked: 117,600 triangles of canopy, 50,400
+ * of hedge, 14,000 of trunk and 10,422 of flower, the lot behind you included.
+ * Measured on the Seeker, turning to face the trees took the frame from 407 K to 788 K
+ * triangles and the park from 37 fps to 15.
+ *
+ * WHAT THIS DOES. The instances are sorted into squares once, when the park is built.
+ * Each frame, the squares this side of the mist that the camera can see are copied to
+ * the front of the mesh's own buffer, and it draws that many -- still one draw call,
+ * and only the rows copied are sent to the GPU. When the same squares are in view as
+ * last frame, which is most frames, nothing is copied or sent at all.
+ */
+function packByCell(mesh: THREE.InstancedMesh, cell = SCENERY_CELL) {
+  const n = mesh.count;
+  const src = mesh.instanceMatrix.array as Float32Array;
+  const srcColour = mesh.instanceColor ? (mesh.instanceColor.array as Float32Array) : null;
+  mesh.geometry.computeBoundingSphere();
+  const reachOf = mesh.geometry.boundingSphere!.radius;
+  const m = new THREE.Matrix4();
+  const cellOf = (i: number) => [Math.floor(src[i * 16 + 12]! / cell), Math.floor(src[i * 16 + 14]! / cell)] as const;
+  const keyOf = (i: number) => { const [cx, cz] = cellOf(i); return (cx + 512) * 1024 + (cz + 512); };
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => keyOf(a) - keyOf(b));
+  const matrices = new Float32Array(n * 16);
+  const colours = srcColour ? new Float32Array(n * 3) : null;
+  const cells: { key: number; x: number; z: number; r: number; start: number; count: number }[] = [];
+  order.forEach((i, k) => {
+    matrices.set(src.subarray(i * 16, i * 16 + 16), k * 16);
+    if (colours && srcColour) colours.set(srcColour.subarray(i * 3, i * 3 + 3), k * 3);
+    const key = keyOf(i);
+    let c = cells[cells.length - 1];
+    if (!c || c.key !== key) {
+      const [cx, cz] = cellOf(i);
+      c = { key, x: (cx + 0.5) * cell, z: (cz + 0.5) * cell, r: 0, start: k, count: 0 };
+      cells.push(c);
+    }
+    c.count++;
+    // How far this one reaches from the middle of its square, height included: the
+    // square's ball has to hold every leaf of every tree filed in it.
+    m.fromArray(src, i * 16);
+    const x = src[i * 16 + 12]!, y = src[i * 16 + 13]!, z = src[i * 16 + 14]!;
+    c.r = Math.max(c.r, Math.hypot(x - c.x, z - c.z) + reachOf * m.getMaxScaleOnAxis() + Math.abs(y));
+  });
+  const kept: number[] = [];
+  let keptN = -1;
+  return {
+    cull(view: Sees, x: number, z: number, see: number) {
+      let k = 0;
+      let same = true;
+      for (let c = 0; c < cells.length; c++) {
+        const cl = cells[c]!;
+        if (Math.hypot(cl.x - x, cl.z - z) - cl.r > see) continue;
+        if (!view.sees(cl.x, cl.z, cl.r)) continue;
+        if (kept[k] !== c) { same = false; kept[k] = c; }
+        k++;
+      }
+      if (same && k === keptN) return;
+      keptN = k;
+      const dst = mesh.instanceMatrix.array as Float32Array;
+      const dstColour = mesh.instanceColor ? (mesh.instanceColor.array as Float32Array) : null;
+      let at = 0;
+      for (let j = 0; j < k; j++) {
+        const cl = cells[kept[j]!]!;
+        dst.set(matrices.subarray(cl.start * 16, (cl.start + cl.count) * 16), at * 16);
+        if (colours && dstColour) dstColour.set(colours.subarray(cl.start * 3, (cl.start + cl.count) * 3), at * 3);
+        at += cl.count;
+      }
+      mesh.count = at;
+      mesh.visible = at > 0;
+      if (!at) return;
+      mesh.instanceMatrix.clearUpdateRanges();
+      mesh.instanceMatrix.addUpdateRange(0, at * 16);
+      mesh.instanceMatrix.needsUpdate = true;
+      if (!mesh.instanceColor) return;
+      mesh.instanceColor.clearUpdateRanges();
+      mesh.instanceColor.addUpdateRange(0, at * 3);
+      mesh.instanceColor.needsUpdate = true;
+    },
+  };
 }
 
 export interface GardenMeshOptions {
@@ -348,6 +449,8 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
   group.visible = false;
   const meshes: THREE.Mesh[] = [];
   const junk: { dispose(): void }[] = [];
+  /** Trees, hedges and flowers: drawn a square at a time, only the squares in view. */
+  const scenery: ReturnType<typeof packByCell>[] = [];
   const dummy = new THREE.Object3D();
   const horizon = new THREE.Color(P.skyLow);
 
@@ -447,7 +550,11 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
   });
   for (const m of [trunks, canopy]) {
     m.name = m === trunks ? 'trunks' : 'canopies'; m.frustumCulled = false; m.raycast = () => {};
+    // A count that changes every time the view does: pinned, so three never freezes
+    // one around whatever was drawn first (see worldSphere in canvas.tsx).
+    m.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
     group.add(m); meshes.push(m); junk.push(m.geometry, m.material as THREE.Material);
+    scenery.push(packByCell(m));
   }
 
   // Grass.
@@ -594,7 +701,9 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
       bushMesh.setColorAt(i, shade.set(P.bush).multiplyScalar(0.84 + ((i * 13) % 11) / 30));
     });
     bushMesh.name = 'bushes'; bushMesh.frustumCulled = false; bushMesh.raycast = () => {};
+    bushMesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
     group.add(bushMesh); meshes.push(bushMesh); junk.push(bushMesh.geometry, bushMesh.material as THREE.Material);
+    scenery.push(packByCell(bushMesh));
   }
 
   // Flowers, in beds. Normals up, like the grass, for the same reason.
@@ -609,7 +718,9 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
       bloom.setColorAt(i, shade.set(BLOOMS[Math.floor(f.tint * BLOOMS.length) % BLOOMS.length]!));
     });
     bloom.name = 'flowers'; bloom.frustumCulled = false; bloom.raycast = () => {};
+    bloom.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
     group.add(bloom); meshes.push(bloom); junk.push(bloom.geometry, bloom.material as THREE.Material);
+    scenery.push(packByCell(bloom));
   }
 
   // Lanterns and rocks, merged into one piece of stone.
@@ -789,8 +900,12 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
     }
   };
 
+  const cull = (view: Sees, x: number, z: number) => {
+    for (const s of scenery) s.cull(view, x, z, VIEW);
+  };
+
   return {
-    group, horizon, tick, follow,
+    group, horizon, tick, follow, cull,
     stats: () => ({
       meshes: meshes.filter((m) => m.visible).length,
       triangles: Math.round(meshes.filter((m) => m.visible).reduce((s, m) => s + tris(m), 0)),

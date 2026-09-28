@@ -15,8 +15,9 @@
  * terms this is the "assert the source shape" case, with comments stripped so the prose
  * above cannot satisfy it.
  *
- * Negative control, run by hand and recorded in the commit: put the condition back to
- * `a.kind === 'you' || a.kind === 'met'` -> both assertions fail.
+ * Negative controls, run by hand and recorded in the commit: put the condition back to
+ * `a.kind === 'you' || a.kind === 'met'` -> both assertions fail; set `discs.count`
+ * to `used` (2026-09-28, the markers packed) -> "leaves no disc behind" fails.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -41,10 +42,14 @@ describe('the disc under your feet', () => {
     expect(line).not.toMatch(/'met' && /);
   });
 
-  it('hides the instance rather than leaving the last frame behind', () => {
-    // An InstancedMesh keeps whatever matrix it was last given, so the branch that
-    // skips a disc has to write the hidden matrix or your disc stays where you left it.
+  it('leaves no disc behind from the last frame', () => {
+    // An InstancedMesh draws its first `count` instances with whatever matrices they
+    // last held. The discs are packed -- written only for the people who wear one --
+    // so the count has to be exactly how many were written THIS frame, or the disc you
+    // had on the map stays standing where you left it when you start walking.
     const after = code.slice(code.indexOf('const wearsDisc'));
-    expect(after.slice(0, 600)).toMatch(/else discs\.setMatrixAt\(i, hidden\)/);
+    expect(after.slice(0, 600)).toMatch(/discs\.setMatrixAt\(nd, dummy\.matrix\)/);
+    expect(code).toMatch(/discs\.count = nd;/);
+    expect(code).not.toMatch(/discs\.count = (used|slots)/);
   });
 });

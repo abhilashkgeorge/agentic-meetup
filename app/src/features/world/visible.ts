@@ -100,3 +100,31 @@ export function visible<T extends Placed>(
   }
   return out.length;
 }
+
+const ball = new THREE.Sphere();
+const crossing = new THREE.Vector3();
+
+/**
+ * Who a tap lands on: the nearest of the first `count` people whose body the ray goes
+ * through, or -1 for nobody. `hit` is set to where it went in.
+ *
+ * WHY A RAY AND NOT A MESH. The crowd is placed by the graphics chip (crowd-gpu.ts):
+ * there is no mesh standing where anybody stands for three's own raycast to find, so
+ * the question is asked of the people themselves. A body is a ball round somebody's
+ * middle, a little wider than they are -- a fingertip is wider than a person seen
+ * across a park.
+ */
+export function pickAlong(ray: THREE.Ray, people: readonly Placed[], count: number, height: number, hit: THREE.Vector3): number {
+  let best = -1;
+  let bestD = Infinity;
+  const n = Math.min(count, people.length);
+  for (let i = 0; i < n; i++) {
+    const p = people[i]!;
+    ball.center.set(p.x, height / 2, p.z);
+    ball.radius = height * 0.6;
+    if (!ray.intersectSphere(ball, crossing)) continue;
+    const d = crossing.distanceToSquared(ray.origin);
+    if (d < bestD) { bestD = d; best = i; hit.copy(crossing); }
+  }
+  return best;
+}

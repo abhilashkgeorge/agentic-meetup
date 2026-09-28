@@ -82,7 +82,7 @@ describe('the Home, with the test on', () => {
     expect(code('features/world/world-screen.tsx')).toContain('slots={crowd ? crowd + 64 : undefined}');
     const canvas = code('features/world/canvas.tsx');
     expect(canvas).toContain('limit: slots,');
-    expect(canvas).toContain('}, [slots]);');
+    expect(canvas).toContain('}, [slots, fallback]);');
   });
 
   it('offers the chip only in a development build', () => {

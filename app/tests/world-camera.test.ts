@@ -6,13 +6,12 @@
  * component (drop the foreshortening) -> the vertical drag and the pinch tests fail;
  * drop the zoomMax clamp in pinch -> the clamp test fails.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import * as THREE from 'three';
 import {
   CITY_ELEVATION, ISO_VERTICAL, STREET_ELEVATION, WALK_AIM, WALK_BACK, WALK_RISE, ZOOM_MAX,
   bandOf, cityPose, clampTarget, driveVector, elevationFor, eyeOffset, flyAt, followPose,
-  fromScreen, orthographicBounds, pan, pinch, tileZoom, toScreen, turnToward, verticalOf, rigsFor, type Pose } from '../src/features/world/camera';
+  fromScreen, mapDistance, orthographicBounds, pan, pinch, tileZoom, toScreen, turnToward, verticalOf, WALK_FOV, type Pose } from '../src/features/world/camera';
 import { MAP } from '../src/features/world/map';
 
 const size = { width: 390, height: 800 };
@@ -194,67 +193,58 @@ describe('the isometric map', () => {
 });
 
 /**
- * The rig budget falls with the zoom.
+ * How much of somebody's body the map draws, from how big they are on the screen.
  *
- * THE BUG THIS EXISTS FOR. A rigged character is one draw call and about five thousand
- * triangles, and three walks its whole bone tree every frame; twenty-four of them ran
- * at every zoom, including the one where a person is a pixel and a half tall. On
- * expo-gl a draw call is not a GPU cost -- it is a pile of commands marshalled across
- * the JS/native bridge -- so the city view sat at 29 fps with a p95 of 38 ms and 14%
- * janky frames while `dumpsys gfxinfo` had the UI thread idle at 11 ms. Measured on
- * the Pixel 6a, 2026-09-23: 89 draw calls, 242 K triangles.
+ * THE BUG THIS REPLACES. Twelve to twenty-four people used to get a rigged body and
+ * everybody else a capsule, with the rig budget falling with the zoom. Now everybody
+ * has a body (crowd-gpu.ts) at one of three levels of detail chosen by distance from
+ * the walking camera, and the map's camera -- which does not shrink anything with
+ * distance -- says how far away a person of that size on screen would be.
  *
- * AND WHY PIXELS, NOT BANDS. The first fix keyed off the three zoom bands and the step
- * landed badly: the default street view is zoom 55, which is `mid`, so it silently
- * dropped from 24 rigs to 8 -- a quality cut nobody asked for, in the one view people
- * actually use. What decides whether a rig can be told from a capsule is how many
- * pixels tall it is, so that is what the budget counts.
+ * AND WHY PIXELS, NOT BANDS, still. Keyed off the three zoom bands, the default street
+ * view at zoom 55 is `mid` and a banded choice quietly cut its quality (2026-09-23).
  *
- * Negative controls, run by hand and recorded in the commit:
- *   - `return max` always -> the city test fails.
- *   - drop the RIG_FLOOR_PX guard -> the city test fails, at 1 rig instead of 0.
+ * Negative control, run 2026-09-28 and restored byte-identical: return the focal
+ * length without dividing by the zoom -> every test here fails.
  */
-describe('how many people get bones', () => {
-  /** Zoom such that a person is this many pixels tall. */
-  const atPx = (px: number) => px / 0.24;
+describe('how much of a body the map draws', () => {
+  /** Zoom such that a person 0.215 units tall is this many pixels tall. */
+  const atPx = (px: number) => px / 0.215;
+  let levels: readonly { until: number }[];
+  beforeAll(async () => { levels = (await import('../src/features/world/crowd-gpu')).LEVELS; });
+  const levelAt = (zoom: number) => levels.findIndex((l) => mapDistance(zoom, size.height) <= l.until);
 
-  it('draws none of them from the whole city', () => {
-    // Pulled right out a person is about a pixel and a half. There is no face to see.
-    expect(rigsFor(atPx(1.5), 24)).toBe(0);
-    expect(rigsFor(atPx(3.9), 24)).toBe(0);
+  it('draws the lightest body from the whole city, where a person is a pixel or two', () => {
+    expect(levelAt(atPx(1.5))).toBe(2);
+    expect(levelAt(atPx(4))).toBe(2);
   });
 
-  it('keeps the street view people actually use at nearly full quality', () => {
-    // ZOOM_START is 55, which is 13 px a person. The banded version gave this 8.
-    expect(rigsFor(55, 24)).toBeGreaterThanOrEqual(14);
+  it('keeps the street view people actually use above the lightest', () => {
+    // ZOOM_START is 55: about twelve pixels a person.
+    expect(levelAt(55)).toBe(1);
   });
 
-  it('spends everything once a person is worth looking at', () => {
-    expect(rigsFor(atPx(20), 24)).toBe(24);
-    expect(rigsFor(atPx(40), 24)).toBe(24);
+  it('draws the full body once a person is big enough to see it', () => {
+    expect(levelAt(ZOOM_MAX)).toBe(0);
   });
 
-  it('never goes down as you zoom in', () => {
-    let last = -1;
-    for (let z = 1; z <= 340; z += 1) {
-      const n = rigsFor(z, 24);
-      expect(n, `rigs dropped at zoom ${z}`).toBeGreaterThanOrEqual(last);
-      last = n;
+  it('never draws less as you zoom in', () => {
+    let last = Infinity;
+    for (let z = 1; z <= ZOOM_MAX; z += 1) {
+      const d = mapDistance(z, size.height);
+      expect(d, `further away at zoom ${z}`).toBeLessThanOrEqual(last);
+      last = d;
     }
   });
 
-  it('never asks for more rigs than the pool holds', () => {
-    // canvas.tsx allocates the pool once; asking for more would draw fewer and make
-    // the budget a lie.
-    for (let z = 1; z <= 340; z += 7) expect(rigsFor(z, 24)).toBeLessThanOrEqual(24);
-  });
-
-  it('keeps everyone visible regardless: the capsules are not its business', () => {
-    // A guard against "fixing" this by culling people. The instanced capsules draw all
-    // sixty-four in one call whatever the rig budget is, so nobody disappears.
-    const code = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(code).toMatch(/rigsFor\(cam\.pose\.zoom, RIGS_CITY\)/);
-    expect(code).not.toMatch(/crowdList\.slice/);
+  it('is the walking camera seeing the same size', () => {
+    // A person `zoom` pixels to the unit on the map is exactly as tall on screen as
+    // the same person mapDistance() away from the walking lens.
+    const walk = new THREE.PerspectiveCamera(WALK_FOV, size.width / size.height, 0.08, 90);
+    walk.position.set(0, 0, 0); walk.lookAt(0, 0, -1); walk.updateMatrixWorld();
+    const d = mapDistance(55, size.height);
+    const top = new THREE.Vector3(0, 0.5, -d).project(walk).y;
+    const foot = new THREE.Vector3(0, -0.5, -d).project(walk).y;
+    expect(((top - foot) / 2) * size.height).toBeCloseTo(55, 6);
   });
 });

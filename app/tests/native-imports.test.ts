@@ -69,6 +69,7 @@ const LAZY_ONLY = [
   'features/world/garden-mesh.ts',
   'features/world/character-mesh.ts',
   'features/world/venue-mesh.ts',
+  'features/world/crowd-gpu.ts',
 ];
 
 function sources(dir: string): string[] {

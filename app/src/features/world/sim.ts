@@ -286,6 +286,8 @@ const PARTING_SECS = 3;
  * so the square keeps its own clock for the moment itself.
  */
 const TOGETHER_SECS = 2;
+/** Out of sight, a walker takes one step in this many frames (WorldSim.step). */
+export const FAR_EVERY = 4;
 /** The two agents of a meeting, in either order. */
 const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
 /**
@@ -316,6 +318,14 @@ export class WorldSim {
   private readonly byRef = new Map<string, SimAgent>();
   /** Insertion order, kept stable so an instance slot means the same agent all frame. */
   private readonly order: string[] = [];
+  /**
+   * Everybody, in that order, as one array reused until somebody arrives or leaves.
+   * Building it fresh on every call was a thousand-element array twice a frame with
+   * the park's test crowd, for the collector to clear up.
+   */
+  private list: SimAgent[] | null = null;
+  /** Which of FAR_EVERY frames the far-away walkers take their step on. */
+  private beat = 0;
   /** Visits a visitor has been asked to make while already on one, in order. */
   private readonly visits = new Map<string, string[]>();
   /**
@@ -376,12 +386,15 @@ export class WorldSim {
   }
 
   agents(): readonly SimAgent[] {
-    const out: SimAgent[] = [];
-    for (const ref of this.order) {
-      const a = this.byRef.get(ref);
-      if (a) out.push(a);
+    if (!this.list) {
+      const out: SimAgent[] = [];
+      for (const ref of this.order) {
+        const a = this.byRef.get(ref);
+        if (a) out.push(a);
+      }
+      this.list = out;
     }
-    return out;
+    return this.list;
   }
 
   get(ref: string): SimAgent | undefined {
@@ -423,6 +436,7 @@ export class WorldSim {
         driveX: 0, driveZ: 0, partner: null, bubble: null, ring: false,
       });
       this.order.push(ref);
+      this.list = null;
     }
   }
 
@@ -432,6 +446,7 @@ export class WorldSim {
     for (const k of [...this.metPairs]) if (k.split('|').includes(ref)) this.metPairs.delete(k);
     const i = this.order.indexOf(ref);
     if (i >= 0) this.order.splice(i, 1);
+    this.list = null;
   }
 
   /**
@@ -547,8 +562,28 @@ export class WorldSim {
     a.state = 'leaving'; a.bubble = null; a.ring = false; a.partner = null;
   }
 
-  step(dt: number): void {
-    for (const a of this.agents()) this.stepOne(a, dt);
+  /**
+   * Move everybody on by `dt` seconds.
+   *
+   * `near` is the camera and how far it can see. Somebody further away than that --
+   * behind the park's mist, where nobody can see them -- takes one step in FAR_EVERY
+   * frames, a step FAR_EVERY frames long: the same walk, a quarter of the work. With
+   * the park's thousand-person test crowd the sim was 7.5 ms of a 35 ms frame on the
+   * Seeker (debug build, 2026-09-28), nearly all of it people nobody could see. Anyone
+   * being driven by a thumb is always stepped every frame.
+   */
+  step(dt: number, near?: { x: number; z: number; r: number }): void {
+    const all = this.agents();
+    this.beat = (this.beat + 1) % FAR_EVERY;
+    const r2 = near ? near.r * near.r : Infinity;
+    for (let i = 0; i < all.length; i++) {
+      const a = all[i]!;
+      if (near && a.driveX === 0 && a.driveZ === 0 && (a.x - near.x) ** 2 + (a.z - near.z) ** 2 > r2) {
+        if (i % FAR_EVERY === this.beat) this.stepOne(a, dt * FAR_EVERY);
+        continue;
+      }
+      this.stepOne(a, dt);
+    }
     if (this.autoplay) this.stepAutoplay(dt);
   }
 
@@ -807,6 +842,7 @@ export class WorldSim {
     for (const ref of this.order) if (isCrowd(ref)) { this.byRef.delete(ref); this.visits.delete(ref); }
     this.order.length = 0;
     this.order.push(...keep);
+    this.list = null;
   }
 
   // ── Bench ────────────────────────────────────────────────────────────────

@@ -47,7 +47,7 @@ export interface Manifest {
  * proportions -- street widths, building heights, how a person reads against a door --
  * were tuned against the old height and are not worth re-tuning for a new mesh.
  */
-const MODEL_SCALE = 0.72;
+export const MODEL_SCALE = 0.72;
 
 /** How long a walk takes to become a stand, and the other way about. */
 const BLEND = 0.22;
@@ -122,7 +122,7 @@ const signature = (look: Look) =>
  * to get a local file and expo-file-system to read it. `fetch` on the resulting file://
  * URI is not reliable on Android, which is why this does not use it.
  */
-async function readModel(): Promise<ArrayBuffer> {
+export async function readModel(): Promise<ArrayBuffer> {
   const { Asset } = await import('expo-asset');
   const asset = Asset.fromModule(require('../../../assets/characters/people.glb') as number);
   await asset.downloadAsync();
@@ -141,7 +141,7 @@ async function readModel(): Promise<ArrayBuffer> {
  * take a shade off the outfit wheel (see `partsOf`); glasses and earrings do not,
  * because tinted spectacles and a matching earring look like a costume.
  */
-const EXTRA_OWN_COLOUR: Record<Exclude<Extra, 'none'>, string> = {
+export const EXTRA_OWN_COLOUR: Record<Exclude<Extra, 'none'>, string> = {
   glasses: '#2f333a',
   cap: '#ffffff',
   earrings: '#d9a441',
@@ -188,7 +188,7 @@ const HEAD = {
   throatY: -0.022,
 };
 
-function buildExtras(): Record<Exclude<Extra, 'none'>, THREE.BufferGeometry> {
+export function buildExtras(): Record<Exclude<Extra, 'none'>, THREE.BufferGeometry> {
   const at = (g: THREE.BufferGeometry, x: number, y: number, z: number) => { g.translate(x, y, z); return g; };
   const proud = HEAD.faceZ + 0.019;     // clear of the skin, not floating off it
   const lens = () => new THREE.TorusGeometry(0.034, 0.007, 6, 12);

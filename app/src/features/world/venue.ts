@@ -53,10 +53,10 @@ export const VENUES = [CUBBON_PARK] as const;
  * building it: somewhere to meet real people rather than agents).
  *
  * Thirty-two is still sparse by any real measure -- Cubbon Park has thousands in it on
- * a Sunday -- and it is what the frame budget allows: only RIGS_PARK of them get a
- * rigged body, the rest are capsules, and the frustum culling means the ones behind
- * you cost nothing. Measured after the change rather than assumed; see the park's
- * entry in the notes.
+ * a Sunday. It was what the frame budget allowed while only twelve of them could have
+ * a rigged body; since every body is drawn by the graphics chip (crowd-gpu.ts) the
+ * test crowd of a thousand is the measure of what the park can hold, and this number
+ * is the founder's to raise.
  */
 export const MAX_VENUE_AGENTS = 32;
 
