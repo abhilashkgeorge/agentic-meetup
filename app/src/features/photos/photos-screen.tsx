@@ -130,9 +130,9 @@ export default function PhotosScreen() {
       <Header title="Your photos" onBack={() => router.back()} />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
-        <Card label="Only people you have both said yes to">
+        <Card label="Only people you share your profile with">
           <Text style={[type.body, { color: p.text }]}>
-            Your first photo is the one they see when they decide whether to meet you.
+            Your first photo is the one they see once you share your profile with them.
           </Text>
           <Text style={[type.callout, { color: p.textSecondary }]}>
             Your agent never sees these and never matches on them. Where a photo was

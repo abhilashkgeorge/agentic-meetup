@@ -42,9 +42,9 @@ person ever reads are the **date idea**, and code checks those.
 - **What Arjun reads on his card** (when it is his turn): "DATE IDEA", "SOMETHING YOU SHARE",
   and "Read what your agents said", which opens the lines as "Your agent" and "Their agent".
   Every answer line is Meera's or Arjun's own sentence, word for word
-  ([app/src/features/matches/matches-screen.tsx:57] `{ color: p.textSecondary }]}>DATE IDEA</Text>`,
-  [app/src/features/matches/matches-screen.tsx:66] `SOMETHING YOU SHARE</Text>`,
-  [app/src/features/matches/matches-screen.tsx:78] `open ? 'Hide the chat' : 'Read what your agents said'`,
+  ([app/src/features/matches/matches-screen.tsx:58] `{ color: p.textSecondary }]}>DATE IDEA</Text>`,
+  [app/src/features/matches/matches-screen.tsx:67] `SOMETHING YOU SHARE</Text>`,
+  [app/src/features/matches/matches-screen.tsx:79] `open ? 'Hide the chat' : 'Read what your agents said'`,
   [app/src/features/matches/exchange.ts:153] `speaker: l.who === 'you' ? 'Your agent' : 'Their agent',`).
 - **Meera reads the same talk** with the sides swapped, on her own card
   ([server/src/matching/talk.ts:286] `const who = (by: 'a' | 'b'): TalkLine['who'] => (by === reader ? 'you' : 'them');`).
@@ -112,7 +112,7 @@ shareable sentences change ({AI:sheet};
 Only fact ids are stored. When there is no talk, the card shows "WHAT YOUR AGENTS ASKED EACH
 OTHER": questions both answered, then only theirs, then up to two the reader answered and
 they did not ([server/src/matching/answer-sheet.ts:346] `const answered = [...both, ...onlyTheirs].slice(0, LINES);`,
-[app/src/features/matches/matches-screen.tsx:354] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
+[app/src/features/matches/matches-screen.tsx:372] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
 
 ### 7.5 What is saved, and what people can read
 
@@ -122,7 +122,7 @@ they did not ([server/src/matching/answer-sheet.ts:346] `const answered = [...bo
   ([server/src/matching/brief.ts:619] `v: 2, shared: made.shared, work: made.work, quotes: made.quotes`,
   [server/src/matching/rendezvous.ts:625] `INSERT INTO rendezvous_runs`).
 - **Readable:** each person reads only their own card, and only on their turn (stage 9)
-  ([server/src/api/dating.ts:613] `const myTurn = r.first_mover === ctx.userId || r.other_decided === true;`).
+  ([server/src/api/dating.ts:623] `const myTurn = r.first_mover === ctx.userId || r.other_decided === true;`).
   Nobody can read transcripts, scores or want statuses in the app
   ([server/migrations/0028_matchmaker.sql:73] `REVOKE ALL ON rendezvous_runs FROM clone_app;`).
 

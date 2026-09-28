@@ -88,15 +88,16 @@ export function notify(userId: string, event: ServerEvent): boolean {
 }
 
 /** Whether a seat in the square is talking, waiting, and so on. See api/world.ts. */
-export type SeatState = 'talking' | 'briefed' | 'waiting' | 'introduced' | 'passed';
+export type SeatState = 'talking' | 'briefed' | 'shared' | 'waiting' | 'introduced' | 'passed';
 
 /**
  * A met agent's state, from the viewer's own row and the two one-bit functions.
  *
- * `passed` is ONLY the viewer's own no. The other person's no also lapses the row,
- * and it must read as `waiting` -- the same as "has not looked yet" -- because the
- * reveal promises "Either way, they are never told what you chose." The status
- * alone cannot be trusted for this; the viewer's own answer can.
+ * `passed` is ONLY the viewer's own no. `shared` is the viewer's own yes: they shared
+ * their profile, and the next move is the other person's. `waiting` is "not your turn
+ * yet": the other person decides first. The other person's no also lapses the row and
+ * must never read as a no here; the status alone cannot be trusted for this, the
+ * viewer's own answer can.
  */
 export function seatState(seat: {
   status: string;
@@ -107,7 +108,7 @@ export function seatState(seat: {
   if (seat.humanSaysYes === false) return 'passed';
   if (seat.status === 'introduced') return 'introduced';
   if (seat.status === 'running') return 'talking';
-  if (seat.humanSaysYes === true) return 'waiting';
+  if (seat.humanSaysYes === true) return 'shared';
   const myTurn = seat.firstMover === viewerId || seat.otherSaidYes === true;
   return myTurn ? 'briefed' : 'waiting';
 }

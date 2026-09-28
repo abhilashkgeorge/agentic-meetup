@@ -168,15 +168,15 @@ export default function ProfileScreen() {
               somebody stops at three. */}
           <Text style={[type.callout, { color: p.textTertiary }]}>
             {pics.photos.length
-              ? `Shown only after you have both said yes. Never used to match you. ${
+              ? `Shown only to people you share your profile with. Never used to match you. ${
                   pics.photos.length < PHOTO_SLOTS ? `Room for ${PHOTO_SLOTS} in all.` : ''
                 }`.trim()
-              : `Add one — it is what somebody sees when they decide whether to meet you. Room for ${PHOTO_SLOTS}.`}
+              : `Add one — it is what somebody sees once you share your profile with them. Room for ${PHOTO_SLOTS}.`}
           </Text>
         </Card>
 
         {/* The character: you in the square, and what people see of you on a card
-            until you have both said yes. Photos are what they see after. */}
+            until you share your profile with them. Photos are what they see after. */}
         <Card label="Your character">
           <Pressable onPress={() => router.push('/character')} accessibilityRole="button"
                      accessibilityLabel="Your character"

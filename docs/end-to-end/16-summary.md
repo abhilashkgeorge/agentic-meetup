@@ -29,16 +29,15 @@
 10. **The card.** Code writes a card for each person from real sentences: headline, what you share, their words, what
     the agents said, your wants checked, and a question to ask them. There is no score and no model-written text,
     except the date idea.
-11. **Deciding.** Whoever has more open cards decides first and sees the other's profile and photos. There is no
-    separate "share my profile?" question: the other person's profile is shown by this rule. If the first person
-    says yes, the second gets their turn. Each turn lasts 3 days. A no is never announced. A card nobody answers
-    expires.
+11. **Deciding.** Nobody's photos or name reach anyone until that person says yes to them. Whoever has more open
+    cards decides first, on the words and the other's character alone, with "Yes, share my profile with them". Then
+    the other person sees that profile and answers "Yes, share mine back" or "Not for me". The server takes answers
+    only in that order. Each turn lasts 3 days. A no is never announced. A card nobody answers expires.
 12. **After both say yes.** Chat opens between the two people. Either can send the agents' date idea as a message,
     once. If nobody writes for 2 days, each gets one gentle nudge. After 3 days, each is asked privately whether they
     met, how it went, and whether they felt safe. Block and report are on every card and chat. A reviewer can ban a
     person's number and phone.
 13. **Numbers.** The founder's page counts real people and how far their matches get. Another list shows which wants
     no question covers yet, as topic words, so the founder knows which questions to add.
-14. **Biggest risks today.** Photos and profiles reach the first person to decide before the other has said
-    anything. Some private details can leak through reveal tags, want answers and timing. The development server's
-    log holds phone numbers and sign-in codes.
+14. **Biggest risks today.** Some private details can leak through reveal tags, want answers, the first name
+    (taken from chat) and timing. The development server's log holds phone numbers and sign-in codes.

@@ -39,7 +39,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Your photos are shown only to someone you have both said yes to. Where a photo was taken is removed before it is stored."
+          "photosPermission": "Your photos are shown only to people you share your profile with. Where a photo was taken is removed before it is stored."
         }
       ],
       [

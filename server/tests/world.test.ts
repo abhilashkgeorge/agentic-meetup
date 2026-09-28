@@ -5,8 +5,9 @@
  * this person has NOT been paired with. Everything the product promises about
  * strangers -- no name, no age, no tags, no id, no location, "only things marked
  * public ever leave your account" -- has to hold on a list, not only on a card. And a
- * met person's name may appear only where the reveal would already show it: to the
- * first mover, or once the other side has said yes.
+ * met person's name may appear only where the reveal would already show it: once THAT
+ * person has said yes to this one (consent first, 2026-09-28). Being first mover opens
+ * nothing.
  *
  * Fixtures go in through the owner connection; the endpoint is hit through its real
  * route with a real token, so every role and policy in its path is the one in
@@ -112,8 +113,8 @@ const fetchWorld = async (token: string) => {
 // One scene, built once: the assertions read it from several angles.
 const tag = `wd-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 let me: P, other: P, stranger: P, practice: P, blocked: P, wrongGender: P;
-let iMoveFirst: P, theyMoveFirstUndecided: P, theyMoveFirstSaidYes: P, iSaidNo: P, talkingNow: P;
-let seatMine: string, seatTheirs: string, seatOpen: string, seatLive: string;
+let iMoveFirst: P, theyMoveFirstUndecided: P, theyMoveFirstSaidYes: P, iSaidNo: P, talkingNow: P, iShared: P;
+let seatMine: string, seatTheirs: string, seatOpen: string, seatLive: string, seatShared: string;
 
 beforeAll(async () => {
   me = await person('Me', { gender: 'man', seeking_gender: ['woman'], intent: [tag] });
@@ -132,6 +133,9 @@ beforeAll(async () => {
   seatTheirs = await seat(me, theyMoveFirstUndecided, { firstMover: theyMoveFirstUndecided });
   seatOpen = await seat(me, theyMoveFirstSaidYes, { firstMover: theyMoveFirstSaidYes, bYes: true });
   await seat(me, iSaidNo, { firstMover: me, aYes: false, status: 'lapsed' });
+  // Isha: I moved first and shared my profile; her turn now, and nothing of hers is mine.
+  iShared = await person('Isha', { intent: [tag] });
+  seatShared = await seat(me, iShared, { firstMover: me, aYes: true });
   // Kavya: the agents are talking RIGHT NOW. A running row has no brief on either
   // side and no first mover yet -- exactly the shape the round leaves while it runs.
   talkingNow = await person('Kavya', { intent: [tag] });
@@ -193,7 +197,7 @@ describe('people this person has met', () => {
   it('carry a name ONLY where the reveal would show it', async () => {
     const w = await fetchWorld(me.token);
     const byId = new Map(w.agents.filter((a) => a.kind === 'met').map((a) => [a.rendezvousId, a]));
-    expect(byId.get(seatMine)?.name, 'first mover sees the name').toBe('Ananya');
+    expect(byId.get(seatMine)?.name, 'the first mover saw a name nobody had shared').toBeUndefined();
     expect(byId.get(seatOpen)?.name, 'second mover sees it once the first said yes').toBe('Meera');
     expect(byId.get(seatTheirs)?.name, 'second mover sees NOTHING until then').toBeUndefined();
   });
@@ -206,6 +210,9 @@ describe('people this person has met', () => {
     expect(byId.get(seatTheirs)?.state).toBe('waiting');
     expect(byId.get(seatTheirs)?.yourTurn).toBe(false);
     expect(byId.get(seatOpen)?.state).toBe('briefed');
+    expect(byId.get(seatShared)?.state, 'my own yes reads as shared, not as waiting').toBe('shared');
+    expect(byId.get(seatShared)?.yourTurn).toBe(false);
+    expect(byId.get(seatShared)?.name, 'sharing mine did not show me hers').toBeUndefined();
     // The seat's row says agreement 0.8. The roster used to turn that into "got_on"
     // and the square drew a tick over both heads; it says nothing about it now.
     expect(byId.get(seatMine)).not.toHaveProperty('agreement');
@@ -213,7 +220,7 @@ describe('people this person has met', () => {
     // Tara: I said no. She walks off. (Her own no, had it happened, would read as waiting.)
     const passed = w.agents.filter((a) => a.state === 'passed');
     expect(passed).toHaveLength(1);
-    expect(passed[0]!.name).toBe('Tara');       // I moved first, so the name was already mine to see
+    expect(passed[0]!.name, 'I moved first and said no: she never shared her name').toBeUndefined();
   });
 
   it('do not also appear as strangers', async () => {

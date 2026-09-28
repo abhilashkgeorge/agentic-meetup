@@ -158,12 +158,19 @@ describe('who can see them', () => {
     expect(early).toEqual([]);
   });
 
-  it('the first mover can, because they are the one deciding', async () => {
+  it('the first mover cannot either -- not until the other has said yes to them', async () => {
+    // CONSENT FIRST (the founder, 2026-09-28): nobody's photos reach anyone until THAT
+    // person has said yes to them. The first mover decides on the words card alone.
     const [first, second] = a.userId < b.userId ? [a, b] : [b, a];
     await upload(second, 200);
-    const seen = await tenantSession(first, (c) =>
-      photos.visibleTo(c, second.userId, first.userId));
-    expect(seen).toHaveLength(1);
+    expect(await tenantSession(first, (c) => photos.visibleTo(c, second.userId, first.userId)),
+      'the first mover saw photos of someone who had not said yes').toEqual([]);
+    // Their own yes shares THEIR photos, not the other's.
+    await decide(first.userId, pairId, true);
+    expect(await tenantSession(first, (c) => photos.visibleTo(c, second.userId, first.userId))).toEqual([]);
+    // The other's yes back is what shows them.
+    await decide(second.userId, pairId, true);
+    expect(await tenantSession(first, (c) => photos.visibleTo(c, second.userId, first.userId))).toHaveLength(1);
   });
 
   it('and the second mover can once the first says yes', async () => {

@@ -39,6 +39,7 @@ import { chatRows, exchangeRows, sayOnCard, sharedSaid, wantRowsView, type Said 
 import { SafetySheet } from '../safety/safety-sheet';
 import { fade } from './fade';
 import { recapLines } from './recap';
+import { WORDS, turnOf } from './turn';
 
 /**
  * What the agents said, on the card: the date idea first -- the one useful thing a
@@ -185,6 +186,23 @@ export default function MatchesScreen() {
     announced.current = r.roundId;
     await load();
   }, [token, active, load]);
+
+  /**
+   * The first move: "Yes, share my profile with them". That yes is the permission for
+   * THEIR eyes to see YOUR photos and name (consent first, 2026-09-28) -- it shows the
+   * sharer nothing of the other person. The card stays, now saying the move is theirs.
+   */
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+  const share = useCallback(
+    async (id: string) => {
+      if (!token) return;
+      setFailedFor(null);
+      const r = await decideMatch(token, id, true);
+      if (!r) { setFailedFor(id); return; }
+      await load();
+    },
+    [token, load],
+  );
 
   /** A no is silent and final. The card goes and the other person is never told. */
   const pass = useCallback(
@@ -392,22 +410,36 @@ export default function MatchesScreen() {
                 <Text style={[type.callout, { color: p.textTertiary }]}>{fade(m.fadesAt).line}</Text>
               )}
 
-              {m.waitingOnYou ? (
+              {/* CONSENT FIRST (2026-09-28). The first move is made on these words and
+                  their character alone: a yes shares YOUR profile. The second move comes
+                  after they shared theirs: see it, then share yours back or not. */}
+              {turnOf(m) === 'share-first' && (
                 <>
-                  <Button label={m.practice ? 'See the practice profile' : 'Show me who it is'}
-                          variant="primary"
-                          onPress={() => router.push(`/match/${m.id}`)} />
+                  <Button label={m.practice ? WORDS.shareFirstPractice : WORDS.shareFirst}
+                          variant="primary" onPress={() => void share(m.id)} />
                   {/* No is silent. Nobody is ever told they were passed on, so nobody
                       can compare notes about who said no to whom. */}
-                  <Button label="Not this one" variant="ghost"
-                          onPress={() => void pass(m.id)} />
+                  <Button label={WORDS.notThisOne} variant="ghost" onPress={() => void pass(m.id)} />
+                  <Text style={[type.callout, { color: p.textTertiary }]}>
+                    {m.practice ? WORDS.practiceNote : WORDS.shareFirstNote}
+                  </Text>
                 </>
-              ) : (
+              )}
+              {turnOf(m) === 'share-back' && (
+                <>
+                  <Button label={m.practice ? WORDS.seeThemPractice : WORDS.seeThem}
+                          variant="primary" onPress={() => router.push(`/match/${m.id}`)} />
+                  <Button label={WORDS.notThisOne} variant="ghost" onPress={() => void pass(m.id)} />
+                </>
+              )}
+              {(turnOf(m) === 'you-shared' || turnOf(m) === 'they-first') && (
                 <Text style={[type.callout, { color: p.textTertiary }]}>
-                  {m.waitingOnYou === false && m.waitingOnThem
-                    ? 'They are looking first. Whoever gets more matches decides first — it stops one side being buried.'
-                    : 'You said yes. You will hear nothing either way until they look.'}
+                  {turnOf(m) === 'they-first' ? WORDS.theyFirst
+                    : m.practice ? WORDS.youSharedPractice : WORDS.youShared}
                 </Text>
+              )}
+              {failedFor === m.id && (
+                <Text style={[type.callout, { color: p.warning }]}>{WORDS.failed}</Text>
               )}
 
               {/* On every card, answered or not: somebody's own words can be the thing

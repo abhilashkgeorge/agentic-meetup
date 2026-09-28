@@ -607,7 +607,8 @@ export interface WorldAgent {
   look: Look;
   /** Their neighbourhood, an id from shared/areas.ts; absent means the central tile. */
   area?: string;
-  state: 'idle' | 'talking' | 'briefed' | 'waiting' | 'introduced' | 'passed';
+  /** `shared`: you shared your profile, their move. `waiting`: they decide first. */
+  state: 'idle' | 'talking' | 'briefed' | 'shared' | 'waiting' | 'introduced' | 'passed';
   rendezvousId?: string;
   name?: string;
   // No `agreement`: the square no longer says how the agents got on. See
@@ -721,8 +722,15 @@ export interface MatchCard {
     practice?: boolean;
   }[];
   waitingOnYou: boolean;
-  /** You said yes and they have not looked yet. Never a hint about what they will say. */
+  /** Not your move: you shared and they have not answered, or they decide first. */
   waitingOnThem?: boolean;
+  /**
+   * CONSENT FIRST (server, 2026-09-28): they said yes to you, which shares their profile.
+   * On your turn this is the second move: see who they are, then share yours back.
+   */
+  sharedWithYou?: boolean;
+  /** You said yes: your profile is shared with them, and the next move is theirs. */
+  youShared?: boolean;
   /**
    * The other side is an invented profile, not a person.
    *
@@ -996,6 +1004,10 @@ export interface Reveal {
   confirmedBy?: number;
   /** Their selfies matched their photos, and every photo you can see was in that check. */
   photosChecked?: boolean;
+  /** Both have shared: nothing left to decide here, only to say hello. */
+  introduced?: boolean;
+  /** You have already answered this one. */
+  youAnswered?: boolean;
 }
 
 export const getReveal = (token: string, id: string) =>
@@ -1033,6 +1045,11 @@ export type CheckinAnswers =
 export const postCheckin = (token: string, id: string, body: CheckinAnswers) =>
   send<{ ok: true; awarded: number; again: boolean }>('POST', `/v1/matches/${id}/checkin`, token, body);
 
+/**
+ * Your answer. On the first move a yes shares your profile with them; on the second it
+ * shares yours back and introduces you. The server takes answers only in turn (409
+ * otherwise). Null means it did not go through -- say so, never "Sent".
+ */
 export const decideMatch = (token: string, id: string, yes: boolean) =>
   post<{ ok: boolean; introduced: boolean }>(`/v1/matches/${id}/decide`, token, { yes });
 

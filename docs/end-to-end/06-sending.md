@@ -9,7 +9,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe {AI:sheet} | `rounds` row (queued) | Arjun | [server/src/api/dating.ts:896] `.post('/v1/matches/run', async (c) => {` |
+| Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe {AI:sheet} | `rounds` row (queued) | Arjun | [server/src/api/dating.ts:926] `.post('/v1/matches/run', async (c) => {` |
 | The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | [server/src/matching/rounds.ts:161] `ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED)` |
 | The candidate list | Real people first, then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | [server/src/matching/candidates.ts:119] `ORDER BY b.is_synthetic ASC, b.last_active_at DESC` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | {AI:wants} + code | Want results kept for the cards | Arjun (on his cards) | [server/src/matching/orchestrator.ts:216] `const order = pre && !target ? demote(shortlist.order, notMetCounts(pre.byId)) : shortlist.order;` |
@@ -21,12 +21,12 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") ([app/src/app/(tabs)/index.tsx:1] `export { default } from '../../features/world/world-screen';`,
    [app/src/features/world/hud.tsx:180] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
-   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:253] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:271] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
-   the round ([server/src/api/dating.ts:907] `return poolNow(db, ctx);`,
-   [server/src/api/dating.ts:914] `await ensureSheet(ctx);`,
-   [server/src/api/dating.ts:951] `return c.json({ roundId: round.id, status: round.status }, 202);`).
+   the round ([server/src/api/dating.ts:937] `return poolNow(db, ctx);`,
+   [server/src/api/dating.ts:944] `await ensureSheet(ctx);`,
+   [server/src/api/dating.ts:981] `return c.json({ roundId: round.id, status: round.status }, 202);`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
    heading out…" ([app/src/features/world/hud.tsx:112] `? 'Your agent is heading out…'`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
@@ -51,12 +51,12 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
   ([server/src/matching/orchestrator.ts:70] `Number(process.env.ROUND_CANDIDATES ?? 3)`).
 - **"Send my agent over"**: tap one stranger standing in the square, then this button on
   their sheet. It meets exactly that one person, if they pass every rule
-  ([app/src/features/world/agent-sheet.tsx:73] `visits.left > 0 ? 'Send my agent over' : 'No visits left today'`,
+  ([app/src/features/world/agent-sheet.tsx:74] `visits.left > 0 ? 'Send my agent over' : 'No visits left today'`,
   [server/src/matching/orchestrator.ts:129] `if (!(await isCandidate(c, userId, target))) {`).
   A stranger in the square shows no name, age or photo: "Someone in the square", "One of
   the people your agent could meet.", and a neighbourhood
   ([app/src/features/world/agent-sheet.tsx:42] `One of the people your agent could meet.`,
-  [app/src/features/world/agent-sheet.tsx:63] `Around {areaName(agent.area)}`).
+  [app/src/features/world/agent-sheet.tsx:64] `Around {areaName(agent.area)}`).
   The 40 strangers in the square are chosen by the preference score, not real-first
   ([server/src/api/world.ts:175] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
 
@@ -159,9 +159,9 @@ off ([server/src/matching/profile.ts:204] `if (!agreed) missing.push('consent');
 - **How they are labelled.** "Practice match — this one is not a real person." on the card,
   "Practice match / Not a real person" in lists, their lines marked "(practice)", and the
   reveal says "This is not a real person. The pool is invented until enough people have
-  joined…" ([app/src/features/matches/matches-screen.tsx:323] `Practice match — this one is not a real person.`,
+  joined…" ([app/src/features/matches/matches-screen.tsx:341] `Practice match — this one is not a real person.`,
   [app/src/features/matches/exchange.ts:47] `${s.text} (practice)`,
-  [app/src/features/matches/reveal-screen.tsx:172] `This is not a real person. The pool is invented until enough people have`).
+  [app/src/features/matches/reveal-screen.tsx:179] `This is not a real person. The pool is invented until enough people have`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a
   production server refuses to start with it on
   ([server/src/env.ts:337] `if (env.NODE_ENV === 'production' && env.SYNTHETIC_AUTO_YES) {`).
@@ -182,7 +182,7 @@ off ([server/src/matching/profile.ts:204] `if (!agreed) missing.push('consent');
   ([HOW-IT-WORKS.md:818] `what the person said has changed -- §7a). Rounds are limited by`,
   [server/src/metering.ts:47] `throw new BudgetExceeded('daily_cost', spent, costCap)`).
 - Several code comments still say a round makes no model call
-  ([server/src/api/dating.ts:890] `A round makes no model call (orchestrator.ts), so what limits it`,
+  ([server/src/api/dating.ts:920] `A round makes no model call (orchestrator.ts), so what limits it`,
   [server/src/matching/answer-sheet.ts:24] `still makes zero model calls.`). By default it makes the
   talk and want-check calls.
 - HOW-IT-WORKS.md §9 says a model may write the prose for invented people. No model is

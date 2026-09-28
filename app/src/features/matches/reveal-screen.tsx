@@ -6,10 +6,13 @@
  * ranks on what somebody finds attractive. It shows a real person and the human
  * decides.
  *
- * The order is deliberate and asymmetric: whichever side receives more matches sees
- * the other's profile FIRST and decides alone. Only then is their profile shared back.
- * Dating apps run heavily one-sided; an app that does not solve the flood becomes a
- * one-gender app. Both sides must still say yes, so it is a gate, not an assignment.
+ * CONSENT FIRST (the founder, 2026-09-28): nobody's photos or name reach anyone until
+ * THAT person has said yes to them. Whichever side receives more matches decides FIRST,
+ * on the words card alone (matches-screen.tsx), and their yes shares their profile.
+ * This screen is the second move: the other person sees who shared with them and
+ * answers "Yes, share mine back" or "Not for me". Only that second yes shows their
+ * photos to the first, and opens the chat. The server enforces the order and the
+ * photo rule (api/dating.ts, migration 0073); turn.ts holds every word.
  *
  * A no is SILENT in both directions. Nobody is told they were passed on.
  */
@@ -27,6 +30,7 @@ import { CharacterAvatar } from '../look/character-avatar';
 import { SafetySheet } from '../safety/safety-sheet';
 import { BothYesMoment } from './both-yes-moment';
 import { useWorld } from '../world/store';
+import { WORDS } from './turn';
 
 /** A photo fills the screen, less the margins on both sides. */
 const CARD_W = Dimensions.get('window').width - space.screen * 2;
@@ -42,6 +46,7 @@ export default function RevealScreen() {
   const [introduced, setIntroduced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [safety, setSafety] = useState(false);
+  const [failed, setFailed] = useState(false);
   // The person's own character, if the town has loaded it: for the moment below.
   const myLook = useWorld((s) => s.world?.me.look ?? null);
 
@@ -62,10 +67,14 @@ export default function RevealScreen() {
     async (yes: boolean) => {
       if (!token || !id || busy) return;
       setBusy(true);
+      setFailed(false);
       const r = await decideMatch(token, String(id), yes);
-      setIntroduced(Boolean(r?.introduced));
-      setDecided(yes ? 'yes' : 'no');
       setBusy(false);
+      // Did not go through (offline, expired, not their turn): say so. Saying "Done" or
+      // "Sent" here used to confirm a decision the server never took.
+      if (!r) { setFailed(true); return; }
+      setIntroduced(Boolean(r.introduced));
+      setDecided(yes ? 'yes' : 'no');
     },
     [token, id, busy],
   );
@@ -108,26 +117,20 @@ export default function RevealScreen() {
     }
     return (
       <Screen center footer={<Button label="Back to matches" onPress={() => router.back()} />}>
-        <Text style={[type.display, { color: p.text, textAlign: 'center' }]}>Sent</Text>
-        <Text style={[type.body, { color: p.textSecondary, textAlign: 'center' }]}>
-          They see your profile now. If they say yes too, you will both get an
-          introduction. If not, neither of you hears anything.
-        </Text>
+        <Text style={[type.display, { color: p.text, textAlign: 'center' }]}>Shared</Text>
+        <Text style={[type.body, { color: p.textSecondary, textAlign: 'center' }]}>{WORDS.youShared}</Text>
       </Screen>
     );
   }
 
-  // The other side is looking first. Said plainly, because an empty profile card with
-  // no explanation reads as a bug.
+  // Nothing of theirs is shared with this person yet. Said plainly, in the server's
+  // words for where they stand, because an empty profile with no reason reads as a bug.
   if (them?.waiting) {
     return (
       <Screen center footer={<Button label="Back" onPress={() => router.back()} />}>
         <Text style={[type.title, { color: p.text, textAlign: 'center' }]}>Not yet</Text>
         <Text style={[type.body, { color: p.textSecondary, textAlign: 'center' }]}>
-          {them.message ?? 'They are looking at your profile first.'}
-        </Text>
-        <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
-          Whoever gets more matches decides first. It stops one side being buried.
+          {them.message ?? WORDS.theyFirst}
         </Text>
       </Screen>
     );
@@ -137,20 +140,24 @@ export default function RevealScreen() {
     <Screen
       padded={false}
       footer={
-        <>
-          <ButtonRow>
-            <Button label={them?.practice ? 'I would say yes' : 'Yes'} variant="primary"
-                    disabled={busy}
-                    onPress={() => void answer(true)} style={{ flex: 1 }} />
-            <Button label="Not for me" disabled={busy}
-                    onPress={() => void answer(false)} style={{ flex: 1 }} />
-          </ButtonRow>
-          <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
-            {them?.practice
-              ? 'Nothing happens either way. This one is practice.'
-              : 'Either way, they are never told what you chose.'}
-          </Text>
-        </>
+        them?.introduced ? (
+          // Both have shared: nothing left to decide, only to say hello.
+          <Button label="Message" variant="primary" onPress={() => router.replace(`/dm/${String(id)}`)} />
+        ) : them?.youAnswered ? undefined : (
+          <>
+            <ButtonRow>
+              <Button label={them?.practice ? WORDS.shareBackPractice : WORDS.shareBack} variant="primary"
+                      disabled={busy}
+                      onPress={() => void answer(true)} style={{ flex: 1 }} />
+              <Button label={WORDS.notForMe} disabled={busy}
+                      onPress={() => void answer(false)} style={{ flex: 1 }} />
+            </ButtonRow>
+            {failed && <Text style={[type.callout, { color: p.warning, textAlign: 'center' }]}>{WORDS.failed}</Text>}
+            <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
+              {them?.practice ? WORDS.practiceNote : WORDS.shareBackNote}
+            </Text>
+          </>
+        )
       }
     >
       {/* Always in reach on a profile, the same as in a chat. */}
@@ -173,7 +180,7 @@ export default function RevealScreen() {
               joined, so your agent has somebody to go and meet.
             </Text>
             <Text style={[type.callout, { color: p.textTertiary }]}>
-              Saying yes will not start a conversation — there is nobody to answer.
+              Sharing yours will not start a conversation — there is nobody to answer.
             </Text>
           </Surface>
         )}
@@ -208,8 +215,8 @@ export default function RevealScreen() {
             <Text style={[type.body, { color: p.textSecondary }]}>No photos yet</Text>
             <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center', paddingHorizontal: space.xl }]}>
               {them?.look
-                ? 'This is how they show up in the square. You can still say yes — you would be deciding on what they said rather than how they look.'
-                : 'They have not added any. You can still say yes — you would be deciding on what they said rather than how they look.'}
+                ? 'This is how they show up in the square. You can still share yours back — you would be deciding on what they said rather than how they look.'
+                : 'They have not added any. You can still share yours back — you would be deciding on what they said rather than how they look.'}
             </Text>
           </Surface>
         )}

@@ -155,9 +155,15 @@ describe('the badge', () => {
     const them = await person('them');
     const nobody = await person('nobody');
     const [lo, hi] = me.userId < them.userId ? [me, them] : [them, me];
-    await owner.query(
+    const { rows: [rz] } = await owner.query<{ id: string }>(
       `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, status, first_mover, introduced_at)
-       VALUES ($1,$2,$3,$4,5,'introduced',$1, now())`, [lo.userId, hi.userId, lo.tenantId, hi.tenantId]);
+       VALUES ($1,$2,$3,$4,5,'introduced',$1, now()) RETURNING id`, [lo.userId, hi.userId, lo.tenantId, hi.tenantId]);
+    // Introduced means both said yes -- and since 0073 (consent first) it is each
+    // person's own yes that shows their photos, so the fixture carries both.
+    for (const who of [me, them]) {
+      await owner.query(`INSERT INTO rendezvous_briefs (rendezvous_id, for_user, headline, concern, human_says_yes, decided_at)
+                         VALUES ($1,$2,'h','',true, now())`, [rz!.id, who.userId]);
+    }
     const checked = (viewer: P) => tenantSession(viewer, async (db) =>
       (await db.query<{ v: boolean }>('SELECT photos_checked($1, $2) AS v', [me.userId, viewer.userId])).rows[0]!.v);
 

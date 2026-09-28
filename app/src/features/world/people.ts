@@ -16,7 +16,8 @@ const STATE: Record<WorldAgent['state'], string> = {
   // No conversation is held any more; the same words as the agent sheet.
   talking: 'Your agent is with them now',
   briefed: 'Your agent met them',
-  waiting: 'Waiting on them',
+  shared: 'You shared your profile',
+  waiting: 'They decide first',
   introduced: 'You both said yes',
   passed: 'You said not this one',
 };

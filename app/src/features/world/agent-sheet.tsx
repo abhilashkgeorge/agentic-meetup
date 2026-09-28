@@ -43,7 +43,8 @@ export function AgentSheet({ agent, onClose, visits, onSendOver }: {
     : agent.state === 'talking' ? 'Your agent is with them now.'
     : agent.state === 'introduced' ? 'You both said yes.'
     : agent.state === 'passed' ? 'You said not this one. They were not told.'
-    : agent.state === 'waiting' ? 'Waiting on them. They are never told what you chose.'
+    : agent.state === 'shared' ? 'You shared your profile. Waiting on them.'
+    : agent.state === 'waiting' ? 'They decide first. If they share their profile, you will see it.'
     : 'Your agent met them. Their card is waiting.';
 
   return (

@@ -28,7 +28,7 @@ export default function CharacterStep() {
       <View style={{ gap: space.xs }}>
         <Text style={[type.display, { color: p.text }]}>Make your character</Text>
         <Text style={[type.body, { color: p.textSecondary }]}>
-          This is you in the square, and what people see of you until you have both said yes. Photos come next.
+          This is you in the square, and all anyone sees of you until you share your profile with them. Photos come next.
         </Text>
       </View>
       <CharacterBuilder preview={<Preview height={330} />} onSaved={next} onSkip={next} />

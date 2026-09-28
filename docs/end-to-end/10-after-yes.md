@@ -9,7 +9,7 @@ words are the date idea, written earlier (stage 7).
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| The second yes | Pair becomes `introduced`; chat opens | Code | `rendezvous.introduced_at` | Both | [server/src/matching/orchestrator.ts:571] `UPDATE rendezvous r SET status = 'introduced', introduced_at = now()` |
+| The second yes | Pair becomes `introduced`; chat opens | Code | `rendezvous.introduced_at` | Both | [server/src/matching/orchestrator.ts:583] `UPDATE rendezvous r SET status = 'introduced', introduced_at = now()` |
 | A message | Sent over a live connection; delivered, read receipts | Code | `messages` row | The two people | [server/migrations/0025_messaging_fixes.sql:37] `AND r.status = 'introduced'));` |
 | "Propose this date" | Sends "How about this: <idea>?" as the person's own message, once per chat | Code | `messages` row (kind `date_idea`) | The two people | [server/src/api/date-idea.ts:30] `How about this: ${idea}?` |
 | Two quiet days | A one-time nudge for each person | Code | `nudged_at` on each person's card row | Each person, once | [app/src/features/dm/date-idea.ts:17] `export const QUIET_LINE = 'Quiet for two days. Say hello?';` |
@@ -19,13 +19,15 @@ words are the date idea, written earlier (stage 7).
 
 ### Arjun and Meera
 
-1. **Arjun taps "Yes" second.** He sees the "both said yes" moment: the two characters walk
+1. **Arjun taps "Yes, share mine back".** He sees the "both said yes" moment: the two characters walk
    in and meet, then "You both said yes" / "Meera can message you now, and nobody else can."
    and a "Say hello" button ([app/src/features/matches/moment.ts:27] `export const MOMENT_TITLE = 'You both said yes';`,
    [app/src/features/matches/moment.ts:29] `can message you now, and nobody else can.`,
    [app/src/features/matches/both-yes-moment.tsx:88] `<Button label="Say hello" variant="primary" onPress={onHello} />`).
 2. **Meera gets no moment.** Her waiting card disappears and "Arjun" appears in Chats with
-   "Say something" ([server/src/matching/orchestrator.ts:584] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
+   "Say something"; only now can she see his photos and first name, which his yes shared with her
+   ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
+   [server/src/matching/orchestrator.ts:596] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
    [app/src/features/dm/conversations-screen.tsx:94] `: 'Say something'`). There are no push
    notifications, so if her app is closed she finds out the next time she opens it
    ([server/src/api/chat.ts:267] `// Offline: no receipt, and a push notification is what wakes them. Marking it`).
@@ -84,11 +86,11 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 ### 10.4 The after-date check-in
 
 - **When:** 72 hours after the introduction by default, inside the chat only
-  ([server/src/api/dating.ts:722] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
+  ([server/src/api/dating.ts:741] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
 - **Step 1:** "Did you two meet up? They are not told what you say." [Yes] [Not yet]. The first
   answer is final: a "Not yet" is never asked again
   ([app/src/features/dm/checkin.tsx:109] `Did you two meet up? They are not told what you say.`,
-  [server/src/api/dating.ts:868] `// Own brief only, under RLS. An answer is final: the first one stands.`).
+  [server/src/api/dating.ts:898] `// Own brief only, under RLS. An answer is final: the first one stands.`).
 - **After "Not yet":** "What happened? Only you see this." with "Plans fell through", "They
   stopped replying", "I changed my mind", "Something else", or Skip
   ([app/src/features/dm/checkin.tsx:122] `What happened? Only you see this.`).

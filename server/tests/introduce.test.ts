@@ -43,14 +43,18 @@ async function person(label: string, synthetic = false) {
   return { tenantId, userId };
 }
 
-/** A pair the agents have already passed, with a brief written for each side. */
+/**
+ * A pair the agents have already passed, with a brief written for each side. `x` decides
+ * first: since 2026-09-28 the server takes answers only in turn (consent first), so the
+ * tests below answer as the first mover first -- set here, not left to which id is lower.
+ */
 async function decidedPair(x = a, y = b) {
   const [lo, hi] = x.userId < y.userId ? [x, y] : [y, x];
   const { rows } = await owner.query<{ id: string }>(
     `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, status,
                              runs_done, both_yes, decided_at, first_mover)
      VALUES ($1,$2,$3,$4,'decided',5,4,now(),$5) RETURNING id`,
-    [lo.userId, hi.userId, lo.tenantId, hi.tenantId, lo.userId]);
+    [lo.userId, hi.userId, lo.tenantId, hi.tenantId, x.userId]);
   const id = rows[0]!.id;
   for (const who of [x, y]) {
     await owner.query(
@@ -173,8 +177,8 @@ describe('who looks first', () => {
     // brief, which row-level security correctly hides. Both left the second person
     // looking at "they are deciding first" for ever.
     //
-    // `first_mover` is user_a in the fixture, which is the lower id.
-    const [first, second] = a.userId < b.userId ? [a, b] : [b, a];
+    // `first_mover` is `a` in the fixture.
+    const [first, second] = [a, b];
 
     const before = await tenantSession(second, (c) =>
       c.query<{ yes: boolean }>(
@@ -193,7 +197,7 @@ describe('who looks first', () => {
     // A no is silent, for ever. If these two answers differed, a rejection could be
     // read off the screen -- and in a small pool where people compare notes, an
     // emitted rejection is unrecoverable.
-    const [first, second] = a.userId < b.userId ? [a, b] : [b, a];
+    const [first, second] = [a, b];
     await decide(first.userId, pairId, false);
     const after = await tenantSession(second, (c) =>
       c.query<{ yes: boolean }>(

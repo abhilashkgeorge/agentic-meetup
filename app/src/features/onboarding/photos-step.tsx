@@ -120,8 +120,8 @@ export default function PhotosStep() {
         <Text style={[type.display, { color: p.text }]}>One last thing</Text>
         <Text style={[type.body, { color: p.textSecondary }]}>
           {has
-            ? 'Your first photo is the one they see when they decide whether to meet you.'
-            : 'Your agent can do everything except this. Somebody has to see you before they say yes.'}
+            ? 'Your first photo is the one they see once you share your profile with them.'
+            : 'Your agent can do everything except this. When you share your profile with someone, these are what they see.'}
         </Text>
       </View>
 
@@ -165,7 +165,7 @@ export default function PhotosStep() {
       {error && <Text style={[type.callout, { color: p.danger }]}>{error}</Text>}
 
       <Text style={[type.callout, { color: p.textTertiary }]}>
-        Only somebody you have both said yes to ever sees these. Your agent never does,
+        Nobody sees these until you share your profile with them. Your agent never does,
         and never matches on them. Where a photo was taken is removed before it is stored.
       </Text>
     </Screen>

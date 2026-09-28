@@ -167,7 +167,7 @@ three shapes:
   [server/src/onboarding/questions.ts:426] `return TAPPED_PREDICATES.has(predicate);`,
   [server/src/onboarding/questions.ts:415] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
   The server refuses a must-have anywhere else
-  ([server/src/api/dating.ts:490] `A must-have only hides someone over an answer they tapped`).
+  ([server/src/api/dating.ts:500] `A must-have only hides someone over an answer they tapped`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
   checked both ways: Arjun's must-haves on Meera, and Meera's must-haves on Arjun
   ([server/src/matching/candidates.ts:90] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
@@ -252,7 +252,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-([app/src/features/matches/matches-screen.tsx:370] `WHAT YOU ASKED FOR`):
+([app/src/features/matches/matches-screen.tsx:388] `WHAT YOU ASKED FOR`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|
@@ -282,7 +282,7 @@ If a tied want showed "Matches" on the reader's card, the after-date check-in ma
 - HOW-IT-WORKS.md says a round's only model call is the agents' talk, and a comment above
   the round route says "A round makes no model call". The code also makes the want-check
   calls above, by default ([HOW-IT-WORKS.md:810] `since 2026-09-24 -- the agents' talk`,
-  [server/src/api/dating.ts:890] `A round makes no model call (orchestrator.ts), so what limits it`,
+  [server/src/api/dating.ts:920] `A round makes no model call (orchestrator.ts), so what limits it`,
   [server/src/matching/orchestrator.ts:23] `NO MODEL ON THE DEFAULT PATH, SINCE 2026-09-23.`).
 - HOW-IT-WORKS.md says a want that names a card "is left out". The code keeps it as a
   private want and checks it ([HOW-IT-WORKS.md:522] `cards is left out, because the card already checks it exactly, both ways.`,

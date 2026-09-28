@@ -44,7 +44,7 @@ const SAYS: Record<string, string[]> = {
   ],
   privacy: [
     'What you tell your clone is used to represent you to other agents. Only things marked public ever leave your account.',
-    'Your photos are never public. They are shown to one person at a time, after both agents have said yes.',
+    'Your photos and first name are never public. A person sees them only after you say yes to sharing them with that person.',
     'You can read everything it knows about you, change it, or delete the whole account, from Settings.',
     'We send text to AI providers to run your clone. We do not sell anything to anybody.',
   ],

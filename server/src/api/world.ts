@@ -190,11 +190,11 @@ export const worldRoutes = new Hono()
         })
       : { total: 0, ids: [] as string[], synthetic: new Set<string>(), areas: new Map<string, string>(), looks: new Map<string, Look>() };
 
-    // Names: only for seats the reveal rule already opens. Same test as
-    // GET /v1/matches/:id -- first mover, or the other side has said yes. Never while
-    // the agents are still talking: nothing has been decided, so nothing is revealed.
-    const entitled = own.seats.filter((s) =>
-      s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true));
+    // Names: only for seats the reveal rule already opens -- the same test as
+    // GET /v1/matches/:id and the photo rule (0073): the OTHER person has said yes to
+    // this one. Being first mover opens nothing (the founder, 2026-09-28: nobody's name
+    // reaches anyone until that person has said yes to them).
+    const entitled = own.seats.filter((s) => s.status !== 'running' && s.other_said_yes === true);
     const names = new Map<string, string>();
     const seatAreas = new Map<string, string>();
     // Characters and neighbourhoods for the people met and for me, in the same read

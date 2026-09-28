@@ -114,10 +114,10 @@ Three documents, shown in plain words and accepted with one "I agree"
   of you." "Your agent talks to other agents for you. You always make the final call about who you
   meet" ([app/src/features/consent/consent-screen.tsx:42] `Your agent talks to other agents for you. You always make the final call about who you meet`)
 - **Privacy:** "What you tell your clone is used to represent you to other agents. Only things marked
-  public ever leave your account." "Your photos are never public. They are shown to one person at a
-  time, after both agents have said yes." "We send text to AI providers to run your clone. We do not
-  sell anything to anybody." ([app/src/features/consent/consent-screen.tsx:46] `Only things marked public ever leave your account.`,
-  [app/src/features/consent/consent-screen.tsx:47] `They are shown to one person at a time, after both agents have said yes.`,
+  public ever leave your account." "Your photos and first name are never public. A person sees them
+  only after you say yes to sharing them with that person." "We send text to AI providers to run your
+  clone. We do not sell anything to anybody." ([app/src/features/consent/consent-screen.tsx:46] `Only things marked public ever leave your account.`,
+  [app/src/features/consent/consent-screen.tsx:47] `'Your photos and first name are never public. A person sees them only after you say yes to sharing them with that person.',`,
   [app/src/features/consent/consent-screen.tsx:49] `We send text to AI providers to run your clone. We do not sell anything to anybody.`)
 
 Stored as append-only rows; the app role cannot change or delete them
@@ -145,8 +145,6 @@ Consent is also a condition for being sent out (stage 2).
 
 ### Docs vs code
 
-- The consent text says photos are shown "after both agents have said yes". Agents no longer say
-  yes, and the first mover sees photos before any yes (stage 9).
 - The consent footer says "nothing has been set up yet"; by then the account, the number's hash and a
   session already exist ([server/src/api/auth.ts:249] `provisioned = await provision(body.data.label ?? 'device', userId, phone ?? undefined`).
 - The phone screen promises the number is kept only in scrambled form; with the console sender (the

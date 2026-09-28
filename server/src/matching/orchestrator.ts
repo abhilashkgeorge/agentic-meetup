@@ -542,10 +542,22 @@ export async function decide(
     // two people after the other had been told nothing for days, and not a no that
     // would turn the record of silence into a rejection.
     await expireDue(c);
+    // TURN ORDER, ENFORCED HERE (the founder, 2026-09-28). The first mover answers
+    // first, on the words card alone; their yes shares their profile. The other person
+    // may answer only once the first mover has shared -- before that they have seen
+    // nothing, so an answer from them would be an answer about nothing. Only an open
+    // pair takes an answer: not one that lapsed, expired or was introduced. A pair made
+    // before first movers existed lets either side go first.
     const { rowCount } = await c.query(
       `UPDATE rendezvous_briefs SET human_says_yes = $3, decided_at = now()
         WHERE rendezvous_id = $1 AND for_user = $2 AND human_says_yes IS NULL
-          AND EXISTS (SELECT 1 FROM rendezvous WHERE id = $1 AND status <> 'expired')`,
+          AND EXISTS (
+            SELECT 1 FROM rendezvous r
+             WHERE r.id = $1 AND r.status = 'decided'
+               AND (r.first_mover = $2 OR r.first_mover IS NULL
+                    OR EXISTS (SELECT 1 FROM rendezvous_briefs o
+                                WHERE o.rendezvous_id = r.id AND o.for_user <> $2
+                                  AND o.human_says_yes)))`,
       [rendezvousId, userId, yes],
     );
     if (!rowCount) return { introduced: false };

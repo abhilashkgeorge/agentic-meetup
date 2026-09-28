@@ -362,7 +362,7 @@ export default function EssentialsScreen() {
           says, about the field actually on screen. */}
       <Text style={[type.callout, { color: p.textTertiary }]}>
         {q.key === 'birth_date'
-          ? `You must be ${MIN_AGE} or older. Your birthday is never shown to anybody — only your age, and only once you have both said yes.`
+          ? `You must be ${MIN_AGE} or older. Your birthday is never shown to anybody — only your age.`
           : q.kind === 'range'
             // True both ways: the candidate query tests their age against this range
             // AND yours against theirs.

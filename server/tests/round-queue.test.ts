@@ -240,22 +240,25 @@ describe('the list the person sees', () => {
 
     const before = await cardsOf(mine);
     expect(before).toHaveLength(3);
-    // The person on the other side of the first card, and their phone.
-    const { rows } = await owner.query<{ other: string; tenant: string }>(
-      `SELECT CASE WHEN user_a = $2 THEN user_b ELSE user_a END AS other,
+    // A card whose first move is mine -- answers are taken only in turn since
+    // 2026-09-28 -- and the person on the other side of it, and their phone. (In a round
+    // the sender is first mover on at least the later pairs: their earlier cards count.)
+    const { rows } = await owner.query<{ id: string; other: string; tenant: string }>(
+      `SELECT id, CASE WHEN user_a = $2 THEN user_b ELSE user_a END AS other,
               CASE WHEN user_a = $2 THEN tenant_b ELSE tenant_a END AS tenant
-         FROM rendezvous WHERE id = $1`, [before[0], me.userId]);
+         FROM rendezvous WHERE id = ANY($1::uuid[]) AND first_mover = $2 LIMIT 1`, [before, me.userId]);
+    const card = rows[0]!.id;
     const theirs = await tokenFor({ userId: rows[0]!.other, tenantId: rows[0]!.tenant });
-    expect(await cardsOf(theirs)).toContain(before[0]);
+    expect(await cardsOf(theirs)).toContain(card);
 
     // Not for me on one. It lapses; the other two are still there.
-    await decide(me.userId, before[0]!, false);
+    await decide(me.userId, card, false);
     const after = await cardsOf(mine);
     expect(after).toHaveLength(2);
-    expect(after).not.toContain(before[0]);
+    expect(after).not.toContain(card);
     // And it is gone from the other phone too, silently: nobody is told they were
     // passed on, and the card they had not answered yet simply is not there.
-    expect(await cardsOf(theirs)).not.toContain(before[0]);
+    expect(await cardsOf(theirs)).not.toContain(card);
   });
 });
 

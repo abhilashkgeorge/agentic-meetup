@@ -179,6 +179,16 @@ export function revealOf(other: OtherRow, practice: boolean, photosVisible: bool
   };
 }
 
+/**
+ * What a locked reveal says, in the words of where this person stands. Nothing of the
+ * other person is in any of them -- not even whether they have looked.
+ */
+export function waitingWords(seat: { first_mover: string | null; mine: boolean | null }, me: string): string {
+  if (seat.mine === true) return 'They see your profile now. Theirs shows here if they share it back.';
+  if (seat.first_mover === me) return 'Their photos and name show only after they share them. You decide first, on the card.';
+  return 'They decide first. If they share their profile, you will see it here.';
+}
+
 /** One row: where this person stands with a rendezvous, for the check-in. */
 async function checkinSeat(db: PoolClient, id: string, me: string) {
   const { rows } = await db.query<{
@@ -635,6 +645,12 @@ export const datingRoutes = new Hono()
             // Never a hint about what they will say -- only that they have not looked.
             // A no is silent, so this state is also what a no looks like, for ever.
             waitingOnThem: r.human_says_yes === true || !myTurn,
+            // CONSENT FIRST (2026-09-28). Two plain facts, so the card can say which of
+            // the two waits this is, and which button fits: they have shared their
+            // profile with you (so you see it, and answer by sharing yours back), and you
+            // have shared yours (so they see it, and the next move is theirs).
+            sharedWithYou: r.other_decided === true,
+            youShared: r.human_says_yes === true,
             // Said plainly, on the card, before the person spends any feeling on it.
             practice: r.other_is_synthetic === true,
             look: looks.get(r.other_id),
@@ -644,11 +660,14 @@ export const datingRoutes = new Hono()
   })
 
   /**
-   * The reveal. Who they actually are.
+   * The reveal. Who they actually are: first name, age, city, tags, photos.
    *
-   * Only for the side whose turn it is, and only after the agents passed. The order is
-   * asymmetric on purpose -- whichever side receives more matches decides first and
-   * alone, and only then is their profile shown back.
+   * ONLY ONCE THEY HAVE SAID YES TO YOU (the founder, 2026-09-28): "nobody's photos or
+   * name reach anyone until THAT person has said yes to them". The first mover decides
+   * on the words card and the other's character; their "Yes, share my profile with
+   * them" opens THEIR reveal to the other person, who answers "Yes, share mine back" or
+   * "Not for me"; only that second yes opens the second person's reveal to the first.
+   * The photo rule in the database is the same test (0073).
    */
   .get('/v1/matches/:id', async (c) => {
     const { ctx, res } = await ctxOr401(c);
@@ -662,14 +681,16 @@ export const datingRoutes = new Hono()
     await matchmakerSession(expireDue);
     const seat = await tenantSession(ctx, async (db) => {
       const { rows } = await db.query<{
-        first_mover: string | null; status: string; other_said_yes: boolean | null;
+        first_mover: string | null; status: string; mine: boolean | null; other_said_yes: boolean | null;
         other_is_synthetic: boolean | null;
       }>(
-        `SELECT r.first_mover, r.status,
+        `SELECT r.first_mover, r.status, b.human_says_yes AS mine,
                 rendezvous_other_said_yes(r.id, $2) AS other_said_yes,
                 rendezvous_other_is_synthetic(r.id, $2) AS other_is_synthetic
            FROM rendezvous r
-          WHERE r.id = $1 AND r.status <> 'expired'
+           JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $2
+          -- A pair that ended -- a no, or three days of silence -- opens nothing.
+          WHERE r.id = $1 AND r.status NOT IN ('expired', 'lapsed')
             -- Kept apart (0064): the profile does not open, the same as no match.
             AND NOT apart($2, CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END)`,
         [id, ctx.userId],
@@ -681,13 +702,10 @@ export const datingRoutes = new Hono()
     const other = await otherOf(id, ctx.userId, seat.other_is_synthetic === true);
     if (!other) return c.json({ error: 'not found' }, 404);
 
-    // The second mover sees the first mover's profile once the FIRST HAS SAID YES --
-    // not once the status changes, which was a deadlock: `introduced` is set only
-    // after both have answered, so the second person waited for a state that could
-    // only be reached by their own answer.
-    const mine = seat.first_mover === ctx.userId;
-    if (!mine && seat.other_said_yes !== true) {
-      return c.json({ waiting: true, message: 'They are looking at your profile first.' });
+    // Nothing of theirs until they have said yes to you. Said plainly, in the words of
+    // where this person stands, because a locked screen with no reason reads as a bug.
+    if (seat.other_said_yes !== true) {
+      return c.json({ waiting: true, message: waitingWords(seat, ctx.userId) });
     }
 
     const { payload } = revealOf(other, seat.other_is_synthetic === true, false);
@@ -697,7 +715,8 @@ export const datingRoutes = new Hono()
         'SELECT confirmations_of($1, $2) AS n, photos_checked($1, $2) AS checked', [other.user_id, ctx.userId]);
       return { confirmedBy: rows[0]?.n ?? 0, photosChecked: rows[0]?.checked === true };
     });
-    return c.json({ ...payload, ...trust });
+    // Introduced: both have shared, and there is nothing left to decide here.
+    return c.json({ ...payload, ...trust, introduced: seat.status === 'introduced', youAnswered: seat.mine !== null });
   })
 
   /**
@@ -809,14 +828,25 @@ export const datingRoutes = new Hono()
     // does the write can see every rendezvous, so the check has to happen here. A card
     // whose three days are up takes no answer (0069): expired first, then not found.
     await matchmakerSession(expireDue);
-    const member = await tenantSession(ctx, async (db) => {
-      const { rowCount } = await db.query(
-        `SELECT id FROM rendezvous
-          WHERE id = $1 AND status <> 'expired'
-            AND NOT apart($2, CASE WHEN user_a = $2 THEN user_b ELSE user_a END)`, [id, ctx.userId]);
-      return Boolean(rowCount);
+    const seat = await tenantSession(ctx, async (db) => {
+      const { rows } = await db.query<{
+        status: string; first_mover: string | null; mine: boolean | null; other_said_yes: boolean | null;
+      }>(
+        `SELECT r.status, r.first_mover, b.human_says_yes AS mine,
+                rendezvous_other_said_yes(r.id, $2) AS other_said_yes
+           FROM rendezvous r
+           JOIN rendezvous_briefs b ON b.rendezvous_id = r.id AND b.for_user = $2
+          WHERE r.id = $1 AND r.status <> 'expired'
+            AND NOT apart($2, CASE WHEN r.user_a = $2 THEN r.user_b ELSE r.user_a END)`, [id, ctx.userId]);
+      return rows[0] ?? null;
     });
-    if (!member) return c.json({ error: 'not found' }, 404);
+    if (!seat) return c.json({ error: 'not found' }, 404);
+    // TURN ORDER ON THE SERVER, not only in the app (the founder, 2026-09-28): the
+    // first mover answers first; the other person only after the first has shared.
+    // decide() enforces the same in its own write, whatever calls it.
+    if (seat.status !== 'decided' || seat.mine !== null) return c.json({ error: 'already_decided' }, 409);
+    const myTurn = seat.first_mover === ctx.userId || seat.first_mover === null || seat.other_said_yes === true;
+    if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);
 
     const { introduced } = await decide(ctx.userId, id, body.data.yes);
     return c.json({ ok: true, introduced });

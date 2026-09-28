@@ -139,17 +139,29 @@ describe('the scores on a pair', () => {
   });
 });
 
+/**
+ * The two people of a pair, first mover first: since 2026-09-28 the server takes the
+ * answers only in that order (consent first -- the second person answers once the
+ * first has shared).
+ */
+async function inTurn(rzId: string): Promise<[string, string]> {
+  const { rows: [r] } = await owner.query<{ first_mover: string; user_a: string; user_b: string }>(
+    'SELECT first_mover, user_a, user_b FROM rendezvous WHERE id = $1', [rzId]);
+  return [r!.first_mover, r!.first_mover === r!.user_a ? r!.user_b : r!.user_a];
+}
+
 describe('the labels', () => {
   it('stamps introduced_at when both humans say yes', async () => {
     const { me, them } = await pair();
     await runRound(me.userId);
     const { rows: [rz] } = await owner.query<{ id: string }>(
       'SELECT id FROM rendezvous WHERE user_a = $1 OR user_b = $1', [me.userId]);
-    await decide(me.userId, rz!.id, true);
+    const [first, second] = await inTurn(rz!.id);
+    await decide(first, rz!.id, true);
     let { rows } = await owner.query<{ introduced_at: string | null }>(
       'SELECT introduced_at FROM rendezvous WHERE id = $1', [rz!.id]);
     expect(rows[0]!.introduced_at).toBeNull();                   // one yes is not two
-    await decide(them.userId, rz!.id, true);
+    await decide(second, rz!.id, true);
     ({ rows } = await owner.query('SELECT introduced_at FROM rendezvous WHERE id = $1', [rz!.id]));
     expect(rows[0]!.introduced_at).not.toBeNull();
   });
@@ -159,8 +171,9 @@ describe('the labels', () => {
     await runRound(me.userId);
     const { rows: [rz] } = await owner.query<{ id: string }>(
       'SELECT id FROM rendezvous WHERE user_a = $1 OR user_b = $1', [me.userId]);
-    await decide(me.userId, rz!.id, true);
-    await decide(them.userId, rz!.id, true);
+    const [first, second] = await inTurn(rz!.id);
+    await decide(first, rz!.id, true);
+    await decide(second, rz!.id, true);
 
     // Just introduced: too soon to ask.
     let res = await req(`/v1/matches/${rz!.id}/met`, me.token);

@@ -25,7 +25,7 @@ export default function BuilderScreen() {
     <Screen scroll={false}>
       <Header title="Your character" onBack={() => router.back()} />
       <Text style={[type.body, { color: p.textSecondary }]}>
-        This is you in the square, and what people see on your card until you have both said yes.
+        This is you in the square, and what people see on your card until you share your profile with them.
       </Text>
       <CharacterBuilder fill preview={<Preview />} onSaved={() => { if (router.canGoBack()) router.back(); else router.replace("/(tabs)/profile"); }} />
     </Screen>
