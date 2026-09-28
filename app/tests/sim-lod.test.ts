@@ -7,14 +7,16 @@
  * `agents()` built a fresh thousand-element array on every call, twice a frame.
  *
  * WHAT IS PINNED:
- *   - out of sight, a walker takes one step in FAR_EVERY frames, and in sight every
- *     frame -- as does anybody being driven, wherever they are;
+ *   - out of sight -- past the mist, or behind the camera -- a walker takes one step in
+ *     FAR_EVERY frames, and in sight every frame -- as does anybody being driven,
+ *     wherever they are;
  *   - over twelve seconds a far walker covers the same ground either way (it is the
  *     same walk, in bigger steps);
  *   - `agents()` is one array until somebody arrives or leaves.
  *
- * Negative controls, run 2026-09-28 and restored byte-identical:
+ * Negative controls, run 2026-09-28/29 and restored byte-identical:
  *   - step() ignoring `near`                    -> "one step in FAR_EVERY" fails
+ *   - step() without the behind-the-camera test -> "behind the camera less often" fails
  *   - remove() not dropping the cached list     -> "until somebody leaves" fails
  */
 import { describe, expect, it } from 'vitest';
@@ -56,6 +58,32 @@ describe('the walkers nobody can see', () => {
       }
     }
     expect(Math.max(...all.values())).toBe(FAR_EVERY * 10);
+  });
+
+  it('steps the people behind the camera less often too, and the ones in front every frame', () => {
+    const s = new WorldSim(9);
+    // Two rows of walkers, one ten units in front of a camera at the origin looking
+    // down +z, one ten units behind it. All well inside the mist.
+    s.upsert(Array.from({ length: 20 }, (_, i) => ({ ref: `f${i}`, kind: 'stranger' as const, seed: i })));
+    s.upsert(Array.from({ length: 20 }, (_, i) => ({ ref: `b${i}`, kind: 'stranger' as const, seed: 100 + i })));
+    for (let i = 0; i < 200; i++) s.step(1 / 30);
+    const place = () => s.agents().forEach((a, i) => {
+      a.x = (i % 20) * 0.4 - 4;
+      a.z = a.ref.startsWith('f') ? 10 : -10;
+      a.state = 'walking'; a.tx = a.x + 50; a.tz = a.z; a.speed = 0.2;
+    });
+    place();
+    const camera = { x: 0, z: 0, r: 45, fx: 0, fz: 1 };
+    const steps = new Map<string, number>();
+    for (let f = 0; f < FAR_EVERY * 10; f++) {
+      const before = new Map(s.agents().map((a) => [a.ref, a.x]));
+      s.step(1 / 30, camera);
+      for (const a of s.agents()) if (a.x !== before.get(a.ref)) steps.set(a.ref, (steps.get(a.ref) ?? 0) + 1);
+    }
+    for (let i = 0; i < 20; i++) {
+      expect(steps.get(`f${i}`), `f${i} in front`).toBe(FAR_EVERY * 10);
+      expect(steps.get(`b${i}`) ?? 0, `b${i} behind`).toBeLessThanOrEqual(10);
+    }
   });
 
   it('always steps somebody being driven, however far away', () => {

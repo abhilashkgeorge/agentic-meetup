@@ -781,7 +781,8 @@ function Town({
   const crowdFrame = useMemo<CrowdFrame>(() => ({ eyeX: 0, eyeZ: 0, flat: 0, time: 0, dt: 0, scale: PERSON }), []);
   /** What the camera can see, and the people it can see, both reused every frame. */
   const view = useMemo(() => new Viewport(), []);
-  const stepNear = useMemo(() => ({ x: 0, z: 0, r: VIEW }), []);
+  const stepNear = useMemo(() => ({ x: 0, z: 0, r: VIEW, fx: 0, fz: 0 }), []);
+  const lookDir = useMemo(() => new THREE.Vector3(), []);
   const shown = useMemo<SimAgent[]>(() => [], []);
   /** How many of `shown` have a body this frame: shown[0..bodied). What a tap can hit. */
   const bodied = useRef(0);
@@ -876,7 +877,7 @@ function Town({
    * `adb logcat -s ReactNativeJS`. `render` is three issuing the draw calls; the
    * gap between the sections' sum and the frame is the GPU and the native side.
    */
-  const prof = useRef({ on: false, n: 0, at: 0, sim: 0, vis: 0, crowd: 0, marks: 0, render: 0, frame: 0 });
+  const prof = useRef({ on: false, n: 0, at: 0, sim: 0, vis: 0, crowd: 0, marks: 0, render: 0, frame: 0, loop: 0, start: 0 });
   useEffect(() => {
     if (!__DEV__) return;
     const p = prof.current;
@@ -890,6 +891,7 @@ function Town({
   }, [gl, slots]);
 
   useFrame((_, dt) => {
+    if (prof.current.on) prof.current.start = performance.now();
     if (!drawn.current) { drawn.current = true; onFirstFrame?.(); }
     const clamped = Math.min(dt, 0.1);
     elapsed.current += clamped;
@@ -916,10 +918,14 @@ function Town({
       onWalking?.(walking);
     }
     const p0 = prof.current.on ? performance.now() : 0;
-    // On foot, the people behind the mist take their steps less often (WorldSim.step).
-    // Last frame's camera is near enough: this one has not been placed yet.
+    // On foot, the people behind the mist or behind you take their steps less often
+    // (WorldSim.step). Last frame's camera is near enough: this one has not moved yet.
     stepNear.x = walkCamera.position.x;
     stepNear.z = walkCamera.position.z;
+    walkCamera.getWorldDirection(lookDir);
+    const flat = Math.hypot(lookDir.x, lookDir.z) || 1;
+    stepNear.fx = lookDir.x / flat;
+    stepNear.fz = lookDir.z / flat;
     live.step(clamped, walking ? stepNear : undefined);
     const p1 = prof.current.on ? performance.now() : 0;
     if (walking) garden.tick(t, clamped);
@@ -1173,12 +1179,12 @@ function Town({
     if (prof.current.on) {
       const q = prof.current;
       const p5 = performance.now();
-      q.sim += p1 - p0; q.vis += p3 - p2; q.crowd += p4 - p3; q.marks += p5 - p4; q.frame += clamped * 1000; q.n++;
+      q.sim += p1 - p0; q.vis += p3 - p2; q.crowd += p4 - p3; q.marks += p5 - p4; q.loop += p5 - q.start; q.frame += clamped * 1000; q.n++;
       if (t - q.at >= 2 && q.n) {
         const f = (x: number) => (x / q.n).toFixed(1);
         const lv = bodies ? `${bodies.stats.near}/${bodies.stats.middle}/${bodies.stats.far}` : '-';
-        console.log(`[perf] frame ${f(q.frame)} ms | sim ${f(q.sim)} | visible ${f(q.vis)} | crowd ${f(q.crowd)} | marks ${f(q.marks)} | render ${f(q.render)} | shown ${used} (${lv}) | calls ${gl.info.render.calls} | tris ${gl.info.render.triangles}`);
-        q.at = t; q.n = 0; q.sim = 0; q.vis = 0; q.crowd = 0; q.marks = 0; q.render = 0; q.frame = 0;
+        console.log(`[perf] frame ${f(q.frame)} ms | loop ${f(q.loop)} | sim ${f(q.sim)} | visible ${f(q.vis)} | crowd ${f(q.crowd)} | marks ${f(q.marks)} | render ${f(q.render)} | idle ${f(q.frame - q.loop - q.render)} | shown ${used} (${lv}) | calls ${gl.info.render.calls} | tris ${gl.info.render.triangles}`);
+        q.at = t; q.n = 0; q.sim = 0; q.vis = 0; q.crowd = 0; q.marks = 0; q.render = 0; q.frame = 0; q.loop = 0;
       }
     }
 

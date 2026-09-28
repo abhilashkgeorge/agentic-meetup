@@ -40,7 +40,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneRig } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BALD, HAIR_HEX, LOOK_PARTS, LOOK_SIZES, OUTFIT_HEX, SKIN_HEX, type Look } from '@clone/shared';
 import { LOOKS, SLOTS, buildScale, partsOf, type LookKey, type LookPieces, type Role } from './character';
 import { EXTRA_OWN_COLOUR, MODEL_SCALE, buildExtras, readModel, type Manifest } from './character-mesh';
@@ -194,6 +193,32 @@ export function mergeNear(geo: THREE.BufferGeometry, h: number): THREE.BufferGeo
 }
 
 /**
+ * An attribute with an array of its own, one item after another.
+ *
+ * THE MODEL'S NORMALS ARE INTERLEAVED: three bytes each, padded to four, because glTF
+ * aligns every vertex to four bytes. Read as if they were packed -- which is what
+ * mergeNear and a plain copy both do -- every vertex takes its normal from the wrong
+ * bytes: 4,012 of the middle level's 10,366 normals pointed nowhere, and the middle
+ * and far bodies were lit wrong (found while timing the build on the Seeker,
+ * 2026-09-29). three's own clone() unpacks them, one push at a time and a console
+ * line per piece; this does it in one loop.
+ */
+function own(a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): THREE.BufferAttribute {
+  const n = a.count;
+  const k = a.itemSize;
+  const out = new (a.array.constructor as new (n: number) => THREE.TypedArray)(n * k);
+  if ((a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute) {
+    const i = a as THREE.InterleavedBufferAttribute;
+    const src = i.data.array;
+    const stride = i.data.stride;
+    for (let v = 0; v < n; v++) for (let c = 0; c < k; c++) out[v * k + c] = src[v * stride + i.offset + c]!;
+  } else {
+    out.set((a as THREE.BufferAttribute).array.subarray(0, n * k));
+  }
+  return new THREE.BufferAttribute(out, k, a.normalized);
+}
+
+/**
  * One piece, ready to be merged with every other: the four attributes the model
  * carries, a colour (the artist's, for pieces nobody recolours), and aMeta -- the
  * role, the slot and the variant the shader selects on.
@@ -203,10 +228,10 @@ function tagged(src: THREE.BufferGeometry, meta: { role: number; slot: number; v
   for (const name of ['position', 'normal', 'skinIndex', 'skinWeight'] as const) {
     const a = src.attributes[name];
     if (!a) throw new Error(`a body piece has no ${name}`);
-    base.setAttribute(name, a);
+    base.setAttribute(name, own(a));
   }
-  if (src.index) base.setIndex(src.index);
-  const g = merge > 0 ? mergeNear(base, merge) : base.clone();
+  if (src.index) base.setIndex(new THREE.BufferAttribute(src.index.array.slice(), 1));
+  const g = merge > 0 ? mergeNear(base, merge) : base;
   const n = g.attributes.position!.count;
   const rgb = new Float32Array(n * 3);
   const tag = new Uint8Array(n * 4);
@@ -216,8 +241,8 @@ function tagged(src: THREE.BufferGeometry, meta: { role: number; slot: number; v
   }
   g.setAttribute('color', new THREE.BufferAttribute(rgb, 3));
   g.setAttribute('aMeta', new THREE.BufferAttribute(tag, 4));
-  // Every attribute is read as float by the shader. The model's own come with whatever
-  // flag the loader gave them, and merging refuses a mix.
+  // Every attribute is read as float by the shader, whatever flag the loader gave it,
+  // so every piece says so alike.
   for (const a of Object.values(g.attributes)) (a as THREE.BufferAttribute).gpuType = THREE.FloatType;
   return g;
 }
@@ -243,6 +268,63 @@ function extraPiece(geo: THREE.BufferGeometry, head: number, headBind: THREE.Mat
   g.setAttribute('skinWeight', new THREE.BufferAttribute(wgt, 4, true));
   if (!g.index) g.setIndex(Array.from({ length: n }, (_, i) => i));
   return g;
+}
+
+/**
+ * Many pieces into one geometry, as three's mergeGeometries does, but straight into
+ * typed arrays.
+ *
+ * WHY NOT THREE'S. It builds the merged index as a plain array, one push and one
+ * getX() call per corner, then converts it -- 190,000 corners for the near level.
+ * On the Seeker (debug build, 2026-09-29) that single merge was 417 ms of the
+ * crowd's 1,060 ms build, a visible freeze, where everything else was under 60 ms.
+ * The pieces here always share one attribute layout, so this copies each attribute
+ * with one `set` per piece and offsets the index in one typed loop.
+ */
+export function mergePieces(pieces: readonly THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const first = pieces[0];
+  if (!first) throw new Error('nothing to merge');
+  const names = Object.keys(first.attributes);
+  let verts = 0;
+  let corners = 0;
+  for (const p of pieces) {
+    if (!p.index) throw new Error('the crowd pieces did not merge: one has no index');
+    if (Object.keys(p.attributes).length !== names.length) throw new Error('the crowd pieces did not merge: their attributes differ');
+    for (const n of names) {
+      const a = p.attributes[n] as THREE.BufferAttribute | undefined;
+      const f = first.attributes[n] as THREE.BufferAttribute;
+      if (!a || a.array.constructor !== f.array.constructor || a.itemSize !== f.itemSize || a.normalized !== f.normalized) {
+        throw new Error(`the crowd pieces did not merge: their "${n}" differs`);
+      }
+    }
+    verts += p.attributes.position!.count;
+    corners += p.index.count;
+  }
+  const out = new THREE.BufferGeometry();
+  for (const n of names) {
+    const f = first.attributes[n] as THREE.BufferAttribute;
+    const arr = new (f.array.constructor as new (n: number) => THREE.TypedArray)(verts * f.itemSize);
+    let at = 0;
+    for (const p of pieces) {
+      const a = p.attributes[n] as THREE.BufferAttribute;
+      arr.set(a.array, at);
+      at += a.count * a.itemSize;
+    }
+    const merged = new THREE.BufferAttribute(arr, f.itemSize, f.normalized);
+    merged.gpuType = f.gpuType;
+    out.setAttribute(n, merged);
+  }
+  const index = verts > 65535 ? new Uint32Array(corners) : new Uint16Array(corners);
+  let at = 0;
+  let base = 0;
+  for (const p of pieces) {
+    const src = p.index!.array;
+    for (let i = 0; i < src.length; i++) index[at + i] = src[i]! + base;
+    at += src.length;
+    base += p.attributes.position!.count;
+  }
+  out.setIndex(new THREE.BufferAttribute(index, 1));
+  return out;
 }
 
 export interface CrowdParts {
@@ -310,9 +392,8 @@ export function* levelSteps(parts: CrowdParts): Generator<void, THREE.BufferGeom
     return out;
   }
   const merged = (pieces: THREE.BufferGeometry[]) => {
-    const g = mergeGeometries(pieces, false);
+    const g = mergePieces(pieces);
     for (const p of pieces) p.dispose();
-    if (!g) throw new Error('the crowd pieces did not merge: their attributes differ');
     return g;
   };
   const near = merged(yield* slotPieces(LEVELS[0].merge));
@@ -693,13 +774,18 @@ export async function loadGpuCrowd(): Promise<GpuCrowd> {
     const steps = prepareSteps(gltf, require('../../../assets/characters/people.json') as Manifest);
     const t0 = Date.now();
     let longest = 0;
+    let at = 0;
+    const slow: string[] = [];
     for (;;) {
       const s0 = Date.now();
       const r = steps.next();
-      longest = Math.max(longest, Date.now() - s0);
+      const took = Date.now() - s0;
+      if (took > 30) slow.push(`#${at}:${took}`);
+      at++;
+      longest = Math.max(longest, took);
       if (r.done) {
         if ((globalThis as { __DEV__?: boolean }).__DEV__) {
-          console.log(`[crowd] built in ${Date.now() - t0} ms, longest step ${longest} ms`);
+          console.log(`[crowd] built in ${Date.now() - t0} ms, longest step ${longest} ms (${at} steps; slow: ${slow.join(' ')})`);
         }
         return r.value;
       }

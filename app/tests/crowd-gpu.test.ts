@@ -28,6 +28,8 @@
  *   - update() not moving past a full level            -> "per level" fails
  *   - update() without its update range                -> "only the people written" fails
  *   - levelSteps() without its yield per look          -> "comes in steps" fails
+ *   - mergePieces() without the index offset           -> "exactly what three's own merge makes" fails
+ *   - tagged() taking the model's interleaved normals as they are -> "each normal is a real direction" fails
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -151,6 +153,48 @@ describe('the three levels', () => {
       expect(middle).toBeGreaterThan(0);
       expect(middle, 'the middle level is not smaller').toBeLessThan(near * 0.75);
     }
+  });
+
+  it('lights every body right: each normal is a real direction, at every level', () => {
+    // The model's normals are interleaved (three bytes padded to four). Read as packed,
+    // every vertex took another's bytes and the middle and far bodies were lit wrong.
+    // A normal read from the right bytes is a unit vector, give or take the byte.
+    for (const [i, g] of levels.entries()) {
+      const nrm = g.attributes.normal!;
+      let bad = 0;
+      for (let v = 0; v < nrm.count; v++) {
+        const len = Math.hypot(nrm.getX(v), nrm.getY(v), nrm.getZ(v));
+        if (len < 0.95 || len > 1.05) bad++;
+      }
+      expect(bad, `level ${i}: ${bad} of ${nrm.count} normals are not directions`).toBe(0);
+    }
+  });
+
+  it("merges pieces into exactly what three's own merge makes", async () => {
+    // mergePieces replaces mergeGeometries only for speed (417 ms of index pushes on
+    // the phone); the result must be the same arrays, byte for byte.
+    const { mergeGeometries } = await import('three/examples/jsm/utils/BufferGeometryUtils.js');
+    // Plain copies of the model's own pieces (its normals are interleaved; the build
+    // unpacks them before merging, and so does this).
+    const sample = [...byName.values()].slice(0, 12).map((g) => {
+      const c = new THREE.BufferGeometry();
+      for (const n of ['position', 'normal', 'skinIndex', 'skinWeight']) {
+        const a = g.attributes[n]!;
+        c.setAttribute(n, new THREE.BufferAttribute(new (a.array.constructor as Float32ArrayConstructor)(
+          Array.from({ length: a.count * a.itemSize }, (_, j) => a.getComponent(Math.floor(j / a.itemSize), j % a.itemSize) *
+            (a.normalized ? (a.array instanceof Int8Array ? 127 : 255) : 1))), a.itemSize, a.normalized));
+      }
+      c.setIndex(g.index);
+      return c;
+    });
+    const ours = gpu.mergePieces(sample);
+    const three = mergeGeometries(sample, false)!;
+    for (const n of ['position', 'normal', 'skinIndex', 'skinWeight']) {
+      expect(Array.from(ours.attributes[n]!.array), n).toEqual(Array.from(three.attributes[n]!.array));
+      expect(ours.attributes[n]!.normalized).toBe(three.attributes[n]!.normalized);
+    }
+    expect(Array.from(ours.index!.array)).toEqual(Array.from(three.index!.array));
+    expect(() => gpu.mergePieces([sample[0]!, new THREE.BoxGeometry()])).toThrow(/did not merge/);
   });
 
   it('the far level is one merged outfit per head, much lighter than near', () => {

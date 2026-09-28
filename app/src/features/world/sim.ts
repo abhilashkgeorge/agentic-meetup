@@ -288,6 +288,12 @@ const PARTING_SECS = 3;
 const TOGETHER_SECS = 2;
 /** Out of sight, a walker takes one step in this many frames (WorldSim.step). */
 export const FAR_EVERY = 4;
+/**
+ * How far behind the camera somebody still counts as in sight: a little, so the
+ * people at your own shoulder -- the camera sits behind you -- and anyone a small turn
+ * would show are stepped every frame.
+ */
+export const BEHIND = 2;
 /** The two agents of a meeting, in either order. */
 const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
 /**
@@ -565,22 +571,31 @@ export class WorldSim {
   /**
    * Move everybody on by `dt` seconds.
    *
-   * `near` is the camera and how far it can see. Somebody further away than that --
-   * behind the park's mist, where nobody can see them -- takes one step in FAR_EVERY
-   * frames, a step FAR_EVERY frames long: the same walk, a quarter of the work. With
-   * the park's thousand-person test crowd the sim was 7.5 ms of a 35 ms frame on the
-   * Seeker (debug build, 2026-09-28), nearly all of it people nobody could see. Anyone
-   * being driven by a thumb is always stepped every frame.
+   * `near` is the camera: where it stands, how far it can see, and which way it looks
+   * along the ground (fx, fz, a unit vector; both 0 for "every way"). Somebody it
+   * cannot see -- behind the park's mist, or more than BEHIND units behind the camera
+   * -- takes one step in FAR_EVERY frames, a step FAR_EVERY frames long: the same walk,
+   * a quarter of the work. With the park's thousand-person test crowd the sim was 7.5
+   * ms of a 35 ms frame on the Seeker (debug build, 2026-09-28), nearly all of it
+   * people nobody could see; with the mist alone it was still 4 ms (2026-09-29),
+   * because half the people inside it are behind you. Anyone being driven by a thumb
+   * is always stepped every frame.
    */
-  step(dt: number, near?: { x: number; z: number; r: number }): void {
+  step(dt: number, near?: { x: number; z: number; r: number; fx?: number; fz?: number }): void {
     const all = this.agents();
     this.beat = (this.beat + 1) % FAR_EVERY;
     const r2 = near ? near.r * near.r : Infinity;
+    const fx = near?.fx ?? 0;
+    const fz = near?.fz ?? 0;
     for (let i = 0; i < all.length; i++) {
       const a = all[i]!;
-      if (near && a.driveX === 0 && a.driveZ === 0 && (a.x - near.x) ** 2 + (a.z - near.z) ** 2 > r2) {
-        if (i % FAR_EVERY === this.beat) this.stepOne(a, dt * FAR_EVERY);
-        continue;
+      if (near && a.driveX === 0 && a.driveZ === 0) {
+        const dx = a.x - near.x;
+        const dz = a.z - near.z;
+        if (dx * dx + dz * dz > r2 || dx * fx + dz * fz < -BEHIND) {
+          if (i % FAR_EVERY === this.beat) this.stepOne(a, dt * FAR_EVERY);
+          continue;
+        }
       }
       this.stepOne(a, dt);
     }
