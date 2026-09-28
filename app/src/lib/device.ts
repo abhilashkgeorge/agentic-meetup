@@ -27,12 +27,14 @@ export function deviceId(): Promise<string | null> {
 }
 
 async function read(): Promise<string | null> {
-  const { Platform } = await import('react-native');
-  if (Platform.OS === 'android') {
+  // Through lib/platform.ts, never `import('react-native')`: see that file.
+  const { platformOS } = await import('./platform');
+  const os = platformOS();
+  if (os === 'android') {
     const { getAndroidId } = await import('expo-application');
     return getAndroidId() || null;
   }
-  if (Platform.OS !== 'ios') return null;
+  if (os !== 'ios') return null;
   const SecureStore = await import('expo-secure-store');
   const had = await SecureStore.getItemAsync(KEY);
   if (had) return had;

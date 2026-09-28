@@ -136,4 +136,24 @@ describe('native modules', () => {
       + `features/world/r3f.ts instead:\n${offenders.join('\n')}`,
     ).toEqual([]);
   });
+
+  it('react-native itself is never imported whole: no import() and no import * of it', () => {
+    // import('react-native') and `import * as X from 'react-native'` copy every export
+    // into a namespace object, which reads every deprecated getter react-native still
+    // carries -- five "has been deprecated / extracted" warnings in Metro's log on every
+    // launch (2026-09-28, from lib/push.ts). A named import reads only what it names;
+    // code that must load it lazily goes through lib/platform.ts.
+    // Negative control, 2026-09-28: push.ts back on import('react-native') -> fails.
+    const offenders: string[] = [];
+    for (const file of sources(SRC)) {
+      // Code only: the files that explain the rule quote the pattern in their comments.
+      const code = readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+      // `typeof import('react-native')` is a type, erased before anything runs.
+      if (/(?<!typeof\s)\bimport\(\s*'react-native'\s*\)|import\s+\*\s+as\s+\w+\s+from\s+'react-native'/.test(code)) {
+        offenders.push(file.replace(SRC, 'src'));
+      }
+    }
+    expect(offenders, 'import react-native by name instead').toEqual([]);
+  });
 });

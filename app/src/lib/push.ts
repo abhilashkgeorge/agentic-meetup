@@ -24,7 +24,8 @@ export type PushSetup = 'ok' | 'denied' | 'not_asked' | 'no_project' | 'unavaila
 export async function registerForPush(token: string, opts: { ask: boolean }): Promise<PushSetup> {
   try {
     const Notifications = await import('expo-notifications');
-    const { Platform } = await import('react-native');
+    // Through lib/platform.ts, never `import('react-native')`: see that file.
+    const { platformOS } = await import('./platform');
     const Constants = (await import('expo-constants')).default;
     // While the app is open the socket already shows what happened; no banner on top.
     Notifications.setNotificationHandler({
@@ -32,7 +33,7 @@ export async function registerForPush(token: string, opts: { ask: boolean }): Pr
         shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false,
       }),
     });
-    if (Platform.OS === 'android') {
+    if (platformOS() === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Matches and messages', importance: Notifications.AndroidImportance.HIGH,
       });
@@ -51,7 +52,7 @@ export async function registerForPush(token: string, opts: { ask: boolean }): Pr
     const res = await fetch(`${getApiBase()}/v1/push/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ token: device, platform: Platform.OS === 'ios' ? 'ios' : 'android' }),
+      body: JSON.stringify({ token: device, platform: platformOS() === 'ios' ? 'ios' : 'android' }),
     });
     if (!res.ok) return 'failed';
     registered = device;
