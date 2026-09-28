@@ -259,14 +259,21 @@ export interface CrowdParts {
 /**
  * The three meshes' geometry: every slot of every outfit (and the beards and
  * accessories) for near and middle, one merged outfit per head for far.
+ *
+ * A LOOK AT A TIME. This is a generator that stops after each look, so the app can
+ * build it between frames (loadGpuCrowd) and the tests all at once (buildLevels). In
+ * node the whole build is about fifty milliseconds; a phone's JavaScript engine has no
+ * compiler to speed it up, and done in one go it would freeze the town for a good
+ * part of a second.
  */
-export function buildLevels(parts: CrowdParts): THREE.BufferGeometry[] {
+export function* levelSteps(parts: CrowdParts): Generator<void, THREE.BufferGeometry[], void> {
   const white = new THREE.Color(1, 1, 1);
   const colourOf = (mesh: string, role: Role) => (role === 'plain' ? parts.colour.get(mesh) ?? white : white);
   const extras = buildExtras();
-  const slotPieces = (merge: number) => {
+  function* slotPieces(merge: number): Generator<void, THREE.BufferGeometry[], void> {
     const out: THREE.BufferGeometry[] = [];
-    LOOKS.forEach((key, variant) => {
+    for (let variant = 0; variant < LOOKS.length; variant++) {
+      const key = LOOKS[variant]!;
       for (const slot of SLOTS) {
         for (const p of parts.pieces(key)?.[slot] ?? []) {
           const g = parts.geometry.get(p.mesh);
@@ -274,7 +281,8 @@ export function buildLevels(parts: CrowdParts): THREE.BufferGeometry[] {
           out.push(tagged(g, { role: ROLE[p.role], slot: SLOT_ID[slot], variant }, colourOf(p.mesh, p.role), merge));
         }
       }
-    });
+      yield;
+    }
     parts.beards.forEach((mesh, i) => {
       const g = parts.geometry.get(mesh);
       if (g) out.push(tagged(g, { role: ROLE.hair, slot: SLOT_ID.beard, variant: i + 1 }, white, merge));
@@ -283,11 +291,13 @@ export function buildLevels(parts: CrowdParts): THREE.BufferGeometry[] {
       out.push(tagged(extraPiece(extras[kind], parts.head, parts.headBind),
         { role: ROLE.extra, slot: SLOT_ID.extra, variant: i + 1 }, white, 0));
     });
+    yield;
     return out;
-  };
-  const outfits = (merge: number) => {
+  }
+  function* outfits(merge: number): Generator<void, THREE.BufferGeometry[], void> {
     const out: THREE.BufferGeometry[] = [];
-    LOOKS.forEach((key, variant) => {
+    for (let variant = 0; variant < LOOKS.length; variant++) {
+      const key = LOOKS[variant]!;
       for (const slot of SLOTS) {
         for (const p of parts.pieces(key)?.[slot] ?? []) {
           const g = parts.geometry.get(p.mesh);
@@ -295,21 +305,35 @@ export function buildLevels(parts: CrowdParts): THREE.BufferGeometry[] {
           out.push(tagged(g, { role: ROLE[p.role], slot: SLOT_ID.outfit, variant }, colourOf(p.mesh, p.role), merge));
         }
       }
-    });
+      yield;
+    }
     return out;
-  };
+  }
   const merged = (pieces: THREE.BufferGeometry[]) => {
     const g = mergeGeometries(pieces, false);
     for (const p of pieces) p.dispose();
     if (!g) throw new Error('the crowd pieces did not merge: their attributes differ');
     return g;
   };
+  const near = merged(yield* slotPieces(LEVELS[0].merge));
+  yield;
+  const middle = merged(yield* slotPieces(LEVELS[1].merge));
+  yield;
+  const far = merged(yield* outfits(LEVELS[2].merge));
   for (const e of Object.values(extras)) e.dispose();
-  return [
-    merged(slotPieces(LEVELS[0].merge)),
-    merged(slotPieces(LEVELS[1].merge)),
-    merged(outfits(LEVELS[2].merge)),
-  ];
+  return [near, middle, far];
+}
+
+/** Run a build's steps to the end, all at once. */
+function finish<T>(steps: Generator<void, T, void>): T {
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+export function buildLevels(parts: CrowdParts): THREE.BufferGeometry[] {
+  return finish(levelSteps(parts));
 }
 
 // ── one person, as numbers ───────────────────────────────────────────────────
@@ -507,7 +531,11 @@ export interface PreparedCrowd {
   beards: readonly string[];
 }
 
-export function prepareCrowd(gltf: { scene: THREE.Object3D; animations: THREE.AnimationClip[] }, manifest: Manifest): PreparedCrowd {
+/** The crowd's parts, a step at a time (see levelSteps). */
+export function* prepareSteps(
+  gltf: { scene: THREE.Object3D; animations: THREE.AnimationClip[] },
+  manifest: Manifest,
+): Generator<void, PreparedCrowd, void> {
   const meshes: THREE.SkinnedMesh[] = [];
   gltf.scene.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(o as THREE.SkinnedMesh); });
   if (!meshes.length) throw new Error('people.glb has no skinned meshes');
@@ -530,8 +558,13 @@ export function prepareCrowd(gltf: { scene: THREE.Object3D; animations: THREE.An
   const beards = manifest.beards ?? [];
 
   const bake = bakeClips(gltf.scene, boneNames, boneInverses, new Map(gltf.animations.map((c) => [c.name, c])));
-  const levels = buildLevels({ geometry, colour, pieces, beards, head, headBind });
+  yield;
+  const levels = yield* levelSteps({ geometry, colour, pieces, beards, head, headBind });
   return { bake, levels, pieces, beards };
+}
+
+export function prepareCrowd(gltf: { scene: THREE.Object3D; animations: THREE.AnimationClip[] }, manifest: Manifest): PreparedCrowd {
+  return finish(prepareSteps(gltf, manifest));
 }
 
 /** One GL context's crowd, from the prepared parts. Disposing it leaves them reusable. */
@@ -657,10 +690,22 @@ export async function loadGpuCrowd(): Promise<GpuCrowd> {
     const bytes = await readModel();
     const gltf = await new Promise<{ scene: THREE.Object3D; animations: THREE.AnimationClip[] }>((res, rej) =>
       new GLTFLoader().parse(bytes, '', res as never, rej));
+    const steps = prepareSteps(gltf, require('../../../assets/characters/people.json') as Manifest);
     const t0 = Date.now();
-    const made = prepareCrowd(gltf, require('../../../assets/characters/people.json') as Manifest);
-    if ((globalThis as { __DEV__?: boolean }).__DEV__) console.log(`[crowd] built in ${Date.now() - t0} ms`);
-    return made;
+    let longest = 0;
+    for (;;) {
+      const s0 = Date.now();
+      const r = steps.next();
+      longest = Math.max(longest, Date.now() - s0);
+      if (r.done) {
+        if ((globalThis as { __DEV__?: boolean }).__DEV__) {
+          console.log(`[crowd] built in ${Date.now() - t0} ms, longest step ${longest} ms`);
+        }
+        return r.value;
+      }
+      // Let the phone draw a frame between steps.
+      await new Promise((res) => setTimeout(res, 0));
+    }
   })();
   try {
     return crowdFrom(await prepared);

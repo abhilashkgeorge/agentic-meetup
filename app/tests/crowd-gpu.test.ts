@@ -15,6 +15,8 @@
  *   - the frame's buffers hold exactly what update() was given, nearest first, per
  *     level, and a person keeps no body in two levels at once;
  *   - only the people written are sent to the GPU, not each buffer's whole capacity;
+ *   - the build comes in steps, a look at a time, so the phone can draw between them,
+ *     and the stepped build is the same geometry as the one done at once;
  *   - on the map, where nobody shrinks with distance, everybody is at the level their
  *     size on screen says, and the nearest to the middle get the near level.
  * The shader cannot run in node: `wears` and `skinFromBake` are the shader's rules in
@@ -25,6 +27,7 @@
  *   - wears() ignoring the bald flag                   -> "exactly the parts" fails
  *   - update() not moving past a full level            -> "per level" fails
  *   - update() without its update range                -> "only the people written" fails
+ *   - levelSteps() without its yield per look          -> "comes in steps" fails
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -160,6 +163,22 @@ describe('the three levels', () => {
     const meta = levels[2]!.attributes.aMeta!;
     for (let i = 0; i < meta.count; i++) slots.add(meta.getY(i));
     expect([...slots]).toEqual([gpu.SLOT_ID.outfit]);
+  });
+});
+
+describe('the build', () => {
+  it('comes in steps, a look at a time, and makes the same meshes as building at once', async () => {
+    const steps = gpu.prepareSteps(await fresh(), manifest);
+    let n = 0;
+    let r = steps.next();
+    while (!r.done) { n++; r = steps.next(); }
+    const { LOOKS } = await import('../src/features/world/character');
+    // At least one stop per look per level: the phone draws a frame at every stop.
+    expect(n).toBeGreaterThanOrEqual(3 * LOOKS.length);
+    const once = gpu.prepareCrowd(await fresh(), manifest);
+    expect(r.value.levels.map((g) => [g.attributes.position!.count, g.index!.count]))
+      .toEqual(once.levels.map((g) => [g.attributes.position!.count, g.index!.count]));
+    expect(r.value.bake.data).toEqual(once.bake.data);
   });
 });
 
