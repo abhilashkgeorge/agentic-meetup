@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "npm run dev --workspace=@clone/server",
     "typecheck": "tsc -b shared server",
+    "docs": "node docs/end-to-end/build.mjs",
     "test": "npm run test --workspaces --if-present",
     "app": "npm run start --workspace=@clone/app",
     "android": "npm run android --workspace=@clone/app",
