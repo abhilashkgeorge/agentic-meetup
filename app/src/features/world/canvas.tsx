@@ -709,7 +709,7 @@ function Town({
   sim, colors, cap30, onStats, onTapAgent, onTapVenue, onFirstFrame, onBand, onWalking,
   stick, venueSim, venue = CUBBON_PARK, cam, slots = SLOTS,
 }: WorldCanvasProps & { cam: CamState }) {
-  const { gl, scene, invalidate, size, set } = useThree();
+  const { gl, scene, invalidate, size, set, get } = useThree();
   const mapCamera = useMemo(() => new THREE.OrthographicCamera(), []);
   const walkCamera = useMemo(() => new THREE.PerspectiveCamera(WALK_FOV, 1, 0.08, WALK_FAR), []);
 
@@ -984,10 +984,19 @@ function Town({
     if (want !== mode.current) {
       const was = mode.current;
       mode.current = want;
-      set({ camera });
       onWalking?.(want === 'walk');
       // Leaving: the map picks up where the walk left off, over your agent.
       if (was !== null && want === 'map' && you) { cam.pose = { tx: you.x, tz: you.z, zoom: ZOOM_START }; cam.follow = true; }
+    }
+    // THE CAMERA r3f DRAWS THROUGH is checked every frame, not only when the mode
+    // changes. A hot reload in development runs this component's useMemo again and
+    // builds two new cameras; switching only on a change of mode left r3f drawing
+    // through the old walking camera, frozen where it stood, while the new one
+    // followed you unseen (the founder, 2026-09-29: "the camera is no longer following
+    // my character, the view is fixed"). A new camera also needs its lens set.
+    if (get().camera !== camera) {
+      set({ camera });
+      lens.current = '';
     }
 
     const lensNow = want === 'walk'
