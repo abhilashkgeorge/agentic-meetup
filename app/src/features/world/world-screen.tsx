@@ -48,7 +48,7 @@ import { PeopleSheet } from './people-sheet';
 import { gardenSpots } from './garden';
 import { MAP, spotsFrom } from './map';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
-import { WorldSim, isCrowd } from './sim';
+import { CROWD_TEST, WorldSim, isCrowd } from './sim';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
 import {
   CITY_REALM, CUBBON_PARK, agentsForVenue, directionsUrl, transitionRealm, venueGarden,
@@ -62,9 +62,6 @@ import {
  */
 const sim = new WorldSim(20260918);
 sim.setMap(spotsFrom(MAP));
-
-/** How many walkers the park's crowd test adds (development builds; see toggleCrowd). */
-const CROWD_TEST = 1000;
 
 export default function WorldScreen() {
   const p = usePalette();
@@ -181,6 +178,17 @@ export default function WorldScreen() {
     venueSim.addCrowd(CROWD_TEST, CUBBON_PARK.id);
     setCrowd(CROWD_TEST);
   }, [crowd, venueSim]);
+  /**
+   * The same test for the city (the founder, 2026-09-29: "can you try adding 1000
+   * agents over there too"), spread over all thirty neighbourhoods. The roster never
+   * removes them: `departed` only ever names people the roster itself brought.
+   */
+  const [cityCrowd, setCityCrowd] = useState(0);
+  const toggleCityCrowd = useCallback(() => {
+    if (cityCrowd) { sim.removeCrowd(); setCityCrowd(0); return; }
+    sim.addCrowd(CROWD_TEST, MAP.areas.map((a) => a.id));
+    setCityCrowd(CROWD_TEST);
+  }, [cityCrowd]);
 
   // Roster -> sim. Only what changed since the last roster, so a poll never restarts
   // a walk-over already under way.
@@ -367,7 +375,7 @@ export default function WorldScreen() {
                             control={control} onBand={setBand} frame={frame}
                             stick={stick} onWalking={setWalking}
                             venueSim={venueSim} venue={CUBBON_PARK}
-                            slots={crowd ? crowd + 64 : undefined}
+                            slots={crowd + cityCrowd ? crowd + cityCrowd + 64 : undefined}
                             inVenue={realm.phase === 'venue' || realm.phase === 'leaving'}
                             onTapVenue={() => enterVenue()} />
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
@@ -379,6 +387,7 @@ export default function WorldScreen() {
            onArea={() => router.push({ pathname: setupRoute(['area']), params: { finish: '1' } })}
            onName={() => router.push({ pathname: setupRoute(['first_name']), params: { finish: '1' } })}
            crowd={crowd} onCrowd={FPS_METER ? toggleCrowd : undefined}
+           cityCrowd={cityCrowd} onCityCrowd={FPS_METER ? toggleCityCrowd : undefined}
            walking={walking} venue={realm.venue} transitioning={transitioning}
            onEnterVenue={enterVenue} onLeaveVenue={leaveVenue}
            onDirections={() => void Linking.openURL(directionsUrl(CUBBON_PARK))}

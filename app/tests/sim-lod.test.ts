@@ -17,6 +17,7 @@
  * Negative controls, run 2026-09-28/29 and restored byte-identical:
  *   - step() ignoring `near`                    -> "one step in FAR_EVERY" fails
  *   - step() without the behind-the-camera test -> "behind the camera less often" fails
+ *   - step() ignoring `every`                   -> "in sight less often too" fails
  *   - remove() not dropping the cached list     -> "until somebody leaves" fails
  */
 import { describe, expect, it } from 'vitest';
@@ -84,6 +85,44 @@ describe('the walkers nobody can see', () => {
       expect(steps.get(`f${i}`), `f${i} in front`).toBe(FAR_EVERY * 10);
       expect(steps.get(`b${i}`) ?? 0, `b${i} behind`).toBeLessThanOrEqual(10);
     }
+  });
+
+  it('steps the people in sight less often too, when the camera is far out', () => {
+    // Zoomed out over the city a person is two pixels tall and a step moves them a
+    // fraction of one: `every` says how often the people in sight step.
+    const s = town();
+    for (let i = 0; i < 200; i++) s.step(1 / 30);
+    const camera = { x: 0, z: 0, r: 1e6, every: 3 };
+    const steps = new Map<string, number>();
+    for (let f = 0; f < 12 * 5; f++) {
+      const before = new Map(s.agents().map((a) => [a.ref, `${a.x},${a.z},${a.wait}`]));
+      s.step(1 / 30, camera);
+      for (const a of s.agents()) {
+        if (before.get(a.ref) !== `${a.x},${a.z},${a.wait}`) steps.set(a.ref, (steps.get(a.ref) ?? 0) + 1);
+      }
+    }
+    const counts = [...steps.entries()].filter(([ref]) => ref !== 'you').map(([, n]) => n);
+    expect(counts.length).toBeGreaterThan(10);
+    for (const n of counts) expect(n).toBeLessThanOrEqual(20);
+    // ...and it is still the same walk, in bigger steps.
+    const a = town();
+    const b = town();
+    const walked = (w: WorldSim, near?: { x: number; z: number; r: number; every: number }) => {
+      let d = 0;
+      const last = new Map(w.agents().map((p) => [p.ref, [p.x, p.z] as const]));
+      for (let f = 0; f < 30 * 12; f++) {
+        w.step(1 / 30, near);
+        for (const p of w.agents()) {
+          const [x, z] = last.get(p.ref)!;
+          d += Math.hypot(p.x - x, p.z - z);
+          last.set(p.ref, [p.x, p.z]);
+        }
+      }
+      return d;
+    };
+    const ratio = walked(b, { x: 0, z: 0, r: 1e6, every: 3 }) / walked(a);
+    expect(ratio).toBeGreaterThan(0.85);
+    expect(ratio).toBeLessThan(1.15);
   });
 
   it('always steps somebody being driven, however far away', () => {

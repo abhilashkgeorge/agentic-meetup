@@ -13,8 +13,8 @@
  * is what says whether a change holds.
  *
  * PEOPLE ARE REAL BODIES, NOT CAPSULES. Everybody the camera can see is a walking body
- * drawn by the graphics chip (./crowd-gpu.ts): three draw calls for the whole crowd at
- * three levels of detail, animation baked, outfits picked in the shader, a few numbers
+ * drawn by the graphics chip (./crowd-gpu.ts): four draw calls for the whole crowd at
+ * four levels of detail, animation baked, outfits picked in the shader, a few numbers
  * a person written per frame. The capsules below -- one instanced mesh per body part,
  * a translucent twin for practice profiles -- are only the fallback for a phone that
  * cannot read the model. Everything that says who somebody IS -- the disc at their
@@ -41,7 +41,7 @@ import * as THREE from 'three';
 import { CENTRAL_AREA, HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
   CITY_BAND, FLY_SECS, MIST_NEAR, VIEW, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget,
-  driveVector, mapDistance,
+  driveVector, groundReach, mapDistance,
   elevationFor, eyeOffset, flyAt, followPose, orthographicBounds, pan, pinch, tileZoom, turnToward, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
 } from './camera';
@@ -53,7 +53,7 @@ import { buildGarden, skyFollow } from './garden-mesh';
 import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
-import { Viewport, pickAlong, visible } from './visible';
+import { Viewport, nearestFirst, pickAlong, visible } from './visible';
 import { CUBBON_PARK, venueGarden, type Venue } from './venue';
 import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
 
@@ -781,9 +781,11 @@ function Town({
   const crowdFrame = useMemo<CrowdFrame>(() => ({ eyeX: 0, eyeZ: 0, flat: 0, time: 0, dt: 0, scale: PERSON }), []);
   /** What the camera can see, and the people it can see, both reused every frame. */
   const view = useMemo(() => new Viewport(), []);
-  const stepNear = useMemo(() => ({ x: 0, z: 0, r: VIEW, fx: 0, fz: 0 }), []);
+  const stepNear = useMemo(() => ({ x: 0, z: 0, r: VIEW, fx: 0, fz: 0, every: 1 }), []);
   const lookDir = useMemo(() => new THREE.Vector3(), []);
   const shown = useMemo<SimAgent[]>(() => [], []);
+  /** Scratch for nearestFirst, reused every frame. */
+  const order = useMemo(() => ({ keys: new Float64Array(0), people: [] as SimAgent[] }), []);
   /** How many of `shown` have a body this frame: shown[0..bodied). What a tap can hit. */
   const bodied = useRef(0);
   /**
@@ -918,15 +920,32 @@ function Town({
       onWalking?.(walking);
     }
     const p0 = prof.current.on ? performance.now() : 0;
-    // On foot, the people behind the mist or behind you take their steps less often
-    // (WorldSim.step). Last frame's camera is near enough: this one has not moved yet.
-    stepNear.x = walkCamera.position.x;
-    stepNear.z = walkCamera.position.z;
-    walkCamera.getWorldDirection(lookDir);
-    const flat = Math.hypot(lookDir.x, lookDir.z) || 1;
-    stepNear.fx = lookDir.x / flat;
-    stepNear.fz = lookDir.z / flat;
-    live.step(clamped, walking ? stepNear : undefined);
+    // THE PEOPLE NOBODY CAN SEE take their steps less often (WorldSim.step). Last
+    // frame's camera is near enough: this one has not moved yet.
+    if (mode.current === 'walk') {
+      // On foot: past the mist (or the far plane), or behind you.
+      stepNear.x = walkCamera.position.x;
+      stepNear.z = walkCamera.position.z;
+      stepNear.r = VIEW;
+      walkCamera.getWorldDirection(lookDir);
+      const flat = Math.hypot(lookDir.x, lookDir.z) || 1;
+      stepNear.fx = lookDir.x / flat;
+      stepNear.fz = lookDir.z / flat;
+      stepNear.every = 1;
+    } else {
+      // On the map: off the patch of ground the screen shows, and a margin.
+      stepNear.x = focus.x;
+      stepNear.z = focus.z;
+      stepNear.r = groundReach(cam.pose.zoom, size, elevationFor(cam.pose.zoom, cam.city.zoom)) + 2;
+      stepNear.fx = 0;
+      stepNear.fz = 0;
+      // A walker covers 0.2 units a second, which is 0.2 x zoom pixels. Stepped every N
+      // frames at 120 a second, each step is zoom x N / 600 pixels; under half a pixel
+      // nobody can see the difference, so N is 240 / zoom -- four frames at the street
+      // view and pulled out over the city, every frame close in.
+      stepNear.every = Math.max(1, Math.min(4, Math.floor(240 / Math.max(1, cam.pose.zoom))));
+    }
+    live.step(clamped, stepNear);
     const p1 = prof.current.on ? performance.now() : 0;
     if (walking) garden.tick(t, clamped);
 
@@ -1069,9 +1088,7 @@ function Town({
     // on foot, nearest the middle of the screen on the map, where the camera is far
     // away behind everything and every person is the same size.
     const onFoot = want === 'walk';
-    const ox = onFoot ? ex : focus.x;
-    const oz = onFoot ? ez : focus.z;
-    shown.sort((a, b) => ((a.x - ox) ** 2 + (a.z - oz) ** 2) - ((b.x - ox) ** 2 + (b.z - oz) ** 2));
+    nearestFirst(shown, used, onFoot ? ex : focus.x, onFoot ? ez : focus.z, order);
 
     const p3 = prof.current.on ? performance.now() : 0;
     const bodies = people.current;
@@ -1182,7 +1199,7 @@ function Town({
       q.sim += p1 - p0; q.vis += p3 - p2; q.crowd += p4 - p3; q.marks += p5 - p4; q.loop += p5 - q.start; q.frame += clamped * 1000; q.n++;
       if (t - q.at >= 2 && q.n) {
         const f = (x: number) => (x / q.n).toFixed(1);
-        const lv = bodies ? `${bodies.stats.near}/${bodies.stats.middle}/${bodies.stats.far}` : '-';
+        const lv = bodies ? `${bodies.stats.near}/${bodies.stats.middle}/${bodies.stats.far}/${bodies.stats.tiny}` : '-';
         console.log(`[perf] frame ${f(q.frame)} ms | loop ${f(q.loop)} | sim ${f(q.sim)} | visible ${f(q.vis)} | crowd ${f(q.crowd)} | marks ${f(q.marks)} | render ${f(q.render)} | idle ${f(q.frame - q.loop - q.render)} | shown ${used} (${lv}) | calls ${gl.info.render.calls} | tris ${gl.info.render.triangles}`);
         q.at = t; q.n = 0; q.sim = 0; q.vis = 0; q.crowd = 0; q.marks = 0; q.render = 0; q.frame = 0; q.loop = 0;
       }

@@ -220,6 +220,8 @@ export interface AgentInput {
 
 /** The crowd test's refs (addCrowd). Never a roster ref, which is 32 hex characters. */
 export const CROWD = 'crowd-';
+/** How many walkers the crowd test adds, in the park or the city (development builds). */
+export const CROWD_TEST = 1000;
 export const isCrowd = (ref: string): boolean => ref.startsWith(CROWD);
 
 /** Plaza radius in scene units, for the town with no map. */
@@ -286,7 +288,10 @@ const PARTING_SECS = 3;
  * so the square keeps its own clock for the moment itself.
  */
 const TOGETHER_SECS = 2;
-/** Out of sight, a walker takes one step in this many frames (WorldSim.step). */
+/**
+ * Out of sight, a walker takes one step in this many frames (WorldSim.step, which
+ * counts frames round 12: keep this a number that divides it).
+ */
 export const FAR_EVERY = 4;
 /**
  * How far behind the camera somebody still counts as in sight: a little, so the
@@ -330,8 +335,8 @@ export class WorldSim {
    * the park's test crowd, for the collector to clear up.
    */
   private list: SimAgent[] | null = null;
-  /** Which of FAR_EVERY frames the far-away walkers take their step on. */
-  private beat = 0;
+  /** Frames counted round, to say whose turn it is to step (see step). */
+  private tick = 0;
   /** Visits a visitor has been asked to make while already on one, in order. */
   private readonly visits = new Map<string, string[]>();
   /**
@@ -580,20 +585,33 @@ export class WorldSim {
    * people nobody could see; with the mist alone it was still 4 ms (2026-09-29),
    * because half the people inside it are behind you. Anyone being driven by a thumb
    * is always stepped every frame.
+   *
+   * `every` is how often the people IN sight are stepped: 1, every frame, unless the
+   * camera is so far out that a step would move them less than a pixel -- the whole
+   * city on the map, where 1,000 walkers were 18 ms of a 35 ms frame and each of them
+   * two pixels tall (the Seeker, 2026-09-29). Never less often than FAR_EVERY.
    */
-  step(dt: number, near?: { x: number; z: number; r: number; fx?: number; fz?: number }): void {
+  step(dt: number, near?: { x: number; z: number; r: number; fx?: number; fz?: number; every?: number }): void {
     const all = this.agents();
-    this.beat = (this.beat + 1) % FAR_EVERY;
+    // Round 12, which 1, 2, 3 and 4 all divide, so every rate comes round evenly.
+    this.tick = (this.tick + 1) % 12;
+    const beat = this.tick % FAR_EVERY;
     const r2 = near ? near.r * near.r : Infinity;
     const fx = near?.fx ?? 0;
     const fz = near?.fz ?? 0;
+    const every = Math.max(1, Math.min(FAR_EVERY, Math.floor(near?.every ?? 1)));
+    const seen = this.tick % every;
     for (let i = 0; i < all.length; i++) {
       const a = all[i]!;
       if (near && a.driveX === 0 && a.driveZ === 0) {
         const dx = a.x - near.x;
         const dz = a.z - near.z;
         if (dx * dx + dz * dz > r2 || dx * fx + dz * fz < -BEHIND) {
-          if (i % FAR_EVERY === this.beat) this.stepOne(a, dt * FAR_EVERY);
+          if (i % FAR_EVERY === beat) this.stepOne(a, dt * FAR_EVERY);
+          continue;
+        }
+        if (every > 1) {
+          if (i % every === seen) this.stepOne(a, dt * every);
           continue;
         }
       }
@@ -842,11 +860,13 @@ export class WorldSim {
    * them. They wander the park's spots like anybody else; refs start CROWD, so the
    * roster never mistakes them for people and never removes them.
    */
-  addCrowd(n: number, area: string | null): void {
+  addCrowd(n: number, area: string | null | readonly (string | null)[]): void {
     const list: AgentInput[] = [];
     for (let i = 0; i < n; i++) {
       const seed = Math.floor(this.rnd() * 1e9);
-      list.push({ ref: `${CROWD}${i}`, kind: i % 4 === 0 ? 'practice' : 'stranger', seed, look: lookFor(seed), area });
+      // A list of areas is taken in turn: the city's test spreads over all thirty.
+      const where = typeof area === 'string' || area === null ? area : area[i % area.length] ?? null;
+      list.push({ ref: `${CROWD}${i}`, kind: i % 4 === 0 ? 'practice' : 'stranger', seed, look: lookFor(seed), area: where });
     }
     this.upsert(list);
   }

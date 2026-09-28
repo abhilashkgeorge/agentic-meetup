@@ -11,7 +11,8 @@
  *     where three's CPU skinning of the same clip at the same time puts it;
  *   - a person wears exactly the parts `partsOf` gives them -- no more, no fewer -- at
  *     the near level, and at the middle level the same parts, merged smaller;
- *   - the far level is one outfit per head, and far fewer triangles than near;
+ *   - the far level is one outfit per head, and far fewer triangles than near; the
+ *     tiny level the same outfit merged hardest, for people a few pixels tall;
  *   - the frame's buffers hold exactly what update() was given, nearest first, per
  *     level, and a person keeps no body in two levels at once;
  *   - only the people written are sent to the GPU, not each buffer's whole capacity;
@@ -101,7 +102,7 @@ describe('the baked animation', () => {
   });
 });
 
-describe('the three levels', () => {
+describe('the levels', () => {
   let levels: THREE.BufferGeometry[];
   const pieces = (k: import('../src/features/world/character').LookKey) => manifest.looks[k];
   const beards = manifest.beards ?? [];
@@ -208,6 +209,20 @@ describe('the three levels', () => {
     for (let i = 0; i < meta.count; i++) slots.add(meta.getY(i));
     expect([...slots]).toEqual([gpu.SLOT_ID.outfit]);
   });
+
+  it('the tiny level is the same outfit, a small fraction of the far one', () => {
+    // For people a few pixels tall: the whole city zoomed out. 55 vertices an outfit.
+    const f = gpu.fixedOf(look({ head: 4, top: 1, legs: 2, feet: 3 }), pieces, beards);
+    const far = kept(levels[2]!, f);
+    const tiny = kept(levels[3]!, f);
+    expect(tiny).toBeGreaterThan(20);
+    expect(tiny).toBeLessThan(far * 0.3);
+    expect(levels[3]!.attributes.position!.count).toBeLessThan(levels[2]!.attributes.position!.count * 0.25);
+    const slots = new Set<number>();
+    const meta = levels[3]!.attributes.aMeta!;
+    for (let i = 0; i < meta.count; i++) slots.add(meta.getY(i));
+    expect([...slots]).toEqual([gpu.SLOT_ID.outfit]);
+  });
 });
 
 describe('the build', () => {
@@ -239,8 +254,9 @@ describe('a frame', () => {
     const people = line(200);
     const drawn = crowd.update(people, people.length, frame());
     const [near, middle, far] = gpu.LEVELS;
-    // 0.2 apart from the eye: 23 are inside near's 4.5 but near holds 12.
-    expect(crowd.stats).toEqual({ near: near.max, middle: 71 - near.max + 0, far: 200 - 71 + 0, dropped: 0 });
+    // 0.2 apart from the eye: 23 are inside near's 4.5 but near holds 12; everybody is
+    // inside far's 40.
+    expect(crowd.stats).toEqual({ near: near.max, middle: 71 - near.max + 0, far: 200 - 71 + 0, tiny: 0, dropped: 0 });
     expect(drawn).toBe(200);
     expect(crowd.stats.near + crowd.stats.middle + crowd.stats.far).toBe(200);
     expect(crowd.stats.middle).toBeLessThanOrEqual(middle.max);
@@ -255,15 +271,16 @@ describe('a frame', () => {
 
   it('draws the nearest when there are more than the levels hold, and says how many', async () => {
     const crowd = gpu.makeGpuCrowd(await fresh(), manifest);
-    const people = line(700);
+    // Near full at 12, middle to its 14 units (71 people in), far to its 40 (201 in),
+    // then tiny to its cap.
+    const cap = 201 + gpu.LEVELS[3].max;
+    const people = line(cap + 81);
     const drawn = crowd.update(people, people.length, frame());
-    // Near full at 12, middle to its 14 units (71 people in), then far to its cap.
-    const cap = 71 + gpu.LEVELS[2].max;
-    expect(crowd.stats).toEqual({ near: 12, middle: 59, far: gpu.LEVELS[2].max, dropped: 700 - cap });
+    expect(crowd.stats).toEqual({ near: 12, middle: 59, far: 130, tiny: gpu.LEVELS[3].max, dropped: 81 });
     expect(drawn).toBe(cap);
-    // The last one drawn is the last one of the far level: nobody further got a body.
-    const farBuf = crowd.buffers[2]!.array as Float32Array;
-    expect(farBuf[(gpu.LEVELS[2].max - 1) * gpu.STRIDE]).toBeCloseTo(people[cap - 1]!.x, 5);
+    // The last one drawn is the last one of the tiny level: nobody further got a body.
+    const tinyBuf = crowd.buffers[3]!.array as Float32Array;
+    expect(tinyBuf[(gpu.LEVELS[3].max - 1) * gpu.STRIDE]).toBe(Math.fround(people[cap - 1]!.x));
     crowd.dispose();
   });
 
@@ -275,6 +292,7 @@ describe('a frame', () => {
     expect(ranges).toEqual([
       [{ start: 0, count: crowd.stats.near * gpu.STRIDE }],
       [{ start: 0, count: crowd.stats.middle * gpu.STRIDE }],
+      [],
       [],
     ]);
     // A second frame replaces the range rather than piling another on.
@@ -288,13 +306,15 @@ describe('a frame', () => {
     const people = line(60);
     // Zoomed right in: a person is big, the twelve nearest the middle get the full body.
     crowd.update(people, people.length, frame({ flat: 2 }));
-    expect(crowd.stats).toEqual({ near: 12, middle: 48, far: 0, dropped: 0 });
-    // The street view: everybody is middle, however far from the camera they stand.
+    expect(crowd.stats).toEqual({ near: 12, middle: 48, far: 0, tiny: 0, dropped: 0 });
+    // Nearer the street: everybody is middle, however far from the camera they stand.
     crowd.update(people, people.length, frame({ flat: 12, eyeX: 1000 }));
-    expect(crowd.stats).toEqual({ near: 0, middle: 60, far: 0, dropped: 0 });
-    // The whole city: everybody far.
+    expect(crowd.stats).toEqual({ near: 0, middle: 60, far: 0, tiny: 0, dropped: 0 });
+    // The street view proper, then the whole city.
+    crowd.update(people, people.length, frame({ flat: 25 }));
+    expect(crowd.stats).toEqual({ near: 0, middle: 0, far: 60, tiny: 0, dropped: 0 });
     crowd.update(people, people.length, frame({ flat: 150 }));
-    expect(crowd.stats).toEqual({ near: 0, middle: 0, far: 60, dropped: 0 });
+    expect(crowd.stats).toEqual({ near: 0, middle: 0, far: 0, tiny: 60, dropped: 0 });
     crowd.dispose();
   });
 

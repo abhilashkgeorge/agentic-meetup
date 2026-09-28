@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import {
   CITY_ELEVATION, ISO_VERTICAL, STREET_ELEVATION, WALK_AIM, WALK_BACK, WALK_RISE, ZOOM_MAX,
   bandOf, cityPose, clampTarget, driveVector, elevationFor, eyeOffset, flyAt, followPose,
-  fromScreen, mapDistance, orthographicBounds, pan, pinch, tileZoom, toScreen, turnToward, verticalOf, WALK_FOV, type Pose } from '../src/features/world/camera';
+  fromScreen, groundReach, mapDistance, orthographicBounds, pan, pinch, tileZoom, toScreen, turnToward, verticalOf, WALK_FOV, type Pose } from '../src/features/world/camera';
 import { MAP } from '../src/features/world/map';
 
 const size = { width: 390, height: 800 };
@@ -215,8 +215,10 @@ describe('how much of a body the map draws', () => {
   const levelAt = (zoom: number) => levels.findIndex((l) => mapDistance(zoom, size.height) <= l.until);
 
   it('draws the lightest body from the whole city, where a person is a pixel or two', () => {
-    expect(levelAt(atPx(1.5))).toBe(2);
-    expect(levelAt(atPx(4))).toBe(2);
+    expect(levelAt(atPx(1.5))).toBe(levels.length - 1);
+    expect(levelAt(atPx(3))).toBe(levels.length - 1);
+    // ...and the far one, a merged outfit, once they are a few pixels more.
+    expect(levelAt(atPx(6))).toBe(2);
   });
 
   it('keeps the street view people actually use above the lightest', () => {
@@ -246,5 +248,61 @@ describe('how much of a body the map draws', () => {
     const top = new THREE.Vector3(0, 0.5, -d).project(walk).y;
     const foot = new THREE.Vector3(0, -0.5, -d).project(walk).y;
     expect(((top - foot) / 2) * size.height).toBeCloseTo(55, 6);
+  });
+});
+
+/**
+ * How much ground the map shows, for stepping the people off it less often.
+ *
+ * THE BUG THIS EXISTS FOR. The city stepped every walker every frame wherever the
+ * camera was; with the thousand-person test crowd spread over the city (2026-09-29)
+ * that is the whole sim for people a street view cannot see. groundReach() says how
+ * far from the middle of the screen anybody can still be on it -- too small and people
+ * at the edge of the screen walk in jerks, too big and it saves nothing.
+ *
+ * Held here to a real orthographic camera placed exactly as canvas.tsx places the
+ * map's: every screen corner, cast down to the ground, lands inside the reach.
+ *
+ * Negative control, run 2026-09-29 and restored byte-identical: leave the tilt out of
+ * groundReach -> "covers every corner of the screen" fails at street zoom.
+ */
+describe('how much ground the map shows', () => {
+  const EYE = 220;   // canvas.tsx
+  const city = cityPose(MAP.outline, size, { top: 160, bottom: 100, side: 12 });
+  /** The farthest a screen corner lands from the middle of the screen, on the ground. */
+  const cornerReach = (zoom: number) => {
+    const b = orthographicBounds(size, zoom);
+    const cam = new THREE.OrthographicCamera(b.left, b.right, b.top, b.bottom, 1, EYE * 3);
+    cam.zoom = b.zoom;
+    cam.updateProjectionMatrix();
+    const [ex, ey, ez] = eyeOffset(elevationFor(zoom, city.zoom), EYE);
+    cam.position.set(ex, ey, ez);
+    cam.lookAt(0, 0, 0);
+    cam.updateMatrixWorld();
+    const ray = new THREE.Raycaster();
+    const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const hit = new THREE.Vector3();
+    let far = 0;
+    for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      ray.setFromCamera(new THREE.Vector2(x, y), cam);
+      if (!ray.ray.intersectPlane(ground, hit)) throw new Error('a corner of the screen misses the ground');
+      far = Math.max(far, Math.hypot(hit.x, hit.z));
+    }
+    return far;
+  };
+
+  it('covers every corner of the screen, at every zoom', () => {
+    for (const zoom of [city.zoom, 12, 20, 55, 120, ZOOM_MAX]) {
+      const reach = groundReach(zoom, size, elevationFor(zoom, city.zoom));
+      const corners = cornerReach(zoom);
+      expect(reach, `zoom ${zoom}`).toBeGreaterThanOrEqual(corners - 1e-6);
+      // ...and not so much more that nothing is ever out of it.
+      expect(reach, `zoom ${zoom}`).toBeLessThan(corners * 1.5);
+    }
+  });
+
+  it('is a street at street zoom and the whole city pulled out', () => {
+    expect(groundReach(55, size, elevationFor(55, city.zoom))).toBeLessThan(30);
+    expect(groundReach(city.zoom, size, elevationFor(city.zoom, city.zoom))).toBeGreaterThan(40);
   });
 });

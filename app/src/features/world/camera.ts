@@ -297,6 +297,22 @@ export function mapDistance(zoom: number, screenHeight: number): number {
   return focal / Math.max(1e-3, zoom);
 }
 
+/**
+ * How far from the middle of the screen the map shows any ground, in world units.
+ *
+ * The map's camera looks down at the screen's middle from `elevation` above the
+ * horizon, orthographic: the screen is `width / zoom` units of ground across, and its
+ * height covers more ground than that the flatter the camera lies. Half the diagonal
+ * of that patch is how far a person can stand from the middle and still be on screen
+ * -- the sim steps anybody further out less often (WorldSim.step). Pure, so a test
+ * holds it to a real camera.
+ */
+export function groundReach(zoom: number, size: Size, elevation: number): number {
+  const z = Math.max(1e-3, zoom);
+  const tilt = Math.max(0.2, Math.sin(elevation));
+  return Math.hypot(size.width / z, size.height / (z * tilt)) / 2;
+}
+
 export interface Fly { from: Pose; to: Pose; start: number; secs: number }
 
 /** Ease-out cubic on the target and on log(zoom), so a zoom feels even. */

@@ -156,7 +156,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 [server/src/matching/profile.ts:76] `if (f.extractor_model === 'direct') displayName = firstName(f.object_text);`,
 [server/src/api/dating.ts:166] `const name = other.display_name ?? 'Someone';`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
-("First name") ([app/src/features/world/hud.tsx:167] `{askName && <Chip label="Add your first name" selected={false} onPress={onName} />}`,
+("First name") ([app/src/features/world/hud.tsx:173] `{askName && <Chip label="Add your first name" selected={false} onPress={onName} />}`,
 [app/src/features/profile/profile-screen.tsx:232] `<Row title="First name" value={name ?? 'Not set'}`).
 
 ### 2.3 Required vs optional, and "ready to send"
@@ -181,7 +181,7 @@ is a separate notion and gates nothing ([app/src/features/onboarding/self-test-s
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
-([app/src/features/world/hud.tsx:197] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
+([app/src/features/world/hud.tsx:207] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
 [app/src/features/matches/matches-screen.tsx:229] `It needs a few more things before it can talk to anyone.`).
 
 ### 2.4 Model calls during setup

@@ -128,3 +128,38 @@ export function pickAlong(ray: THREE.Ray, people: readonly Placed[], count: numb
   }
   return best;
 }
+
+/** How many people nearestFirst can order by packed keys; past it, a plain sort. */
+const PACKED = 4096;
+
+/**
+ * Put the first `n` people in order, nearest to (ox, oz) first; ties keep their order.
+ *
+ * WHY NOT Array.sort WITH A COMPARATOR. Zoomed out over the city with the crowd test,
+ * that was 1,042 people and some ten thousand calls back into JavaScript every frame --
+ * most of the 6.7 ms "visible" cost on the Seeker (2026-09-29). Each person's distance
+ * and place in the list are packed into one number instead (distance first, in
+ * sixteenths of a unit squared; ties by place), and a Float64Array sorts those with no
+ * callback at all. `scratch` is reused between frames.
+ */
+export function nearestFirst<T extends Placed>(
+  people: T[], n: number, ox: number, oz: number, scratch: { keys: Float64Array; people: T[] },
+): void {
+  if (n < 2) return;
+  if (n >= PACKED) {
+    const head = people.slice(0, n).sort((a, b) => ((a.x - ox) ** 2 + (a.z - oz) ** 2) - ((b.x - ox) ** 2 + (b.z - oz) ** 2));
+    for (let i = 0; i < n; i++) people[i] = head[i]!;
+    return;
+  }
+  if (scratch.keys.length < n) scratch.keys = new Float64Array(Math.max(n, 64) * 2);
+  const keys = scratch.keys;
+  for (let i = 0; i < n; i++) {
+    const a = people[i]!;
+    keys[i] = Math.floor(((a.x - ox) ** 2 + (a.z - oz) ** 2) * 16) * PACKED + i;
+  }
+  const sorted = keys.subarray(0, n).sort();
+  const copy = scratch.people;
+  copy.length = n;
+  for (let i = 0; i < n; i++) copy[i] = people[i]!;
+  for (let i = 0; i < n; i++) people[i] = copy[sorted[i]! % PACKED]!;
+}

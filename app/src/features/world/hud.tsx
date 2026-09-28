@@ -35,6 +35,8 @@ export function Hud({
   onName,
   crowd = 0,
   onCrowd,
+  cityCrowd = 0,
+  onCityCrowd,
   walking,
   venue,
   transitioning,
@@ -77,6 +79,10 @@ export function Hud({
    * (2026-09-28). The red meter over the world gives the frame rate while you walk.
    */
   onCrowd?: () => void;
+  /** Test walkers in the city right now, 0 when that test is off. */
+  cityCrowd?: number;
+  /** Development builds only: the same test over the whole city (2026-09-29). */
+  onCityCrowd?: () => void;
   /** Walking your own agent: the stick is out and the camera is behind its head. */
   walking: boolean;
   /** Null on the city overview; set after the named venue transition begins. */
@@ -174,6 +180,10 @@ export function Hud({
                   <Chip label={`${world.targetsLeftToday} visits left today`} selected={false} onPress={() => {}} disabled />
                   <Chip label="Who's here" selected={false} onPress={onPeople} />
                   <Chip label="How you appear" selected={false} onPress={onAppearance} />
+                  {onCityCrowd && (
+                    <Chip label={cityCrowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
+                          selected={cityCrowd > 0} onPress={onCityCrowd} />
+                  )}
                 </>
               )}
             </ChipGroup>

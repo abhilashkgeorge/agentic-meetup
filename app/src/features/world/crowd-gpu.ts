@@ -23,10 +23,11 @@
  *      legs, feet, beard and accessory in the vertex shader; the parts they are not
  *      wearing are sent off screen before a single texture is read. Nothing is built
  *      per person, so nobody waits to be "dressed".
- *   3. THREE LEVELS OF DETAIL, three draw calls in all. Near: the full model. Middle:
+ *   3. FOUR LEVELS OF DETAIL, four draw calls in all. Near: the full model. Middle:
  *      the same parts with nearby vertices merged (about a third of the triangles).
  *      Far: one merged outfit per head, merged harder -- at forty pixels tall a person
- *      is a silhouette, their colours, and their hair. Past the park's mist, nothing.
+ *      is a silhouette, their colours, and their hair. Tiny: the same, merged hardest,
+ *      for people a few pixels tall. Past the park's mist, nothing.
  *   4. ONE BUFFER PER LEVEL, written once a frame: 32 numbers a person (where they
  *      are, which way they face, where they are in their walk, their colours and
  *      their parts). Expo's GL copies whatever it is given, so the buffers are small.
@@ -57,14 +58,25 @@ export const STRIDE = 32;
 export const BAKE_FPS = 60;
 
 /**
- * The three levels: how far each reaches from the camera, how many people each may
- * hold, and how hard its vertices are merged (0: not at all). Distances in town units
- * (a person is 0.23 tall); the park's mist ends at VIEW in canvas.tsx.
+ * The levels: how far each reaches from the camera, how many people each may hold,
+ * and how hard its vertices are merged (0: not at all). Distances in town units (a
+ * person is 0.23 tall); the park's mist ends at VIEW in camera.ts. On the map every
+ * person counts as mapDistance() away.
+ *
+ * The last two hold everybody one world can show, crowd test included (CROWD_TEST +
+ * SLOTS): zoomed out over the whole city, every one of them is on screen at once.
+ *
+ * TINY is for people a few pixels tall. Past 40 units a person is under 4.5 points
+ * high; the far level still spent 321 vertices each on them, and with the city's
+ * test crowd zoomed out -- 1,042 people, each a speck -- that was the graphics chip's
+ * whole frame (the Seeker, 2026-09-29: 14.5 ms, the JavaScript thread idle for 4.6
+ * of it). Merged at 0.3 an outfit is 55 vertices.
  */
 export const LEVELS = [
   { name: 'near', until: 4.5, max: 12, merge: 0 },
   { name: 'middle', until: 14, max: 96, merge: 0.05 },
-  { name: 'far', until: Infinity, max: 512, merge: 0.1 },
+  { name: 'far', until: 40, max: 2048, merge: 0.1 },
+  { name: 'tiny', until: Infinity, max: 2048, merge: 0.3 },
 ] as const;
 
 // ── the animation ────────────────────────────────────────────────────────────
@@ -339,8 +351,8 @@ export interface CrowdParts {
 }
 
 /**
- * The three meshes' geometry: every slot of every outfit (and the beards and
- * accessories) for near and middle, one merged outfit per head for far.
+ * The four meshes' geometry: every slot of every outfit (and the beards and
+ * accessories) for near and middle, one merged outfit per head for far and tiny.
  *
  * A LOOK AT A TIME. This is a generator that stops after each look, so the app can
  * build it between frames (loadGpuCrowd) and the tests all at once (buildLevels). In
@@ -401,8 +413,10 @@ export function* levelSteps(parts: CrowdParts): Generator<void, THREE.BufferGeom
   const middle = merged(yield* slotPieces(LEVELS[1].merge));
   yield;
   const far = merged(yield* outfits(LEVELS[2].merge));
+  yield;
+  const tiny = merged(yield* outfits(LEVELS[3].merge));
   for (const e of Object.values(extras)) e.dispose();
-  return [near, middle, far];
+  return [near, middle, far, tiny];
 }
 
 /** Run a build's steps to the end, all at once. */
@@ -584,7 +598,7 @@ export interface GpuCrowd {
    */
   update(people: readonly CrowdPerson[], count: number, frame: CrowdFrame): number;
   /** People per level this frame, for the meter and the tests. */
-  readonly stats: { near: number; middle: number; far: number; dropped: number };
+  readonly stats: { near: number; middle: number; far: number; tiny: number; dropped: number };
   /** Each level's instance buffer, for the tests: what is uploaded, and how much. */
   readonly buffers: readonly THREE.InstancedInterleavedBuffer[];
   dispose(): void;
@@ -601,7 +615,7 @@ interface Level {
 
 /**
  * Everything the crowd needs that does not belong to one GL context: the baked
- * animation and the three levels' geometry. Built once per app run -- the town's
+ * animation and the levels' geometry. Built once per app run -- the town's
  * canvas is rebuilt whenever the app comes back from the background, and building
  * this again each time would be the same pause each time.
  */
@@ -691,8 +705,14 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
   const walkDur = bake.walk.frames / BAKE_FPS;
   const idleDur = bake.idle.frames / BAKE_FPS;
   const fixed = new Map<number, Float32Array>();
-  const weights = new Map<string, number>();
-  const stats = { near: 0, middle: 0, far: 0, dropped: 0 };
+  /**
+   * What a person's numbers were last frame: their look (as the object, so a changed
+   * look is noticed), its fixed numbers, and how far into walking they are. One lookup
+   * a person a frame -- working out the look's key and fetching it again, and a second
+   * map for the walk, was half of 6 ms for the city's 1,042 (the Seeker, 2026-09-29).
+   */
+  const recs = new Map<string, { look: Look; fixed: Float32Array; w: number }>();
+  const stats = { near: 0, middle: 0, far: 0, tiny: 0, dropped: 0 };
   const BLEND = 0.22;
 
   return {
@@ -708,19 +728,25 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
       let drawn = 0;
       for (let i = 0; i < count; i++) {
         const a = people[i]!;
-        const d = frame.flat > 0 ? frame.flat : Math.hypot(a.x - frame.eyeX, a.z - frame.eyeZ);
+        const dx = a.x - frame.eyeX;
+        const dz = a.z - frame.eyeZ;
+        const d = frame.flat > 0 ? frame.flat : Math.sqrt(dx * dx + dz * dz);
         while (level < levels.length - 1 && (d > levels[level]!.until || levels[level]!.n >= levels[level]!.max)) level++;
         const l = levels[level]!;
         // Nearest first, so once the last level is full everybody after is further
         // still: the drawn are always people[0..drawn).
         if (l.n >= l.max) { stats.dropped = count - i; break; }
-        const key = lookKey(a.look);
-        let f = fixed.get(key);
-        if (!f) { f = fixedOf(a.look, pieces, beards); fixed.set(key, f); }
         const target = a.state === 'walking' || a.state === 'approaching' || a.state === 'leaving' ? 1 : 0;
-        const was = weights.get(a.ref) ?? target;
-        const w = was + (target - was) * step;
-        weights.set(a.ref, w);
+        let r = recs.get(a.ref);
+        if (!r || r.look !== a.look) {
+          const key = lookKey(a.look);
+          let f = fixed.get(key);
+          if (!f) { f = fixedOf(a.look, pieces, beards); fixed.set(key, f); }
+          if (r) { r.look = a.look; r.fixed = f; } else { r = { look: a.look, fixed: f, w: target }; recs.set(a.ref, r); }
+        }
+        r.w += (target - r.w) * step;
+        const w = r.w;
+        const f = r.fixed;
         const offset = (a.seed % 100) / 100;
         const arr = l.buffer.array as Float32Array;
         const at = l.n * STRIDE;
@@ -741,10 +767,10 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
         l.buffer.addUpdateRange(0, l.n * STRIDE);
         l.buffer.needsUpdate = true;
       }
-      stats.near = levels[0]!.n; stats.middle = levels[1]!.n; stats.far = levels[2]!.n;
+      stats.near = levels[0]!.n; stats.middle = levels[1]!.n; stats.far = levels[2]!.n; stats.tiny = levels[3]!.n;
       uniforms.uTime!.value = frame.time % 3600;
-      // A person not seen for a while does not keep a weight for ever.
-      if (weights.size > 4096) weights.clear();
+      // Nobody not seen for a while is remembered for ever.
+      if (recs.size > 4096) recs.clear();
       return drawn;
     },
     dispose() {

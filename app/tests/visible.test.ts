@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { Viewport, pickAlong, visible, type Placed } from '../src/features/world/visible';
+import { Viewport, nearestFirst, pickAlong, visible, type Placed } from '../src/features/world/visible';
 
 /** A person, as this module sees one. */
 const at = (x: number, z: number, ref = `${x},${z}`) => ({ x, z, ref });
@@ -178,5 +178,47 @@ describe('tapping somebody', () => {
     c.position.set(0, H / 2, 0); c.lookAt(0, H / 2, -10); c.updateMatrixWorld();
     const people = [at(5, -6), at(0, -4)];
     expect(pickAlong(tap(c, 0, 0), people, 1, H, hit)).toBe(-1);
+  });
+});
+
+/**
+ * Nearest first, without a comparator.
+ *
+ * THE BUG THIS EXISTS FOR. Sorting the people on screen with Array.sort and a
+ * comparator was most of a 6.7 ms step with the city's test crowd zoomed out (1,042
+ * people, the Seeker, 2026-09-29). nearestFirst packs each distance and place into one
+ * number and lets a Float64Array sort them natively. Same order, ties kept in place.
+ *
+ * Negative control, run 2026-09-29 and restored byte-identical: pack the place first
+ * and the distance second -> "the same order a comparator gives" fails.
+ */
+describe('nearest first', () => {
+  const people = Array.from({ length: 500 }, (_, i) => at(((i * 7919) % 211) - 105, ((i * 104729) % 197) - 98, `p${i}`));
+
+  it('gives the same order a comparator gives, ties kept in place', () => {
+    const ours = people.slice();
+    nearestFirst(ours, ours.length, 3, -4, { keys: new Float64Array(0), people: [] });
+    const d = (p: Placed) => Math.floor(((p.x - 3) ** 2 + (p.z + 4) ** 2) * 16);
+    const theirs = people.slice().sort((a, b) => d(a) - d(b));   // Array.sort is stable
+    expect(ours.map((p) => p.ref)).toEqual(theirs.map((p) => p.ref));
+  });
+
+  it('orders only the first n, and reuses its scratch', () => {
+    const ours = people.slice();
+    const scratch = { keys: new Float64Array(0), people: [] as typeof people };
+    nearestFirst(ours, 100, 0, 0, scratch);
+    expect(ours.slice(100)).toEqual(people.slice(100));
+    const keys = scratch.keys;
+    nearestFirst(ours, 50, 0, 0, scratch);
+    expect(scratch.keys).toBe(keys);
+    const dist = (p: Placed) => p.x ** 2 + p.z ** 2;
+    for (let i = 1; i < 100; i++) expect(dist(ours[i]!)).toBeGreaterThanOrEqual(dist(ours[i - 1]!) - 0.07);
+  });
+
+  it('still orders a crowd too big to pack', () => {
+    const many = Array.from({ length: 5000 }, (_, i) => at(5000 - i, 0, `m${i}`));
+    nearestFirst(many, many.length, 0, 0, { keys: new Float64Array(0), people: [] });
+    expect(many[0]!.ref).toBe('m4999');
+    expect(many[4999]!.ref).toBe('m0');
   });
 });
