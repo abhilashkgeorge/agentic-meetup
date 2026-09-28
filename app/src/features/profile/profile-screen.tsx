@@ -18,7 +18,7 @@ import {
 } from '../../lib/api';
 import { countLabel } from '../../lib/counts';
 import { usePhoto } from '../photos/photo';
-import { CharacterAvatar } from '../look/character-avatar';
+import { Preview } from '../look/preview';
 import { useLook } from '../look/store';
 import { useSession } from '../../store/session';
 import { AREAS } from '@clone/shared';
@@ -27,7 +27,7 @@ import { label, setupRoute } from './fields';
 import { rangeFromText, rangeLabel } from './age-range';
 import {
   Avatar, Button, Card, Chip, ChipGroup, Crease, PhotoSlot, Row, Screen, ScreenTitle,
-  Skeleton, SkeletonCard, Stats, space, type, usePalette,
+  Skeleton, SkeletonCard, Stats, space, sunk, type, usePalette,
 } from '../../components/ui';
 
 /**
@@ -92,6 +92,10 @@ export default function ProfileScreen() {
   // Every focus, not once on mount: the tab stays mounted, and its Finish setup card
   // would otherwise outlive the setup it sends people to (as matches-screen.tsx).
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+  // The character on the card moves only while this tab is in front: a GL canvas
+  // animating behind another tab is battery spent on nothing.
+  const [shown, setShown] = useState(false);
+  useFocusEffect(useCallback(() => { setShown(true); return () => setShown(false); }, []));
 
   /**
    * Yes or No on something the agent heard in chat about a field you tapped. It waits
@@ -178,12 +182,20 @@ export default function ProfileScreen() {
         </Card>
 
         {/* The character: you in the square, and what people see of you on a card
-            until you share your profile with them. Photos are what they see after. */}
+            until you share your profile with them. Photos are what they see after.
+
+            THE REAL ONE, standing in a well -- the same body the town draws. It was a
+            flat drawing, a round head on a rounded block, and after building a whole
+            character the founder came back to this card and found a capsule on it
+            (2026-09-29). */}
         <Card label="Your character">
           <Pressable onPress={() => router.push('/character')} accessibilityRole="button"
                      accessibilityLabel="Your character"
                      style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-            <CharacterAvatar look={look} size={72} />
+            <View style={{ width: 112, height: 150, borderRadius: 20, overflow: 'hidden',
+                           backgroundColor: p.sunken, boxShadow: sunk(p, 3) }}>
+              <Preview height={150} focus="card" turnable={false} background={p.sunken} active={shown} />
+            </View>
             <Text style={[type.body, { color: p.textSecondary, flex: 1 }]}>
               {lookSaved
                 ? 'How you show up in the square, and on your card before your photos.'

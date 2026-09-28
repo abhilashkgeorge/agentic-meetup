@@ -45,7 +45,7 @@ import {
   elevationFor, eyeOffset, flyAt, followPose, orthographicBounds, pan, pinch, tileZoom, turnToward, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
 } from './camera';
-import { MODEL_SCALE, loadCrowd, type Crowd, type CrowdAgent } from './character-mesh';
+import { MODEL_SCALE } from './character-mesh';
 import { loadGpuCrowd, type CrowdFrame, type GpuCrowd } from './crowd-gpu';
 import { honourSubDataRanges } from './gl-subdata';
 import { hairOf, skirtOf, topOf } from '../look/silhouette';
@@ -1306,119 +1306,6 @@ function Town({
 
 // ── one character, up close ──────────────────────────────────────────────────
 
-export interface CharacterCanvasProps {
-  look: Look;
-  colors: WorldColors;
-  /** A fixed height, or nothing at all to fill whatever box it is put in. */
-  height?: number;
-}
-
-/**
- * The builder's preview: the same parts, the same pose code, one slot, turning slowly.
- * Preview equals town by construction.
- */
-export function CharacterCanvas({ look, colors, height }: CharacterCanvasProps) {
-  return (
-    // `alignSelf: 'stretch'` IS THE WHOLE PREVIEW. The builder centres whatever it is
-    // given (`alignItems: 'center'`), and a View with a height but no width shrinks to
-    // its content -- and a GL canvas has no content to measure. So this was laid out
-    // zero pixels wide, expo-gl never got a surface, the frame loop never started, and
-    // the builder showed a person-shaped hole. Nothing logged, because nothing failed.
-    <Canvas
-      style={height === undefined ? { flex: 1, alignSelf: 'stretch' } : { height, alignSelf: 'stretch' }}
-      camera={{ position: [0, 1.0, 3.1], fov: 32 }}
-      gl={{ antialias: false }}
-      frameloop="always"
-    >
-      <Figure look={look} colors={colors} />
-    </Canvas>
-  );
-}
-
-function Figure({ look, colors }: { look: Look; colors: WorldColors }) {
-  const { scene, camera } = useThree();
-  useEffect(() => { scene.background = new THREE.Color(colors.bg); }, [scene, colors.bg]);
-  /**
-   * Frame the whole person, head included.
-   *
-   * The old framing pointed at the floor, which was fine while the preview was a
-   * capsule nobody could see anyway; with a real body it cut the head off at the
-   * collar. Aiming at chest height and standing back a little puts a 1.35-unit figure
-   * inside a window with room above the tallest hair in the pack.
-   */
-  useEffect(() => {
-    // Framed for a TALL, NARROW window: the builder's rails leave the preview about
-    // a third of the screen wide, so the camera stands back and aims at the middle of
-    // a 1.33-unit person rather than at their chest. Aimed higher, their boots were
-    // cut off by the bottom edge.
-    camera.position.set(0, 0.78, 3.8);
-    camera.lookAt(0, 0.66, 0);
-    camera.updateProjectionMatrix();
-  }, [camera]);
-  const g = useMemo(() => buildGeometry(), []);
-  const set = useMemo(() => buildParts(g, new THREE.MeshLambertMaterial({ color: '#ffffff' })), [g]);
-  useEffect(() => () => { for (const geo of Object.values(g)) geo.dispose(); }, [g]);
-  const col = useMemo(() => buildColours(colors), [colors]);
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-  const hidden = useMemo(() => { const o = new THREE.Object3D(); o.scale.setScalar(0); o.updateMatrix(); return o.matrix; }, []);
-  const lookRef = useRef(look);
-  useEffect(() => { lookRef.current = look; }, [look]);
-  const t = useRef(0);
-
-  /**
-   * The same rigged body the town draws, so what you are choosing is what you get.
-   *
-   * One rig, because this is one person. Until it loads -- and for ever if it fails --
-   * the capsule below is what shows, which is what the builder looked like before any
-   * of this and is a real preview rather than an empty box.
-   */
-  const holder = useMemo(() => new THREE.Group(), []);
-  const crowd = useRef<Crowd | null>(null);
-  const one = useMemo<CrowdAgent[]>(() => [], []);
-  const origin = useMemo(() => new THREE.Vector3(), []);
-  useEffect(() => {
-    let alive = true;
-    let made: Crowd | null = null;
-    loadCrowd(1)
-      .then((c) => {
-        if (!alive) { c.dispose(); return; }
-        made = c; crowd.current = c; holder.add(c.group);
-      })
-      .catch((e: unknown) => console.warn('[world] preview falling back to a capsule:', e));
-    return () => { alive = false; crowd.current = null; holder.clear(); made?.dispose(); };
-  }, [holder]);
-
-  useFrame((_, dt) => {
-    const step = Math.min(dt, 0.1);
-    t.current += step;
-    const facing = Math.sin(t.current * 0.5) * 0.7;
-    const body = crowd.current;
-    let rigged = false;
-    if (body) {
-      one.length = 0;
-      one.push({ ref: 'you', x: 0, z: 0, facing, look: lookRef.current, moving: false, ghost: false, seed: 7 });
-      body.pose(one, origin, step, 1);
-      rigged = body.drawn.size > 0;
-    }
-    for (let i = rigged ? 0 : 1; i < SLOTS; i++) hideAgent(set, i, hidden);
-    if (!rigged) {
-      poseAgent(set, 0, { x: 0, z: 0, facing, look: lookRef.current },
-        Math.sin(t.current * 2) * 0.02, dummy, hidden, col);
-    }
-    flag(set);
-  });
-
-  return (
-    <>
-      <hemisphereLight args={['#ffffff', '#8a94a6', 0.95]} />
-      <directionalLight position={[3, 6, 4]} intensity={0.8} />
-      {/* NO FLOOR. There used to be a disc to stand on, and it was fine while the
-          preview was the width of the screen. The builder now puts a rail down each
-          side, so the view is a third as wide and the camera is nearly level with the
-          ground -- at which point a disc is not read as a disc at all, it is a grey
-          box behind somebody's shins, clipped square by the edges of the canvas. */}
-      <primitive object={holder} />
-      {set.all.map((p, i) => <primitive key={i} object={p.mesh} />)}
-    </>
-  );
-}
+// The builder's stage and the You tab's card: the town's own body, one person at a
+// time (./character-canvas.tsx). Re-exported so `loadWorldRenderer()` finds it here.
+export { CharacterCanvas, type CharacterCanvasProps, type Focus } from './character-canvas';
