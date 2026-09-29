@@ -107,4 +107,4 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     the laptop with LiveKit's public development keys, which a production server refuses to start with; a real host
     and keys are the founder's. A mic ban is automatic, with nobody reviewing it first
     ([server/src/env.ts:422] `if (env.NODE_ENV === 'production' && env.LIVEKIT_API_SECRET === 'secret') {`,
-    [app/src/features/world/voice-room.ts:243] `const tick = setInterval(apply, 250);`).
+    [app/src/features/world/voice-room.ts:246] `const tick = setInterval(apply, 250);`).

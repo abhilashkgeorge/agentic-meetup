@@ -12,8 +12,8 @@
  */
 import { AppState, LogBox, PermissionsAndroid, Platform } from 'react-native';
 import type { WorldSim } from './sim';
-import { parkVoiceAgain } from '../../lib/socket';
-import { getParkMuted, setParkMuted } from '../../lib/storage';
+import { parkVoiceAgain, parkVoiceOpen } from '../../lib/socket';
+import { getParkMuted, getParkVoiceOpen, setParkMuted, setParkVoiceOpen } from '../../lib/storage';
 import { useParkLive } from './park-live';
 import { mayHearMe, speakingRefs, useParkVoice, voicesToHear, type VoicePass } from './park-voice';
 
@@ -231,10 +231,13 @@ export function startVoice(venueSim: WorldSim): () => void {
     void join(pass);
   };
   onPass(useParkVoice.getState().pass);
-  // Your mutes, as this phone kept them; kept again whenever they change.
+  // Your mutes and "Talk with people nearby", as this phone kept them; kept again, and the
+  // choice told to the park, whenever they change.
   void getParkMuted().then((refs) => { if (!stopped && refs.length) useParkVoice.getState().setMuted(refs); });
+  void getParkVoiceOpen().then((open) => { if (!stopped && open) useParkVoice.getState().setOpen(true); });
   const unVoice = useParkVoice.subscribe((s, prev) => {
     if (s.muted !== prev.muted) void setParkMuted(s.muted);
+    if (s.open !== prev.open) { void setParkVoiceOpen(s.open); parkVoiceOpen(s.open); }
     if (s.pass !== prev.pass) onPass(s.pass);
     else if (s.micOn !== prev.micOn || s.hearing !== prev.hearing || s.muted !== prev.muted) apply();
   });

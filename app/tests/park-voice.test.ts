@@ -28,7 +28,9 @@
  *   - autoSubscribe left on in voice-room         -> "asks for no voice" fails;
  *   - the mic opened before who may listen is set -> "says who may listen first" fails;
  *   - park-presence without the mic-prompt guard  -> "does not walk you out" fails;
- *   - the bench ignoring a muted partner          -> "muting the one you sit with" fails.
+ *   - the bench ignoring a muted partner          -> "muting the one you sit with" fails;
+ *   - micReaches ignoring "talking with somebody"  -> "decides whether the mic reaches" fails;
+ *   - the mic tap without asking first            -> "asks before the mic goes on alone" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,8 +38,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { PARK_EARSHOT, STARTER, type ParkPerson } from '@clone/shared';
 import { mergePeople, type LivePerson } from '../src/features/world/park-live';
 import {
-  MUTED_MAX, VOICE_FULL, banEnds, mayHearMe, micState, speakingRefs, toggled, useParkVoice, voicesToHear, volumeAt,
-  type VoicePass,
+  MUTED_MAX, OPEN_VOICE_WARNING, VOICE_FULL, banEnds, mayHearMe, micReaches, micState, speakingRefs, toggled, useParkVoice,
+  voicesToHear, volumeAt, type VoicePass,
 } from '../src/features/world/park-voice';
 
 const REF = (n: number) => n.toString(16).padStart(32, '0');
@@ -160,6 +162,37 @@ describe('the mic', () => {
     const d = new Date(2026, 8, 29, 14, 5);
     expect(banEnds(d.toISOString())).toBe('14:05');
     expect(banEnds(undefined)).toBe('later');
+  });
+});
+
+describe('"Talk with people nearby"', () => {
+  it('is off until you turn it on, and stays as you left it after walking out', () => {
+    useParkVoice.setState({ open: false });
+    expect(useParkVoice.getState().open).toBe(false);
+    useParkVoice.getState().setOpen(true);
+    useParkVoice.getState().left();
+    expect(useParkVoice.getState().open).toBe(true);
+    useParkVoice.setState({ open: false });
+  });
+
+  it('decides whether the mic reaches anybody: on, or talking with somebody who said yes', () => {
+    expect(micReaches(false, false), 'alone and off, the mic went on without asking').toBe(false);
+    expect(micReaches(true, false)).toBe(true);
+    expect(micReaches(false, true)).toBe(true);
+  });
+
+  it('says, before it goes on, that people could record it', () => {
+    expect(OPEN_VOICE_WARNING).toMatch(/could record it/);
+  });
+
+  it('asks before the mic goes on alone, and is sent to the park on walking in (source shape)', () => {
+    const read = (f: string) => readFileSync(join(import.meta.dirname, '..', 'src', f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const hud = read('features/world/park-voice-hud.tsx');
+    const tap = hud.slice(hud.indexOf('const tapMic = async'), hud.indexOf('const pulse = useRef'));
+    expect(tap).toMatch(/if \(!micReaches\(v\.open, useParkLive\.getState\(\)\.partner !== null\)\) \{\s*if \(!\(await confirmOpenVoice\(\)\)\) return;/);
+    expect(tap.indexOf('confirmOpenVoice'), 'the mic opened before asking').toBeLessThan(tap.indexOf('askForMic'));
+    expect(read('lib/socket.ts')).toMatch(/export function parkEnter\(\): void \{[^}]*push\(\{ type: 'park\.enter', voiceOpen: useParkVoice\.getState\(\)\.open \}\)/);
   });
 });
 

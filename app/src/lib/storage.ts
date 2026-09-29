@@ -181,3 +181,18 @@ export async function getParkMuted(): Promise<string[]> {
 export async function setParkMuted(refs: readonly string[]): Promise<void> {
   await SecureStore.setItemAsync(PARK_MUTED_KEY, JSON.stringify(refs)).catch(() => {});
 }
+
+/** "Talk with people nearby" (features/world/park-voice.ts): off unless turned on here. */
+const PARK_VOICE_OPEN_KEY = 'clone.park-voice-open';
+
+export async function getParkVoiceOpen(): Promise<boolean> {
+  try {
+    return (await SecureStore.getItemAsync(PARK_VOICE_OPEN_KEY)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function setParkVoiceOpen(open: boolean): Promise<void> {
+  await SecureStore.setItemAsync(PARK_VOICE_OPEN_KEY, open ? '1' : '0').catch(() => {});
+}

@@ -14,20 +14,30 @@
  * voice-room.ts. This only shows it.
  */
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Animated, Linking, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Animated, Linking, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LOOK_LABELS, OUTFIT_HEX } from '@clone/shared';
 import { Button, Surface, radius, raised, space, type, usePalette } from '../../components/ui';
 import { SafetySheet } from '../safety/safety-sheet';
 import type { WorldControl } from './camera';
 import { dockWidth, useParkLive, type LivePerson } from './park-live';
-import { banEnds, mayHearMe, micState, useParkVoice } from './park-voice';
+import { OPEN_VOICE_WARNING, banEnds, mayHearMe, micReaches, micState, useParkVoice } from './park-voice';
 import type { WorldSim } from './sim';
 import { askForMic } from './voice-room';
 
 /** Whether voice is here at all: a pass from a server with a voice server, in a build with it. */
 export function useVoiceHere(): boolean {
   return useParkVoice((s) => s.pass !== null && s.link !== 'unavailable');
+}
+
+/** Ask before "Talk with people nearby" goes on, saying what it means. */
+export function confirmOpenVoice(): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert('Talk with people nearby?', OPEN_VOICE_WARNING, [
+      { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+      { text: 'Turn on', onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
 }
 
 /** "Someone in coral": the colour they wear is how you find them in a crowd. */
@@ -48,6 +58,8 @@ export function VoiceButtons({ onType, onVoices }: { onType: () => void; onVoice
   const talking = useParkVoice((s) => s.speaking.has('you'));
   const people = useParkLive((s) => s.people);
   const onBench = useParkLive((s) => s.bench !== null);
+  const partnered = useParkLive((s) => s.partner !== null);
+  const open = useParkVoice((s) => s.open);
   const link = useParkVoice((s) => s.link);
   const dock = dockWidth(useWindowDimensions().width);
   const [hint, setHint] = useState<string | null>(null);
@@ -69,6 +81,11 @@ export function VoiceButtons({ onType, onVoices }: { onType: () => void; onVoice
       return;
     }
     if (state === 'on' || state === 'connecting') { v.setMic(false); return; }
+    // Alone, with "Talk with people nearby" off, nobody would hear you: ask first.
+    if (!micReaches(v.open, useParkLive.getState().partner !== null)) {
+      if (!(await confirmOpenVoice())) return;
+      v.setOpen(true);
+    }
     if (!(await askForMic())) {
       v.setMicDenied(true);
       setHint('The phone said no to the mic. Allow it for Clone in Settings to talk out loud.');
@@ -95,7 +112,8 @@ export function VoiceButtons({ onType, onVoices }: { onType: () => void; onVoice
       // Lost the voice server: voice-room.ts is trying again by itself.
       : link === 'failed' ? 'Voice lost. Trying again…'
       : onBench ? (state === 'off' ? 'Tap the mic: only they will hear you' : 'Just the two of you can hear this')
-        : state === 'on' ? (listeners > 0 ? `Mic on · ${listeners} near enough to hear` : 'Mic on · nobody near enough yet')
+        : state === 'on' ? (partnered && !open ? 'Mic on · only the one you are talking with hears you'
+          : listeners > 0 ? `Mic on · ${listeners} can hear you` : 'Mic on · nobody near can hear you yet')
           : state === 'connecting' ? 'Connecting your mic…' : null;
   const on = state === 'on' || state === 'connecting';
   const round = (size: number) => ({ width: size, height: size, borderRadius: size / 2, alignItems: 'center' as const, justifyContent: 'center' as const });
@@ -215,6 +233,12 @@ export function VoicesSheet({ venueSim, onClose }: { venueSim: WorldSim; onClose
   const insets = useSafeAreaInsets();
   const hearing = useParkVoice((s) => s.hearing);
   const setHearing = useParkVoice((s) => s.setHearing);
+  const open = useParkVoice((s) => s.open);
+  const setOpen = useParkVoice((s) => s.setOpen);
+  const toggleOpen = async () => {
+    if (open) { setOpen(false); return; }
+    if (await confirmOpenVoice()) setOpen(true);
+  };
   const muted = useParkVoice((s) => s.muted);
   const toggleMute = useParkVoice((s) => s.toggleMute);
   const speaking = useParkVoice((s) => s.speaking);
@@ -238,6 +262,19 @@ export function VoicesSheet({ venueSim, onClose }: { venueSim: WorldSim; onClose
                                               borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
           <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: p.dark }} />
           <Text style={[type.title, { color: p.text }]}>Voices near you</Text>
+          <Pressable onPress={() => void toggleOpen()} accessibilityRole="switch" accessibilityState={{ checked: open }}
+                     style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.body, { color: p.text }]}>Talk with people nearby</Text>
+              <Text style={[type.callout, { color: p.textTertiary }]}>
+                {open ? 'On: people near you who turned it on too can hear you, and you them.'
+                  : 'Off: only the person you are talking with hears you.'}
+              </Text>
+            </View>
+            <View style={{ width: 48, height: 28, borderRadius: 14, padding: 3, flexShrink: 0, backgroundColor: open ? p.accent : p.sunken, alignItems: open ? 'flex-end' : 'flex-start' }}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: p.bg }} />
+            </View>
+          </Pressable>
           <Pressable onPress={() => setHearing(!hearing)} accessibilityRole="switch" accessibilityState={{ checked: hearing }}
                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: space.xs }}>
             <Text style={[type.body, { color: p.text, flex: 1 }]} numberOfLines={1}>{hearing ? '🔊 Hearing people near you' : '🔇 Hearing nobody'}</Text>
@@ -251,7 +288,9 @@ export function VoicesSheet({ venueSim, onClose }: { venueSim: WorldSim; onClose
             </Text>
           )}
           {rows.length === 0 && !onBench ? (
-            <Text style={[type.body, { color: p.textSecondary }]}>Nobody is near enough to hear.</Text>
+            <Text style={[type.body, { color: p.textSecondary }]}>
+              {open ? 'Nobody near has it on.' : 'Turn it on to hear the people near you who have it on too.'}
+            </Text>
           ) : rows.map(({ person, metres }) => {
             const isMuted = muted.includes(person.ref);
             const talking = speaking.has(person.ref) && !isMuted;

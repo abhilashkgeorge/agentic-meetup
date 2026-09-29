@@ -100,6 +100,18 @@ export function speakingRefs(
   return out;
 }
 
+/**
+ * Whether your mic reaches anybody: with "Talk with people nearby" on, the strangers near
+ * you who have it on too; talking with somebody (both said yes), them, on it or off.
+ * Off and alone, the mic asks first (park-voice-hud.tsx).
+ */
+export function micReaches(open: boolean, talkingWithSomebody: boolean): boolean {
+  return open || talkingWithSomebody;
+}
+
+/** The warning shown before "Talk with people nearby" goes on. */
+export const OPEN_VOICE_WARNING = 'People nearby can hear you, and could record it. You hear only people who turned this on too.';
+
 /** What the mic button says it is. */
 export type MicState = 'off' | 'on' | 'banned' | 'denied' | 'connecting' | 'unavailable';
 
@@ -131,6 +143,12 @@ interface ParkVoice {
   micOn: boolean;
   /** Your speaker switch: hearing people near you. */
   hearing: boolean;
+  /**
+   * "Talk with people nearby": strangers near you who have it on too hear you, and you
+   * them. OFF unless you turned it on (reviewed 2026-09-29: otherwise any stranger within
+   * earshot could talk to anybody). Kept on this phone (lib/storage.ts).
+   */
+  open: boolean;
   /** Refs you muted, oldest first (kept on the phone: lib/storage.ts). */
   muted: readonly string[];
   /** Who is talking now, as refs, `you` included. */
@@ -145,12 +163,13 @@ interface ParkVoice {
   gotPass: (pass: VoicePass) => void;
   setMic: (on: boolean) => void;
   setHearing: (on: boolean) => void;
+  setOpen: (open: boolean) => void;
   toggleMute: (ref: string) => void;
   setMuted: (refs: readonly string[]) => void;
   setSpeaking: (refs: ReadonlySet<string>) => void;
   setLink: (link: ParkVoice['link']) => void;
   setMicDenied: (denied: boolean) => void;
-  /** Out of the park: no pass, the mic off, nobody talking. Mutes and the speaker stay. */
+  /** Out of the park: no pass, the mic off, nobody talking. Mutes, the speaker and "Talk with people nearby" stay. */
   left: () => void;
 }
 
@@ -160,6 +179,7 @@ export const useParkVoice = create<ParkVoice>((set, get) => ({
   pass: null,
   micOn: false,
   hearing: true,
+  open: false,
   muted: [],
   speaking: new Set(),
   link: 'off',
@@ -172,6 +192,7 @@ export const useParkVoice = create<ParkVoice>((set, get) => ({
     set({ micOn: on, ...(on ? {} : { micDenied: false }) });
   },
   setHearing: (hearing) => set({ hearing }),
+  setOpen: (open) => set({ open }),
   toggleMute: (ref) => set({ muted: toggled(get().muted, ref) }),
   setMuted: (muted) => set({ muted }),
   setSpeaking: (speaking) => { if (!same(speaking, get().speaking)) set({ speaking }); },

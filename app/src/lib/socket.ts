@@ -65,7 +65,7 @@ function connect(): void {
       // The old voice id went with the old socket: walking in brings a new pass.
       useParkVoice.getState().left();
       useParkLive.getState().rejoined();
-      push({ type: 'park.enter' });
+      push({ type: 'park.enter', voiceOpen: useParkVoice.getState().open });
     }
     // Anything typed while the connection was down goes now. Every message carries the
     // id the phone generated, so a message that actually did arrive before the socket
@@ -266,7 +266,12 @@ export function sendTyping(rendezvousId: string, typing: boolean): void {
  */
 export function parkEnter(): void {
   useParkLive.getState().setIn(true);
-  push({ type: 'park.enter' });
+  push({ type: 'park.enter', voiceOpen: useParkVoice.getState().open });
+}
+
+/** "Talk with people nearby", on or off (features/world/park-voice.ts). */
+export function parkVoiceOpen(open: boolean): boolean {
+  return push({ type: 'park.voice_open', open });
 }
 
 /**

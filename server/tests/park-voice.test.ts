@@ -12,7 +12,9 @@
  *   - a bench's room is the same for both of the two, different for any other two, and
  *     names neither of them;
  *   - the park sends a person's voice id only to people within earshot of them, and
- *     never to or from anybody on a bench (the bench talks in its own room);
+ *     never to or from anybody on a bench (the bench talks in its own room); between
+ *     strangers only when BOTH turned "Talk with people nearby" on -- off unless they
+ *     did -- and between the two who said yes to talking either way;
  *   - over the socket, against the real database: walking in brings a pass to the park's
  *     room; sitting brings both a pass to the same bench room; getting up, the park's
  *     again; a phone that lost the voice server gets a fresh pass for the same room, as
@@ -27,6 +29,9 @@
  *   - the ban counting reports, not reporters    -> "one person three times" fails
  *   - the pass granting speech whatever the ban  -> "takes their mic" fails
  *   - park.voice_again not answered              -> "hands a fresh pass" fails
+ *   - voice ids when only one stranger opted in  -> "only when both turned it on" fails
+ *   - the partner exception taken out            -> "between the two who said yes" fails
+ *   - enter() ignoring what the phone said       -> "keeps Talk with people nearby" fails
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
@@ -43,7 +48,7 @@ process.env.LIVEKIT_API_SECRET = 'test-secret-that-is-long-enough-for-hs256';
 const { pool, closeMatchPool } = await import('../src/db/client.js');
 const { env } = await import('../src/env.js');
 const hub = await import('../src/messaging/hub.js');
-const { VOICE_AGAIN_LIMIT, handleParkFrame, pairs, socketClosed } = await import('../src/park/socket.js');
+const { VOICE_AGAIN_LIMIT, handleParkFrame, pairs, park, socketClosed } = await import('../src/park/socket.js');
 const { ParkRoom } = await import('../src/park/room.js');
 const { ParkPairs } = await import('../src/park/pairs.js');
 const { PARK_ROOM, VOICE_BAN, VOICE_REPORT, benchRoom, voiceBannedUntil, voicePass } = await import('../src/park/voice.js');
@@ -99,14 +104,36 @@ describe('a voice pass', () => {
 
 describe('who is given whose voice', () => {
   const ref = (v: string, o: string) => `${v}>${o}`.padEnd(32, '0').slice(0, 32);
-  it('only to people within earshot, and never to or from a bench', () => {
+  const room = (who: readonly (readonly [string, number, boolean])[]) => {
     const seats = new ParkPairs();
     const r = new ParkRoom(ref, Date.now, seats);
-    for (const [u, x] of [['a', 0], ['b', 1], ['c', PARK_EARSHOT + 2], ['d', 1.5]] as const) {
-      r.enter(u, STARTER, [], undefined, `voice-${u}`);
+    for (const [u, x, open] of who) {
+      r.enter(u, STARTER, [], undefined, `voice-${u}`, open);
       r.move(u, x, 0, 0, false);
     }
     const heard = (viewer: string) => Object.fromEntries(r.snapshot(viewer).map((p) => [p.ref.slice(0, 3), p.voice ?? null]));
+    return { r, seats, heard };
+  };
+
+  it('between strangers, only when both turned "Talk with people nearby" on -- off unless they did', () => {
+    const { heard } = room([['a', 0, true], ['b', 1, true], ['c', 1.2, false], ['d', 1.4, true]]);
+    expect(heard('a')).toMatchObject({ 'a>b': 'voice-b', 'a>d': 'voice-d', 'a>c': null });
+    expect(heard('c'), 'somebody who never turned it on is given voices').toMatchObject({ 'c>a': null, 'c>b': null });
+    // Entering without saying is off.
+    const quiet = new ParkRoom(ref, Date.now, new ParkPairs());
+    quiet.enter('x', STARTER, [], undefined, 'voice-x');
+    expect(quiet.members.get('x')!.voiceOpen).toBe(false);
+  });
+
+  it('between the two who said yes to talking, either way -- and nobody else through them', () => {
+    const { seats, heard } = room([['a', 0, false], ['b', 1, false], ['c', 1.2, true]]);
+    seats.ask('a', 'b'); seats.answer('b', true);
+    expect(heard('a'), 'the one you are talking with is not heard').toMatchObject({ 'a>b': 'voice-b', 'a>c': null });
+    expect(heard('c')).toMatchObject({ 'c>a': null, 'c>b': null });
+  });
+
+  it('only to people within earshot, and never to or from a bench', () => {
+    const { seats, heard } = room([['a', 0, true], ['b', 1, true], ['c', PARK_EARSHOT + 2, true], ['d', 1.5, true]]);
     expect(heard('a')).toMatchObject({ 'a>b': 'voice-b', 'a>d': 'voice-d', 'a>c': null });
     // b and d sit together: nobody hears them in the park, and they hear nobody there.
     seats.ask('b', 'd'); seats.answer('d', true); seats.sit('b', 7);
@@ -132,6 +159,16 @@ describe('voice over the socket', () => {
   };
   beforeAll(async () => { one = await mk('one'); two = await mk('two'); });
   afterAll(() => { for (const p of inPark) { hub.leave(p.userId, p.ws); socketClosed(p.userId); } });
+
+  it('keeps "Talk with people nearby" as the phone says on walking in, and as it changes', async () => {
+    const p = await mk('open');
+    await frame(p, { type: 'park.enter', voiceOpen: true });
+    expect(park.members.get(p.userId)?.voiceOpen, 'walked in with it on, taken as off').toBe(true);
+    await frame(p, { type: 'park.voice_open', open: false });
+    expect(park.members.get(p.userId)?.voiceOpen).toBe(false);
+    await frame(p, { type: 'park.enter' });
+    expect(park.members.get(p.userId)?.voiceOpen, 'walking in without saying left it on').toBe(false);
+  });
 
   it('hands a pass to the park\'s room on walking in, a bench\'s on sitting, the park\'s again on getting up', async () => {
     await frame(one, { type: 'park.enter' });

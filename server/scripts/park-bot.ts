@@ -86,7 +86,9 @@ let reply = 0;
 
 ws.on('open', () => {
   console.log(`park-bot: in as a practice profile at (${x}, ${z}) for ${minutes} min${ask ? ', and asking' : ''}`);
-  send({ type: 'park.enter' });
+  // Talking out loud (--voice), it turns "Talk with people nearby" on: a phone that has it
+  // on too hears it, and it that phone.
+  send({ type: 'park.enter', ...(voice ? { voiceOpen: true } : {}) });
   send({ type: 'park.move', x, z, facing: 0, moving: false });
   if (ask) setTimeout(() => send({ type: 'park.find' }), 5000);
 });

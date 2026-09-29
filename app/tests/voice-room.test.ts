@@ -42,7 +42,7 @@ const fake = vi.hoisted(() => {
     /** The voice server gone: LiveKit's own reconnecting has given up. */
     lose() { this.state = 'disconnected'; this.emit(RoomEvent.Disconnected); }
   }
-  return { FakeRoom, RoomEvent, askAgain: { calls: 0, ok: true } };
+  return { FakeRoom, RoomEvent, askAgain: { calls: 0, ok: true }, told: [] as boolean[], kept: [] as boolean[] };
 });
 
 vi.mock('react-native', () => ({
@@ -56,8 +56,14 @@ vi.mock('@livekit/react-native', () => ({
   AudioSession: { startAudioSession: async () => {}, stopAudioSession: async () => {} },
 }));
 vi.mock('livekit-client', () => ({ Room: fake.FakeRoom, RoomEvent: fake.RoomEvent, setLogLevel: () => {} }));
-vi.mock('../src/lib/socket', () => ({ parkVoiceAgain: () => { fake.askAgain.calls++; return fake.askAgain.ok; } }));
-vi.mock('../src/lib/storage', () => ({ getParkMuted: async () => [], setParkMuted: async () => {} }));
+vi.mock('../src/lib/socket', () => ({
+  parkVoiceAgain: () => { fake.askAgain.calls++; return fake.askAgain.ok; },
+  parkVoiceOpen: (open: boolean) => { fake.told.push(open); return true; },
+}));
+vi.mock('../src/lib/storage', () => ({
+  getParkMuted: async () => [], setParkMuted: async () => {},
+  getParkVoiceOpen: async () => false, setParkVoiceOpen: async (open: boolean) => { fake.kept.push(open); },
+}));
 
 const { RETRY_MS, VOICE_UNREACHABLE, startVoice } = await import('../src/features/world/voice-room');
 const { useParkVoice } = await import('../src/features/world/park-voice');
@@ -77,9 +83,20 @@ describe('voice after the voice server was lost', () => {
     fake.FakeRoom.unreachable = false;
     fake.askAgain.calls = 0;
     fake.askAgain.ok = true;
-    useParkVoice.setState({ pass: null, micOn: false, hearing: true, muted: [], speaking: new Set(), link: 'off', micDenied: false });
+    fake.told.length = 0;
+    fake.kept.length = 0;
+    useParkVoice.setState({ pass: null, micOn: false, hearing: true, open: false, muted: [], speaking: new Set(), link: 'off', micDenied: false });
   });
   afterEach(() => { stop(); vi.useRealTimers(); });
+
+  it('tells the park, and keeps on this phone, "Talk with people nearby" as it changes', async () => {
+    stop = startVoice(sim);
+    useParkVoice.getState().setOpen(true);
+    useParkVoice.getState().setOpen(false);
+    await settle();
+    expect(fake.told, 'the park was not told').toEqual([true, false]);
+    expect(fake.kept, 'the phone did not keep it').toEqual([true, false]);
+  });
 
   it('asks the park for a fresh pass, sooner first, and comes back on it', async () => {
     stop = startVoice(sim);

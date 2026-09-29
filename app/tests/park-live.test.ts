@@ -144,7 +144,8 @@ describe('talking with somebody in the park', () => {
     // a restart, has nothing to answer with.
     const src = readFileSync(join(import.meta.dirname, '..', 'src', 'lib', 'socket.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(src).toMatch(/useParkLive\.getState\(\)\.rejoined\(\);\s*push\(\{ type: 'park\.enter' \}\)/);
+    // Walking back in carries "Talk with people nearby" (park-voice.ts); the order is the point.
+    expect(src).toMatch(/useParkLive\.getState\(\)\.rejoined\(\);\s*push\(\{ type: 'park\.enter'[^}]*\}\)/);
     expect(src).toMatch(/export function parkPart\(\): void \{[^}]*gotParted\(\)/);
     expect(src).toMatch(/export function parkStand\(\): void \{[^}]*gotBench\(null\)/);
   });

@@ -43,6 +43,11 @@ export interface Member {
   riding: boolean;
   /** Who they are to the voice server (voice.ts): random per visit, never the user id. */
   voice: string;
+  /**
+   * "Talk with people nearby" on: strangers near them may hear them, and they them --
+   * only strangers who have it on too. Off unless they turned it on.
+   */
+  voiceOpen: boolean;
   /** When they last sent anything: moving or standing, the app says so every few seconds. */
   seen: number;
 }
@@ -78,15 +83,25 @@ export class ParkRoom {
    * Somebody walks in. `apartFrom` is everybody already here they are kept apart from,
    * which the caller asked the database for; it goes both ways.
    */
-  enter(userId: string, look: Look, apartFrom: readonly string[], at?: { x: number; z: number }, voice?: string): void {
+  enter(
+    userId: string, look: Look, apartFrom: readonly string[], at?: { x: number; z: number }, voice?: string, voiceOpen?: boolean,
+  ): void {
     for (const other of apartFrom) this.apart.add(pair(userId, other));
     const was = this.members.get(userId);
     this.members.set(userId, {
       userId, look,
       x: at?.x ?? was?.x ?? 0, z: at?.z ?? was?.z ?? 0,
       facing: was?.facing ?? 0, moving: false, riding: was?.riding ?? false,
-      voice: voice ?? was?.voice ?? '', seen: this.now(),
+      voice: voice ?? was?.voice ?? '', voiceOpen: voiceOpen ?? was?.voiceOpen ?? false, seen: this.now(),
     });
+  }
+
+  /** "Talk with people nearby", on or off. False if they are not here. */
+  setVoiceOpen(userId: string, open: boolean): boolean {
+    const m = this.members.get(userId);
+    if (!m) return false;
+    m.voiceOpen = open;
+    return true;
   }
 
   leave(userId: string): void {
@@ -128,16 +143,23 @@ export class ParkRoom {
 
   /**
    * What `viewer` is sent: the people within the mist, as the square refers to them --
-   * and, for those within earshot, their voice id, the only voices the viewer's phone
-   * listens to and the only listeners it lets hear it (voice.ts). Nobody on a bench is
-   * given anybody's voice, or gives theirs: a bench talks in its own room.
+   * and, for those within earshot who may talk with them, their voice id, the only voices
+   * the viewer's phone listens to and the only listeners it lets hear it (voice.ts).
+   *
+   * WHO MAY TALK WITH WHOM (reviewed 2026-09-29: a stranger 20 m away could talk to
+   * anybody, who could only mute or report after the fact): two strangers only if BOTH
+   * turned "Talk with people nearby" on; the one you are talking with (both said yes)
+   * either way. Nobody on a bench is given anybody's voice, or gives theirs: a bench
+   * talks in its own room. Nobody kept apart is here at all (near()).
    */
   snapshot(viewerId: string): ParkPerson[] {
     const me = this.members.get(viewerId);
     const benched = (id: string) => this.seats?.benchOf(id) != null;
+    const partner = this.seats?.partnerOf(viewerId) ?? null;
     const reach2 = VOICE_REACH * VOICE_REACH;
     return this.near(viewerId, PARK_VIEW).map((m) => {
-      const heard = me && m.voice && !benched(viewerId) && !benched(m.userId)
+      const mayTalk = (me?.voiceOpen === true && m.voiceOpen) || m.userId === partner;
+      const heard = me && m.voice && mayTalk && !benched(viewerId) && !benched(m.userId)
         && (m.x - me.x) ** 2 + (m.z - me.z) ** 2 <= reach2;
       return {
         ref: this.refOf(viewerId, m.userId),

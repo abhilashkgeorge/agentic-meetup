@@ -139,7 +139,7 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
     }
     case 'park.enter': {
       if (!take(`park:${me}`, OTHER_LIMIT).ok) return;
-      await enter(ctx);
+      await enter(ctx, msg.voiceOpen === true);
       pushPeople(me);
       return;
     }
@@ -151,13 +151,18 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       if (!take(`park-voice:${me}`, VOICE_AGAIN_LIMIT).ok) return;
       await refreshVoice(me);
       return;
+    case 'park.voice_open':
+      // Takes effect on the next frame out (a quarter second): who is sent whose voice id.
+      if (!take(`park:${me}`, OTHER_LIMIT).ok) return;
+      park.setVoiceOpen(me, msg.open);
+      return;
     default:
       return;
   }
 }
 
 /** Walk in: their look, and who here they are kept apart from, from the database. */
-async function enter(ctx: TenantCtx): Promise<void> {
+async function enter(ctx: TenantCtx, voiceOpen: boolean): Promise<void> {
   const here = [...park.members.keys()].filter((id) => id !== ctx.userId);
   const { look, apart } = await matchSession(async (c) => {
     const look = await lookOf(c, ctx.userId);
@@ -169,7 +174,7 @@ async function enter(ctx: TenantCtx): Promise<void> {
   });
   // A voice id for this visit: random, never the user id (the voice server lists who is
   // in its room to everybody in it). Kept across a reconnect within the visit.
-  park.enter(ctx.userId, look, apart, undefined, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'));
+  park.enter(ctx.userId, look, apart, undefined, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'), voiceOpen);
   // What they have already been paid for today: the ledger's word, on their own session.
   tenantOf.set(ctx.userId, ctx.tenantId);
   const day = parkDay(Date.now());

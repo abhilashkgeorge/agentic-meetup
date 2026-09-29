@@ -82,7 +82,11 @@ export const PARK_VIEW = 45;
 export const PARK_EARSHOT = 2.5;
 
 const ParkCoord = z.number().finite().min(-500).max(500);
-export const ClientParkEnter = z.object({ type: z.literal('park.enter') });
+export const ClientParkEnter = z.object({
+  type: z.literal('park.enter'),
+  /** "Talk with people nearby" on (park-voice.ts): off unless the person turned it on. */
+  voiceOpen: z.boolean().optional(),
+});
 export const ClientParkLeave = z.object({ type: z.literal('park.leave') });
 export const ClientParkMove = z.object({
   type: z.literal('park.move'),
@@ -118,11 +122,17 @@ export const ClientParkStand = z.object({ type: z.literal('park.stand') });
  * for where it is now (server park/voice.ts). The old one may have run out.
  */
 export const ClientParkVoiceAgain = z.object({ type: z.literal('park.voice_again') });
+/**
+ * "Talk with people nearby", on or off (server park/room.ts): strangers hear each other
+ * only when both have it on. The one you are talking with, you hear either way.
+ */
+export const ClientParkVoiceOpen = z.object({ type: z.literal('park.voice_open'), open: z.boolean() });
 
 export const ClientMessage = z.discriminatedUnion('type', [
   ClientHello, ClientTurn, ClientDm, ClientDmRead, ClientTyping,
   ClientParkEnter, ClientParkLeave, ClientParkMove, ClientParkSay,
   ClientParkFind, ClientParkAnswer, ClientParkPart, ClientParkSit, ClientParkStand, ClientParkVoiceAgain,
+  ClientParkVoiceOpen,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
