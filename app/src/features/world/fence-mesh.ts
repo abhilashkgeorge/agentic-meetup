@@ -40,7 +40,7 @@ export function railingTexture(): THREE.DataTexture {
   const set = (x: number, y: number) => { const i = (y * W + x) * 4; data[i] = data[i + 1] = data[i + 2] = data[i + 3] = 255; };
   for (let x = 0; x < W; x++) {
     for (let y = 0; y < H; y++) {
-      const bar = x % 8 < 2 && y < 29;
+      const bar = x % 8 < 3 && y < 29;
       const tip = x % 8 === 0 && y >= 29;          // the spear, a pixel wide, above the top rail
       const rail = (y >= 3 && y <= 4) || (y >= 25 && y <= 26);
       if (bar || tip || rail) set(x, y);
@@ -104,8 +104,14 @@ export interface BuiltFence { meshes: THREE.Mesh[]; dispose(): void }
 
 export function buildFence(outline: readonly Pt[], gates: readonly Gate[], colors: { night: boolean }): BuiltFence {
   const tex = railingTexture();
+  // THE CUT IS LOW, SO FAR OFF THE RAILING IS A BAND, NOT A SHIMMER. Further away its
+  // picture is averaged down (mipmaps) until bars and gaps are one grey: at a cut of 0.5
+  // that grey was cut out in some rows and not in the next, and a railing across the park
+  // crawled with wavy bands (on the phone, 2026-09-29). A shade over a third of the
+  // picture is iron, so at 0.3 the far railing stays -- a dark band that says where the
+  // park ends, which is the point of it -- and the near one still has its gaps.
   const iron = new THREE.MeshLambertMaterial({
-    color: colors.night ? '#1d2620' : '#2F3D33', map: tex, alphaTest: 0.5, side: THREE.DoubleSide,
+    color: colors.night ? '#1d2620' : '#2F3D33', map: tex, alphaTest: 0.3, side: THREE.DoubleSide,
   });
   const railing = new THREE.Mesh(railingGeometry(outline), iron);
   railing.name = 'fence';

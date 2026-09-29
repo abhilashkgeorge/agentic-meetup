@@ -38,7 +38,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
-import { CENTRAL_AREA, HAIR_HEX, HEIGHT_SCALE, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
+import { CENTRAL_AREA, HAIR_HEX, HEIGHT_SCALE, OUTFIT_HEX, PARK_SIGHTS, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
   CITY_BAND, FLY_SECS, MIST_NEAR, PERSON, VIEW, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget,
   driveVector, groundReach, mapDistance,
@@ -58,6 +58,7 @@ import { buildCar } from './car-mesh';
 import { BIKE_PACE } from './bike';
 import { buildBike } from './bike-mesh';
 import { buildScale } from './character';
+import { sightsToMark, useParkLive } from './park-live';
 import type { CityPlan } from './city-plan';
 import { buildCity, type BuiltCity } from './city-mesh';
 import { besideThem, rideAt, type Ride } from './ride';
@@ -689,6 +690,8 @@ const head = new THREE.Vector3();
 const BODY_H = 1.87 * MODEL_SCALE * PERSON;
 /** The most bicycles drawn at once: the nearest riders. */
 const BIKES_DRAWN = 48;
+/** How high a sight's marker floats: over the trees, 20 m up. */
+const SIGHT_MARK_Y = 2.5;
 /**
  * Where the walking camera stops drawing: just past the end of the mist, so nothing
  * is clipped while it can still be seen. It was 90, drawing forty-five units of
@@ -779,6 +782,36 @@ function Town({
     return m;
   }, [colors.accent]);
   useEffect(() => () => { car.geometry.dispose(); (car.material as THREE.Material).dispose(); }, [car]);
+  // THE SIGHTS STILL TO SEE, marked (park-live.ts sightsToMark): a diamond in the accent
+  // colour high over each, bobbing, drawn through the mist and over the trees so it can
+  // be steered by from anywhere in the park -- "see the sights" is no use if you cannot
+  // find them. Only while you are with somebody and have not seen three today.
+  const marks = useMemo(() => {
+    const group = new THREE.Group();
+    group.name = 'sight-marks';
+    const geo = new THREE.OctahedronGeometry(0.22);
+    geo.scale(1, 1.6, 1);
+    const mat = new THREE.MeshBasicMaterial({ color: colors.accent, fog: false, depthTest: false, transparent: true, opacity: 0.9 });
+    for (const s of PARK_SIGHTS) {
+      const m = new THREE.Mesh(geo, mat);
+      m.name = s.id;
+      m.renderOrder = 10;
+      m.visible = false;
+      m.raycast = () => {};
+      m.position.set(s.x, SIGHT_MARK_Y, s.z);
+      group.add(m);
+    }
+    return { group, geo, mat };
+  }, [colors.accent]);
+  useEffect(() => () => { marks.geo.dispose(); marks.mat.dispose(); }, [marks]);
+  const marked = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const apply = (s: ReturnType<typeof useParkLive.getState>) => {
+      marked.current = new Set(sightsToMark(s.quests, !!s.partner).map((x) => x.id));
+    };
+    apply(useParkLive.getState());
+    return useParkLive.subscribe(apply);
+  }, []);
   // The bicycles under whoever is riding one (bike.ts): one mesh, a bike per rider drawn.
   const bikes = useMemo(() => {
     const m = new THREE.InstancedMesh(buildBike(), new THREE.MeshLambertMaterial({ vertexColors: true }), BIKES_DRAWN);
@@ -1027,6 +1060,11 @@ function Town({
         car.visible = false;
       }
     } else if (car.visible) car.visible = false;
+    // The sights still to see, bobbing gently, only while walking the park.
+    for (const m of marks.group.children) {
+      m.visible = walking && marked.current.has(m.name);
+      if (m.visible) { m.position.y = SIGHT_MARK_Y + Math.sin(t * 2 + m.position.x) * 0.08; m.rotation.y = t * 0.8; }
+    }
     if (cam.walking && stick && !riding) {
       const { x: jx, y: jy } = stick.current;
       const push = Math.min(1, Math.hypot(jx, jy));
@@ -1385,6 +1423,7 @@ function Town({
       <primitive object={furnitureHolder} />
       <primitive object={car} />
       <primitive object={bikes} />
+      <primitive object={marks.group} />
       <primitive object={crowdHolder} />
       <primitive object={picker} onClick={tapPerson} />
       {meshes.capsules?.solid.all.map((p, i) => <primitive key={`s${i}`} object={p.mesh} />)}

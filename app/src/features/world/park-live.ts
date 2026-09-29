@@ -10,7 +10,7 @@
  * NO REACT NATIVE HERE: tests/park-live.test.ts holds the merging and the bubbles.
  */
 import { create } from 'zustand';
-import { PARK_QUESTS, type Look, type ParkPerson, type ParkQuestId } from '@clone/shared';
+import { PARK_QUESTS, PARK_SIGHTS, type Look, type ParkPerson, type ParkQuestId, type ParkSight } from '@clone/shared';
 import type { WorldSim } from './sim';
 
 export interface LivePerson {
@@ -88,6 +88,25 @@ export function nextQuest(quests: Quests | null, now: { bench?: boolean; riding?
   const open = PARK_QUESTS.filter((q) => q.id !== 'hello' && !(quests?.done ?? []).includes(q.id));
   const fits = now.bench ? open.find((q) => q.id === 'talk') : now.riding ? open.find((q) => q.id === 'ride') : undefined;
   return fits ?? open[0] ?? null;
+}
+
+/**
+ * The sights still to see together, to mark in the park: while the two of you are
+ * talking and have not seen three today, every sight you have not stood at yet.
+ */
+export function sightsToMark(quests: Quests | null, paired: boolean): readonly ParkSight[] {
+  if (!paired || (quests?.done ?? []).includes('sights')) return [];
+  return PARK_SIGHTS.filter((s) => !(quests?.sights ?? []).includes(s.id));
+}
+
+/** The nearest of them, and how far, in whole tens of metres (a park unit is 8.1 m). */
+export function nearestSight(sights: readonly ParkSight[], x: number, z: number): { sight: ParkSight; metres: number } | null {
+  let best: { sight: ParkSight; metres: number } | null = null;
+  for (const s of sights) {
+    const metres = Math.round((Math.hypot(s.x - x, s.z - z) * 8.1) / 10) * 10;
+    if (!best || metres < best.metres) best = { sight: s, metres };
+  }
+  return best;
 }
 
 /** This frame's people, their looks carried over from the last. Nobody without a look yet. */

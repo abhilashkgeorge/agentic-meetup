@@ -16,6 +16,8 @@
  *   - your points, from walking in and from each payment, are kept;
  *   - a payment is cheered, a payment of nothing (already done today) is not, and
  *     walking out forgets it all;
+ *   - the sights still to see are marked while you are with somebody, and the nearest
+ *     is said in metres;
  *   - the one you are talking with, and only they, wears a ring at their feet;
  *   - the line to type in stays clear of the stick (SOURCE SHAPE: a layout).
  *
@@ -24,13 +26,14 @@
  *   - cheer every park.quests, paid or not             -> "a payment of nothing" fails
  *   - ring everybody live                              -> "only they" fails
  *   - the next thing to do ignoring where you are      -> "what fits where you are" fails
+ *   - mark the sights with nobody to see them with     -> "marks the sights" fails
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PARK_QUESTS, PARK_SIGHTS, STARTER, pointInPolygon, type Look, type ParkPerson } from '@clone/shared';
 import { gardenSpots } from '../src/features/world/garden';
-import { livePeople, mergePeople, nextQuest, questProgress, useParkLive } from '../src/features/world/park-live';
+import { livePeople, mergePeople, nearestSight, nextQuest, questProgress, sightsToMark, useParkLive } from '../src/features/world/park-live';
 import { WorldSim } from '../src/features/world/sim';
 import { CUBBON_PARK, venueGarden } from '../src/features/world/venue';
 
@@ -113,6 +116,18 @@ describe('things to do, on the phone', () => {
     expect(useParkLive.getState().quests!.done).toEqual(['hello']);
     s.setIn(false);
     expect(useParkLive.getState()).toMatchObject({ quests: null, cheer: null });
+  });
+
+  it('marks the sights still to see while you are with somebody, and says the nearest', () => {
+    const q = { day: 'd', done: ['hello' as const], progress: {}, sights: ['lions', 'cubbon'] };
+    expect(sightsToMark(q, false), 'marked with nobody to see them with').toEqual([]);
+    expect(sightsToMark(q, true).map((s) => s.id)).toEqual(PARK_SIGHTS.filter((s) => !['lions', 'cubbon'].includes(s.id)).map((s) => s.id));
+    expect(sightsToMark({ ...q, done: ['hello', 'sights'] }, true), 'marked after seeing the sights').toEqual([]);
+    // Standing at the Wodeyar statue's foot, 8 units (65 m) from the Bengaluru sign...
+    const wodeyar = PARK_SIGHTS.find((s) => s.id === 'wodeyar')!;
+    const near = nearestSight(sightsToMark(q, true), wodeyar.x, wodeyar.z + 1)!;
+    expect(near.sight.id).toBe('wodeyar');
+    expect(near.metres).toBe(10);
   });
 
   it('rings the one you are talking with, and only they', () => {

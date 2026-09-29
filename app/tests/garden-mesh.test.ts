@@ -95,6 +95,12 @@ describe('the garden mesh', () => {
     for (let i = 3; i < img.data.length; i += 4) { if (img.data[i] === 0) clear++; else solid++; }
     expect(clear / (clear + solid), 'you cannot see through it').toBeGreaterThan(0.5);
     expect(solid, 'there is nothing to it').toBeGreaterThan(0);
+    // FAR OFF, A BAND: the picture averaged down (mipmaps) is still over the cut, so a
+    // railing across the park is drawn as a dark band rather than cut out a row here and
+    // a row there -- which crawled with wavy bands on the phone (2026-09-29).
+    let alpha = 0;
+    for (let i = 3; i < img.data.length; i += 4) alpha += img.data[i]! / 255;
+    expect(alpha / (clear + solid), 'the far railing is cut away').toBeGreaterThan(mat.alphaTest);
     // A gate wherever a path meets the fence: every path end on the outline has one.
     expect(park.gates.length).toBeGreaterThan(5);
     for (const p of park.paths) {

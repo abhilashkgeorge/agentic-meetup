@@ -16,7 +16,7 @@ import { useKeyboardHeight } from '../../lib/keyboard';
 import { Button, Surface, radius, raised, space, type, usePalette } from '../../components/ui';
 import { SafetySheet } from '../safety/safety-sheet';
 import type { WorldControl } from './camera';
-import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, nextQuest, questProgress, useParkLive, type Line } from './park-live';
+import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, nearestSight, nextQuest, questProgress, sightsToMark, useParkLive, type Line } from './park-live';
 import { STICK_RING } from './stick';
 import { benchFor } from './ride';
 import type { WorldSim } from './sim';
@@ -276,6 +276,19 @@ export function ParkActions({ venueSim, benches }: {
   const quests = useParkLive((s) => s.quests);
   const riding = useParkLive((s) => s.riding);
   const next = nextQuest(quests, { bench: bench !== null, riding });
+  // Seeing the sights: which is nearest, and how far -- the markers in the park show
+  // where (canvas.tsx). Looked at again every couple of seconds, as you move.
+  const [near, setNear] = useState<ReturnType<typeof nearestSight>>(null);
+  useEffect(() => {
+    if (next?.id !== 'sights' || !partner) { setNear(null); return; }
+    const look = () => {
+      const me = venueSim.get('you');
+      setNear(me ? nearestSight(sightsToMark(useParkLive.getState().quests, true), me.x, me.z) : null);
+    };
+    look();
+    const t = setInterval(look, 2000);
+    return () => clearInterval(t);
+  }, [next?.id, partner, venueSim]);
   const card = { paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, backgroundColor: p.bg, boxShadow: raised(p, 4), gap: space.sm, maxWidth: DOCK_W };
   return (
     <View pointerEvents="box-none" style={{ alignItems: 'flex-end', gap: space.sm }}>
@@ -288,9 +301,10 @@ export function ParkActions({ venueSim, benches }: {
             {partner.rideTo ? 'On your way to them…' : bench !== null ? 'On a bench, just you two' : 'Talking with someone'}
           </Text>
           {next && !partner.rideTo && (
-            <Text style={[type.callout, { color: p.accent }]} numberOfLines={2}>
+            <Text style={[type.callout, { color: p.accent }]} numberOfLines={3}>
               {`Next: ${next.title} · +${next.points}`}
               {(quests?.progress[next.id] ?? 0) > 0 ? ` · ${questProgress(next.id, quests!.progress[next.id]!)}` : ''}
+              {near ? `\nNearest: ${near.sight.name}, ${near.metres} m (the purple markers)` : ''}
             </Text>
           )}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
