@@ -19,13 +19,7 @@
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { decideModel, llm, modelFor } from '../llm/index.js';
-
-/** How much a stated preference counts when it is met. */
-const STRENGTH_WEIGHT: Record<string, number> = {
-  dealbreaker: 0, // already enforced by the filter; counting it again double-dips
-  strong: 3,
-  mild: 1,
-};
+import { STRENGTH_WEIGHT } from './strength.js';
 
 export interface Scored {
   userId: string;
@@ -117,7 +111,7 @@ export async function scoreOneWay(
   const met: string[] = [];
   const missed: string[] = [];
   testable.forEach((p, i) => {
-    const weight = STRENGTH_WEIGHT[p.strength] ?? 1;
+    const weight = (STRENGTH_WEIGHT as Record<string, number>)[p.strength] ?? 1;
     available += weight;
     if (okAt.get(i)) { earned += weight; met.push(p.predicate); }
     else missed.push(p.predicate);

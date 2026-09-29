@@ -46,7 +46,7 @@ metered. The server refuses to start if a routed model has no verified price or 
 | AI-15 | Face check | none (runs on the server) | "Check your photos" | **No** (`FACE_CHECK=off`) | n/a | No vendor, no credits |
 
 Two routed tasks, `reflect` and `canon`, are never called, and an old "file score" function is dead code
-([server/src/llm/index.ts:32] `reflect: env.REFLECT_MODEL,`, [server/src/matching/score.ts:211] `NOT CALLED SINCE 2026-09-23.`).
+([server/src/llm/index.ts:32] `reflect: env.REFLECT_MODEL,`, [server/src/matching/score.ts:205] `NOT CALLED SINCE 2026-09-23.`).
 No model is ever sent a photo: requests carry text only ([server/src/llm/port.ts:29] `content: string;`).
 
 **A default round** makes 0–1 answer-sheet call at the tap, 0–1 want check for the sender, and per pair 0–1
@@ -259,8 +259,8 @@ $0.02; not measured, because no round has run since the talk was added.
 
 With `DECIDE_MODEL` set, "Couldn't be with" would be mapped by typed yes/no questions instead of AI-3, and each
 pair would get a hidden "after one evening together, each would want a second one" probability, stored and never
-shown ([server/src/matching/score.ts:292] `if (!model) return { score: null, costUsd: 0 };`,
-[server/src/matching/score.ts:304] `'After one evening together, each of these two people would want a second one.',`).
+shown ([server/src/matching/score.ts:286] `if (!model) return { score: null, costUsd: 0 };`,
+[server/src/matching/score.ts:298] `'After one evening together, each of these two people would want a second one.',`).
 
 <a id="ai-15"></a>
 ### AI-15. Face check (switched off)

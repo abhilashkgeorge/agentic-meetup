@@ -21,7 +21,7 @@ three shapes:
 | Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | [server/src/onboarding/stories.ts:150] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Answer to "Anyone else you couldn't be with?" | Saved as a `dealbreaker` fact; a model may also propose a card change | Code, plus {AI:dealbreaker} | `facts` row | Same as above | [server/src/api/interview.ts:341] `predicate: 'dealbreaker',` |
 | A want's words match a question | The question is offered; Arjun ticks the answers he accepts | Code (word patterns) | `preferences` row: field, ticked values, strength | Arjun, on "Looking for" | [server/src/matching/want-questions.ts:84] `if (w.pattern.test(text)) return { want: w` |
-| Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:88] `// The only place a personal rule excludes anybody. Both directions.` |
+| Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:112] `// The only place a personal rule excludes anybody. Both directions.` |
 | A round meets Meera: tied want | Her answer is compared with his ticks | Code | Status on the card record | Tied to a tapped question (work, exercise, sleep, moving): Arjun sees "Matches", "Doesn't match" or "We can't check this one yet." Tied to a situation question: only "A private topic. Their answer is never shown." (since 2026-09-29) | [server/src/matching/want-questions.ts:121] `return ask.accepted.includes(v) ? 'met' : 'not_met';` |
 | A round meets Meera: untied or private want | One model call checks all of Arjun's untied wants against his first 12 candidates | {AI:wants}, then code | Status (+ her sentence) on the card record | Untied: her sentence, or "Nothing they've said covers this yet." Private: only "A private topic. Their answer is never shown." | [server/src/matching/wants.ts:257] `task: 'extract',` |
 | Meera never answered the question | The want reads "can't check"; a request to ask Meera is recorded | Code | `unknown_asks` row about Meera | Meera may get it as a question of the day; the asker is never named | [server/src/matching/unknowns.ts:127] `INSERT INTO unknown_asks (tenant_id, user_id, question_id)` |
@@ -69,8 +69,8 @@ three shapes:
   ([server/src/matching/wants.ts:297] `[c.synthetic ? 1 : 0, notMet.get(c.userId) ?? 0, i]`).
 - **If Arjun had tapped "Must have"**, a Meera who answered "A treat" would never be met by
   Arjun's agent, and Arjun would never be met by hers: each person's must-haves apply to
-  both searches ([server/src/matching/candidates.ts:98] `AND NOT ${passes('b')})`,
-  [server/src/matching/candidates.ts:102] `AND NOT ${passes('a')})`). A Meera who never answered
+  both searches ([server/src/matching/candidates.ts:122] `AND NOT ${passes('b')})`,
+  [server/src/matching/candidates.ts:126] `AND NOT ${passes('a')})`). A Meera who never answered
   still passes.
 - **"Someone kind"** goes to the model with up to 10 of Meera's own public sentences. If
   the model points at one, Arjun's card shows "You asked for “Someone kind”" and "They
@@ -174,23 +174,26 @@ three shapes:
   ([server/src/api/dating.ts:530] `A must-have only hides someone over an answer they tapped`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
   checked both ways: Arjun's must-haves on Meera, and Meera's must-haves on Arjun
-  ([server/src/matching/candidates.ts:97] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
-  [server/src/matching/candidates.ts:101] `WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`).
+  ([server/src/matching/candidates.ts:121] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
+  [server/src/matching/candidates.ts:125] `WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`).
   A field with several answers (the work field) passes if any of the other person's
-  answers is ticked ([server/src/matching/candidates.ts:30] `THEN match_pref_satisfied_multi(p.predicate, p.operator, p.value,`).
-- **What Really want and Nice to have do.** They feed a score (weight 3 and 1) that is
-  recorded on each pair but **no longer decides who a round meets**
-  ([server/src/matching/score.ts:25] `dealbreaker: 0, // already enforced by the filter; counting it again double-dips`,
-  [server/src/matching/orchestrator.ts:178] `it just no longer decides who is met.`). The one place the
-  score still orders people is the town's square, where the 40 strangers shown, picked once a day, are the top
-  of the score ([server/src/api/world.ts:187] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
+  answers is ticked ([server/src/matching/candidates.ts:31] `THEN match_pref_satisfied_multi(p.predicate, p.operator, p.value,`).
+- **What Really want and Nice to have do.** Since 2026-09-29 they decide the order a round takes people in:
+  within each group (real people still before practice profiles), somebody who fits more of your Really-want
+  (3) and Nice-to-have (1) rules comes first -- counted only on answers they gave -- and recency breaks ties
+  ([server/src/matching/candidates.ts:171] `ORDER BY b.is_synthetic ASC, ${FITS_MY_WANTS} DESC, b.last_active_at DESC`,
+  [server/src/matching/strength.ts:6] `export const STRENGTH_WEIGHT = {`). Before, they only fed the score
+  recorded on each pair, and a round took real people by recency whatever anybody wanted. That two-way score
+  still records and does not pick ([server/src/matching/orchestrator.ts:178] `it just no longer decides who is met.`).
+  The one place the score still orders people is the town's square, where the 40 strangers shown, picked once
+  a day, are the top of the score ([server/src/api/world.ts:187] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
   In a round, what moves a person later is the want check: each "not met" want pushes that
   candidate later within their group (real people stay ahead of practice profiles),
   whatever the strength ([server/src/matching/wants.ts:284] `rs.filter((r) => r.status === 'not_met').length`).
 - **The pool count.** "Who your agent can reach" shows how many people pass every filter,
   rounded to the nearest 10; below 20 it says "Under 20" and a warning such as "Very few
   people fit. Turn a must-have into a want to reach more."
-  ([server/src/matching/candidates.ts:241] `export const SHOWN_FLOOR = 20;`,
+  ([server/src/matching/candidates.ts:265] `export const SHOWN_FLOOR = 20;`,
   [app/src/lib/counts.ts:12] `return n === null || n === undefined ? 'Under 20' : n.toLocaleString();`,
   [app/src/features/preferences/preferences-screen.tsx:98] `Very few people fit. Turn a must-have into a want to reach more.`).
 
@@ -305,8 +308,8 @@ asking only when it matched would say how it came out
   and private-topic wants; for a tied want "Matches"/"Doesn't match" and "can't check" are sent
   ([HOW-IT-WORKS.md:545] `brief for measurement and never sent to a phone.`,
   [server/src/matching/brief.ts:456] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
-- The app says wants "move people up the list". Nothing moves anybody up in a round: the
-  score no longer picks, and the want check only moves people down
+- The app says wants "move people up the list". Since 2026-09-29 that is what a round does with Really want and
+  Nice to have (above); before, nothing moved anybody up
   ([app/src/features/preferences/preferences-screen.tsx:141] `These never remove anybody. They move people up the list.`).
 - The app says a private want is "Checked against your card". It is checked against the
   **other person's** card ([server/src/matching/wants.ts:196] `const answer = m ? cardsOf[pi]?.[m.card] : undefined;`).

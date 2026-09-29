@@ -148,7 +148,7 @@ Two configured model tasks, `reflect` and `canon`, have no caller: no reflection
 **In a round** (the default path), the agent is not a chatbot. It is:
 
 - a **row** of matching data (age, gender, who they seek, place, intent, tags, card answers) used by SQL
-  ([server/src/matching/candidates.ts:34] `FROM match_profile a, match_profile b`);
+  ([server/src/matching/candidates.ts:58] `FROM match_profile a, match_profile b`);
 - a **list of the person's own shareable sentences**, loaded under their own database session
   ([server/src/matching/orchestrator.ts:323] `loadQuotes(plan.a, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`);
 - an **answer sheet** built earlier: 12 fixed questions, each pointing at one of those sentences

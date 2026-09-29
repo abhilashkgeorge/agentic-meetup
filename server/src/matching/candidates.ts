@@ -18,6 +18,7 @@
  */
 import type { PoolClient } from 'pg';
 import { CORE_PREDICATES } from '@clone/shared';
+import { STRENGTH_WEIGHT } from './strength.js';
 
 /**
  * The fields that hold several answers (the field you work in). A must-have on one is
@@ -29,6 +30,29 @@ const passes = (other: string) =>
   `(CASE WHEN p.predicate = ANY(${MANY})
          THEN match_pref_satisfied_multi(p.predicate, p.operator, p.value, ${other}.attribute_tags)
          ELSE match_pref_satisfied(p.operator, p.value, ${other}.traits -> p.predicate) END)`;
+
+/** Whether `other` gave an answer the rule can be read against: unknown is never a fit. */
+const answered = (other: string) =>
+  `(CASE WHEN p.predicate = ANY(${MANY})
+         THEN EXISTS (SELECT 1 FROM unnest(coalesce(${other}.attribute_tags, '{}')) t
+                       WHERE left(t, length(p.predicate) + 1) = p.predicate || ':')
+         ELSE coalesce(jsonb_typeof(${other}.traits -> p.predicate), 'null') <> 'null' END)`;
+
+/**
+ * "REALLY WANT" AND "NICE TO HAVE" MOVE PEOPLE UP (the founder, 2026-09-29). The rules
+ * screen always said they "move people up the list"; nothing read them but the recorded
+ * score, so who a round met did not change at all (docs 15.3 item 12). Now the order a
+ * round takes people in counts, for each person, the looker's soft rules they fit --
+ * "Really want" 3, "Nice to have" 1 (strength.ts), only on answers they gave -- inside
+ * each group: real people still come before invented ones, and recency breaks ties. It is
+ * the looker's own wishes, one way; the measured two-way score still only records.
+ */
+const FITS_MY_WANTS = `
+  (SELECT coalesce(sum(CASE p.strength WHEN 'strong' THEN ${STRENGTH_WEIGHT.strong}
+                                       WHEN 'mild' THEN ${STRENGTH_WEIGHT.mild} ELSE 0 END), 0)
+     FROM preferences p
+    WHERE p.user_id = a.user_id AND p.strength IN ('strong', 'mild') AND p.retired_at IS NULL
+      AND ${answered('b')} AND ${passes('b')})`;
 
 const BASE = `
   FROM match_profile a, match_profile b
@@ -138,13 +162,13 @@ export async function candidateIds(
 ): Promise<string[]> {
   // ORDERED. Without this the planner handed back whichever 500 rows it liked, and in
   // a pool of five thousand invented profiles the five real people were reachable
-  // only by luck. Real before invented, because a real person is the point; most
-  // recently active first, because a profile that was here yesterday is likelier to
-  // answer than one that was here in June. The partial index in 0048 lets the planner
-  // walk this order for the LIMIT rather than sort the pool.
+  // only by luck. Real before invented, because a real person is the point; then those
+  // who fit more of this person's "Really want" and "Nice to have" (FITS_MY_WANTS); most
+  // recently active first after that, because a profile that was here yesterday is
+  // likelier to answer than one that was here in June.
   const { rows } = await c.query<{ user_id: string }>(
     `${build(ALL_CLAUSES)}
-     ORDER BY b.is_synthetic ASC, b.last_active_at DESC
+     ORDER BY b.is_synthetic ASC, ${FITS_MY_WANTS} DESC, b.last_active_at DESC
      LIMIT $2`, [userId, limit],
   );
   return rows.map((r) => r.user_id);

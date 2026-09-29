@@ -37,7 +37,7 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     rules as they stand then, so flipping a must-have (or your own answer) changes nothing there until tomorrow;
     a block, a ban or leaving the pool still takes somebody out at once
     ([server/src/api/world.ts:180] `let ids = hit?.day === today ? hit.ids : null;`,
-    [server/src/matching/candidates.ts:127] `export async function stillThere(c: PoolClient, userId: string, ids: readonly string[]): Promise<string[]> {`).
+    [server/src/matching/candidates.ts:151] `export async function stillThere(c: PoolClient, userId: string, ids: readonly string[]): Promise<string[]> {`).
 6. **Word lists have gaps.** The private-topic list is finite ("family", "wedding", "Diwali" are not on it), and the
     talk and answer sheets also use "goal" and "dislikes" sentences, which the card's own rule leaves out as the place
     "where faith, politics and children are said in prose"
@@ -69,8 +69,8 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     (setup is counted apart since 2026-09-28), but meeting the limit now says so: in chat, a line with the limit,
     that the three share it and that it comes back tomorrow; for a round, the same allowance in plain words instead
     of "Your agent has been out enough for today" ([server/src/metering.ts:34] `export function budgetMessage(err: BudgetExceeded): string {`).
-12. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
-    list" (stage 5).
+12. **Closed on 2026-09-29: "Really want" and "Nice to have".** They now order the people a round takes, real people
+    still first, as the screen says ([server/src/matching/candidates.ts:171] `ORDER BY b.is_synthetic ASC, ${FITS_MY_WANTS} DESC, b.last_active_at DESC`).
 13. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does
     not know where you are." ([server/src/matching/profile.ts:152] `if (p === 'lives_in') return lat === null;`).
 14. **Someone who turns 18 this year is refused all year**, because only the birth year is asked

@@ -632,7 +632,7 @@ Two configured model tasks, `reflect` and `canon`, have no caller: no reflection
 **In a round** (the default path), the agent is not a chatbot. It is:
 
 - a **row** of matching data (age, gender, who they seek, place, intent, tags, card answers) used by SQL
-  (`server/src/matching/candidates.ts:34`);
+  (`server/src/matching/candidates.ts:58`);
 - a **list of the person's own shareable sentences**, loaded under their own database session
   (`server/src/matching/orchestrator.ts:323`);
 - an **answer sheet** built earlier: 12 fixed questions, each pointing at one of those sentences
@@ -966,7 +966,7 @@ three shapes:
 | Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | `server/src/onboarding/stories.ts:150` |
 | Answer to "Anyone else you couldn't be with?" | Saved as a `dealbreaker` fact; a model may also propose a card change | Code, plus [AI-3](#ai-3) | `facts` row | Same as above | `server/src/api/interview.ts:341` |
 | A want's words match a question | The question is offered; Arjun ticks the answers he accepts | Code (word patterns) | `preferences` row: field, ticked values, strength | Arjun, on "Looking for" | `server/src/matching/want-questions.ts:84` |
-| Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | `server/src/matching/candidates.ts:88` |
+| Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | `server/src/matching/candidates.ts:112` |
 | A round meets Meera: tied want | Her answer is compared with his ticks | Code | Status on the card record | Tied to a tapped question (work, exercise, sleep, moving): Arjun sees "Matches", "Doesn't match" or "We can't check this one yet." Tied to a situation question: only "A private topic. Their answer is never shown." (since 2026-09-29) | `server/src/matching/want-questions.ts:121` |
 | A round meets Meera: untied or private want | One model call checks all of Arjun's untied wants against his first 12 candidates | [AI-12](#ai-12), then code | Status (+ her sentence) on the card record | Untied: her sentence, or "Nothing they've said covers this yet." Private: only "A private topic. Their answer is never shown." | `server/src/matching/wants.ts:257` |
 | Meera never answered the question | The want reads "can't check"; a request to ask Meera is recorded | Code | `unknown_asks` row about Meera | Meera may get it as a question of the day; the asker is never named | `server/src/matching/unknowns.ts:127` |
@@ -1014,8 +1014,8 @@ three shapes:
   (`server/src/matching/wants.ts:297`).
 - **If Arjun had tapped "Must have"**, a Meera who answered "A treat" would never be met by
   Arjun's agent, and Arjun would never be met by hers: each person's must-haves apply to
-  both searches (`server/src/matching/candidates.ts:98`,
-  `server/src/matching/candidates.ts:102`). A Meera who never answered
+  both searches (`server/src/matching/candidates.ts:122`,
+  `server/src/matching/candidates.ts:126`). A Meera who never answered
   still passes.
 - **"Someone kind"** goes to the model with up to 10 of Meera's own public sentences. If
   the model points at one, Arjun's card shows "You asked for “Someone kind”" and "They
@@ -1119,23 +1119,26 @@ three shapes:
   (`server/src/api/dating.ts:530`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
   checked both ways: Arjun's must-haves on Meera, and Meera's must-haves on Arjun
-  (`server/src/matching/candidates.ts:97`,
-  `server/src/matching/candidates.ts:101`).
+  (`server/src/matching/candidates.ts:121`,
+  `server/src/matching/candidates.ts:125`).
   A field with several answers (the work field) passes if any of the other person's
-  answers is ticked (`server/src/matching/candidates.ts:30`).
-- **What Really want and Nice to have do.** They feed a score (weight 3 and 1) that is
-  recorded on each pair but **no longer decides who a round meets**
-  (`server/src/matching/score.ts:25`,
-  `server/src/matching/orchestrator.ts:178`). The one place the
-  score still orders people is the town's square, where the 40 strangers shown, picked once a day, are the top
-  of the score (`server/src/api/world.ts:187`).
+  answers is ticked (`server/src/matching/candidates.ts:31`).
+- **What Really want and Nice to have do.** Since 2026-09-29 they decide the order a round takes people in:
+  within each group (real people still before practice profiles), somebody who fits more of your Really-want
+  (3) and Nice-to-have (1) rules comes first -- counted only on answers they gave -- and recency breaks ties
+  (`server/src/matching/candidates.ts:171`,
+  `server/src/matching/strength.ts:6`). Before, they only fed the score
+  recorded on each pair, and a round took real people by recency whatever anybody wanted. That two-way score
+  still records and does not pick (`server/src/matching/orchestrator.ts:178`).
+  The one place the score still orders people is the town's square, where the 40 strangers shown, picked once
+  a day, are the top of the score (`server/src/api/world.ts:187`).
   In a round, what moves a person later is the want check: each "not met" want pushes that
   candidate later within their group (real people stay ahead of practice profiles),
   whatever the strength (`server/src/matching/wants.ts:284`).
 - **The pool count.** "Who your agent can reach" shows how many people pass every filter,
   rounded to the nearest 10; below 20 it says "Under 20" and a warning such as "Very few
   people fit. Turn a must-have into a want to reach more."
-  (`server/src/matching/candidates.ts:241`,
+  (`server/src/matching/candidates.ts:265`,
   `app/src/lib/counts.ts:12`,
   `app/src/features/preferences/preferences-screen.tsx:98`).
 
@@ -1250,8 +1253,8 @@ asking only when it matched would say how it came out
   and private-topic wants; for a tied want "Matches"/"Doesn't match" and "can't check" are sent
   (`HOW-IT-WORKS.md:545`,
   `server/src/matching/brief.ts:456`).
-- The app says wants "move people up the list". Nothing moves anybody up in a round: the
-  score no longer picks, and the want check only moves people down
+- The app says wants "move people up the list". Since 2026-09-29 that is what a round does with Really want and
+  Nice to have (above); before, nothing moved anybody up
   (`app/src/features/preferences/preferences-screen.tsx:141`).
 - The app says a private want is "Checked against your card". It is checked against the
   **other person's** card (`server/src/matching/wants.ts:196`).
@@ -1290,7 +1293,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 |---|---|---|---|---|---|
 | Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe [AI-10](#ai-10) | `rounds` row (queued) | Arjun | `server/src/api/dating.ts:956` |
 | The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | `server/src/matching/rounds.ts:161` |
-| The candidate list | Real people first, then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | `server/src/matching/candidates.ts:147` |
+| The candidate list | Real people first; within that, those who fit more of the person's Really want and Nice to have (since 2026-09-29), then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | `server/src/matching/candidates.ts:171` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | [AI-12](#ai-12) + code | Want results kept for the cards | Arjun (on his cards) | `server/src/matching/orchestrator.ts:226` |
 | The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | `server/src/matching/orchestrator.ts:247` |
 | Each pair | The agents' exchange and the two cards (stages 7 and 8) | [AI-11](#ai-11) + code | Two card rows per pair | Each person, their own card | `server/src/matching/brief.ts:644` |
@@ -1379,21 +1382,21 @@ shown, and the clone's previous reply was blanked)
 ### 6.3 The rules: who the agent may meet
 
 Every rule is checked in SQL, in one query, with Arjun as `a` and each candidate as `b`
-(`server/src/matching/candidates.ts:34`). Almost every rule
+(`server/src/matching/candidates.ts:58`). Almost every rule
 lets an **unknown** value pass: someone who never answered is not excluded for it.
 
 | Rule | Arjun → Meera | Meera → Arjun | If unknown | Code |
 |---|---|---|---|---|
-| Not yourself | | | | `server/src/matching/candidates.ts:36` |
-| Both ready ("in the pool") | Arjun ready | Meera ready | Not ready = out | `server/src/matching/candidates.ts:37` |
-| Real and practice | A real person meets practice profiles while `sees_synthetic` is on (the default); practice profiles never meet real people | | | `server/src/matching/candidates.ts:43` |
-| Blocks (a report also blocks) | Arjun never blocked Meera | Meera never blocked Arjun | | `server/src/matching/candidates.ts:49` |
-| Gender | Meera's gender is in Arjun's "seeking" | Arjun's is in Meera's | Passes | `server/src/matching/candidates.ts:62`, `server/src/matching/candidates.ts:63` |
-| Age | Meera's age in Arjun's range | Arjun's age in Meera's range | Passes | `server/src/matching/candidates.ts:66`, `server/src/matching/candidates.ts:68` |
-| Distance | Within Arjun's maximum distance | Within Meera's | No location: skipped. No maximum: only that person's side passes (since 2026-09-28; before, one missing maximum switched off both) | `server/src/matching/candidates.ts:80` |
-| What they are looking for (intent) | At least one choice in common | same | Passes | `server/src/matching/candidates.ts:86` |
-| Must-haves | Every Arjun must-have passes on Meera | Every Meera must-have passes on Arjun | Passes | `server/src/matching/candidates.ts:98`, `server/src/matching/candidates.ts:102` |
-| Recently active | Meera used the app in the last 60 days; a practice profile always passes (since 2026-09-28) | (not checked for Arjun; he just tapped) | | `server/src/matching/candidates.ts:111` |
+| Not yourself | | | | `server/src/matching/candidates.ts:60` |
+| Both ready ("in the pool") | Arjun ready | Meera ready | Not ready = out | `server/src/matching/candidates.ts:61` |
+| Real and practice | A real person meets practice profiles while `sees_synthetic` is on (the default); practice profiles never meet real people | | | `server/src/matching/candidates.ts:67` |
+| Blocks (a report also blocks) | Arjun never blocked Meera | Meera never blocked Arjun | | `server/src/matching/candidates.ts:73` |
+| Gender | Meera's gender is in Arjun's "seeking" | Arjun's is in Meera's | Passes | `server/src/matching/candidates.ts:86`, `server/src/matching/candidates.ts:87` |
+| Age | Meera's age in Arjun's range | Arjun's age in Meera's range | Passes | `server/src/matching/candidates.ts:90`, `server/src/matching/candidates.ts:92` |
+| Distance | Within Arjun's maximum distance | Within Meera's | No location: skipped. No maximum: only that person's side passes (since 2026-09-28; before, one missing maximum switched off both) | `server/src/matching/candidates.ts:104` |
+| What they are looking for (intent) | At least one choice in common | same | Passes | `server/src/matching/candidates.ts:110` |
+| Must-haves | Every Arjun must-have passes on Meera | Every Meera must-have passes on Arjun | Passes | `server/src/matching/candidates.ts:122`, `server/src/matching/candidates.ts:126` |
+| Recently active | Meera used the app in the last 60 days; a practice profile always passes (since 2026-09-28) | (not checked for Arjun; he just tapped) | | `server/src/matching/candidates.ts:135` |
 
 After the SQL, three more steps remove people:
 
@@ -1403,8 +1406,8 @@ After the SQL, three more steps remove people:
   `server/migrations/0022_rendezvous.sql:44`).
 - **Weekly exposure cap.** A real person already met by 5 other real people's rounds in the
   last 7 days is skipped. Practice profiles are never capped
-  (`server/src/matching/candidates.ts:166`,
-  `server/src/matching/candidates.ts:182`).
+  (`server/src/matching/candidates.ts:190`,
+  `server/src/matching/candidates.ts:206`).
 - **Claims.** Two rounds running at once cannot claim the same pair
   (`server/src/matching/orchestrator.ts:249`).
 
@@ -1416,7 +1419,8 @@ off (`server/src/matching/profile.ts:205`,
 
 ### 6.4 Picking
 
-- **Order:** real people first, then the most recently active; the round looks at the
+- **Order:** real people first; within them, those who fit more of the person's Really want (3) and
+  Nice to have (1) rules (since 2026-09-29); then the most recently active; the round looks at the
   first 500 (`server/src/matching/orchestrator.ts:145`).
 - **The score records, it does not pick.** For the first 20 people, a preference score
   (`rank_score`) is computed and stored on each pair, for later measurement only
@@ -1424,8 +1428,8 @@ off (`server/src/matching/profile.ts:205`,
   `server/src/matching/orchestrator.ts:178`). The score mixes
   how many of the other person's Really-want / Nice-to-have rules are met with how many
   tags the two share, in both directions, shrunk when little is known
-  (`server/src/matching/score.ts:187`,
-  `server/src/matching/score.ts:191`).
+  (`server/src/matching/score.ts:181`,
+  `server/src/matching/score.ts:185`).
   It is never shown to anyone in the app.
 - **The only reorder is downward:** the want check can move a candidate later, inside
   their own group (stage 5).
@@ -1464,7 +1468,7 @@ off (`server/src/matching/profile.ts:205`,
   `server/src/matching/orchestrator.ts:167`).
 - HOW-IT-WORKS.md §4 says every rule is symmetric. "Recently active" is checked on the
   candidate only (`HOW-IT-WORKS.md:204`,
-  `server/src/matching/candidates.ts:111`).
+  `server/src/matching/candidates.ts:135`).
 - HOW-IT-WORKS.md §10 says rounds are limited by the round count "instead of by spend". The
   daily spend and call caps can still refuse a round
   (`HOW-IT-WORKS.md:818`,
@@ -2297,7 +2301,7 @@ metered. The server refuses to start if a routed model has no verified price or 
 | AI-15 | Face check | none (runs on the server) | "Check your photos" | **No** (`FACE_CHECK=off`) | n/a | No vendor, no credits |
 
 Two routed tasks, `reflect` and `canon`, are never called, and an old "file score" function is dead code
-(`server/src/llm/index.ts:32`, `server/src/matching/score.ts:211`).
+(`server/src/llm/index.ts:32`, `server/src/matching/score.ts:205`).
 No model is ever sent a photo: requests carry text only (`server/src/llm/port.ts:29`).
 
 **A default round** makes 0–1 answer-sheet call at the tap, 0–1 want check for the sender, and per pair 0–1
@@ -2510,8 +2514,8 @@ $0.02; not measured, because no round has run since the talk was added.
 
 With `DECIDE_MODEL` set, "Couldn't be with" would be mapped by typed yes/no questions instead of AI-3, and each
 pair would get a hidden "after one evening together, each would want a second one" probability, stored and never
-shown (`server/src/matching/score.ts:292`,
-`server/src/matching/score.ts:304`).
+shown (`server/src/matching/score.ts:286`,
+`server/src/matching/score.ts:298`).
 
 <a id="ai-15"></a>
 ### AI-15. Face check (switched off)
@@ -2593,7 +2597,7 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | **Let strangers message you.** A message can only go to an introduced pair. | Yes | `server/migrations/0024_messages.sql:12` | — |
 | **Tell anyone they were turned down.** Nothing is sent on a no. | In words, yes | `server/src/matching/orchestrator.ts:591` | The other person's card disappears early, which can give it away (Known gaps). |
 | **Show you the other person's wants or rules.** Each card lists only its reader's wants. | Yes | `server/src/matching/orchestrator.ts:398` | — |
-| **Hide anyone for a "Really want" or "Nice to have".** Only must-haves exclude. | Yes | `server/src/matching/candidates.ts:88` | — |
+| **Hide anyone for a "Really want" or "Nice to have".** Only must-haves exclude. | Yes | `server/src/matching/candidates.ts:112` | — |
 | **Match the same two people twice.** | Yes | `server/migrations/0022_rendezvous.sql:44` | They can still appear to each other as strangers in the town. |
 | **Store your phone number** in the database. Only a keyed hash is kept. | Yes | `server/migrations/0045_phone_identity.sql:22` | In development, the console SMS sender writes full numbers to the server log. |
 | **Track your location.** Location is read only when you tap "Use my location", never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:347` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
@@ -2642,7 +2646,7 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     rules as they stand then, so flipping a must-have (or your own answer) changes nothing there until tomorrow;
     a block, a ban or leaving the pool still takes somebody out at once
     (`server/src/api/world.ts:180`,
-    `server/src/matching/candidates.ts:127`).
+    `server/src/matching/candidates.ts:151`).
 6. **Word lists have gaps.** The private-topic list is finite ("family", "wedding", "Diwali" are not on it), and the
     talk and answer sheets also use "goal" and "dislikes" sentences, which the card's own rule leaves out as the place
     "where faith, politics and children are said in prose"
@@ -2674,8 +2678,8 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     (setup is counted apart since 2026-09-28), but meeting the limit now says so: in chat, a line with the limit,
     that the three share it and that it comes back tomorrow; for a round, the same allowance in plain words instead
     of "Your agent has been out enough for today" (`server/src/metering.ts:34`).
-12. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
-    list" (stage 5).
+12. **Closed on 2026-09-29: "Really want" and "Nice to have".** They now order the people a round takes, real people
+    still first, as the screen says (`server/src/matching/candidates.ts:171`).
 13. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does
     not know where you are." (`server/src/matching/profile.ts:152`).
 14. **Someone who turns 18 this year is refused all year**, because only the birth year is asked
