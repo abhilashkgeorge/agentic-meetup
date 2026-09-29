@@ -51,7 +51,10 @@ async function reviewer(authorization: string | undefined) {
 interface ReportRow {
   id: string;
   reporter_id: string | null;
-  reported_id: string;
+  /** Who the report is about today (0079 reported_now): their account, the one they came back as, or nobody. */
+  reported_now: string | null;
+  /** They deleted the account the report was made about. */
+  reported_deleted: boolean;
   reason: string;
   detail: string;
   created_at: string;
@@ -118,26 +121,30 @@ export const adminRoutes = new Hono()
     // rendezvous tables.
     const rows = await matchmakerSession(async (db) => {
       const { rows } = await db.query<ReportRow>(
-        `SELECT r.id, r.reporter_id, r.reported_id, r.reason, r.detail,
+        `SELECT r.id, r.reporter_id, r.reason, r.detail,
                 r.created_at, r.reviewed_at, r.outcome, r.review_note,
+                -- Who it is about today: the account, or -- deleted -- the one they came
+                -- back as (0079). Every column after this is about that person.
+                w.now_id                                                AS reported_now,
+                r.reported_deleted_at IS NOT NULL                       AS reported_deleted,
                 -- Context a reviewer needs before deciding, and which is tedious and
-                -- error-prone to gather by hand one query at a time.
-                (SELECT count(*)::int FROM reports x
-                  WHERE x.reported_id = r.reported_id)                  AS reports_against,
-                (SELECT count(DISTINCT x.reporter_id)::int FROM reports x
-                  WHERE x.reported_id = r.reported_id
-                    AND x.reporter_id IS NOT NULL)                      AS distinct_reporters,
+                -- error-prone to gather by hand one query at a time. Reports kept from
+                -- a deleted account of theirs count with the live ones.
+                ra.reports                                              AS reports_against,
+                ra.reporters                                            AS distinct_reporters,
                 (SELECT count(*)::int FROM photos p
-                  WHERE p.user_id = r.reported_id)                      AS photos,
+                  WHERE p.user_id = w.now_id)                           AS photos,
                 (SELECT count(*)::int FROM photos p
-                  WHERE p.user_id = r.reported_id
+                  WHERE p.user_id = w.now_id
                     AND p.hidden_at IS NOT NULL)                        AS hidden_photos,
                 -- Who, in words, and whether a ban already stands: the queue on a
                 -- phone reads a name, not a uuid.
                 (SELECT mp.display_name FROM match_profile mp
-                  WHERE mp.user_id = r.reported_id)                     AS reported_name,
-                is_banned(r.reported_id)                                AS banned
+                  WHERE mp.user_id = w.now_id)                          AS reported_name,
+                COALESCE(is_banned(w.now_id), false)                    AS banned
            FROM reports r
+           CROSS JOIN LATERAL (SELECT reported_now(r.id) AS now_id) w
+           CROSS JOIN LATERAL reports_about(r.id) ra
           WHERE ($1::bool OR r.reviewed_at IS NULL)
           -- Waiting first; among them the serious first (SERIOUS_FIRST), then newest.
           ORDER BY r.reviewed_at NULLS FIRST, array_position($2::text[], r.reason) NULLS LAST, r.created_at DESC
@@ -154,7 +161,11 @@ export const adminRoutes = new Hono()
         reason: r.reason,
         detail: r.detail,
         at: new Date(r.created_at).toISOString(),
-        reportedId: r.reported_id,
+        // Null once they deleted their account and have not come back: the report is
+        // kept (0079), but there is nobody to act on.
+        reportedId: r.reported_now,
+        reportedDeleted: r.reported_deleted,
+        cameBack: r.reported_deleted && r.reported_now !== null,
         reportedName: r.reported_name,
         banned: r.banned,
         // An anonymised reporter stays anonymous to the reviewer as well. Knowing
@@ -197,15 +208,19 @@ export const adminRoutes = new Hono()
     if (!body.success) return c.json({ error: 'bad request' }, 400);
     const { outcome, note } = body.data;
 
-    const target = await matchmakerSession(async (db) => {
-      const { rows } = await db.query<{ reported_id: string }>(
-        'SELECT reported_id FROM reports WHERE id = $1', [id]);
-      return rows[0]?.reported_id ?? null;
+    const found = await matchmakerSession(async (db) => {
+      const { rows } = await db.query<{ target: string | null }>(
+        'SELECT reported_now(id) AS target FROM reports WHERE id = $1', [id]);
+      return rows[0] ?? null;
     });
-    if (!target) return c.json({ error: 'not found' }, 404);
+    if (!found) return c.json({ error: 'not found' }, 404);
+    // They deleted their account and have not come back (0079): the report stays, and
+    // can be closed, but there is nobody to hide or ban.
+    const target = found.target;
+    if (!target && outcome !== 'no_action') return c.json({ error: 'account_deleted' }, 409);
 
     let photosHidden = 0;
-    if (outcome === 'photos_hidden' || outcome === 'account_blocked' || outcome === 'banned') {
+    if (target && (outcome === 'photos_hidden' || outcome === 'account_blocked' || outcome === 'banned')) {
       photosHidden = await hide(target, `report ${id}: ${outcome}`);
     }
     if (outcome === 'banned') {

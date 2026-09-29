@@ -90,7 +90,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **Three per person, in all.** An invite that expires unused comes back; the reviewer has no
   limit. In Settings: "Invites · N left", "Make an invite", shared as "Here's a code for Clone:
   <code>" ([server/src/env.ts:212] `INVITES_PER_USER: z.coerce.number().default(3),`,
-  [app/src/features/settings/settings-screen.tsx:83] `Here's a code for Clone: ${r.code}`).
+  [app/src/features/settings/settings-screen.tsx:84] `Here's a code for Clone: ${r.code}`).
 - **KNOX-1010** is a reusable development code made by a script; it works only while
   `ALLOW_REUSABLE_INVITES=true` (on in development) and each use makes a new account
   ([server/scripts/dev-invite.ts:25] `VALUES ($1, 'reusable dev code', true, now() + interval '100 years')`,

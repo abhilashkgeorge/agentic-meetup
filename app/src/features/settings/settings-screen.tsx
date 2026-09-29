@@ -15,6 +15,7 @@ import Constants from 'expo-constants';
 import {
   createInvite, eraseAccount, exportAccount, getAdminReports, getInvites, isAdmin, type Invite, logout, phoneLinked,
 } from '../../lib/api';
+import { eraseMessage, signsOut } from './delete-outcome';
 import { unregisterPush } from '../../lib/push';
 import { SUPPORT_EMAIL, supportMailto } from '../safety/reasons';
 import { inviteCard } from './invites';
@@ -132,14 +133,15 @@ export default function SettingsScreen() {
           onPress: () => void (async () => {
             if (!token) return;
             setBusy(true);
-            const ok = await eraseAccount(token);
+            const outcome = await eraseAccount(token);
             setBusy(false);
-            if (!ok) {
-              Alert.alert('Not deleted', 'We could not reach the server. Nothing was removed.');
-              return;
-            }
-            // The account is gone, so the token is meaningless. No logout call: there
-            // is no session left to revoke and the request would only 401.
+            // Only what the phone knows (delete-outcome.ts): never "nothing was removed"
+            // unless the server refused before touching anything.
+            const said = eraseMessage(outcome);
+            if (said) Alert.alert(said.title, said.body);
+            if (!signsOut(outcome)) return;
+            // The account is gone, or the session is: the token is meaningless. No logout
+            // call: there is no session left to revoke and the request would only 401.
             await clearToken();
             setToken(null);
             router.replace('/phone');

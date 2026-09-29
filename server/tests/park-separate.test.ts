@@ -24,6 +24,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
+import { removeTenants } from './support/cleanup.js';
 import type { ServerEvent } from '@clone/shared';
 
 process.env.LIVEKIT_URL = 'ws://127.0.0.1:9';
@@ -81,7 +82,7 @@ async function pairUp(a: P, b: P, bench?: number) {
 
 afterAll(async () => {
   for (const p of everyone) { hub.leave(p.userId, p.ws); socketClosed(p.userId); }
-  if (made.length) await owner.query('DELETE FROM tenants WHERE id = ANY($1)', [made]);
+  await removeTenants(owner, made);
   await owner.end();
   await closeMatchPool();
   await pool.end();

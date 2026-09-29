@@ -45,14 +45,13 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     "where faith, politics and children are said in prose"
     ([server/src/matching/answer-sheet.ts:79] `export const SHEET_SOURCES: readonly string[] = [...QUOTABLE, 'goal', 'dislikes'];`,
     [server/src/matching/brief.ts:81] `is where faith, politics and children are said in prose.`).
-7. **Deleting an account deletes reports against that person and both halves of their chats**
-    ([server/migrations/0025_messaging_fixes.sql:100] `FOREIGN KEY (reported_id) REFERENCES app_users(id) ON DELETE CASCADE;`).
-    If deletion fails part way, the app still says "Nothing was removed."
-    ([app/src/features/settings/settings-screen.tsx:138] `Alert.alert('Not deleted', 'We could not reach the server. Nothing was removed.');`).
+7. **Deleting an account deletes both halves of their chats**, the other person's messages with them
+    ([server/src/memory/erasure.ts:81] `{ table: 'rendezvous', columns: ['user_a', 'user_b'] },`). (Reports
+    against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5.)
 8. **Promises that are broader than the code.** "Nobody else has ever seen what your clone knows about you." and
     "Only things marked public ever leave your account." sit beside the first name, age and city on the reveal,
     "Matches" on situation wants, the reviewer's want topics, and AI providers processing the text
-    ([app/src/features/settings/settings-screen.tsx:297] `Nobody else has ever seen what your clone knows about you.`).
+    ([app/src/features/settings/settings-screen.tsx:299] `Nobody else has ever seen what your clone knows about you.`).
 9. **Latent:** the matchmaker role can read every profile summary, which is written from all facts including private
     ones; nothing reads it in a round today ([server/migrations/0028_matchmaker.sql:51] `GRANT SELECT ON core_profile TO clone_matchmaker;`).
 10. **AI providers** receive everything typed to the clone and every message's text (embeddings); the in-app notice
@@ -69,7 +68,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 11. **Ten model calls a day** for chat, learning and rounds together (setup is counted apart since 2026-09-28).
     Somebody who chats a lot can leave no call for a round, which then fails with "Your agent has been out enough
     for today", and in chat the reason is never shown ([server/src/env.ts:342] `TRIAL_TURN_CAP_PER_DAY: z.coerce.number().default(10),`,
-    [app/src/lib/api.ts:361] `return res.ok ? ((await res.json()) as T) : null;`).
+    [app/src/lib/api.ts:376] `return res.ok ? ((await res.json()) as T) : null;`).
 12. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
     list" (stage 5).
 13. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does

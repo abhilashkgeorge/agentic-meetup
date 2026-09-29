@@ -35,6 +35,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
+import { removeTenants } from './support/cleanup.js';
 import { TokenVerifier } from 'livekit-server-sdk';
 import { PARK_EARSHOT, STARTER, type ServerEvent } from '@clone/shared';
 
@@ -76,7 +77,7 @@ const report = (reporter: string, reported: string, detail: string, hoursAgo = 0
   [reporter, reported, detail, hoursAgo]);
 
 afterAll(async () => {
-  if (made.length) await owner.query('DELETE FROM tenants WHERE id = ANY($1)', [made]);
+  await removeTenants(owner, made);
   await owner.end();
   await closeMatchPool();
   await pool.end();

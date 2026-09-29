@@ -31,6 +31,7 @@
  */
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { Pool } from 'pg';
+import { removeTenants } from './support/cleanup.js';
 
 vi.mock('../src/llm/index.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/llm/index.js')>();
@@ -57,7 +58,7 @@ const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DAT
 const made: string[] = [];
 
 afterAll(async () => {
-  if (made.length) await owner.query('DELETE FROM tenants WHERE id = ANY($1)', [made]);
+  await removeTenants(owner, made);
   await owner.end();
   await closeMatchPool();
   await pool.end();

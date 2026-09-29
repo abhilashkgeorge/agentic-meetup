@@ -33,6 +33,11 @@ export const outcomeLabel = (outcome: string | null): string =>
   : outcome === 'banned' ? 'Banned'
   : 'Open';
 
-/** Who, in words. A report on somebody with no profile yet still names them somehow. */
+/**
+ * Who, in words. A report on somebody with no profile yet still names them somehow; one
+ * on somebody who deleted their account says so (server 0079 keeps it), and says so
+ * again, with their new name, if they came back under the same phone or handset.
+ */
 export const reportedLabel = (r: AdminReport): string =>
-  `${r.reportedName ?? 'Someone without a profile'}${r.banned ? ' (banned)' : ''}`;
+  r.reportedDeleted && !r.cameBack ? 'Deleted their account'
+    : `${r.reportedName ?? 'Someone without a profile'}${r.cameBack ? ' (came back after deleting an account)' : ''}${r.banned ? ' (banned)' : ''}`;

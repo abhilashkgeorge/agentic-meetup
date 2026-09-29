@@ -83,8 +83,8 @@ const SHARED_TABLES = [
   // it is this person's words and it goes.
   { table: 'messages', columns: ['sender_id'] },
   { table: 'blocks', columns: ['blocker_id', 'blocked_id'] },
-  // Reports FILED BY them are not deleted, only un-named. See eraseUser.
-  { table: 'reports', columns: ['reported_id'] },
+  // Reports are not here at all. Those FILED BY them lose their name; those AGAINST them
+  // are kept, keyed to their phone and handsets as a ban is (0079). See eraseUser.
 ] as const;
 
 /**
@@ -119,6 +119,26 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
   });
 
   const deleted: Record<string, number> = {};
+
+  // REPORTS AGAINST THEM ARE KEPT (the founder, 2026-09-29; 0079). Deleting the account
+  // used to delete them, which made it the way to wipe every report against you. First,
+  // before their sessions go below, each report against them gets the keys a ban keeps
+  // to know the same person again -- their phone's HMAC and the handsets they signed in
+  // on -- and the account going at the end takes only its id off the report.
+  await eraseSession(async (c) => {
+    const kept = await c.query(
+      `UPDATE reports r
+          SET reported_phone_hmac = u.phone_hmac,
+              reported_device_hmacs = COALESCE((SELECT array_agg(DISTINCT s.device_hmac) FROM device_sessions s
+                                                 WHERE s.user_id = u.id AND s.device_hmac IS NOT NULL), '{}'),
+              reported_deleted_at = now()
+         FROM app_users u
+        WHERE u.id = $1 AND r.reported_id = $1`,
+      [ctx.userId],
+    );
+    deleted['reports against them (kept)'] = kept.rowCount ?? 0;
+  });
+
   await tenantSession(ctx, async (c) => {
     for (const t of USER_TABLES) {
       const r = await c.query(`DELETE FROM ${t} WHERE user_id = $1`, [ctx.userId]);

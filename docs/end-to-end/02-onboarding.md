@@ -146,7 +146,7 @@ A city among 46 listed ones becomes that city's centre; an unlisted city becomes
 
 **Wants** are not asked during setup. "What would you love in someone?" is on the Stories screen and
 "What you're looking for" is reached from the You tab or Settings (stage 5)
-([app/src/features/settings/settings-screen.tsx:243] `<Row title="What you're looking for" onPress={() => router.push('/preferences')} />`).
+([app/src/features/settings/settings-screen.tsx:245] `<Row title="What you're looking for" onPress={() => router.push('/preferences')} />`).
 
 **The name others see comes only from that screen** (since 2026-09-28). One word of letters is kept
 (a number or an "@" gets "Just your first name, in letters."); the fact store refuses a first name

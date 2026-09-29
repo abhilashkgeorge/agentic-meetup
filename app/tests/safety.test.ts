@@ -85,6 +85,7 @@ describe('the reviewer\'s queue', () => {
   const report = (over: Partial<AdminReport> = {}): AdminReport => ({
     id: 'r1', reason: 'fake_profile', detail: '', at: '2026-09-25T10:00:00Z', reportedId: 'u1',
     reporterKnown: true, reportedName: 'Asha', banned: false, reviewed: null, outcome: null, note: '',
+    reportedDeleted: false, cameBack: false,
     context: { reportsAgainstThem: 3, distinctReporters: 2, photos: 4, photosHidden: 1 }, ...over,
   });
 
@@ -97,6 +98,10 @@ describe('the reviewer\'s queue', () => {
     expect(outcomeLabel('banned')).toBe('Banned');
     expect(reportedLabel(report({ banned: true }))).toBe('Asha (banned)');
     expect(reportedLabel(report({ reportedName: null }))).toBe('Someone without a profile');
+    // Kept after they deleted their account (server 0079), and again if they came back.
+    expect(reportedLabel(report({ reportedId: null, reportedName: null, reportedDeleted: true }))).toBe('Deleted their account');
+    expect(reportedLabel(report({ reportedDeleted: true, cameBack: true, reportedName: 'Asha' })))
+      .toBe('Asha (came back after deleting an account)');
   });
 
   it('is reachable only through the reviewer check', () => {

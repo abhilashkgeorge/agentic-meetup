@@ -12,6 +12,7 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
+import { removeTenants } from './support/cleanup.js';
 import { adminRoutes } from '../src/api/admin.js';
 import { pool, tenantSession } from '../src/db/client.js';
 import { env } from '../src/env.js';
@@ -86,7 +87,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await owner.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+  await removeTenants(owner, [tenantId]);
   await owner.end();
   await pool.end();
 });

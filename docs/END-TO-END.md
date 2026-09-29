@@ -187,7 +187,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **Three per person, in all.** An invite that expires unused comes back; the reviewer has no
   limit. In Settings: "Invites · N left", "Make an invite", shared as "Here's a code for Clone:
   <code>" (`server/src/env.ts:212`,
-  `app/src/features/settings/settings-screen.tsx:83`).
+  `app/src/features/settings/settings-screen.tsx:84`).
 - **KNOX-1010** is a reusable development code made by a script; it works only while
   `ALLOW_REUSABLE_INVITES=true` (on in development) and each use makes a new account
   (`server/scripts/dev-invite.ts:25`,
@@ -408,7 +408,7 @@ A city among 46 listed ones becomes that city's centre; an unlisted city becomes
 
 **Wants** are not asked during setup. "What would you love in someone?" is on the Stories screen and
 "What you're looking for" is reached from the You tab or Settings (stage 5)
-(`app/src/features/settings/settings-screen.tsx:243`).
+(`app/src/features/settings/settings-screen.tsx:245`).
 
 **The name others see comes only from that screen** (since 2026-09-28). One word of letters is kept
 (a number or an "@" gets "Just your first name, in letters."); the fact store refuses a first name
@@ -853,24 +853,31 @@ Row-level security is the boundary. Each part of the server connects as its own 
 ### 4.5 Deleting an account, and exporting
 
 - **Settings → "Delete everything"** ("Cannot be undone. The clone and all of its memory go.") deletes the
-  person's rows from 23 tables, their photo folder, every pair they were in (including **both** sides of
-  their conversations) and reports about them; then it counts what is left and deletes the account last
-  (`app/src/features/settings/settings-screen.tsx:290`,
+  person's rows from 23 tables, their photo folder and every pair they were in (including **both** sides of
+  their conversations); then it counts what is left and deletes the account last. Reports **about** them
+  stay (since 2026-09-29): the account id comes off, and, as a ban keeps them, their phone's HMAC and the
+  handsets they used go on, so a return under the same phone is shown to the reviewer as the same person
+  (`server/migrations/0079_reports_outlive_the_reported.sql:27`).
+  If it fails part way, the phone says only what it knows: "Only partly deleted", or "Not sure it was
+  deleted" when the server did not answer; "Nothing was removed" only when the server refused before
+  touching anything (`app/src/features/settings/delete-outcome.ts:12`)
+  (`app/src/features/settings/settings-screen.tsx:292`,
   `server/src/memory/erasure.ts:35`,
-  `server/src/memory/erasure.ts:200`).
-- **It leaves:** a receipt with counts, invites, reports they filed (without their name), bans and the
-  phone and device hashes of a ban, the account's device name, and anything already sent to AI providers
+  `server/src/memory/erasure.ts:220`).
+- **It leaves:** a receipt with counts, invites, reports they filed (without their name), reports about
+  them (with their phone and device hashes), bans and the phone and device hashes of a ban, the account's
+  device name, and anything already sent to AI providers
   or written to server logs (`server/migrations/0007_erasure.sql:12`).
 - **"Download everything"** exports their facts, all their messages with their clone, their profile,
   questions, their own messages to matches and their model usage, as plain text to the share sheet
-  (`app/src/features/settings/settings-screen.tsx:120`).
+  (`app/src/features/settings/settings-screen.tsx:121`).
 
 ### 4.6 Operators, logs and AI providers
 
 - **The reviewer** (accounts in `ADMIN_USER_IDS`) sees the reports queue (reason, the reporter's note, the
   reported person's first name; never who reported), the Numbers page, and the unmatched-wants list
   (stage 11). No admin route reads messages, photos or facts
-  (`server/src/api/admin.ts:121`,
+  (`server/src/api/admin.ts:124`,
   `server/src/api/admin.ts:25`).
 - **Logs** carry user ids, not message text; the redaction list covers text fields. In development the
   console SMS sender logs full numbers and codes (`server/src/log.ts:8`).
@@ -885,7 +892,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
   the account (`server/src/api/push.ts:36`,
   `server/src/memory/erasure.ts:41`).
 - **The Settings promise** reads "Nobody else has ever seen what your clone knows about you."
-  (`app/src/features/settings/settings-screen.tsx:297`).
+  (`app/src/features/settings/settings-screen.tsx:299`).
   By design, other members see public sentences, tags and a first name; the reviewer sees want topic
   words; AI providers process the text. Read literally, the promise is broader than the code.
 
@@ -911,7 +918,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately (`ARCHITECTURE.md:391`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
-  (`server/src/memory/erasure.ts:165`).
+  (`server/src/memory/erasure.ts:185`).
 
 ### Unverified
 
@@ -2113,7 +2120,7 @@ Both are for the **reviewer** only: an account listed in `ADMIN_USER_IDS`. For a
 (`server/src/api/admin.ts:44`,
 `server/src/env.ts:190`).
 The way in: YOU → Manage → Settings → "Help and safety" → "Numbers" ("How far matches get, real people only")
-(`app/src/features/settings/settings-screen.tsx:272`).
+(`app/src/features/settings/settings-screen.tsx:274`).
 
 ### At a glance
 
@@ -2505,12 +2512,12 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Selfie check** | "Photos checked" badge from a local face model | Off (`FACE_CHECK=off`) | `server/src/api/verify.ts:39` |
 | **"What it knows"** | Every fact, its history, and the confirm questions | Everyone | `app/src/features/knowledge/you-screen.tsx:91` |
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:93` |
-| **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:236` |
+| **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:238` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable | Everyone | `app/src/features/settings/connect-screen.tsx:36` |
-| **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only) | Reviewer | `app/src/features/settings/settings-screen.tsx:270`, `server/src/api/admin.ts:75` |
-| **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:86` |
+| **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only) | Reviewer | `app/src/features/settings/settings-screen.tsx:272`, `server/src/api/admin.ts:78` |
+| **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:89` |
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
-| **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:39` |
+| **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:40` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
 | **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:380` |
 
@@ -2594,14 +2601,13 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     "where faith, politics and children are said in prose"
     (`server/src/matching/answer-sheet.ts:79`,
     `server/src/matching/brief.ts:81`).
-7. **Deleting an account deletes reports against that person and both halves of their chats**
-    (`server/migrations/0025_messaging_fixes.sql:100`).
-    If deletion fails part way, the app still says "Nothing was removed."
-    (`app/src/features/settings/settings-screen.tsx:138`).
+7. **Deleting an account deletes both halves of their chats**, the other person's messages with them
+    (`server/src/memory/erasure.ts:81`). (Reports
+    against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5.)
 8. **Promises that are broader than the code.** "Nobody else has ever seen what your clone knows about you." and
     "Only things marked public ever leave your account." sit beside the first name, age and city on the reveal,
     "Matches" on situation wants, the reviewer's want topics, and AI providers processing the text
-    (`app/src/features/settings/settings-screen.tsx:297`).
+    (`app/src/features/settings/settings-screen.tsx:299`).
 9. **Latent:** the matchmaker role can read every profile summary, which is written from all facts including private
     ones; nothing reads it in a round today (`server/migrations/0028_matchmaker.sql:51`).
 10. **AI providers** receive everything typed to the clone and every message's text (embeddings); the in-app notice
@@ -2618,7 +2624,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 11. **Ten model calls a day** for chat, learning and rounds together (setup is counted apart since 2026-09-28).
     Somebody who chats a lot can leave no call for a round, which then fails with "Your agent has been out enough
     for today", and in chat the reason is never shown (`server/src/env.ts:342`,
-    `app/src/lib/api.ts:361`).
+    `app/src/lib/api.ts:376`).
 12. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
     list" (stage 5).
 13. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does

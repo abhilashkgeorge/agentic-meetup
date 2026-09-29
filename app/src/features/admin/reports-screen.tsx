@@ -70,6 +70,15 @@ export default function ReportsScreen() {
             </Text>
             {r.reviewed ? (
               <Text style={[type.callout, { color: p.textSecondary }]}>{outcomeLabel(r.outcome)}</Text>
+            ) : !r.reportedId ? (
+              // Kept after they deleted their account (server 0079): nobody to hide or
+              // ban; it points at them again if they come back.
+              <>
+                <Text style={[type.callout, { color: p.textSecondary }]}>
+                  If they come back with the same phone or handset, this report points at them again.
+                </Text>
+                <Button label="Close it" disabled={busy === r.id} onPress={() => void decide(r, 'no_action')} />
+              </>
             ) : (
               <ButtonRow>
                 <Button label="No action" disabled={busy === r.id} onPress={() => void decide(r, 'no_action')} style={{ flex: 1 }} />

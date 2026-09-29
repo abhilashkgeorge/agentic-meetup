@@ -231,15 +231,30 @@ export async function logout(token: string): Promise<boolean> {
  * The confirmation string is required by the server as well as by the alert. Two
  * deliberate acts for something with no undo.
  */
-export async function eraseAccount(token: string): Promise<boolean> {
+/**
+ * How "Delete everything" went -- as far as the phone can tell, and no further
+ * (features/settings/delete-outcome.ts says each in words). It used to be a yes or a no,
+ * and every no was told "Nothing was removed", which after a half-finished erasure, or a
+ * connection lost mid-way, was not true.
+ */
+export type EraseOutcome = 'deleted' | 'partial' | 'refused' | 'signed_out' | 'unknown';
+
+export async function eraseAccount(token: string): Promise<EraseOutcome> {
   try {
     const res = await fetch(`${getApiBase()}/v1/me?confirm=delete-everything`, {
       method: 'DELETE',
       headers: { ...BASE_HEADERS, Authorization: `Bearer ${token}` },
     });
-    return res.ok;
+    if (res.ok) return 'deleted';
+    // Refused before anything was touched (server api/me.ts: the confirmation).
+    if (res.status === 400) return 'refused';
+    // No session: the account may be gone already, or the session just ended.
+    if (res.status === 401) return 'signed_out';
+    // The erasure ran and could not prove itself complete (memory/erasure.ts verified).
+    const body = (await res.json().catch(() => null)) as { verified?: boolean } | null;
+    return body?.verified === false ? 'partial' : 'unknown';
   } catch {
-    return false;
+    return 'unknown';
   }
 }
 
@@ -978,7 +993,12 @@ export const reportMatch = (token: string, args: { rendezvousId: string; reason:
 
 /** The reviewer's desk. `isAdmin` is null for everybody who is not the reviewer. */
 export interface AdminReport {
-  id: string; reason: string; detail: string; at: string; reportedId: string; reporterKnown: boolean;
+  /**
+   * Who it is about today (server 0079): their account, or -- they deleted it -- the one
+   * they came back as; null when they deleted it and have not come back.
+   */
+  id: string; reason: string; detail: string; at: string; reportedId: string | null; reporterKnown: boolean;
+  reportedDeleted: boolean; cameBack: boolean;
   reportedName: string | null; banned: boolean;
   reviewed: string | null; outcome: string | null; note: string;
   context: { reportsAgainstThem: number; distinctReporters: number; photos: number; photosHidden: number };
