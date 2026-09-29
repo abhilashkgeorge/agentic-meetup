@@ -481,10 +481,13 @@ export function CheerToast({ top }: { top: number }) {
       position: 'absolute', top, left: space.screen, right: space.screen, alignItems: 'center', opacity: drop,
       transform: [{ translateY: drop.interpolate({ inputRange: [0, 1], outputRange: [-24, 0] }) }, { scale: drop.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
     }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.md,
-                     borderRadius: radius.pill, backgroundColor: p.accent, boxShadow: raised(p, 6) }}>
-        <Text style={{ fontSize: 18 }}>{QUEST_ICON[cheer.quest]}</Text>
-        <Text style={[type.bodyStrong, { color: p.accentText }]}>{`${CHEER[cheer.quest]} · +${cheer.points} points`}</Text>
+      {/* ONE line of text, the mark in it: as an emoji beside a bold line, Android sized
+          the pill for less than the line and the last word -- "points" -- went missing
+          (on the phone, 2026-09-29). */}
+      <View style={{ paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.pill, backgroundColor: p.accent, boxShadow: raised(p, 6) }}>
+        <Text style={[type.bodyStrong, { color: p.accentText, textAlign: 'center' }]}>
+          {`${QUEST_ICON[cheer.quest]}  ${CHEER[cheer.quest]} · +${cheer.points} points`}
+        </Text>
       </View>
     </Animated.View>
   );

@@ -11,7 +11,10 @@
  * it walks in. Told the two of you have a bench, it walks to its own seat -- the one
  * the app gives it, from the same park layout -- and sits. NO MODEL: every line is
  * written here. With --ride it is on a bicycle, and rides round you in a circle rather
- * than standing by you. Development only: it refuses to run with NODE_ENV=production.
+ * than standing by you. Once you are talking with it, it keeps beside you wherever you
+ * go -- walking when you walk, on a bike when you ride -- so the things to do together
+ * (walk, ride, see the sights) can be tried with one phone. Development only: it
+ * refuses to run with NODE_ENV=production.
  */
 import { Pool } from 'pg';
 import WebSocket from 'ws';
@@ -31,6 +34,9 @@ const ask = process.argv.includes('--ask');
 const ride = process.argv.includes('--ride');
 let lap = 0;
 let paired = false;
+/** Who it is talking with, as the server refers to them. */
+let partnerRef: string | null = null;
+let riding = false;
 /** Whether it asked (the left seat) or was asked (the right), once paired. */
 let asker = false;
 /** Its seat on the pair's bench, and whether it has reached the front of it yet. */
@@ -60,7 +66,7 @@ const token = mintToken(sessionId);
 
 const ws = new WebSocket(`ws://localhost:${env.PORT}/v1/chat`, ['bearer', token]);
 const send = (m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)); };
-let people: { ref: string; x: number; z: number }[] = [];
+let people: { ref: string; x: number; z: number; riding?: boolean }[] = [];
 let greeted = false;
 let replyAt = 0;
 let reply = 0;
@@ -72,7 +78,7 @@ ws.on('open', () => {
   if (ask) setTimeout(() => send({ type: 'park.find' }), 5000);
 });
 ws.on('message', (data) => {
-  const ev = JSON.parse(String(data)) as { type: string; people?: { ref: string; x: number; z: number }[]; ref?: string; text?: string; reason?: string };
+  const ev = JSON.parse(String(data)) as { type: string; people?: { ref: string; x: number; z: number; riding?: boolean }[]; ref?: string; text?: string; reason?: string };
   if (ev.type === 'park.people') people = ev.people ?? [];
   if (ev.type === 'park.said' && ev.ref !== 'you') {
     console.log(`park-bot heard: ${ev.text}`);
@@ -87,10 +93,15 @@ ws.on('message', (data) => {
   if (ev.type === 'park.finding') console.log(`park-bot: finding -> ${(ev as { status?: string }).status}`);
   if (ev.type === 'park.paired') {
     paired = true;
+    partnerRef = ev.ref ?? null;
     asker = !(ev as { asked?: boolean }).asked;
     console.log(`park-bot: talking with someone (${asker ? 'it asked' : 'it was asked'})`);
   }
-  if (ev.type === 'park.parted') { paired = false; seat = null; console.log('park-bot: parted'); }
+  if (ev.type === 'park.parted') { paired = false; partnerRef = null; seat = null; riding = false; console.log('park-bot: parted'); }
+  if (ev.type === 'park.quests' && (ev as { just?: { quest: string; points: number } }).just) {
+    const j = (ev as { just: { quest: string; points: number } }).just;
+    console.log(`park-bot: done together -- ${j.quest}, +${j.points}`);
+  }
   if (ev.type === 'park.sat') {
     const n = (ev as { bench?: number }).bench ?? -1;
     const bench = garden.benches[n];
@@ -138,7 +149,20 @@ const walk = setInterval(() => {
     send({ type: 'park.move', x, z, facing, moving: true, riding: true });
     return;
   }
-  // Talking with somebody: stand still, they come to it.
+  // Talking with somebody: by their side, a person's width off it, as they go -- on a
+  // bike when they ride. Standing still while they come to it (the car), as before.
+  const partner = paired && partnerRef ? people.find((p) => p.ref === partnerRef) : undefined;
+  if (partner) {
+    riding = partner.riding === true;
+    const side = { x: partner.x + 0.35, z: partner.z };
+    const d = Math.hypot(side.x - x, side.z - z);
+    const pace = riding ? 1.5 : 0.75;
+    const moving = d > 0.05;
+    const facing = moving ? Math.atan2(side.x - x, side.z - z) : 0;
+    if (moving) { const step = Math.min(d, pace * 0.2); x += ((side.x - x) / d) * step; z += ((side.z - z) / d) * step; }
+    send({ type: 'park.move', x, z, facing, moving, ...(riding ? { riding: true } : {}) });
+    return;
+  }
   const target = paired ? undefined : people[0];
   let moving = false;
   let facing = 0;
