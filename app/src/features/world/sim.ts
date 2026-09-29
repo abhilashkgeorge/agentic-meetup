@@ -112,8 +112,19 @@ interface Lake { ring: readonly Pt[]; minX: number; maxX: number; minZ: number; 
 
 /** How far short of a fence (MapSpots.bounds) somebody stops, beyond their own width. */
 export const BOUND_INSET = 0.015;
+/** A fence-grid cell: wholly outside, wholly inside, or one the fence passes near. */
+const OUT = 0, IN = 1, EDGE = 2;
 /** The widest `pad` the bound's cells are filed for: a person's FOOT, and room to spare. */
 const BOUND_PAD = 0.25;
+
+/** Whether the segment (x0, z0)-(x1, z1) crosses the segment a-b. */
+function crosses(x0: number, z0: number, x1: number, z1: number, a: Pt, b: Pt): boolean {
+  const d1 = (b[0] - a[0]) * (z0 - a[1]) - (b[1] - a[1]) * (x0 - a[0]);
+  const d2 = (b[0] - a[0]) * (z1 - a[1]) - (b[1] - a[1]) * (x1 - a[0]);
+  const d3 = (x1 - x0) * (a[1] - z0) - (z1 - z0) * (a[0] - x0);
+  const d4 = (x1 - x0) * (b[1] - z0) - (z1 - z0) * (b[0] - x0);
+  return (d1 > 0) !== (d2 > 0) && (d3 > 0) !== (d4 > 0);
+}
 
 /** How far (x, z) is from the segment a-b, and the nearest point on it. */
 function toSegment(x: number, z: number, a: Pt, b: Pt): { d: number; qx: number; qz: number } {
@@ -128,11 +139,23 @@ class Ground {
   private readonly solids = new Map<number, Solid[]>();
   private readonly lakes = new Map<number, Lake[]>();
   private readonly bridges = new Map<number, Solid[]>();
-  /** The fence (MapSpots.bounds), its edges filed by the cells they pass near. */
+  /**
+   * The fence (MapSpots.bounds), as a dense grid of cells over its box: OUT, IN (wholly
+   * inside, nothing to check) or EDGE (the fence passes near: check its segments, which
+   * `boundEdges` lists by cell). A typed array and integer arithmetic, NOT a map: this
+   * is asked by every walker for every heading it tries, every frame, and two map
+   * lookups a time doubled the park's step with the thousand-person test crowd --
+   * 0.16 to 0.34 ms in node, 11 ms of a 22 ms frame on the Seeker (2026-09-29).
+   */
   private readonly bound: readonly Pt[] | null;
-  private readonly boundEdges = new Map<number, number[]>();
-  /** Every other cell within the fence's box: wholly inside it, or wholly outside. */
-  private readonly boundInside = new Map<number, boolean>();
+  private readonly boundCells: Uint8Array = new Uint8Array(0);
+  private readonly boundEdges: (number[] | undefined)[] = [];
+  /** For an EDGE cell, whether its middle is inside: the start of a local parity test. */
+  private readonly boundMiddleIn: Uint8Array = new Uint8Array(0);
+  private readonly boundX0: number = 0;
+  private readonly boundZ0: number = 0;
+  private readonly boundNX: number = 0;
+  private readonly boundNZ: number = 0;
   readonly empty: boolean;
 
   constructor(map: MapSpots | null) {
@@ -142,9 +165,15 @@ class Ground {
     if (this.bound) {
       const ring = this.bound;
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const [x, z] of ring) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+      // A cell of margin all round, so every cell the fence comes near is on the grid.
+      this.boundX0 = Math.floor(minX / CELL) - 1;
+      this.boundZ0 = Math.floor(minZ / CELL) - 1;
+      this.boundNX = Math.floor(maxX / CELL) + 2 - this.boundX0;
+      this.boundNZ = Math.floor(maxZ / CELL) + 2 - this.boundZ0;
+      this.boundCells = new Uint8Array(this.boundNX * this.boundNZ);
       for (let i = 0; i < ring.length; i++) {
         const a = ring[i]!, b = ring[(i + 1) % ring.length]!;
-        minX = Math.min(minX, a[0]); maxX = Math.max(maxX, a[0]); minZ = Math.min(minZ, a[1]); maxZ = Math.max(maxZ, a[1]);
         const x0 = Math.floor((Math.min(a[0], b[0]) - BOUND_PAD) / CELL), x1 = Math.floor((Math.max(a[0], b[0]) + BOUND_PAD) / CELL);
         const z0 = Math.floor((Math.min(a[1], b[1]) - BOUND_PAD) / CELL), z1 = Math.floor((Math.max(a[1], b[1]) + BOUND_PAD) / CELL);
         for (let cx = x0; cx <= x1; cx++) {
@@ -152,17 +181,20 @@ class Ground {
             // Only the cells this edge actually comes near, not its whole box.
             const mid = toSegment((cx + 0.5) * CELL, (cz + 0.5) * CELL, a, b).d;
             if (mid > CELL * 0.71 + BOUND_PAD) continue;
-            const k = (cx + 512) * 1024 + (cz + 512);
-            const at = this.boundEdges.get(k);
-            if (at) at.push(i); else this.boundEdges.set(k, [i]);
+            const k = this.boundCell(cx * CELL + CELL / 2, cz * CELL + CELL / 2);
+            if (k < 0) continue;
+            this.boundCells[k] = EDGE;
+            const at = this.boundEdges[k];
+            if (at) at.push(i); else this.boundEdges[k] = [i];
           }
         }
       }
-      for (let cx = Math.floor(minX / CELL) - 1; cx <= Math.floor(maxX / CELL) + 1; cx++) {
-        for (let cz = Math.floor(minZ / CELL) - 1; cz <= Math.floor(maxZ / CELL) + 1; cz++) {
-          const k = (cx + 512) * 1024 + (cz + 512);
-          if (!this.boundEdges.has(k)) this.boundInside.set(k, pointInPolygon([(cx + 0.5) * CELL, (cz + 0.5) * CELL], ring));
-        }
+      this.boundMiddleIn = new Uint8Array(this.boundCells.length);
+      for (let k = 0; k < this.boundCells.length; k++) {
+        const cx = this.boundX0 + Math.floor(k / this.boundNZ), cz = this.boundZ0 + (k % this.boundNZ);
+        const inside = pointInPolygon([(cx + 0.5) * CELL, (cz + 0.5) * CELL], ring);
+        this.boundMiddleIn[k] = inside ? 1 : 0;
+        if (this.boundCells[k] !== EDGE) this.boundCells[k] = inside ? IN : OUT;
       }
     }
     const file = <T>(into: Map<number, T[]>, item: T, minX: number, maxX: number, minZ: number, maxZ: number) => {
@@ -198,7 +230,7 @@ class Ground {
     // Out past the fence, or pressed into it: back in, straight at the nearest bit of it.
     if (this.bound && this.outOfBounds(x, z, pad)) {
       const ring = this.bound;
-      const edges = this.boundEdges.get(k) ?? ring.map((_, i) => i);
+      const edges = this.boundEdges[this.boundCell(x, z)] ?? ring.map((_, i) => i);
       let best = { d: Infinity, qx: x, qz: z };
       for (const i of edges) {
         const s = toSegment(x, z, ring[i]!, ring[(i + 1) % ring.length]!);
@@ -230,14 +262,31 @@ class Ground {
    * from the fence, a few segments beside it.
    */
   private outOfBounds(x: number, z: number, pad: number): boolean {
+    const k = this.boundCell(x, z);
+    if (k < 0) return true;
+    const state = this.boundCells[k];
+    if (state !== EDGE) return state === OUT;
     const ring = this.bound!;
-    const k = cellKey(x, z);
-    const edges = this.boundEdges.get(k);
-    if (!edges) return !(this.boundInside.get(k) ?? false);
-    for (const i of edges) {
-      if (toSegment(x, z, ring[i]!, ring[(i + 1) % ring.length]!).d < pad + BOUND_INSET) return true;
+    // In or out, locally: from the cell's middle, whose side is known, to here, the
+    // fence is crossed only by the edges filed in this cell -- an odd number of
+    // crossings is the other side. The whole ring (69 corners in Cubbon Park), asked
+    // afresh for every heading of every walker near the fence, was most of the park's
+    // step with the test crowd.
+    const mx = (Math.floor(x / CELL) + 0.5) * CELL, mz = (Math.floor(z / CELL) + 0.5) * CELL;
+    let inside = this.boundMiddleIn[k] === 1;
+    for (const i of this.boundEdges[k]!) {
+      const a = ring[i]!, b = ring[(i + 1) % ring.length]!;
+      if (toSegment(x, z, a, b).d < pad + BOUND_INSET) return true;
+      if (crosses(mx, mz, x, z, a, b)) inside = !inside;
     }
-    return !pointInPolygon([x, z], ring);
+    return !inside;
+  }
+
+  /** The fence grid's cell under (x, z), or -1 off the grid (which is outside). */
+  private boundCell(x: number, z: number): number {
+    const cx = Math.floor(x / CELL) - this.boundX0, cz = Math.floor(z / CELL) - this.boundZ0;
+    if (cx < 0 || cz < 0 || cx >= this.boundNX || cz >= this.boundNZ) return -1;
+    return cx * this.boundNZ + cz;
   }
 
   /**

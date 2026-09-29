@@ -34,8 +34,13 @@ export interface BuiltCity {
   dispose(): void;
 }
 
-/** Squares of the city, in units, each its own mesh of buildings. */
-const CHUNK = 24;
+/**
+ * Squares of the city, in units, each ONE mesh -- its buildings and their shop boards
+ * together, one draw. At 24 units and a mesh for the boards beside each, the city was
+ * thirty-odd draws from anywhere near the fence; the phone pays for every one of them
+ * on its JavaScript side before the graphics chip sees it.
+ */
+const CHUNK = 40;
 /** A storey and a bay of windows, in units: 3.5 m and 2.8 m. */
 const STOREY = 0.43;
 const BAY = 0.35;
@@ -152,11 +157,18 @@ function buildingGeometry(b: CityPlan['buildings'][number]): THREE.BufferGeometr
   return g.toNonIndexed();
 }
 
-/** A shop's board over its ground floor, on the side facing the road. */
+/**
+ * A shop's board over its ground floor, on the side facing the road. Drawn with the
+ * walls, in one mesh: its UVs are the window tile's plain corner, so no window is drawn
+ * on it, and its colour is in its vertices like the walls'.
+ */
 function signGeometry(b: CityPlan['buildings'][number]): THREE.BufferGeometry | null {
   if (b.sign < 0) return null;
-  const g = new THREE.BoxGeometry(b.w * 0.8, 0.07, 0.012);
-  g.deleteAttribute('uv');
+  const box = new THREE.BoxGeometry(b.w * 0.8, 0.07, 0.012);
+  const g = box.toNonIndexed();
+  box.dispose();
+  const uv = g.attributes.uv!;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.02, 0.02);
   // On the front wall (its +z, which is the facing), three metres up.
   g.translate(0, 0.37, b.d / 2 + 0.006);
   g.rotateY(b.a);
@@ -196,8 +208,7 @@ export function buildCity(plan: CityPlan, colors: { night: boolean }): BuiltCity
   // The buildings, a square at a time.
   const tex = windowTexture(P.window);
   const walls = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex });
-  const boards = new THREE.MeshBasicMaterial({ vertexColors: true });
-  junk.push(tex, walls, boards);
+  junk.push(tex, walls);
   const squares = new Map<string, CityPlan['buildings']>();
   for (const b of plan.buildings) {
     const k = `${Math.floor(b.c[0] / CHUNK)},${Math.floor(b.c[1] / CHUNK)}`;
@@ -206,19 +217,12 @@ export function buildCity(plan: CityPlan, colors: { night: boolean }): BuiltCity
   }
   const chunks: { meshes: THREE.Mesh[]; x: number; z: number; r: number }[] = [];
   for (const list of squares.values()) {
-    const parts = list.map(buildingGeometry);
+    const parts = [...list.map(buildingGeometry), ...list.map(signGeometry).filter((g): g is THREE.BufferGeometry => g !== null)];
     const geo = mergeGeometries(parts, false)!;
     for (const p of parts) p.dispose();
     geo.computeBoundingSphere();
     const s = geo.boundingSphere!;
-    const meshes = [add(geo, walls, 'city-buildings')];
-    const signs = list.map(signGeometry).filter((g): g is THREE.BufferGeometry => g !== null);
-    if (signs.length) {
-      const sg = mergeGeometries(signs, false)!;
-      for (const p of signs) p.dispose();
-      meshes.push(add(sg, boards, 'city-signs'));
-    }
-    chunks.push({ meshes, x: s.center.x, z: s.center.z, r: s.radius });
+    chunks.push({ meshes: [add(geo, walls, 'city-buildings')], x: s.center.x, z: s.center.z, r: s.radius });
   }
 
   // The traffic.
@@ -238,27 +242,35 @@ export function buildCity(plan: CityPlan, colors: { night: boolean }): BuiltCity
     return { kind, mesh };
   });
   const dummy = new THREE.Object3D();
-  const tint = new THREE.Color();
   const REACH = VIEW + 4;
+  // Each vehicle's mesh and paint, worked out once: parsing a colour and finding a mesh
+  // for every vehicle every frame was most of the city's cost on the phone.
+  const meshOf = traffic.vehicles.map((v) => {
+    // Half the autos are black under the canopy, half green: by the vehicle's seed.
+    const kind = v.kind === 'auto' && v.seed % 2 === 0 ? 'auto-black' : v.kind;
+    return fleet.find((q) => q.kind === kind)!.mesh;
+  });
+  const paintOf = traffic.vehicles.map((v) => new THREE.Color(LIVERIES[v.kind][v.seed % LIVERIES[v.kind].length]!));
+  const near = { x: 0, z: 0, r: REACH };
 
   return {
     group,
     traffic,
     tick(dt, x, z) {
-      traffic.step(dt);
+      near.x = x; near.z = z;
+      traffic.step(dt, near);
       for (const f of fleet) f.mesh.count = 0;
-      for (const v of traffic.vehicles) {
-        if ((v.x - x) ** 2 + (v.z - z) ** 2 > REACH * REACH) continue;
-        // Half the autos are black under the canopy, half green: by the vehicle's seed.
-        const kind = v.kind === 'auto' && v.seed % 2 === 0 ? 'auto-black' : v.kind;
-        const f = fleet.find((q) => q.kind === kind)!;
+      const vs = traffic.vehicles;
+      for (let k = 0; k < vs.length; k++) {
+        const v = vs[k]!;
+        if ((v.x - x) * (v.x - x) + (v.z - z) * (v.z - z) > REACH * REACH) continue;
+        const mesh = meshOf[k]!;
         dummy.position.set(v.x, 0, v.z);
         dummy.rotation.set(0, v.facing, 0);
         dummy.updateMatrix();
-        const i = f.mesh.count++;
-        f.mesh.setMatrixAt(i, dummy.matrix);
-        const colours = LIVERIES[v.kind];
-        f.mesh.setColorAt(i, tint.set(colours[v.seed % colours.length]!));
+        const i = mesh.count++;
+        mesh.setMatrixAt(i, dummy.matrix);
+        mesh.setColorAt(i, paintOf[k]!);
       }
       for (const f of fleet) {
         f.mesh.instanceMatrix.needsUpdate = true;

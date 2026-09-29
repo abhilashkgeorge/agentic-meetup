@@ -71,11 +71,22 @@ function lcg(seed: number): () => number {
   return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
 }
 
+/** Everybody's place is worked out this often in steps; in between, only those near. */
+const PLACE_EVERY = 8;
+
 export class Traffic {
   readonly vehicles: Vehicle[] = [];
   private readonly lanes: Lane[];
-  /** Per lane, its vehicles in order along it, for finding who is in front. */
+  /**
+   * Per lane, its vehicles in order along it, for finding who is in front. The order
+   * never changes -- nobody overtakes (the step stops each at the bumper ahead) and the
+   * loop only wraps round -- so it is set once and never sorted again.
+   */
   private readonly order: Vehicle[][];
+  /** Each vehicle's gap to the one in front, and that one's speed, this step. */
+  private gap = new Float64Array(0);
+  private lead = new Float64Array(0);
+  private steps = 0;
 
   /**
    * `every` is how far apart, on average, vehicles start: units of lane per vehicle.
@@ -98,44 +109,57 @@ export class Traffic {
         this.order[li]!.push(v);
       }
     });
+    for (const list of this.order) list.forEach((v, k) => { v.slot = k; });
+    this.gap = new Float64Array(this.vehicles.length);
+    this.lead = new Float64Array(this.vehicles.length);
     for (const v of this.vehicles) this.place(v);
   }
 
   /** Lane lengths, for the tests. */
   laneLength(i: number): number { return this.lanes[i]!.length; }
 
-  /** Where along its lane the one in front is, and how long it is. */
-  private ahead(v: Vehicle): { gap: number; speed: number } {
-    const list = this.order[v.lane]!;
-    const lane = this.lanes[v.lane]!;
-    const f = list[(v.slot + 1) % list.length]!;
-    if (f === v) return { gap: Infinity, speed: v.v };
-    let ds = f.s - v.s;
-    if (ds <= 0) ds += lane.length;
-    return { gap: ds - (VEHICLES[f.kind].length + VEHICLES[v.kind].length) / 2, speed: f.v };
-  }
-
-  /** Move everybody on by dt seconds. */
-  step(dt: number): void {
+  /**
+   * Move everybody on by dt seconds. `near` is the camera on the ground: only vehicles
+   * within `r` of it are placed every step, everybody else every PLACE_EVERY -- nobody
+   * sees where they are, and working out a place is most of a step's cost.
+   *
+   * WRITTEN FOR THE PHONE'S JAVASCRIPT, which is many times slower than a computer's:
+   * no sort (the order never changes), and nothing made fresh each step (every step
+   * that allocated was garbage for the collector, sixty times a second).
+   */
+  step(dt: number, near?: { x: number; z: number; r: number }): void {
     const h = Math.min(dt, 0.1);
+    const all = this.vehicles;
     // Everybody's gap first, from where everybody is, then everybody moves: nobody
     // reacts to a car that has already moved this step.
-    const gaps = this.vehicles.map((v) => this.ahead(v));
-    this.vehicles.forEach((v, i) => {
-      const { gap, speed } = gaps[i]!;
-      const lane = this.lanes[v.lane]!;
-      const want = STANDSTILL + Math.max(0, v.v * HEADWAY + (v.v * (v.v - speed)) / (2 * Math.sqrt(ACCEL * BRAKE)));
-      const a = ACCEL * (1 - (v.v / v.pace) ** 4 - (gap > 0 ? (want / gap) ** 2 : 100));
+    for (let i = 0; i < all.length; i++) {
+      const v = all[i]!;
+      const list = this.order[v.lane]!;
+      const f = list[(v.slot + 1) % list.length]!;
+      if (f === v) { this.gap[i] = Infinity; this.lead[i] = v.v; continue; }
+      let ds = f.s - v.s;
+      if (ds <= 0) ds += this.lanes[v.lane]!.length;
+      this.gap[i] = ds - (VEHICLES[f.kind].length + VEHICLES[v.kind].length) / 2;
+      this.lead[i] = f.v;
+    }
+    const root = 2 * Math.sqrt(ACCEL * BRAKE);
+    for (let i = 0; i < all.length; i++) {
+      const v = all[i]!;
+      const gap = this.gap[i]!, speed = this.lead[i]!;
+      const want = STANDSTILL + Math.max(0, v.v * HEADWAY + (v.v * (v.v - speed)) / root);
+      const r = v.v / v.pace;
+      const a = ACCEL * (1 - r * r * r * r - (gap > 0 ? (want / gap) * (want / gap) : 100));
       v.v = Math.max(0, Math.min(v.pace * 1.1, v.v + a * h));
       // Never through the one in front, whatever the arithmetic says: it moves this
       // step too, so its old place is the most this one may reach.
-      v.s = (v.s + Math.min(v.v * h, Math.max(0, gap - 0.02 * M))) % lane.length;
-    });
-    for (const list of this.order) {
-      list.sort((a, b) => a.s - b.s);
-      list.forEach((v, k) => { v.slot = k; });
+      v.s = (v.s + Math.min(v.v * h, Math.max(0, gap - 0.02 * M))) % this.lanes[v.lane]!.length;
     }
-    for (const v of this.vehicles) this.place(v);
+    const everybody = !near || this.steps++ % PLACE_EVERY === 0;
+    const r2 = near ? (near.r + 2) * (near.r + 2) : 0;
+    for (let i = 0; i < all.length; i++) {
+      const v = all[i]!;
+      if (everybody || (v.x - near!.x) * (v.x - near!.x) + (v.z - near!.z) * (v.z - near!.z) < r2) this.place(v);
+    }
   }
 
   /** Put a vehicle where its distance along its lane says, facing along it. */
@@ -150,20 +174,14 @@ export class Traffic {
     v.x = a[0] + (b[0] - a[0]) * t;
     v.z = a[1] + (b[1] - a[1]) * t;
     // Facing along the lane a little ahead, so a corner is turned, not snapped.
-    const look = Math.min(lane.length - 1e-6, v.s + VEHICLES[v.kind].length * 0.6);
-    const ahead = this.pointAt(lane, look < v.s ? look + lane.length : look);
-    const dx = ahead[0] - v.x, dz = ahead[1] - v.z;
-    if (Math.hypot(dx, dz) > 1e-6) v.facing = Math.atan2(dx, dz);
-  }
-
-  private pointAt(lane: Lane, s: number): Pt {
-    const w = ((s % lane.length) + lane.length) % lane.length;
-    const { cum, loop } = lane;
-    let lo = 0, hi = loop.length;
-    while (lo + 1 < hi) { const mid = (lo + hi) >> 1; if (cum[mid]! <= w) lo = mid; else hi = mid; }
-    const a = loop[lo]!, b = loop[(lo + 1) % loop.length]!;
-    const seg = cum[lo + 1]! - cum[lo]!;
-    const t = seg > 0 ? (w - cum[lo]!) / seg : 0;
-    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    let w = v.s + VEHICLES[v.kind].length * 0.6;
+    if (w >= lane.length) w -= lane.length;
+    let lo2 = 0, hi2 = loop.length;
+    while (lo2 + 1 < hi2) { const mid = (lo2 + hi2) >> 1; if (cum[mid]! <= w) lo2 = mid; else hi2 = mid; }
+    const c = loop[lo2]!, d = loop[(lo2 + 1) % loop.length]!;
+    const seg2 = cum[lo2 + 1]! - cum[lo2]!;
+    const t2 = seg2 > 0 ? (w - cum[lo2]!) / seg2 : 0;
+    const dx = c[0] + (d[0] - c[0]) * t2 - v.x, dz = c[1] + (d[1] - c[1]) * t2 - v.z;
+    if (dx * dx + dz * dz > 1e-12) v.facing = Math.atan2(dx, dz);
   }
 }
