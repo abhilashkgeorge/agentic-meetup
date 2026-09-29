@@ -1,7 +1,7 @@
 /**
  * A practice person who walks in Cubbon Park live, for trying the park with one phone.
  *
- *     npx tsx scripts/park-bot.ts [minutes=10] [x=12] [z=-29] [--ask] [--ride] [--voice]
+ *     npx tsx scripts/park-bot.ts [minutes=10] [x=12] [z=-29] [--ask] [--ride] [--voice] [--profile=N]
  *
  * It signs in as one of the practice profiles (a session row of its own, removed when
  * it goes), walks into the park at (x, z) -- by default a few steps from where you
@@ -29,6 +29,9 @@ import { CUBBON_PARK, venueGarden } from '../../app/src/features/world/venue.js'
 if (process.env.NODE_ENV === 'production') throw new Error('park-bot is for development');
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+// Which practice profile to be, by its place in the list (0, the first, by default). A
+// test that blocks the bot uses another, so the usual one stays visible afterwards.
+const profile = Number(process.argv.find((a) => a.startsWith('--profile='))?.slice('--profile='.length) ?? 0);
 const minutes = Number(args[0] ?? 10);
 let x = Number(args[1] ?? 12);
 let z = Number(args[2] ?? -29);
@@ -69,7 +72,7 @@ const REPLIES = [
 const owner = new Pool({ connectionString: env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL });
 const { rows } = await owner.query<{ user_id: string; tenant_id: string }>(
   `SELECT m.user_id, u.tenant_id FROM match_profile m JOIN app_users u ON u.id = m.user_id
-    WHERE m.is_synthetic ORDER BY m.user_id LIMIT 1`);
+    WHERE m.is_synthetic ORDER BY m.user_id OFFSET $1 LIMIT 1`, [profile]);
 if (!rows[0]) throw new Error('no practice profiles in this database (npm run seed:synthetic)');
 const { user_id: userId, tenant_id: tenantId } = rows[0];
 const sessionId = newSessionId();
