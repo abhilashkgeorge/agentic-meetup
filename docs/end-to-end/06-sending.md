@@ -20,7 +20,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") ([app/src/app/(tabs)/index.tsx:1] `export { default } from '../../features/world/world-screen';`,
-   [app/src/features/world/hud.tsx:225] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   [app/src/features/world/hud.tsx:200] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
    The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:277] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
@@ -28,7 +28,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    [server/src/api/dating.ts:993] `await ensureSheet(ctx);`,
    [server/src/api/dating.ts:1036] `return c.json({ roundId: round.id, status: round.status }, 202);`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
-   heading out…" ([app/src/features/world/hud.tsx:139] `? 'Your agent is heading out…'`).
+   heading out…" ([app/src/features/world/hud.tsx:133] `? 'Your agent is heading out…'`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
    all of them ([server/src/matching/rounds.ts:158] `UPDATE rounds SET status = 'running', started_at = now()`).
@@ -36,7 +36,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
    start this ([server/src/matching/orchestrator.ts:284] `type: 'round.met', roundId: null, rendezvousId: pair.rendezvousId,`,
-   [app/src/features/world/hud.tsx:141] `Your agent is out — meeting ${talking} ${talking === 1 ? 'person' : 'people'}`,
+   [app/src/features/world/hud.tsx:135] `Your agent is out — meeting ${talking} ${talking === 1 ? 'person' : 'people'}`,
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"

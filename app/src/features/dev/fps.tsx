@@ -53,9 +53,11 @@ export function feedFps(s: { fps: number; p95: number; drawCalls: number; triang
   listener?.({ fps: s.fps, p95: s.p95, calls: s.drawCalls, tris: s.triangles });
 }
 
-export function FpsMeter({ capped = false }: {
+export function FpsMeter({ capped = false, at }: {
   /** Settings' "30 fps" switch is on, so a low number is the cap and not the phone. */
   capped?: boolean;
+  /** Somewhere other than the top right: the park keeps that corner for who is here. */
+  at?: { top: number; left: number };
 }): React.ReactElement | null {
   const insets = useSafeAreaInsets();
   const [shot, setShot] = useState<FpsShot | null>(null);
@@ -77,7 +79,7 @@ export function FpsMeter({ capped = false }: {
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={{
-        position: 'absolute', right: 10, top: insets.top + 4,
+        position: 'absolute', ...(at ? { top: at.top, left: at.left } : { right: 10, top: insets.top + 4 }),
         color: '#ff2d2d', fontSize: 12, fontWeight: '700',
         fontVariant: ['tabular-nums'],
       }}

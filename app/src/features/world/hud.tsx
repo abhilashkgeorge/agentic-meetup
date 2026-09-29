@@ -5,20 +5,21 @@
  * things the old Home's cards said, at a tenth of the height, because the town is the
  * content now. Everything here is the design system; nothing is drawn by hand.
  */
-import { useEffect, useMemo, useRef, type MutableRefObject, type ReactNode } from 'react';
-import { Animated, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { Animated, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CENTRAL_AREA } from '@clone/shared';
 import type { World } from '../../lib/api';
 import { countLabel } from '../../lib/counts';
 import { missingLabel } from '../profile/fields';
-import { Button, Card, Chip, ChipGroup, space, type, usePalette } from '../../components/ui';
+import { Button, Card, Chip, ChipGroup, radius, raised, space, type, usePalette } from '../../components/ui';
 import { roundActive } from './bridge';
 import { Stick } from './stick';
 import { cityPose, placeLabels, toScreen, type Band, type Size } from './camera';
 import { MAP, areaName, cityTitle, type Frame } from './map';
 import { MAX_VENUE_AGENTS, type Venue } from './venue';
 import { useLiveCount, useQuestsDone } from './park-hud';
+import { PARK_WHO_MEANS, parkWho } from './park-top';
 
 export function Hud({
   world,
@@ -43,7 +44,6 @@ export function Hud({
   transitioning,
   onEnterVenue,
   onLeaveVenue,
-  onDirections,
   onQuests,
   stick,
   exchange,
@@ -92,7 +92,6 @@ export function Hud({
   transitioning: boolean;
   onEnterVenue: () => void;
   onLeaveVenue: () => void;
-  onDirections: () => void;
   /** Things to do together in the park (park-hud.tsx QuestsSheet). */
   onQuests?: () => void;
   /** Where the stick writes what the thumb is doing. */
@@ -109,13 +108,10 @@ export function Hud({
   // The round's own count lands only when it is over; while it runs, the people it
   // is still to talk to are the seats the roster shows talking.
   const talking = world?.agents.filter((a) => a.kind === 'met' && a.state === 'talking').length ?? 0;
-  const title = venue?.name ?? cityTitle(world?.square.city);
+  const title = cityTitle(world?.square.city);
   const myArea = world?.me.area ?? CENTRAL_AREA;
   const here = world?.agents.filter((a) => (a.area ?? CENTRAL_AREA) === myArea).length ?? 0;
   const askArea = world?.me.need.includes('area') ?? false;
-  // People here in person, besides you (the park, live).
-  const live = useLiveCount();
-  const [questsDone, questsAll] = useQuestsDone();
   const askName = world?.me.need.includes('first_name') ?? false;
 
   // The thirty names, laid over the city at its zoomed-out pose, faded in and out
@@ -130,9 +126,7 @@ export function Hud({
     Animated.timing(fade, { toValue: band === 'city' ? 1 : 0, duration: 250, useNativeDriver: true }).start();
   }, [band, fade]);
 
-  const status = venue
-    ? venue.description
-    : !world
+  const status = !world
     ? 'Finding the square…'
     : active
       ? world.round?.status === 'queued'
@@ -157,55 +151,36 @@ export function Hud({
         </Animated.View>
       )}
 
-      <View pointerEvents="box-none"
-            style={{ position: 'absolute', top: insets.top + space.sm, left: space.screen, right: space.screen, gap: space.sm }}>
-        <Text style={[type.title, { color: p.text }]}>{title}</Text>
-        <Card>
-          {/* Walking in the park, the line about the park gives its room to the park:
-              the chips are all that is needed there. */}
-          {!(venue && walking) && <Text style={[type.body, { color: p.text }]}>{status}</Text>}
-          {world && world.me.inPool && (
-            <ChipGroup>
-              {venue ? (
-                <>
-                  <Chip label="Back to Bengaluru" selected={false} onPress={onLeaveVenue} />
-                  {/* People here in person, first: the reason to be in the park now. */}
-                  <Chip label={live > 0 ? `${live} here now` : 'Nobody else here now'} selected={live > 0}
-                        onPress={() => {}} disabled={live === 0} />
-                  {/* Things to do together, and how many are done today: points for your look. */}
-                  {onQuests && (
-                    <Chip label={`Things to do · ${questsDone}/${questsAll}`} selected={questsDone > 0} onPress={onQuests} />
-                  )}
-                  <Chip label="Directions" selected={false} onPress={onDirections} />
-                  <Chip label={crowd ? `${crowd} test people in the park` : `${Math.min(here + 1, MAX_VENUE_AGENTS)} agents in the park`}
-                        selected={false} onPress={() => {}} disabled />
-                  {onCrowd && (
-                    <Chip label={crowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
-                          selected={crowd > 0} onPress={onCrowd} />
-                  )}
-                </>
-              ) : (
-                <>
-                  {askName && <Chip label="Add your first name" selected={false} onPress={onName} />}
-                  {askArea && <Chip label="Which part of town?" selected={false} onPress={onArea} />}
-                  {question && onQuestion && <Chip label="A question for you" selected onPress={onQuestion} />}
-                  <Chip label="Visit Cubbon Park" selected={false} onPress={onEnterVenue} />
-                  <Chip label={`${areaName(myArea)} · ${here} here`} selected={band !== 'city'} onPress={onHome} />
-                  {band !== 'city' && <Chip label="Whole city" selected={false} onPress={onCity} />}
-                  <Chip label={`${countLabel(world.pool.total)} people nearby`} selected={false} onPress={() => {}} disabled />
-                  <Chip label={`${world.targetsLeftToday} visits left today`} selected={false} onPress={() => {}} disabled />
-                  <Chip label="Who's here" selected={false} onPress={onPeople} />
-                  <Chip label="How you appear" selected={false} onPress={onAppearance} />
-                  {onCityCrowd && (
-                    <Chip label={cityCrowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
-                          selected={cityCrowd > 0} onPress={onCityCrowd} />
-                  )}
-                </>
-              )}
-            </ChipGroup>
-          )}
-        </Card>
-      </View>
+      {venue ? (
+        <ParkBar onBack={onLeaveVenue} agents={Math.min(here + 1, MAX_VENUE_AGENTS)} crowd={crowd}
+                 onQuests={onQuests} onCrowd={onCrowd} />
+      ) : (
+        <View pointerEvents="box-none"
+              style={{ position: 'absolute', top: insets.top + space.sm, left: space.screen, right: space.screen, gap: space.sm }}>
+          <Text style={[type.title, { color: p.text }]}>{title}</Text>
+          <Card>
+            <Text style={[type.body, { color: p.text }]}>{status}</Text>
+            {world && world.me.inPool && (
+              <ChipGroup>
+                {askName && <Chip label="Add your first name" selected={false} onPress={onName} />}
+                {askArea && <Chip label="Which part of town?" selected={false} onPress={onArea} />}
+                {question && onQuestion && <Chip label="A question for you" selected onPress={onQuestion} />}
+                <Chip label="Visit Cubbon Park" selected={false} onPress={onEnterVenue} />
+                <Chip label={`${areaName(myArea)} · ${here} here`} selected={band !== 'city'} onPress={onHome} />
+                {band !== 'city' && <Chip label="Whole city" selected={false} onPress={onCity} />}
+                <Chip label={`${countLabel(world.pool.total)} people nearby`} selected={false} onPress={() => {}} disabled />
+                <Chip label={`${world.targetsLeftToday} visits left today`} selected={false} onPress={() => {}} disabled />
+                <Chip label="Who's here" selected={false} onPress={onPeople} />
+                <Chip label="How you appear" selected={false} onPress={onAppearance} />
+                {onCityCrowd && (
+                  <Chip label={cityCrowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
+                        selected={cityCrowd > 0} onPress={onCityCrowd} />
+                )}
+              </ChipGroup>
+            )}
+          </Card>
+        </View>
+      )}
 
       {/* The stick sits where a thumb already is, and takes the bottom of the screen
           to itself: the round button would be under the heel of the hand. */}
@@ -227,5 +202,91 @@ export function Hud({
         )}
       </View>
     </>
+  );
+}
+
+/**
+ * THE PARK'S OWN TOP, ON ITS EDGES ONLY (the founder, 2026-09-29: "Half of the screen is
+ * covered by the white box ... redesign it completely so that it doesn't cover any part of
+ * the screen"). The park used to wear the town's card: a title, a line, and six chips in a
+ * white box over the top half of the park. Now nothing sits in the middle:
+ *   - top left, a back button that says where it goes;
+ *   - top right, who is here in one small line -- people here now besides you, then agents
+ *     -- which says what those words mean when tapped (the old "Nobody else here now" said
+ *     nothing, and tapping it did nothing);
+ *   - under it, "Things to do" with today's count, as a small button;
+ *   - Directions is gone; development builds keep the test crowd as a small line under it.
+ */
+function ParkBar({ onBack, agents, crowd, onQuests, onCrowd }: {
+  onBack: () => void;
+  /** Agents walking the park. */
+  agents: number;
+  /** Test walkers, 0 when the test is off (development builds). */
+  crowd: number;
+  onQuests?: () => void;
+  onCrowd?: () => void;
+}) {
+  const p = usePalette();
+  const insets = useSafeAreaInsets();
+  // People here in person, besides you (the park, live).
+  const live = useLiveCount();
+  const [questsDone, questsAll] = useQuestsDone();
+  // What the count means, said when it is tapped, and gone again by itself.
+  const [explain, setExplain] = useState(false);
+  useEffect(() => {
+    if (!explain) return;
+    const t = setTimeout(() => setExplain(false), 5000);
+    return () => clearTimeout(t);
+  }, [explain]);
+  const who = parkWho(live, agents, crowd);
+
+  return (
+    <View pointerEvents="box-none"
+          style={{ position: 'absolute', top: insets.top + space.sm, left: space.screen, right: space.screen,
+                   flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Back to Bengaluru" hitSlop={8}
+                 style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, height: 40, flexShrink: 0,
+                          paddingLeft: space.md, paddingRight: space.lg, borderRadius: radius.pill,
+                          backgroundColor: p.bg, boxShadow: raised(p, 3) }}>
+        <Text style={{ fontSize: 26, lineHeight: 28, marginTop: -3, color: p.text }}>‹</Text>
+        <Text style={[type.callout, { color: p.text, fontFamily: type.bodyStrong.fontFamily }]}>Bengaluru</Text>
+      </Pressable>
+
+      <View pointerEvents="box-none" style={{ alignItems: 'flex-end', gap: space.sm, maxWidth: '64%', flexShrink: 1 }}>
+        <Pressable onPress={() => setExplain((e) => !e)} accessibilityRole="button"
+                   accessibilityLabel={`${who}. Tap to hear what this means.`} hitSlop={6}
+                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: space.md,
+                            borderRadius: radius.pill, backgroundColor: p.bg, opacity: 0.94 }}>
+          {live > 0 && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: p.success }} />}
+          <Text numberOfLines={1} style={[type.callout, { color: p.text, flexShrink: 1 }]}>{who}</Text>
+        </Pressable>
+        {explain && (
+          <View pointerEvents="none" style={{ maxWidth: 240, padding: space.md, borderRadius: radius.md,
+                                               backgroundColor: p.bg, boxShadow: raised(p, 4) }}>
+            <Text style={[type.callout, { color: p.textSecondary }]}>{PARK_WHO_MEANS}</Text>
+          </View>
+        )}
+        {onQuests && (
+          <Pressable onPress={onQuests} accessibilityRole="button"
+                     accessibilityLabel={`Things to do, ${questsDone} of ${questsAll} done today`} hitSlop={6}
+                     style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, height: 36, paddingHorizontal: space.md,
+                              borderRadius: radius.pill, backgroundColor: p.bg, boxShadow: raised(p, 3) }}>
+            <Text style={[type.callout, { color: p.text, fontFamily: type.bodyStrong.fontFamily }]}>Things to do</Text>
+            <Text style={[type.callout, { color: questsDone > 0 ? p.accent : p.textSecondary, fontFamily: type.bodyStrong.fontFamily }]}>
+              {`${questsDone}/${questsAll}`}
+            </Text>
+          </Pressable>
+        )}
+        {onCrowd && (
+          <Pressable onPress={onCrowd} accessibilityRole="button" hitSlop={6}
+                     style={{ paddingHorizontal: space.md, paddingVertical: space.xs, borderRadius: radius.pill,
+                              backgroundColor: p.bg, opacity: 0.8 }}>
+            <Text style={[type.label, { color: p.textSecondary }]}>
+              {crowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
   );
 }

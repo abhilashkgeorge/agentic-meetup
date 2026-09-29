@@ -59,7 +59,7 @@ describe('the fps meter', () => {
     // Without this, a capped 28 fps reads as a phone in trouble -- it is a phone
     // being told to rest, with the UI thread idle at 10 ms between frames.
     expect(fps).toMatch(/capped \? ' · 30 cap' : ''/);
-    expect(screen).toMatch(/<FpsMeter capped=\{cap30\} \/>/);
+    expect(screen).toMatch(/<FpsMeter capped=\{cap30\}/);
   });
 
   it('does not let a replacing meter be unregistered by the one it replaced', () => {

@@ -16,7 +16,7 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, AppState, Linking, Text, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatScreen from '../chat/chat-screen';
 import { getMatches, getQuestionOfDay, runRound, type MatchCard, type WorldAgent } from '../../lib/api';
@@ -58,7 +58,7 @@ import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { CROWD_TEST, WorldSim, isCrowd } from './sim';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
 import {
-  CITY_REALM, CUBBON_PARK, agentsForVenue, directionsUrl, transitionRealm, venueGarden,
+  CITY_REALM, CUBBON_PARK, agentsForVenue, transitionRealm, venueGarden,
 } from './venue';
 
 /**
@@ -411,7 +411,6 @@ export default function WorldScreen() {
            cityCrowd={cityCrowd} onCityCrowd={FPS_METER ? toggleCityCrowd : undefined}
            walking={walking} venue={realm.venue} transitioning={transitioning}
            onEnterVenue={enterVenue} onLeaveVenue={leaveVenue}
-           onDirections={() => void Linking.openURL(directionsUrl(CUBBON_PARK))}
            onQuests={() => setQuestsOpen(true)}
            stick={stick}
            exchange={bubbles.length > 0 && exchange && world ? (
@@ -432,11 +431,13 @@ export default function WorldScreen() {
           </ParkChat>
           <InviteCard />
           <BikeButton left={space.screen} bottom={Math.max(insets.bottom, space.lg) + space.lg + STICK_RING + space.md} />
-          <CheerToast top={insets.top + 196} />
+          {/* Under the park's top edge (hud.tsx ParkBar), clear of its right-hand column. */}
+          <CheerToast top={insets.top + 150} />
         </>
       )}
       {/* Over everything, including the HUD, and under nothing. Debug builds only. */}
-      <FpsMeter capped={cap30} />
+      {/* In the park, under the back button: the top right is who is here. */}
+      <FpsMeter capped={cap30} at={realm.phase === 'venue' ? { top: insets.top + 56, left: space.screen } : undefined} />
       <Animated.View
         pointerEvents={transitioning ? 'auto' : 'none'}
         style={{
