@@ -61,6 +61,51 @@ describe('the garden mesh', () => {
     built.dispose();
   });
 
+  it('fences the park all the way round, a railing you can see through, with a gate at every path', () => {
+    // The founder, 2026-09-29: "a see through barricade around the park so that users
+    // can know what the end of the park is in all directions".
+    const park = makeCubbon();
+    const built = buildGarden(park, colors, { city: true });
+    const fence = built.group.children.find((c) => c.name === 'fence') as THREE.Mesh | undefined;
+    expect(fence, 'no fence round the park').toBeTruthy();
+    // On the outline, every metre of it: the railing's foot runs along each edge.
+    const pos = fence!.geometry.attributes.position!;
+    let length = 0;
+    const onEdge = (x: number, z: number) => park.outline.some((a, i) => {
+      const b = park.outline[(i + 1) % park.outline.length]!;
+      const ex = b[0] - a[0], ez = b[1] - a[1];
+      const l2 = ex * ex + ez * ez;
+      const t = l2 ? Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / l2)) : 0;
+      return Math.hypot(x - a[0] - ex * t, z - a[1] - ez * t) < 1e-4;
+    });
+    for (let i = 0; i < pos.count; i += 4) {
+      expect(onEdge(pos.getX(i), pos.getZ(i)) && onEdge(pos.getX(i + 1), pos.getZ(i + 1)), 'railing off the outline').toBe(true);
+      length += Math.hypot(pos.getX(i + 1) - pos.getX(i), pos.getZ(i + 1) - pos.getZ(i));
+    }
+    const perimeter = park.outline.reduce((n, a, i) => {
+      const b = park.outline[(i + 1) % park.outline.length]!;
+      return n + Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }, 0);
+    expect(length / perimeter, 'the fence does not go all the way round').toBeCloseTo(1, 3);
+    // See-through: its picture is mostly gaps, cut out, with bars in it.
+    const mat = fence!.material as THREE.MeshLambertMaterial;
+    expect(mat.alphaTest, 'the gaps are drawn').toBeGreaterThan(0);
+    const img = mat.map!.image as { data: Uint8Array };
+    let clear = 0, solid = 0;
+    for (let i = 3; i < img.data.length; i += 4) { if (img.data[i] === 0) clear++; else solid++; }
+    expect(clear / (clear + solid), 'you cannot see through it').toBeGreaterThan(0.5);
+    expect(solid, 'there is nothing to it').toBeGreaterThan(0);
+    // A gate wherever a path meets the fence: every path end on the outline has one.
+    expect(park.gates.length).toBeGreaterThan(5);
+    for (const p of park.paths) {
+      for (const end of [p.line[0]!, p.line[p.line.length - 1]!]) {
+        if (!onEdge(end[0], end[1])) continue;
+        expect(park.gates.some((g) => Math.hypot(g.x - end[0], g.z - end[1]) < 1.3), `no gate where a path meets the fence at ${end}`).toBe(true);
+      }
+    }
+    built.dispose();
+  });
+
   it('draws the real park: its own shape, its paths, its buildings, its statues', () => {
     const built = buildGarden(makeCubbon(), colors);
     const names = named(built);

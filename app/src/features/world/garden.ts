@@ -79,6 +79,12 @@ export interface Garden {
   /** Empty for a seeded garden; a real place has buildings in it. */
   buildings: Building[];
   landmarks: Landmark[];
+  /**
+   * Where a path meets the fence round the outline: a gate, along the fence (`rot`, the
+   * sim's facing) and as wide as the path. Empty for a seeded garden, whose path stays
+   * inside it.
+   */
+  gates: { x: number; z: number; rot: number; width: number }[];
 }
 
 /** How far out the ground goes. Beyond the radius it rolls into hills and haze. */
@@ -515,7 +521,7 @@ export function makeGarden(id: string): Garden {
     river, riverLine, bridge, fountain,
     trees, tufts, props, benches, bushes, flowers, reeds, spots,
     home: [mid[0], mid[1]],
-    buildings: [], landmarks: [],
+    buildings: [], landmarks: [], gates: [],
   };
 }
 

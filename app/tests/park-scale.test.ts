@@ -20,7 +20,9 @@
  *     0.85 m; a bin 0.8 to 1.1 m; a lamp 3 to 5 m;
  *   - grass no taller than half a metre and mostly 15 to 35 cm; flowers under 60 cm;
  *     bushes 0.6 to 1.8 m;
- *   - the car 3.6 to 4.6 m long and 1.4 to 1.7 m high;
+ *   - the car 3.6 to 4.6 m long and 1.4 to 1.7 m high; the traffic beyond the fence
+ *     at its own sizes -- two-wheeler and rider, auto, bus;
+ *   - the fence 1.2 to 2 m high, below a person's shoulder;
  *   - a footpath 2.5 to 4 m wide, a road 5 to 8 m.
  *
  * Negative controls, run by hand and recorded in the commit:
@@ -40,6 +42,7 @@ import { PERSON } from '../src/features/world/camera';
 import { MODEL_SCALE } from '../src/features/world/character-mesh';
 import { CUBBON_PATH_W, CUBBON_ROAD_W, METRES_PER_UNIT as M } from '../src/features/world/cubbon';
 import { buildCar } from '../src/features/world/car-mesh';
+import { buildAuto, buildBus, buildTwoWheeler } from '../src/features/world/vehicle-mesh';
 import { buildGarden } from '../src/features/world/garden-mesh';
 import { gardenSpots } from '../src/features/world/garden';
 import { WorldSim } from '../src/features/world/sim';
@@ -270,6 +273,28 @@ describe('what grows', () => {
     const bushes = tops(built.group.children.find((c) => c.name === 'bushes') as THREE.InstancedMesh);
     expect(bushes[0]!, 'the smallest bush').toBeGreaterThan(0.6);
     expect(bushes[bushes.length - 1]!, 'the biggest bush').toBeLessThan(1.8);
+  });
+});
+
+describe('the fence, and the traffic beyond it', () => {
+  const tall = (g: THREE.BufferGeometry) => { g.computeBoundingBox(); return g.boundingBox!; };
+  it('a railing 1.2 to 2 m high, below a person\'s shoulder, so the city shows over it', () => {
+    const built = buildGarden(park, { night: false, accent: '#6c5ce7' }, { city: true });
+    const fence = built.group.children.find((c) => c.name === 'fence') as THREE.Mesh;
+    const h = tall(fence.geometry).max.y * M;
+    expect(h).toBeGreaterThan(1.2); expect(h).toBeLessThan(2.0);
+    expect(h, 'taller than the people').toBeLessThan(standing * K * M);
+    built.dispose();
+  });
+
+  it('a two-wheeler 1.7 to 2.1 m long, its rider\'s helmet 1.4 to 1.8 m up; an auto 2.4 to 3 m; a bus 10 to 12.5 m and 2.9 to 3.4 m high', () => {
+    const bike = tall(buildTwoWheeler()), auto = tall(buildAuto('#2E7D32')), bus = tall(buildBus());
+    const long = (b: THREE.Box3) => (b.max.z - b.min.z) * M;
+    expect(long(bike)).toBeGreaterThan(1.7); expect(long(bike)).toBeLessThan(2.1);
+    expect(bike.max.y * M).toBeGreaterThan(1.4); expect(bike.max.y * M).toBeLessThan(1.8);
+    expect(long(auto)).toBeGreaterThan(2.4); expect(long(auto)).toBeLessThan(3.0);
+    expect(long(bus)).toBeGreaterThan(10); expect(long(bus)).toBeLessThan(12.5);
+    expect(bus.max.y * M).toBeGreaterThan(2.9); expect(bus.max.y * M).toBeLessThan(3.4);
   });
 });
 

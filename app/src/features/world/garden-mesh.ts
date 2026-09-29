@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { VIEW } from './camera';
 import { PATH_WIDTH, TRUNK_BASE, type Garden } from './garden';
+import { buildFence } from './fence-mesh';
 import type { Pt } from './sim';
 
 export interface GardenColors {
@@ -143,6 +144,12 @@ function packByCell(mesh: THREE.InstancedMesh, cell = SCENERY_CELL) {
 export interface GardenMeshOptions {
   /** A venue GLB supplies benches and lamps; keep the procedural fallback otherwise. */
   assetFurniture?: boolean;
+  /**
+   * A city stands round this park (city-mesh.ts): the ground outside the fence is the
+   * city's -- dust and concrete, and flat, for buildings to stand on -- not rolling
+   * green hills.
+   */
+  city?: boolean;
 }
 
 /** Heights are in scene units against an agent drawn about 0.24 tall (PERSON). */
@@ -380,12 +387,12 @@ function fill(ring: readonly Pt[], y: number): THREE.BufferGeometry {
  * Ground out to the horizon: flat where you walk, rolling beyond it. The hills are
  * what give the haze something to fade, and what stops the world ending in a line.
  */
-function ground(radius: number): THREE.BufferGeometry {
+function ground(radius: number, hills = true): THREE.BufferGeometry {
   const far = hillFar(radius);
   const g = new THREE.PlaneGeometry(far * 2, far * 2, 44, 44);
   g.rotateX(-Math.PI / 2);
   const p = g.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < p.count; i++) {
+  for (let i = 0; hills && i < p.count; i++) {
     const x = p.getX(i); const z = p.getZ(i);
     const d = Math.hypot(x, z);
     // Nothing at all inside the garden, then rising with distance.
@@ -495,7 +502,9 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
   // Ground and hills, one mesh: green underfoot fading into the haze.
   // The ground is a shade lighter than the blades standing in it. Matched, the grass
   // disappears into it and the field goes flat; this is what makes it read as texture.
-  add(ground(g.radius), new THREE.MeshLambertMaterial({ color: mix(P.grass, P.hill, 0.3) }), 'ground');
+  add(ground(g.radius, !options.city), new THREE.MeshLambertMaterial({
+    color: options.city ? (colors.night ? '#3a3833' : '#C9C2B2') : mix(P.grass, P.hill, 0.3),
+  }), 'ground');
 
   // THE PARK'S OWN SHAPE, laid over the plain. A surveyed boundary is the one thing a
   // person can actually recognise from a map, and without this the ground is the same
@@ -522,6 +531,14 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
     add(merged, new THREE.MeshLambertMaterial({
       color: P.path, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     }), 'path');
+  }
+
+  // THE FENCE round the outline, and a gate wherever a path meets it (fence-mesh.ts):
+  // where the park stops you, you can see it stop.
+  if (g.outline.length > 2) {
+    const fence = buildFence(g.outline, g.gates, colors);
+    for (const m of fence.meshes) { group.add(m); meshes.push(m); }
+    junk.push(fence);
   }
 
   const pondMat = new THREE.MeshLambertMaterial({

@@ -115,6 +115,47 @@ function toLine(p: Pt, line: readonly Pt[]): number {
   return best;
 }
 
+/** Where the segment a-b crosses the ring's edges: the fraction along a-b, and which edge. */
+function crossings(a: Pt, b: Pt, ring: readonly Pt[]): { t: number; edge: number }[] {
+  const out: { t: number; edge: number }[] = [];
+  const rx = b[0] - a[0], rz = b[1] - a[1];
+  for (let i = 0; i < ring.length; i++) {
+    const c = ring[i]!, d = ring[(i + 1) % ring.length]!;
+    const sx = d[0] - c[0], sz = d[1] - c[1];
+    const den = rx * sz - rz * sx;
+    if (den === 0) continue;
+    const t = ((c[0] - a[0]) * sz - (c[1] - a[1]) * sx) / den;
+    const u = ((c[0] - a[0]) * rz - (c[1] - a[1]) * rx) / den;
+    if (t > 0 && t < 1 && u >= 0 && u < 1) out.push({ t, edge: i });
+  }
+  return out.sort((x, y) => x.t - y.t);
+}
+
+/**
+ * The parts of a path inside the ring, and where it crosses the ring: the pieces to
+ * draw, and the places a gate goes.
+ */
+function insideOnly(line: readonly Pt[], ring: readonly Pt[]): { pieces: Pt[][]; crossed: { at: Pt; edge: number }[] } {
+  const pieces: Pt[][] = [];
+  const crossed: { at: Pt; edge: number }[] = [];
+  if (line.length < 2) return { pieces, crossed };
+  let inside = inRing(line[0]!, ring);
+  let run: Pt[] = inside ? [line[0]!] : [];
+  for (let k = 0; k + 1 < line.length; k++) {
+    const a = line[k]!, b = line[k + 1]!;
+    for (const { t, edge } of crossings(a, b, ring)) {
+      const q: Pt = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      crossed.push({ at: q, edge });
+      if (inside) { run.push(q); if (run.length > 1) pieces.push(run); run = []; }
+      else run = [q];
+      inside = !inside;
+    }
+    if (inside) run.push(b);
+  }
+  if (inside && run.length > 1) pieces.push(run);
+  return { pieces, crossed };
+}
+
 /** The nearest point of a closed ring's edges to p, and how far it is. */
 function nearestOnRing(p: Pt, ring: readonly Pt[]): { d: number; q: Pt } {
   let best = { d: Infinity, q: p };
@@ -290,11 +331,29 @@ export function makeCubbon(): Garden {
   // seeded choices of where every tree, bench and blade of grass goes are made in one
   // long random sequence, and asking about different lines would reshuffle the park.
   const walls = buildings.map((b) => b.ring);
-  const paths = asset.paths.map((p) => {
+  const cleared = asset.paths.map((p) => {
     const width = p.kind === 'road' ? CUBBON_ROAD_W : CUBBON_PATH_W;
     return { line: clearOf(p.line.map(scale), walls, width / 2 + WALL_CLEAR), width };
   });
-  const surface = pathSurface(paths);
+  const surface = pathSurface(cleared);
+
+  // PATHS END AT THE FENCE, in a gate. The survey's paths run on out of the park into
+  // the streets round it, and were drawn there -- park paths laid across the city's
+  // roads -- until the city was drawn round the park (city-plan.ts). What is drawn is
+  // what is inside, and where a path meets the fence two tall pillars stand either side
+  // of it (fence-mesh.ts), shut: nobody leaves the park (MapSpots.bounds).
+  const gates: Garden['gates'] = [];
+  const paths = cleared.flatMap(({ line, width }) => {
+    const { pieces, crossed } = insideOnly(line, outline);
+    for (const { at, edge } of crossed) {
+      const a = outline[edge]!, b = outline[(edge + 1) % outline.length]!;
+      const rot = Math.atan2(b[0] - a[0], b[1] - a[1]);
+      const near = gates.find((g) => Math.hypot(g.x - at[0], g.z - at[1]) < 1.2);
+      if (near) { if (width > near.width) Object.assign(near, { x: at[0], z: at[1], rot, width }); continue; }
+      gates.push({ x: at[0], z: at[1], rot, width });
+    }
+    return pieces.map((l) => ({ line: l, width }));
+  });
 
   const landmarks: Landmark[] = asset.features
     .filter((f) => f.name && f.kind !== 'toilets' && f.kind !== 'drinking_water')
@@ -585,6 +644,7 @@ export function makeCubbon(): Garden {
     home,
     buildings,
     landmarks,
+    gates,
   };
   return cached;
 }

@@ -55,6 +55,8 @@ import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
 import { Viewport, nearestFirst, pickAlong, visible } from './visible';
 import { buildCar } from './car-mesh';
+import type { CityPlan } from './city-plan';
+import { buildCity, type BuiltCity } from './city-mesh';
 import { besideThem, rideAt, type Ride } from './ride';
 import { CUBBON_PARK, venueGarden, type Venue } from './venue';
 import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
@@ -746,10 +748,19 @@ function Town({
   // The real venue's local layout. Its coordinates never leak onto the city map.
   const layout = useMemo(() => venueGarden(venue), [venue]);
   const garden = useMemo(
-    () => buildGarden(layout, { night: colors.night, accent: colors.accent }, { assetFurniture: true }),
-    [layout, colors.night, colors.accent],
+    () => buildGarden(layout, { night: colors.night, accent: colors.accent }, { assetFurniture: true, city: venue.id === CUBBON_PARK.id }),
+    [layout, colors.night, colors.accent, venue.id],
   );
   useEffect(() => () => garden.dispose(), [garden]);
+  // THE CITY ROUND THE PARK (city-mesh.ts): its road, buildings and traffic, beyond the
+  // fence. Planned once, offline (scripts/build-city.mts); only Cubbon Park has one.
+  const city = useMemo<BuiltCity | null>(
+    () => (venue.id === CUBBON_PARK.id
+      ? buildCity(require('../../../assets/venues/cubbon-park/city.json') as CityPlan, { night: colors.night })
+      : null),
+    [venue.id, colors.night],
+  );
+  useEffect(() => () => city?.dispose(), [city]);
 
   // Detailed CC0 furniture loads after the world is already visible: the models near
   // the camera, plain stand-ins further out (venue-mesh.ts). If the bundle ever fails,
@@ -927,6 +938,7 @@ function Town({
     // and then the city drawn over the garden (on the phone, 2026-09-22).
     map.group.visible = !walking;
     garden.group.visible = walking;
+    if (city) city.group.visible = walking;
     furnitureHolder.visible = walking;
     if (walking !== inGarden.current || appliedGarden.current !== garden) {
       inGarden.current = walking;
@@ -1126,6 +1138,8 @@ function Town({
     const ez = camera.position.z;
     // The same question of the trees, hedges and flowers (garden-mesh.ts packByCell).
     if (walking) garden.cull(view, ex, ez);
+    // The traffic moves on, and only what is near is drawn; so are the buildings.
+    if (walking && city) { city.tick(clamped, ex, ez); city.cull(ex, ez); }
     const reach = walking ? VIEW * VIEW : Infinity;
     const used = visible(live.agents(), view, shown, {
       limit: slots,
@@ -1333,6 +1347,7 @@ function Town({
 
       <primitive object={map.group} onClick={tapTile} />
       <primitive object={garden.group} />
+      {city && <primitive object={city.group} />}
       <primitive object={furnitureHolder} />
       <primitive object={car} />
       <primitive object={crowdHolder} />
