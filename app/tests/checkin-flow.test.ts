@@ -3,7 +3,9 @@
  * the one moment it should.
  */
 import { describe, expect, it } from 'vitest';
-import { again, answer, pastReportOffer, safety, start, stepsLeft, submission } from '../src/features/dm/checkin-flow';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { again, answer, blocked, pastReportOffer, safety, start, stepsLeft, submission } from '../src/features/dm/checkin-flow';
 
 const Q = [
   { key: 'photos', text: 'Did they look like their photos?', identity: true },
@@ -56,5 +58,27 @@ describe('the check-in', () => {
     expect(stepsLeft(f)).toEqual({ left: 2, total: 5 });
     f = again(safety(f, true), true);
     expect(stepsLeft(f)).toEqual({ left: 0, total: 5 });
+  });
+
+  // The founder, 2026-09-29 (docs 15.3 item 20): Block from "Did you feel safe?" left the
+  // screen with nothing sent, so the unsafe answer was lost. Negative controls, run by hand
+  // and recorded in the commit: stopHearing without the post -> "sends the unsafe answer"
+  // fails; blocked() not ending the flow -> "keeps everything answered" fails.
+  it('keeps everything answered, and the unsafe answer, when they block from the offer', () => {
+    let f = start(Q);
+    f = answer(f, 'yes');
+    f = answer(f, 'unsure');
+    f = answer(f, 'no');
+    f = safety(f, false);
+    expect(f.step).toEqual({ kind: 'offer_report' });
+    expect(blocked(start(Q))).toEqual(start(Q));
+    expect(submission(blocked(f)), 'blocking lost the check-in').toEqual(
+      { answers: { photos: 'yes', age: 'unsure', 'tag:climbing': 'no' }, feltSafe: false, seeAgain: false });
+  });
+
+  it('sends the unsafe answer before it blocks', () => {
+    const src = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'dm', 'checkin.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    expect(src).toMatch(/const body = flow \? submission\(blocked\(flow\)\) : null;\s*if \(body\) await postCheckin\(token, rendezvousId, body\);\s*if \(report\) await reportUser/);
   });
 });

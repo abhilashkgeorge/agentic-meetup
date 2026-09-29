@@ -2083,11 +2083,11 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   (`server/src/api/dating.ts:790`).
 - **Step 1:** "Did you two meet up? They are not told what you say." [Yes] [Not yet]. The first
   answer is final: a "Not yet" is never asked again
-  (`app/src/features/dm/checkin.tsx:109`,
+  (`app/src/features/dm/checkin.tsx:115`,
   `server/src/api/dating.ts:947`).
 - **After "Not yet":** "What happened? Only you see this." with "Plans fell through", "They
   stopped replying", "I changed my mind", "Something else", or Skip
-  (`app/src/features/dm/checkin.tsx:122`).
+  (`app/src/features/dm/checkin.tsx:128`).
 - **After "Yes"**, up to 6 questions, each [Yes] [No] [Not sure]: "Did they look like their
   photos?", "Did they seem about 29?", "Did they go by Arjun?", "Do they live around
   Bengaluru?", then up to two of the reader's matched wants ("You wanted “…”. Did they seem
@@ -2096,19 +2096,24 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   `server/src/checkin/questions.ts:66`,
   `server/src/checkin/questions.ts:40`).
 - **Then:** "Did you feel safe with them?" [Yes] [No]; on No: "Sorry. Do you want to stop
-  hearing from Arjun?" [Block] [Block and report] [Not now]. Then "Would you see them again?"
+  hearing from Arjun?" [Block] [Block and report] [Not now]. Since 2026-09-29 a Block from here first
+  sends the check-in -- every answer, "did not feel safe", and a no to seeing them again -- where before it
+  left with nothing sent and the unsafe answer was lost
+  (`app/src/features/dm/checkin-flow.ts:58`).
+  Otherwise "Would you see them again?"
   "They only hear this if you both say yes." Finally "Thanks. +50 points."
-  (`app/src/features/dm/checkin.tsx:148`,
-  `app/src/features/dm/checkin.tsx:167`,
+  (`app/src/features/dm/checkin.tsx:154`,
+  `app/src/features/dm/checkin.tsx:173`,
   `app/src/features/dm/checkin.tsx:63`).
 - **Stored:** one `date_checkins` row per person; final, cannot be changed
   (`server/migrations/0058_date_checkins.sql:54`).
 - **Who sees it:** only the person who answered. One bit crosses: if both said yes to "see
   again", both see "You both said you'd see each other again."
   (`server/migrations/0058_date_checkins.sql:13`,
-  `app/src/features/dm/checkin.tsx:101`).
+  `app/src/features/dm/checkin.tsx:107`).
 - **Used for:** "Confirmed by N people who met them" on that person's future reveals (a check-in
-  with no identity answer of "no" counts); reviewer flags when 2+ people say the photos or age
+  counts only when every identity answer is a yes: since 2026-09-29 a "Not sure" does not confirm
+  anybody -- `server/migrations/0086_not_sure_is_not_confirming.sql:23`); reviewer flags when 2+ people say the photos or age
   were wrong, or 1+ felt unsafe (no automatic action); the founder's numbers
   (`server/migrations/0058_date_checkins.sql:67`,
   `server/migrations/0083_checkin_flags_kept.sql:78`).
@@ -2719,9 +2724,10 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 19. **Closed on 2026-09-29: a waiting card running out unseen.** The one waiting card on screen is the one that fades
     soonest, and "2 more waiting" says how many are behind it; each card also wakes the phone when it arrives and the
     day it fades, once push is set up (`app/src/features/matches/matches-screen.tsx:327`).
-20. **Check-in details.** "Not yet" is final; tapping Block from "Did you feel safe?" drops the unsafe answer; "Not sure"
-    counts toward "Confirmed by N people" (`app/src/features/dm/checkin.tsx:77`,
-    `server/migrations/0058_date_checkins.sql:67`).
+20. **Check-in details.** "Not yet" is final. Closed on 2026-09-29: a Block from "Did you feel safe?" sends the unsafe
+    answer first, and "Not sure" no longer counts toward "Confirmed by N people"
+    (`app/src/features/dm/checkin-flow.ts:58`,
+    `server/migrations/0086_not_sure_is_not_confirming.sql:23`).
 
 ### 15.4 Money and operations
 

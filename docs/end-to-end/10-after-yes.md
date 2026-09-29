@@ -91,11 +91,11 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   ([server/src/api/dating.ts:790] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
 - **Step 1:** "Did you two meet up? They are not told what you say." [Yes] [Not yet]. The first
   answer is final: a "Not yet" is never asked again
-  ([app/src/features/dm/checkin.tsx:109] `Did you two meet up? They are not told what you say.`,
+  ([app/src/features/dm/checkin.tsx:115] `Did you two meet up? They are not told what you say.`,
   [server/src/api/dating.ts:947] `// Own brief only, under RLS. An answer is final: the first one stands.`).
 - **After "Not yet":** "What happened? Only you see this." with "Plans fell through", "They
   stopped replying", "I changed my mind", "Something else", or Skip
-  ([app/src/features/dm/checkin.tsx:122] `What happened? Only you see this.`).
+  ([app/src/features/dm/checkin.tsx:128] `What happened? Only you see this.`).
 - **After "Yes"**, up to 6 questions, each [Yes] [No] [Not sure]: "Did they look like their
   photos?", "Did they seem about 29?", "Did they go by Arjun?", "Do they live around
   Bengaluru?", then up to two of the reader's matched wants ("You wanted “…”. Did they seem
@@ -104,19 +104,24 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   [server/src/checkin/questions.ts:66] `Did ${word} come up?`,
   [server/src/checkin/questions.ts:40] `const MAX_QUESTIONS = 6;`).
 - **Then:** "Did you feel safe with them?" [Yes] [No]; on No: "Sorry. Do you want to stop
-  hearing from Arjun?" [Block] [Block and report] [Not now]. Then "Would you see them again?"
+  hearing from Arjun?" [Block] [Block and report] [Not now]. Since 2026-09-29 a Block from here first
+  sends the check-in -- every answer, "did not feel safe", and a no to seeing them again -- where before it
+  left with nothing sent and the unsafe answer was lost
+  ([app/src/features/dm/checkin-flow.ts:58] `export function blocked(f: Flow): Flow {`).
+  Otherwise "Would you see them again?"
   "They only hear this if you both say yes." Finally "Thanks. +50 points."
-  ([app/src/features/dm/checkin.tsx:148] `Did you feel safe with them?`,
-  [app/src/features/dm/checkin.tsx:167] `Would you see them again?`,
+  ([app/src/features/dm/checkin.tsx:154] `Did you feel safe with them?`,
+  [app/src/features/dm/checkin.tsx:173] `Would you see them again?`,
   [app/src/features/dm/checkin.tsx:63] `Thanks. +${r.awarded} points.`).
 - **Stored:** one `date_checkins` row per person; final, cannot be changed
   ([server/migrations/0058_date_checkins.sql:54] `REVOKE UPDATE, DELETE ON date_checkins FROM clone_app;       -- an answer is final`).
 - **Who sees it:** only the person who answered. One bit crosses: if both said yes to "see
   again", both see "You both said you'd see each other again."
   ([server/migrations/0058_date_checkins.sql:13] `-- WHO SEES WHAT. The answerer reads their own row. The other person never reads it,`,
-  [app/src/features/dm/checkin.tsx:101] `You both said you'd see each other again.`).
+  [app/src/features/dm/checkin.tsx:107] `You both said you'd see each other again.`).
 - **Used for:** "Confirmed by N people who met them" on that person's future reveals (a check-in
-  with no identity answer of "no" counts); reviewer flags when 2+ people say the photos or age
+  counts only when every identity answer is a yes: since 2026-09-29 a "Not sure" does not confirm
+  anybody -- [server/migrations/0086_not_sure_is_not_confirming.sql:23] `WHERE a.key IN ('photos', 'age', 'name', 'city') AND a.value <> 'yes'))`); reviewer flags when 2+ people say the photos or age
   were wrong, or 1+ felt unsafe (no automatic action); the founder's numbers
   ([server/migrations/0058_date_checkins.sql:67] `WHERE a.key IN ('photos', 'age', 'name', 'city') AND a.value = 'no'))`,
   [server/migrations/0083_checkin_flags_kept.sql:78] `OR count(*) FILTER (WHERE s.unsafe) >= 1;`).

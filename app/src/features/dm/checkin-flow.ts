@@ -50,6 +50,16 @@ export function pastReportOffer(f: Flow): Flow {
   return { ...f, step: { kind: 'again' } };
 }
 
+/**
+ * Blocked from the report offer: the check-in ends here, and is SENT (the founder,
+ * 2026-09-29). Block used to leave the screen with nothing sent, so "I did not feel safe"
+ * was lost exactly when it mattered. A block is a no to seeing them again.
+ */
+export function blocked(f: Flow): Flow {
+  if (f.step.kind !== 'offer_report') return f;
+  return { ...f, seeAgain: false, step: { kind: 'done' } };
+}
+
 export function again(f: Flow, value: boolean | null): Flow {
   if (f.step.kind !== 'again') return f;
   return { ...f, seeAgain: value, step: { kind: 'done' } };

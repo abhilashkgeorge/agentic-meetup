@@ -5,7 +5,8 @@
  * Negative controls, run by hand and recorded in the commit: feed the generator
  * `traits`/`attribute_tags` unfiltered -> a question about religion appears; drop the
  * `NOT EXISTS ... = 'no'` clause from confirmations_of -> the 'age: no' check-in still
- * counts; change identity_flags' `>= 2` to `>= 1` -> one 'no' flags.
+ * counts; change identity_flags' `>= 2` to `>= 1` -> one 'no' flags; confirmations_of
+ * back to 0058's (a "not sure" confirms, 2026-09-29) -> the 'age: unsure' check-in counts.
  *
  * MET_ASK_AFTER_HOURS=0 so "did you meet" is due at once (the env knob exists for
  * walking the flow on a desk; here it is set before the module loads).
@@ -198,6 +199,14 @@ describe('what leaves the table', () => {
     expect(await conf(c), 'not entitled: the reveal rule excludes c').toBe(0);
     await post(b, xb, { answers: { age: 'no', name: 'yes', city: 'yes' }, feltSafe: true, seeAgain: null });
     expect(await conf(a), 'a no on an identity question does not confirm').toBe(1);
+
+    // "Not sure" is not a confirmation either (0086; the founder, 2026-09-29): somebody who
+    // could not vouch for the age has not confirmed anybody.
+    const e = await person('e', { gender: 'man', seeking_gender: ['woman'] });
+    const xe = await introduced(x, e);
+    await met(e, xe, true);
+    await post(e, xe, { answers: { age: 'unsure', name: 'yes', city: 'yes' }, feltSafe: true, seeAgain: null });
+    expect(await conf(a), 'a "not sure" counted as confirming them').toBe(1);
 
     // The desk: one 'no' on age is not a flag; two distinct people are.
     const flagged = () => matchmakerSession(async (db) =>

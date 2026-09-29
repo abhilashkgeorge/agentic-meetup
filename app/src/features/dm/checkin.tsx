@@ -18,7 +18,7 @@ import {
   blockUser, getCheckin, postCheckin, reportMet, reportUser, type CheckinState,
 } from '../../lib/api';
 import { Button, Chip, ChipGroup, StepsLeft, space, type, usePalette } from '../../components/ui';
-import { again, answer, pastReportOffer, safety, start, stepsLeft, submission, type Flow } from './checkin-flow';
+import { again, answer, blocked, pastReportOffer, safety, start, stepsLeft, submission, type Flow } from './checkin-flow';
 
 const WHY: Record<string, string> = {
   plans_fell_through: 'Plans fell through',
@@ -72,11 +72,17 @@ export function Checkin({ token, rendezvousId, otherId, otherName }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow]);
 
-  const stopHearing = (report: boolean) => {
-    if (!otherId) return;
-    const done = () => router.back();
-    if (report) void reportUser(token, { userId: otherId, rendezvousId, reason: 'felt_unsafe' }).then(done);
-    else void blockUser(token, otherId).then(done);
+  const stopHearing = async (report: boolean) => {
+    if (!otherId || busy) return;
+    setBusy(true);
+    // THE UNSAFE ANSWER IS SENT FIRST (checkin-flow.ts blocked), with everything else they
+    // answered: leaving here used to send nothing at all.
+    const body = flow ? submission(blocked(flow)) : null;
+    if (body) await postCheckin(token, rendezvousId, body);
+    if (report) await reportUser(token, { userId: otherId, rendezvousId, reason: 'felt_unsafe' });
+    else await blockUser(token, otherId);
+    setBusy(false);
+    router.back();
   };
 
   if (!state) return null;
@@ -157,8 +163,8 @@ export function Checkin({ token, rendezvousId, otherId, otherName }: {
           <Text style={[type.body, { color: p.text, textAlign: 'center' }]}>
             {`Sorry. Do you want to stop hearing from ${otherName}?`}
           </Text>
-          <Button label="Block" variant="secondary" onPress={() => stopHearing(false)} />
-          <Button label="Block and report" variant="secondary" onPress={() => stopHearing(true)} />
+          <Button label="Block" variant="secondary" onPress={() => void stopHearing(false)} />
+          <Button label="Block and report" variant="secondary" onPress={() => void stopHearing(true)} />
           <Button label="Not now" variant="ghost" onPress={() => setFlow(pastReportOffer(flow))} />
         </>
       )}
