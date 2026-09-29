@@ -21,14 +21,16 @@ type Lib = { rn: typeof import('@livekit/react-native'); lk: typeof import('live
 type Room = import('livekit-client').Room;
 
 /**
- * How LiveKit, and this file, say the voice server is out of reach -- a phone off its
- * cable, off the Wi-Fi, the server restarting. It is handled below (a fresh pass, again
- * and again) and said on screen ("Voice lost. Trying again…"), so a debug build need not
- * also turn each into a red box. LiveKit's own always name the room they were in; the
- * app's own failed fetches do not, and still show.
+ * What LiveKit, and this file, say when the voice server is out of reach -- a phone off
+ * its cable, off the Wi-Fi, the server restarting. It is handled below (a fresh pass,
+ * again and again) and said on screen ("Voice lost. Trying again…"), so a debug build
+ * need not also turn each into a red box. LiveKit words it many ways (four seen on the
+ * Seeker in one afternoon), but always names the voice room it was in; so its messages
+ * about a park or bench room are kept off the screen -- they still print in the bundler's
+ * log -- and the app's own errors, which name no voice room, still show.
  */
 export const VOICE_UNREACHABLE: RegExp[] = [
-  /(fetch failed|error reading from signal stream|could not establish signal connection)[\s\S]*"room":"/,
+  /"room":"(park-|bench-)/,
   /^\[voice\] could not connect/,
 ];
 

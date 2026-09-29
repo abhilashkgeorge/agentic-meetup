@@ -158,11 +158,13 @@ describe('the red boxes a debug build shows', () => {
   // As LogBox showed them on the Seeker (2026-09-29): the message, then LiveKit's context.
   const ctx = ' {"room":"park-cubbon","roomID":"RM_t7SFEQYbmMWa","participant":"429f363c96096f40465ec3e4"}';
   const ignored = (m: string) => VOICE_UNREACHABLE.some((r) => r.test(m));
-  it('leave out the voice server being out of reach, in every wording seen', () => {
+  it('leave out LiveKit on a voice room, in every wording seen, park or bench', () => {
     for (const m of [
       `fetch failed: java.net.ConnectException: Failed to connect to localhost/127.0.0.1:7880${ctx}`,
       `fetch failed: java.io.IOException: unexpected end of stream on http://localhost:7880/...${ctx}`,
       `error reading from signal stream${ctx}`,
+      `Received leave request while trying to (re)connect${ctx}`,
+      'could not establish signal connection {"room":"bench-ae13a18429f1ffa4ab368f88","roomID":"RM_x"}',
       '[voice] could not connect could not establish signal connection: fetch failed',
     ]) expect(ignored(m), m).toBe(true);
   });
