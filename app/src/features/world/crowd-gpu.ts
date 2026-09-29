@@ -427,9 +427,12 @@ export interface CrowdParts {
  */
 export function* levelSteps(parts: CrowdParts): Generator<void, THREE.BufferGeometry[], void> {
   const white = new THREE.Color(1, 1, 1);
-  // Only the artist's colour is kept in the vertices; every tinted role is painted by
-  // the shader, so its vertices carry white.
-  const colourOf = (mesh: string, role: Role) => (role === 'plain' || role === 'hat' ? parts.colour.get(mesh) ?? white : white);
+  // The artist's colour stays in the vertices wherever it can show: plain pieces, the
+  // hard hat, and the fabric of trousers and shoes, which is theirs until somebody
+  // picks a colour for it ("As made"). Everything the shader always paints carries
+  // white. (Trousers and shoes carried white too, for a day: "As made" came out white.)
+  const kept: ReadonlySet<Role> = new Set(['plain', 'hat', 'legs', 'feet']);
+  const colourOf = (mesh: string, role: Role) => (kept.has(role) ? parts.colour.get(mesh) ?? white : white);
   const extras = buildExtras();
   // The bags, one of each for every top, laid over that top (buildBag), and hung off
   // the chest like everything worn on the body.

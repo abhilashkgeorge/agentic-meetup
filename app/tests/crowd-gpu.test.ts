@@ -238,6 +238,28 @@ describe('the levels', () => {
     expect(gpu.fixedOf(look({ head: 0, hat: HARD_HAT }), pieces, beards)[18]).toBe(HARD_HAT);
   });
 
+  it('keeps the artist\'s colour on trousers and shoes nobody has coloured', () => {
+    // "As made" is the vertex colour (paintOf's `own`): the fabric's vertices must
+    // carry the artist's colour, not the white the always-painted pieces carry. They
+    // carried white for a day and every pair of trousers left as made came out white.
+    const meta = levels[0]!.attributes.aMeta!;
+    const col = levels[0]!.attributes.color!;
+    for (const role of ['legs', 'feet'] as const) {
+      const f = gpu.fixedOf(look({ head: 1, figure: 1, top: 1, legs: 1, feet: 1 }), pieces, beards);
+      let seen = 0, white = 0;
+      for (let i = 0; i < meta.count; i++) {
+        if (meta.getX(i) !== gpu.ROLE[role] || !gpu.wears([meta.getX(i), meta.getY(i), meta.getZ(i)], f)) continue;
+        seen++;
+        if (col.getX(i) > 0.99 && col.getY(i) > 0.99 && col.getZ(i) > 0.99) white++;
+      }
+      expect(seen, `no ${role} fabric drawn`).toBeGreaterThan(10);
+      expect(white, `${role} left as made is white`).toBe(0);
+      // ...and it is the artist's colour: the as-made paint is the vertex colour.
+      const as = gpu.paintOf(gpu.ROLE[role], [0.2, 0.3, 0.4], f);
+      expect(as).toEqual([0.2, 0.3, 0.4]);
+    }
+  });
+
   it('paints every part the colour partsOf gives it', () => {
     const l = look({ skin: 7, hairColor: 11, eyes: 3, outfitColor: 9, legsColor: 4, feetColor: 17, head: 2, hair: 2, hat: 2, neck: 1, bag: 1 });
     const f = gpu.fixedOf(l, pieces, beards);

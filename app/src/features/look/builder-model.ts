@@ -129,8 +129,15 @@ export function swatchOf(part: LookPart, index: number): string | null {
   }
 }
 
-/** A choice's name, for its label and for the screen reader. */
-export const labelOf = (part: LookPart, index: number): string => LOOK_LABELS[part][index] ?? itemAt(part, index).label;
+/**
+ * A choice's name, for its label and for the screen reader. A face is numbered in the
+ * order its row shows it: the catalog names faces after the outfit they came with,
+ * and a face called "Hoodie" says nothing about a face.
+ */
+export function labelOf(part: LookPart, index: number, look?: Look): string {
+  if (part === 'head' && look) return `Face ${choicesFor('head', look).indexOf(index) + 1}`;
+  return LOOK_LABELS[part][index] ?? itemAt(part, index).label;
+}
 
 /** What each part is called when the builder says it changed. */
 const NAMED: Partial<Record<LookPart, string>> = {

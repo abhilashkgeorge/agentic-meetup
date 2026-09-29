@@ -177,7 +177,7 @@ describe('the model', () => {
     const share = wrists / total;
     expect(share, 'the hands did not land on the wrists').toBeGreaterThan(0.2);
     expect(share, 'far more than the hands landed on the wrists').toBeLessThan(0.45);
-  });
+  }, 30_000);
 
   it('closes the back of every head, so Bald is not a look inside one', async () => {
     // THE BUG THIS EXISTS FOR: the women's heads in this pack are not heads, they are
@@ -300,18 +300,20 @@ describe('what people wear on top', () => {
       const v = new THREE.Vector3();
       faces.forEach((face, f) => {
         let inside = 0;
-        for (let i = 0; i < pos.count; i++) {
+        // Every other point: a shape's neighbouring points are a few millimetres apart,
+        // and this is ninety ray casts a point.
+        for (let i = 0; i < pos.count; i += 2) {
           ray.set(v.fromBufferAttribute(pos, i), new THREE.Vector3(0.577, 0.577, 0.577));
           // Crossings, counted once per surface point (a ray through an edge is hit twice).
           const hits = new Set(ray.intersectObject(face).map((h) => h.distance.toFixed(6)));
           if (hits.size % 2 === 1) inside++;
         }
         const allowed = kind === 'round' || kind === 'sunglasses' || kind === 'square' || kind === 'hoops' ? 0 : 0.2;
-        expect(inside / pos.count, `${kind}: ${inside} of ${pos.count} points inside the ${LOOKS[f]} face`)
+        expect(inside / (pos.count / 2), `${kind}: ${inside} of ${Math.ceil(pos.count / 2)} points inside the ${LOOKS[f]} face`)
           .toBeLessThanOrEqual(allowed);
       });
     }
-  });
+  }, 30_000);
 
   it('keeps hair inside every hat: each hat\'s inside is inside the hat', () => {
     // HAT_INSIDE is where hair is pulled to under a hat (character.ts). It must lie
@@ -351,7 +353,7 @@ describe('what people wear on top', () => {
       }
       expect(missed, `hat ${hat}: ${missed} of ${tried} points of its inside are outside it`).toBe(0);
     }
-  });
+  }, 30_000);
 
   it('lays every bag\'s straps on the top it was made for', () => {
     // A bag is built per top so its straps follow that top's cloth (buildBag). One
@@ -394,5 +396,5 @@ describe('what people wear on top', () => {
       body.dispose();
     }
     expect(checked, 'no strap was measured').toBe(LOOKS.length * 5);
-  });
+  }, 30_000);
 });

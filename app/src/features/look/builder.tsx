@@ -153,12 +153,13 @@ export function CharacterBuilder({
         <Note text={note} />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ gap: space.sm, paddingVertical: space.xs, paddingHorizontal: 2 }}>
+      {/* ALL SEVEN IN VIEW, sharing the width. As a strip that scrolled, the last tab
+          was cut off at the edge of the phone and nothing said there was more. */}
+      <View style={{ flexDirection: 'row', gap: 4, paddingVertical: space.xs }}>
         {tabs.map((t) => (
           <TabPill key={t.key} label={t.label} on={t.key === tab.key} onPress={() => openTab(t)} />
         ))}
-      </ScrollView>
+      </View>
 
       {fill ? (
         <ScrollView style={{ height: PANEL, flexGrow: 0 }} contentContainerStyle={{ paddingBottom: space.sm }}
@@ -167,15 +168,13 @@ export function CharacterBuilder({
         </ScrollView>
       ) : rows}
 
+      {/* Wearing something not yet theirs: one line saying what and what it costs, and
+          the Save button becomes the way to unlock it -- one button, in one place, so
+          the character does not jump up the screen for a second one. */}
       {first && (
-        <View style={{ gap: space.sm }}>
-          <Text style={[type.callout, { color: p.textSecondary }]}>
-            {`${first.label} costs ${first.cost} points. You have ${balance}.`}
-          </Text>
-          <Button label={balance >= first.cost ? `Unlock ${first.label} for ${first.cost}` : `${first.cost} points needed`}
-                  variant="secondary" disabled={balance < first.cost || busy}
-                  onPress={() => void onUnlock(first.id)} />
-        </View>
+        <Text style={[type.callout, { color: p.textSecondary }]} numberOfLines={2}>
+          {`${first.label} costs ${first.cost} points. You have ${balance}.${locked.length > 1 ? ` ${locked.length - 1} more to unlock after.` : ''}`}
+        </Text>
       )}
       {error && <Text style={[type.callout, { color: p.danger }]}>{error}</Text>}
 
@@ -190,8 +189,13 @@ export function CharacterBuilder({
           </View>
         )}
         <View style={{ flex: 1.4 }}>
-          <Button label={locked.length ? 'Unlock to save' : 'Save'} variant="primary"
-                  onPress={() => void onSave()} disabled={locked.length > 0 || busy} loading={busy} />
+          {first ? (
+            <Button label={balance >= first.cost ? `Unlock for ${first.cost}` : `${first.cost - balance} more points`}
+                    variant="primary" disabled={balance < first.cost || busy} loading={busy}
+                    onPress={() => void onUnlock(first.id)} />
+          ) : (
+            <Button label="Save" variant="primary" onPress={() => void onSave()} disabled={busy} loading={busy} />
+          )}
         </View>
       </View>
     </View>
@@ -204,6 +208,7 @@ function TabPill({ label, on, onPress }: { label: string; on: boolean; onPress: 
   const press = useRef(new Animated.Value(1)).current;
   return (
     <Pressable
+      style={{ flex: 1 }}
       onPress={onPress}
       onPressIn={() => Animated.spring(press, { toValue: 0.94, useNativeDriver: true, speed: 40 }).start()}
       onPressOut={() => Animated.spring(press, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start()}
@@ -212,11 +217,12 @@ function TabPill({ label, on, onPress }: { label: string; on: boolean; onPress: 
       accessibilityLabel={label}
     >
       <Animated.View style={{
-        transform: [{ scale: press }],
-        paddingHorizontal: space.lg, paddingVertical: space.sm, borderRadius: radius.pill,
+        transform: [{ scale: press }], alignItems: 'center',
+        paddingHorizontal: 2, paddingVertical: space.sm, borderRadius: radius.pill,
         backgroundColor: on ? p.sunken : p.bg, boxShadow: on ? sunk(p, 3) : raised(p, 3),
       }}>
-        <Text style={[type.callout, { color: on ? p.accent : p.textSecondary, fontFamily: type.bodyStrong.fontFamily }]}>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}
+              style={[type.callout, { fontSize: 13, color: on ? p.accent : p.textSecondary, fontFamily: type.bodyStrong.fontFamily }]}>
           {label}
         </Text>
       </Animated.View>
@@ -249,7 +255,7 @@ const ChoiceRow = memo(function ChoiceRow({ row, look, owned, onPick }: {
     <View style={{ gap: space.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <Text style={[type.label, { color: p.textSecondary }]}>{row.title.toUpperCase()}</Text>
-        <Text style={[type.callout, { color: p.text }]} numberOfLines={1}>{labelOf(row.part, chosen)}</Text>
+        <Text style={[type.callout, { color: p.text }]} numberOfLines={1}>{labelOf(row.part, chosen, look)}</Text>
       </View>
       <ScrollView ref={scroller} horizontal showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ gap: space.sm, paddingVertical: space.xs, paddingHorizontal: 2, alignItems: 'center' }}>
@@ -259,7 +265,7 @@ const ChoiceRow = memo(function ChoiceRow({ row, look, owned, onPick }: {
             {split !== null && k === split && k > 0 && (
               <View style={{ width: 1, height: PICTURE * 0.6, backgroundColor: p.textTertiary, opacity: 0.4 }} />
             )}
-            <Choice part={row.part} kind={row.kind} index={i} selected={i === chosen}
+            <Choice part={row.part} kind={row.kind} index={i} selected={i === chosen} label={labelOf(row.part, i, look)}
                     locked={!owned.has(itemAt(row.part, i).id) && itemAt(row.part, i).cost > 0}
                     onPress={() => onPick(row, i)} />
           </View>
@@ -270,11 +276,12 @@ const ChoiceRow = memo(function ChoiceRow({ row, look, owned, onPick }: {
 });
 
 /** One choice. It springs up when chosen; a locked one says its price. */
-const Choice = memo(function Choice({ part, kind, index, selected, locked, onPress }: {
+const Choice = memo(function Choice({ part, kind, index, selected, label, locked, onPress }: {
   part: LookPart;
   kind: Row['kind'];
   index: number;
   selected: boolean;
+  label: string;
   locked: boolean;
   onPress: () => void;
 }) {
@@ -284,7 +291,6 @@ const Choice = memo(function Choice({ part, kind, index, selected, locked, onPre
     Animated.spring(on, { toValue: selected ? 1 : 0, useNativeDriver: true, speed: 18, bounciness: 10 }).start();
   }, [selected, on]);
   const item = itemAt(part, index);
-  const label = labelOf(part, index);
   const colour = kind === 'swatches' ? swatchOf(part, index) : null;
   // "None" of what is worn on top, and "As made" of a colour, are words: there is
   // nothing to draw.
@@ -308,6 +314,14 @@ const Choice = memo(function Choice({ part, kind, index, selected, locked, onPre
             }}>
               {picture && <PieceThumb part={part as Parameters<typeof PieceThumb>[0]['part']} index={index} size={well} />}
             </View>
+            {picture && locked && (
+              <View style={{
+                position: 'absolute', top: -2, right: -4, paddingHorizontal: 5, paddingVertical: 1, borderRadius: radius.pill,
+                backgroundColor: p.bg, boxShadow: raised(p, 2),
+              }}>
+                <Text style={[type.label, { fontSize: 9, letterSpacing: 0.2, color: p.textSecondary }]}>{item.cost}</Text>
+              </View>
+            )}
           </View>
         ) : (
           <View style={{
@@ -324,7 +338,7 @@ const Choice = memo(function Choice({ part, kind, index, selected, locked, onPre
         {picture && (
           <Text style={[type.label, { fontSize: 10, letterSpacing: 0.3, color: selected ? p.accent : p.textTertiary, maxWidth: PICTURE + 6 }]}
                 numberOfLines={1}>
-            {locked ? `${item.cost} pts` : label}
+            {label}
           </Text>
         )}
         {!picture && locked && (

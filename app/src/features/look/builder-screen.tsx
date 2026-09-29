@@ -15,7 +15,11 @@ export default function BuilderScreen() {
   const p = usePalette();
   const token = useSession((s) => s.token);
   const load = useLook((s) => s.load);
+  const discard = useLook((s) => s.discard);
   useEffect(() => { if (token) void load(token); }, [token, load]);
+  // Leaving without saving leaves nothing behind: the You tab's card shows the draft,
+  // and it showed a half-made character nobody had saved.
+  useEffect(() => discard, [discard]);
 
   // NOT A SCROLLING PAGE. It was, and the builder is shorter than a phone, so the
   // bottom third of the screen was empty grey while the character stood in a letterbox
