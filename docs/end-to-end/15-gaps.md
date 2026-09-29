@@ -52,8 +52,10 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
     again by everybody) and the Settings line now say what the code does
     ([app/src/features/settings/settings-screen.tsx:299] `Nobody sees your photos or first name until you say yes to them.`).
-9. **Latent:** the matchmaker role can read every profile summary, which is written from all facts including private
-    ones; nothing reads it in a round today ([server/migrations/0028_matchmaker.sql:51] `GRANT SELECT ON core_profile TO clone_matchmaker;`).
+9. **Closed on 2026-09-29: the matchmaker and the profile summaries.** The round's role could read every profile
+    summary, written from all facts including private ones. It now has no access to that table at all; the one thing
+    a round took from it -- a person's style note, for the agent conversations -- is read as that person, and only
+    when the conversations are on ([server/migrations/0081_matchmaker_reads_no_summary.sql:28] `REVOKE ALL ON core_profile FROM clone_matchmaker;`).
 10. **Closed on 2026-09-29: the AI notice.** It names the embedding provider as well as the chat ones, and carries no
     link to a page the server does not serve ([server/src/api/config.ts:51] `const embeds = embeddingProvider();`).
 

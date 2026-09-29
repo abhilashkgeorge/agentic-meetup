@@ -41,7 +41,7 @@
  *   write   the briefs, and the runs if any. Short transaction, per pair.
  */
 import type { PoolClient } from 'pg';
-import { matchmakerSession } from '../db/client.js';
+import { matchmakerSession, tenantSession } from '../db/client.js';
 import { env } from '../env.js';
 import { metered } from '../metering.js';
 import { log } from '../log.js';
@@ -66,6 +66,16 @@ import { wake, type PushKind } from '../push/index.js';
  * measurement of nothing.
  */
 const NO_CONVERSATION: Conversations = { results: [], counted: 0, bothYes: 0, costUsd: 0 };
+
+/**
+ * How somebody writes, for the agent that speaks for them in a conversation -- read AS
+ * THEM, under their own tenant session, never by the matchmaker. The note lives in
+ * core_profile beside four summaries written from every fact they confirmed, private
+ * ones too, and since 0081 this role cannot read that table at all. The same move
+ * loadQuotes makes for episodes (brief.ts).
+ */
+const voiceOf = (who: { tenantId: string; userId: string }): Promise<string> =>
+  tenantSession(who, (c) => voiceText(c, who.userId));
 
 /** How many people one round meets. Keep this small; see the header. */
 export const CANDIDATES_PER_ROUND = Number(process.env.ROUND_CANDIDATES ?? 3);
@@ -171,12 +181,11 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     const ranked = window.map((id) => ({ userId: id, score: scores.get(id) ?? 0 }));
 
     const a = { userId, tenantId: me.tenant_id };
-    // Loaded once. The dossier and voice are for the conversations and the typed file
-    // score, both off by default; the card and the tags are what the brief is built
-    // from. Quotes are NOT read here: verifying one reads the person's own episodes,
-    // which this role cannot see (see loadQuotes).
+    // Loaded once. The dossier is for the conversations and the typed file score, both
+    // off by default; the card and the tags are what the brief is built from. Quotes
+    // are NOT read here: verifying one reads the person's own episodes, which this role
+    // cannot see (see loadQuotes). Nor is how they write (voiceOf).
     const dossierA = await buildDossier(c, a.userId);
-    const voiceA = await voiceText(c, a.userId);
     const cardA = await cardFacts(c, a.userId);
     const tagsA = await publicTags(c, a.userId);
 
@@ -194,7 +203,7 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     return {
       stop: null,
       considered: ranked.length,
-      a: { ...a, dossier: dossierA, voice: voiceA, card: cardA, tags: tagsA },
+      a: { ...a, dossier: dossierA, card: cardA, tags: tagsA },
       order,
     } as const;
   });
@@ -226,7 +235,7 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     const pairs: Array<{
       rendezvousId: string;
       rankScore: number;
-      b: { userId: string; tenantId: string; synthetic: boolean; dossier: string; voice: string; card: CardFacts; tags: string[] };
+      b: { userId: string; tenantId: string; synthetic: boolean; dossier: string; card: CardFacts; tags: string[] };
     }> = [];
     const k = target ? 1 : CANDIDATES_PER_ROUND;
     for (const cand of order) {
@@ -248,12 +257,11 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       // and going away -- it currently serialises them for us, which is exactly the
       // kind of thing that works until it does not.
       const dossierB = await buildDossier(c, b.userId);
-      const voiceB = await voiceText(c, b.userId);
       const cardB = await cardFacts(c, b.userId);
       const tagsB = await publicTags(c, b.userId);
       pairs.push({
         rendezvousId: created[0].id, rankScore: cand.score,
-        b: { ...b, dossier: dossierB, voice: voiceB, card: cardB, tags: tagsB },
+        b: { ...b, dossier: dossierB, card: cardB, tags: tagsB },
       });
     }
     if (!pairs.length) return { stop: 'already met' } as const;
@@ -295,6 +303,8 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
     // writes for the people met. Each person's under their OWN session -- see
     // loadQuotes for why the matchmaker cannot do it.
     const quotesA = await loadQuotes(plan.a);
+    // How the starter writes, for the conversations only -- read as them (voiceOf).
+    const voiceA = RUNS > 0 ? await voiceOf(plan.a) : '';
     // THE ANSWER SHEETS, read -- never built -- here. Built once per change by each
     // person's own session (answer-sheet.ts), so the exchange on every card costs a
     // read and no model call. The words come live from `facts` under the matchmaker's
@@ -349,7 +359,9 @@ export async function runRound(userId: string, opts: RoundOptions = {}): Promise
       // NO CONVERSATION unless RENDEZVOUS_RUNS asks for one -- not even an empty
       // call: `converse` with zero runs is a no-op today, but "skipped" should be
       // true of the code, not of an argument.
-      const runs = RUNS > 0 ? await converse(plan.a, pair.b) : NO_CONVERSATION;
+      const runs = RUNS > 0
+        ? await converse({ ...plan.a, voice: voiceA }, { ...pair.b, voice: await voiceOf(pair.b) })
+        : NO_CONVERSATION;
       const ok = RUNS > 0 && passes(runs.bothYes, runs.counted, RUNS);
 
       // A BRIEF FOR EVERY PAIR, written by code from what is true of both people.

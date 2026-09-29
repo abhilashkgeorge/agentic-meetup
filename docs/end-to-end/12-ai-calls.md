@@ -243,6 +243,9 @@ $0.02; not measured, because no round has run since the talk was added.
 
 - **When:** only if `RENDEZVOUS_RUNS` is above 0; the code default is 0 and it is not set
   ([server/src/matching/rendezvous.ts:75] `export const RUNS = Number(process.env.RENDEZVOUS_RUNS ?? 0);`).
+- **In:** its own person's public facts and style note, and the other person's public tags. The style note is read
+  as its person, never through the round's role (since 2026-09-29)
+  ([server/src/matching/orchestrator.ts:77] `const voiceOf = (who: { tenantId: string; userId: string }): Promise<string> =>`).
 - **Talker:** `chat`, 200 tokens a message: "You represent ONE person, talking to an agent that represents somebody
   else." "Only say things you were actually told about your person. Never invent a detail to keep it going."
   ([server/src/matching/rendezvous.ts:110] `You represent ONE person, talking to an agent that represents somebody else.`).

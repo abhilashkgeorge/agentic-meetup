@@ -78,7 +78,7 @@ three shapes:
   this yet." ([app/src/features/matches/exchange.ts:205] `label, want, prefix: 'They said',`,
   [app/src/features/matches/exchange.ts:169] `export const NOTHING_YET = "Nothing they've said covers this yet.";`).
 - **Meera never sees Arjun's wants**, or that he has any. Her card about Arjun lists only
-  her own wants ([server/src/matching/orchestrator.ts:387] `forB: wantRows(bChecked ? bChecked.results[0] : cantCheck(wantsB)),`).
+  her own wants ([server/src/matching/orchestrator.ts:399] `forB: wantRows(bChecked ? bChecked.results[0] : cantCheck(wantsB)),`).
 
 ### 5.1 Where wants come from
 
@@ -181,7 +181,7 @@ three shapes:
 - **What Really want and Nice to have do.** They feed a score (weight 3 and 1) that is
   recorded on each pair but **no longer decides who a round meets**
   ([server/src/matching/score.ts:25] `dealbreaker: 0, // already enforced by the filter; counting it again double-dips`,
-  [server/src/matching/orchestrator.ts:168] `it just no longer decides who is met.`). The one place the
+  [server/src/matching/orchestrator.ts:178] `it just no longer decides who is met.`). The one place the
   score still orders people is the town's square, where the 40 strangers shown, picked once a day, are the top
   of the score ([server/src/api/world.ts:187] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
   In a round, what moves a person later is the want check: each "not met" want pushes that
@@ -213,7 +213,7 @@ three shapes:
   [server/src/matching/unknowns.ts:31] `export const QUIET_DAYS = 7;`,
   [server/src/matching/unknowns.ts:33] `export const WINDOW_DAYS = 14;`).
   Practice profiles are never asked
-  ([server/src/matching/orchestrator.ts:416] `(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId`).
+  ([server/src/matching/orchestrator.ts:428] `(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId`).
 - **A written card is not updated** when the answer arrives later: the want results are
   stored with the card when the round runs
   ([server/src/matching/brief.ts:640] `wants: made.wants,`).
@@ -226,8 +226,8 @@ three shapes:
   starter's sentences, for that person's card. Both calls are charged to the starter
   ([server/src/matching/wants.ts:307] `export const WANT_WINDOW = 12;`,
   [server/src/matching/wants.ts:308] `export const WANT_SENTENCES = 10;`,
-  [server/src/matching/orchestrator.ts:215] `await metered(spender, 'rendezvous', () => checkShortlist(spender, wantsA, shortlist.order))`,
-  [server/src/matching/orchestrator.ts:373] `await checkWants(spender, wantsB, [sentencesA],`).
+  [server/src/matching/orchestrator.ts:224] `await metered(spender, 'rendezvous', () => checkShortlist(spender, wantsA, shortlist.order))`,
+  [server/src/matching/orchestrator.ts:385] `await checkWants(spender, wantsB, [sentencesA],`).
   If every want is tied, no call is made
   ([server/src/matching/wants.ts:231] `wants.map((w) => asked(w, pi))), costUsd: 0`).
   Full details are in {AI:wants}.

@@ -9,7 +9,7 @@ words are the date idea, written earlier (stage 7).
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| The second yes | Pair becomes `introduced`; chat opens | Code | `rendezvous.introduced_at` | Both | [server/src/matching/orchestrator.ts:592] `UPDATE rendezvous r SET status = 'introduced', introduced_at = now()` |
+| The second yes | Pair becomes `introduced`; chat opens | Code | `rendezvous.introduced_at` | Both | [server/src/matching/orchestrator.ts:604] `UPDATE rendezvous r SET status = 'introduced', introduced_at = now()` |
 | A message | Sent over a live connection; delivered, read receipts | Code | `messages` row | The two people | [server/migrations/0025_messaging_fixes.sql:37] `AND r.status = 'introduced'));` |
 | "Propose this date" | Sends "How about this: <idea>?" as the person's own message, once per chat | Code | `messages` row (kind `date_idea`) | The two people | [server/src/api/date-idea.ts:31] `How about this: ${idea}?` |
 | Two quiet days | A one-time nudge for each person | Code | `nudged_at` on each person's card row | Each person, once | [app/src/features/dm/date-idea.ts:17] `export const QUIET_LINE = 'Quiet for two days. Say hello?';` |
@@ -27,7 +27,7 @@ words are the date idea, written earlier (stage 7).
 2. **Meera gets no moment.** Her waiting card disappears and "Arjun" appears in Chats with
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
-   [server/src/matching/orchestrator.ts:605] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
+   [server/src/matching/orchestrator.ts:617] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
    [app/src/features/dm/conversations-screen.tsx:94] `: 'Say something'`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"

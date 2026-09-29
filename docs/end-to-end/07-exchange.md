@@ -12,7 +12,7 @@ person ever reads are the **date idea**, and code checks those.
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun's and Meera's own sentences (up to 20 each) | Loaded under each person's own database session, filtered | Code | Nothing | Nobody | [server/src/matching/orchestrator.ts:313] `loadQuotes(plan.a, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })` |
+| Arjun's and Meera's own sentences (up to 20 each) | Loaded under each person's own database session, filtered | Code | Nothing | Nobody | [server/src/matching/orchestrator.ts:323] `loadQuotes(plan.a, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })` |
 | Both lists, 12 questions, 4 reactions | The model picks questions and sentence numbers, and writes one date idea | {AI:talk} | Nothing yet | Nobody | [server/src/matching/talk.ts:105] `You never write a sentence about a person. You choose:` |
 | The model's reply | Code rebuilds the lines from the real sentences and drops anything that breaks a rule | Code | The talk, inside both cards | Each person, on their own card, on their turn | [server/src/matching/talk.ts:244] `lines.push({ by, kind: 'say', text: s.text, ...(s.practice ? { practice: true } : {}) });` |
 | The date idea | Checked for length, person words, claims, verdict words, private topics, contact details, and made-up facts | Code | Inside both cards | Both, then in chat after both say yes | [server/src/matching/talk.ts:193] `PERSON.test(idea) || CLAIM.test(idea) || VERDICT.test(idea) || !mayRepeat(idea)` |
@@ -136,14 +136,14 @@ told about your person. Never invent a detail to keep it going."; a second model
 each transcript and return yes, no or not enough ([server/src/matching/rendezvous.ts:116] `Only say things you were actually told about your person. Never invent a detail to keep it going.`,
 [server/src/matching/rendezvous.ts:153] `verdict: z.enum(['yes', 'no', 'not_enough']),`). Transcripts
 would be stored but never shown, and the verdicts gate nothing
-([server/src/matching/orchestrator.ts:353] `const ok = RUNS > 0 && passes(runs.bothYes, runs.counted, RUNS);`).
+([server/src/matching/orchestrator.ts:365] `const ok = RUNS > 0 && passes(runs.bothYes, runs.counted, RUNS);`).
 Details: {AI:converse}.
 
 ### Docs vs code
 
 - HOW-IT-WORKS.md calls the talk "the only model call in a round". The want checks are
   model calls in the same round ([HOW-IT-WORKS.md:27] `That talk is **the only model call in a round** -- one small call a pair`,
-  [server/src/matching/orchestrator.ts:373] `await checkWants(spender, wantsB, [sentencesA],`).
+  [server/src/matching/orchestrator.ts:385] `await checkWants(spender, wantsB, [sentencesA],`).
 - HOW-IT-WORKS.md §6 describes "Five runs per pair". That is only true if the switch is set
   to 5; the code default is 0 ([HOW-IT-WORKS.md:273] `**Five runs per pair, five messages each side.** One is politeness; a thousand is a`).
 - HOW-IT-WORKS.md §7 says the model phase does "nothing by default". The talk and want checks

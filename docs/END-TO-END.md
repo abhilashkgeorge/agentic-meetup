@@ -632,9 +632,9 @@ Two configured model tasks, `reflect` and `canon`, have no caller: no reflection
 - a **row** of matching data (age, gender, who they seek, place, intent, tags, card answers) used by SQL
   (`server/src/matching/candidates.ts:34`);
 - a **list of the person's own shareable sentences**, loaded under their own database session
-  (`server/src/matching/orchestrator.ts:313`);
+  (`server/src/matching/orchestrator.ts:323`);
 - an **answer sheet** built earlier: 12 fixed questions, each pointing at one of those sentences
-  (`server/src/matching/orchestrator.ts:303`);
+  (`server/src/matching/orchestrator.ts:313`);
 - the person's **wants** (stage 5);
 - and one **model call per pair** that may only point at those sentences and write a date idea
   ([AI-11](#ai-11)).
@@ -733,7 +733,7 @@ details), and **database roles** that limit what each part of the server can rea
   `server/src/park/socket.ts:177`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
-  (`server/src/matching/orchestrator.ts:366`).
+  (`server/src/matching/orchestrator.ts:378`).
 - **On Arjun's card** (his turn): her headline, shared tags, up to two of her sentences, the talk,
   Arjun's wants against her sentences ("Matches"/"Doesn't match" only on a want tied to a tapped question;
   a private-topic want says only "A private topic. Their answer is never shown."), an opener (stage 8)
@@ -834,7 +834,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 |---|---|---|---|
 | `clone_app` | Everything a signed-in person does | Their own rows only (facts, messages, photos, cards...); the shared pair row and its messages; can write but not read reports; invites table in full (no row security) | `server/migrations/0022_rendezvous.sql:104`, `server/migrations/0024_messages.sql:107` |
 | `clone_match` | Finding and counting candidates | In-pool matching rows (all columns), the rule columns of live preferences (never their sentences), characters | `server/migrations/0019_match_role.sql:40`, `server/migrations/0021_matching_fixes.sql:22` |
-| `clone_matchmaker` | Running rounds, reveals, the reviewer | Facts only where public, live and current; every matching row, pair, card, transcript, report (with the chat copied to it) and photo record; every profile summary; the founder's two count functions | `server/migrations/0028_matchmaker.sql:48`, `server/migrations/0028_matchmaker.sql:51` |
+| `clone_matchmaker` | Running rounds, reveals, the reviewer | Facts only where public, live and current; every matching row, pair, card, transcript, report (with the chat copied to it) and photo record; the founder's two count functions. No profile summary, and no style note (since 2026-09-29; a round reads the style note as its person) | `server/migrations/0028_matchmaker.sql:48`, `server/migrations/0081_matchmaker_reads_no_summary.sql:28` |
 | `clone_eraser` | Deleting an account | Everything (bypasses row security), to delete and verify | `server/migrations/0026_eraser_role.sql:24` |
 | `clone_door` | The phone sign-in | Code challenges (hashes, caller IP); account id and number hash | `server/migrations/0066_door_and_discovery_roles.sql:46` |
 | `clone_discovery` | Background sweepers | Ids, counts and times, and each account's device name | `server/migrations/0066_door_and_discovery_roles.sql:67` |
@@ -1013,7 +1013,7 @@ three shapes:
   this yet." (`app/src/features/matches/exchange.ts:205`,
   `app/src/features/matches/exchange.ts:169`).
 - **Meera never sees Arjun's wants**, or that he has any. Her card about Arjun lists only
-  her own wants (`server/src/matching/orchestrator.ts:387`).
+  her own wants (`server/src/matching/orchestrator.ts:399`).
 
 ### 5.1 Where wants come from
 
@@ -1116,7 +1116,7 @@ three shapes:
 - **What Really want and Nice to have do.** They feed a score (weight 3 and 1) that is
   recorded on each pair but **no longer decides who a round meets**
   (`server/src/matching/score.ts:25`,
-  `server/src/matching/orchestrator.ts:168`). The one place the
+  `server/src/matching/orchestrator.ts:178`). The one place the
   score still orders people is the town's square, where the 40 strangers shown, picked once a day, are the top
   of the score (`server/src/api/world.ts:187`).
   In a round, what moves a person later is the want check: each "not met" want pushes that
@@ -1148,7 +1148,7 @@ three shapes:
   `server/src/matching/unknowns.ts:31`,
   `server/src/matching/unknowns.ts:33`).
   Practice profiles are never asked
-  (`server/src/matching/orchestrator.ts:416`).
+  (`server/src/matching/orchestrator.ts:428`).
 - **A written card is not updated** when the answer arrives later: the want results are
   stored with the card when the round runs
   (`server/src/matching/brief.ts:640`).
@@ -1161,8 +1161,8 @@ three shapes:
   starter's sentences, for that person's card. Both calls are charged to the starter
   (`server/src/matching/wants.ts:307`,
   `server/src/matching/wants.ts:308`,
-  `server/src/matching/orchestrator.ts:215`,
-  `server/src/matching/orchestrator.ts:373`).
+  `server/src/matching/orchestrator.ts:224`,
+  `server/src/matching/orchestrator.ts:385`).
   If every want is tied, no call is made
   (`server/src/matching/wants.ts:231`).
   Full details are in [AI-12](#ai-12).
@@ -1281,8 +1281,8 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe [AI-10](#ai-10) | `rounds` row (queued) | Arjun | `server/src/api/dating.ts:956` |
 | The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | `server/src/matching/rounds.ts:161` |
 | The candidate list | Real people first, then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | `server/src/matching/candidates.ts:147` |
-| Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | [AI-12](#ai-12) + code | Want results kept for the cards | Arjun (on his cards) | `server/src/matching/orchestrator.ts:217` |
-| The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | `server/src/matching/orchestrator.ts:238` |
+| Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | [AI-12](#ai-12) + code | Want results kept for the cards | Arjun (on his cards) | `server/src/matching/orchestrator.ts:226` |
+| The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | `server/src/matching/orchestrator.ts:247` |
 | Each pair | The agents' exchange and the two cards (stages 7 and 8) | [AI-11](#ai-11) + code | Two card rows per pair | Each person, their own card | `server/src/matching/brief.ts:644` |
 
 ### Arjun and Meera
@@ -1304,7 +1304,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 5. **Arjun's agent walks to Meera's** on his screen, and his status reads "Your agent is
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
-   start this (`server/src/matching/orchestrator.ts:276`,
+   start this (`server/src/matching/orchestrator.ts:284`,
    `app/src/features/world/hud.tsx:141`,
    `app/src/features/world/agent-sheet.tsx:43`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
@@ -1317,11 +1317,11 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 ### 6.1 The two ways to send
 
 - **"Send my agent out"**: an open round, up to 3 people
-  (`server/src/matching/orchestrator.ts:71`).
+  (`server/src/matching/orchestrator.ts:81`).
 - **"Send my agent over"**: tap one stranger standing in the square, then this button on
   their sheet. It meets exactly that one person, if they pass every rule
   (`app/src/features/world/agent-sheet.tsx:74`,
-  `server/src/matching/orchestrator.ts:130`).
+  `server/src/matching/orchestrator.ts:140`).
   The tap itself never checks the rules (since 2026-09-28): a block, someone already met, or a
   handle the square never gave out gets "That person has moved on."; anyone else is a visit that
   counts, and the round checks the rules. Before, a rule failure answered at once and for free, so
@@ -1358,7 +1358,7 @@ moved on.", "Your agent needs a few more answers before it can go out."
 `app/src/features/world/world-screen.tsx:43`).
 Because chat and rounds share the same 10-calls-a-day allowance, a person who chatted a lot
 can be told their agent "has been out enough for today" when it never went out
-(`server/src/matching/orchestrator.ts:293`,
+(`server/src/matching/orchestrator.ts:301`,
 `server/src/metering.ts:64`).
 
 ### 6.3 The rules: who the agent may meet
@@ -1384,14 +1384,14 @@ After the SQL, three more steps remove people:
 
 - **Already met, ever.** Anyone Arjun has a pair with, in any state (declined, expired,
   introduced), is removed. A pair can exist only once
-  (`server/src/matching/orchestrator.ts:144`,
+  (`server/src/matching/orchestrator.ts:154`,
   `server/migrations/0022_rendezvous.sql:44`).
 - **Weekly exposure cap.** A real person already met by 5 other real people's rounds in the
   last 7 days is skipped. Practice profiles are never capped
   (`server/src/matching/candidates.ts:166`,
   `server/src/matching/candidates.ts:182`).
 - **Claims.** Two rounds running at once cannot claim the same pair
-  (`server/src/matching/orchestrator.ts:240`).
+  (`server/src/matching/orchestrator.ts:249`).
 
 "Ready" (`in_pool`) means: the basics answered, all five core cards answered (a "prefer not
 to say" counts), consent given, and age 18 or over. A moderator's hide or a ban forces it
@@ -1402,11 +1402,11 @@ off (`server/src/matching/profile.ts:205`,
 ### 6.4 Picking
 
 - **Order:** real people first, then the most recently active; the round looks at the
-  first 500 (`server/src/matching/orchestrator.ts:135`).
+  first 500 (`server/src/matching/orchestrator.ts:145`).
 - **The score records, it does not pick.** For the first 20 people, a preference score
   (`rank_score`) is computed and stored on each pair, for later measurement only
-  (`server/src/matching/orchestrator.ts:162`,
-  `server/src/matching/orchestrator.ts:168`). The score mixes
+  (`server/src/matching/orchestrator.ts:172`,
+  `server/src/matching/orchestrator.ts:178`). The score mixes
   how many of the other person's Really-want / Nice-to-have rules are met with how many
   tags the two share, in both directions, shrunk when little is known
   (`server/src/matching/score.ts:187`,
@@ -1415,7 +1415,7 @@ off (`server/src/matching/profile.ts:205`,
 - **The only reorder is downward:** the want check can move a candidate later, inside
   their own group (stage 5).
 - **Three are claimed**, in order, until three claims succeed (one for a visit)
-  (`server/src/matching/orchestrator.ts:231`).
+  (`server/src/matching/orchestrator.ts:240`).
 
 ### 6.5 Real people and practice profiles
 
@@ -1446,7 +1446,7 @@ off (`server/src/matching/profile.ts:205`,
 - HOW-IT-WORKS.md §4 says "Seven rules, and nothing else may exclude anybody". The code
   also excludes by readiness, "already met ever", the weekly cap and claims
   (`HOW-IT-WORKS.md:196`,
-  `server/src/matching/orchestrator.ts:157`).
+  `server/src/matching/orchestrator.ts:167`).
 - HOW-IT-WORKS.md §4 says every rule is symmetric. "Recently active" is checked on the
   candidate only (`HOW-IT-WORKS.md:204`,
   `server/src/matching/candidates.ts:111`).
@@ -1482,7 +1482,7 @@ person ever reads are the **date idea**, and code checks those.
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun's and Meera's own sentences (up to 20 each) | Loaded under each person's own database session, filtered | Code | Nothing | Nobody | `server/src/matching/orchestrator.ts:313` |
+| Arjun's and Meera's own sentences (up to 20 each) | Loaded under each person's own database session, filtered | Code | Nothing | Nobody | `server/src/matching/orchestrator.ts:323` |
 | Both lists, 12 questions, 4 reactions | The model picks questions and sentence numbers, and writes one date idea | [AI-11](#ai-11) | Nothing yet | Nobody | `server/src/matching/talk.ts:105` |
 | The model's reply | Code rebuilds the lines from the real sentences and drops anything that breaks a rule | Code | The talk, inside both cards | Each person, on their own card, on their turn | `server/src/matching/talk.ts:244` |
 | The date idea | Checked for length, person words, claims, verdict words, private topics, contact details, and made-up facts | Code | Inside both cards | Both, then in chat after both say yes | `server/src/matching/talk.ts:193` |
@@ -1606,14 +1606,14 @@ told about your person. Never invent a detail to keep it going."; a second model
 each transcript and return yes, no or not enough (`server/src/matching/rendezvous.ts:116`,
 `server/src/matching/rendezvous.ts:153`). Transcripts
 would be stored but never shown, and the verdicts gate nothing
-(`server/src/matching/orchestrator.ts:353`).
+(`server/src/matching/orchestrator.ts:365`).
 Details: [AI-13](#ai-13).
 
 ### Docs vs code
 
 - HOW-IT-WORKS.md calls the talk "the only model call in a round". The want checks are
   model calls in the same round (`HOW-IT-WORKS.md:27`,
-  `server/src/matching/orchestrator.ts:373`).
+  `server/src/matching/orchestrator.ts:385`).
 - HOW-IT-WORKS.md §6 describes "Five runs per pair". That is only true if the switch is set
   to 5; the code default is 0 (`HOW-IT-WORKS.md:273`).
 - HOW-IT-WORKS.md §7 says the model phase does "nothing by default". The talk and want checks
@@ -1760,7 +1760,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 | Cards are written | A real person facing a practice profile decides first; between two real people, the one with more open cards (a tie goes to the lower account id). The first mover's phone is woken | Code | `rendezvous.first_mover`, `answer_by` = now + 3 days | Nobody sees the rule's result directly | `server/src/matching/brief.ts:797` |
 | First mover taps "Yes, share my profile with them" | Their photos, first name and profile open to the other person; the other gets a fresh 3 days | Code | Their yes on their card row | The other person, from then on | `app/src/features/matches/turn.ts:35` |
 | The other taps "Yes, share mine back" | Their profile opens to the first mover; the pair is introduced; chat opens | Code | Pair `introduced` | Both | `app/src/features/matches/turn.ts:44` |
-| Either says no ("Not this one", "Not for me") | The pair ends at once, silently; anything shared closes | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | `server/src/matching/orchestrator.ts:576` |
+| Either says no ("Not this one", "Not for me") | The pair ends at once, silently; anything shared closes | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | `server/src/matching/orchestrator.ts:588` |
 | Nobody answers in 3 days | The pair expires; anything shared closes | Code (a timer every 10 minutes) | Pair `expired` | Nobody is told | `server/src/matching/expiry.ts:26` |
 | An answer out of turn | Refused by the server | Code | Nothing | — | `server/src/api/dating.ts:879` |
 
@@ -1784,7 +1784,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
   in `decide()` repeats the same test, so no caller can answer out of turn
   (`server/src/api/dating.ts:877`,
   `server/src/api/dating.ts:879`,
-  `server/src/matching/orchestrator.ts:566`).
+  `server/src/matching/orchestrator.ts:578`).
   Two old open pairs have no first mover recorded; either side may go first there.
 
 ### 9.2 What each person sees, step by step
@@ -1880,11 +1880,11 @@ with them." and "Only people you share your profile with"
 
 - **One tap, final**, no confirmation: "Not this one" on the card or "Not for me" on the
   profile screen (`app/src/features/matches/reveal-screen.tsx:152`).
-  It cannot be undone (`server/src/matching/orchestrator.ts:562`).
+  It cannot be undone (`server/src/matching/orchestrator.ts:574`).
 - **The person saying no** sees "Done" / "They are not told anything. Your agent keeps
   looking." (`app/src/features/matches/reveal-screen.tsx:87`).
 - **The other person** is sent nothing
-  (`server/src/matching/orchestrator.ts:579`),
+  (`server/src/matching/orchestrator.ts:591`),
   but their card disappears from Matches at once, because both people's lists hide ended pairs
   (`server/src/api/dating.ts:589`).
 - **Whatever was shared closes:** after a no, the profile screen answers "not found" and the photos
@@ -1899,9 +1899,9 @@ Each moment that asks something of a person wakes their phone, whether or not th
 
 | Moment | Who is woken | What the lock screen says | Code |
 |---|---|---|---|
-| New card, you decide first | The first mover | "Your agent met someone" / "You decide first. The card is waiting." | `server/src/matching/orchestrator.ts:425` |
-| The first mover shared | The second person | "They shared their profile with you" / "Your turn: see who it is." | `server/src/matching/orchestrator.ts:621` |
-| The second yes | The first mover (not the person who just tapped) | "You can talk now" / "They shared theirs back. Say hello." | `server/src/matching/orchestrator.ts:608` |
+| New card, you decide first | The first mover | "Your agent met someone" / "You decide first. The card is waiting." | `server/src/matching/orchestrator.ts:437` |
+| The first mover shared | The second person | "They shared their profile with you" / "Your turn: see who it is." | `server/src/matching/orchestrator.ts:633` |
+| The second yes | The first mover (not the person who just tapped) | "You can talk now" / "They shared theirs back. Say hello." | `server/src/matching/orchestrator.ts:620` |
 | A card fades within a day | The person whose turn it is, once | "A card fades today" / "Answer it before it is gone." | `server/src/push/index.ts:78` |
 
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
@@ -1919,7 +1919,7 @@ tap opens the card, their profile or the chat
 - **The clock:** 3 days from when the cards are written, for the first mover; a fresh 3 days
   from the first mover's yes, for the second
   (`server/src/matching/expiry.ts:18`,
-  `server/src/matching/orchestrator.ts:614`).
+  `server/src/matching/orchestrator.ts:626`).
 - **Fading:** with 1 to 2 days left the card dims and says "Fades tomorrow if you don't
   answer."; under a day, "Fades today if you don't answer."; only the person whose turn it is
   sees this (`app/src/features/matches/fade.ts:16`). Once
@@ -1963,7 +1963,7 @@ words are the date idea, written earlier (stage 7).
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| The second yes | Pair becomes `introduced`; chat opens | Code | `rendezvous.introduced_at` | Both | `server/src/matching/orchestrator.ts:592` |
+| The second yes | Pair becomes `introduced`; chat opens | Code | `rendezvous.introduced_at` | Both | `server/src/matching/orchestrator.ts:604` |
 | A message | Sent over a live connection; delivered, read receipts | Code | `messages` row | The two people | `server/migrations/0025_messaging_fixes.sql:37` |
 | "Propose this date" | Sends "How about this: <idea>?" as the person's own message, once per chat | Code | `messages` row (kind `date_idea`) | The two people | `server/src/api/date-idea.ts:31` |
 | Two quiet days | A one-time nudge for each person | Code | `nudged_at` on each person's card row | Each person, once | `app/src/features/dm/date-idea.ts:17` |
@@ -1981,7 +1981,7 @@ words are the date idea, written earlier (stage 7).
 2. **Meera gets no moment.** Her waiting card disappears and "Arjun" appears in Chats with
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    (`server/migrations/0073_consent_first_reveal.sql:42`,
-   `server/src/matching/orchestrator.ts:605`,
+   `server/src/matching/orchestrator.ts:617`,
    `app/src/features/dm/conversations-screen.tsx:94`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
@@ -2467,6 +2467,9 @@ $0.02; not measured, because no round has run since the talk was added.
 
 - **When:** only if `RENDEZVOUS_RUNS` is above 0; the code default is 0 and it is not set
   (`server/src/matching/rendezvous.ts:75`).
+- **In:** its own person's public facts and style note, and the other person's public tags. The style note is read
+  as its person, never through the round's role (since 2026-09-29)
+  (`server/src/matching/orchestrator.ts:77`).
 - **Talker:** `chat`, 200 tokens a message: "You represent ONE person, talking to an agent that represents somebody
   else." "Only say things you were actually told about your person. Never invent a detail to keep it going."
   (`server/src/matching/rendezvous.ts:110`).
@@ -2554,15 +2557,15 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | It does not… | Holds? | Evidence | Exception |
 |---|---|---|---|
 | **Train or fine-tune any model.** Every model is a stock vendor model. | Yes | `server/src/llm/caps.ts:87` | — |
-| **Predict chemistry or compatibility.** No model judges the pair; a preference score is recorded but does not pick who is met; the date idea is refused if it uses words like "match", "compatible" or "chemistry". | Mostly | `server/src/matching/orchestrator.ts:168`, `server/src/matching/talk.ts:131` | A model does judge each **want** (met / not met), which moves people later. A switched-off option ([AI-14](#ai-14)) would store a hidden "would want a second evening" probability. |
+| **Predict chemistry or compatibility.** No model judges the pair; a preference score is recorded but does not pick who is met; the date idea is refused if it uses words like "match", "compatible" or "chemistry". | Mostly | `server/src/matching/orchestrator.ts:178`, `server/src/matching/talk.ts:131` | A model does judge each **want** (met / not met), which moves people later. A switched-off option ([AI-14](#ai-14)) would store a hidden "would want a second evening" probability. |
 | **Show a score or percentage** to a person. The card query does not even select the score columns. | Yes | `server/src/api/dating.ts:572` | Counts appear: "Confirmed by N people who met them", rounded pool sizes, the reviewer's Numbers page. |
-| **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:854`, `server/src/matching/orchestrator.ts:82` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:367`). |
+| **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:854`, `server/src/matching/orchestrator.ts:92` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:367`). |
 | **Let a model write what others read about you.** Cards are written by code from your own words. | Mostly | `server/src/matching/brief.ts:4` | The date idea is model-written (and checked by code) (`server/src/matching/talk.ts:28`). |
 | **Judge looks.** No photo is ever sent to a model; matching never uses photos. | Yes | `server/src/llm/port.ts:29`, `app/src/features/matches/reveal-screen.tsx:259` | — |
 | **Show your photos or first name to anyone you have not said yes to.** The photo rule and the profile screen both test your own yes in that pair. | Yes | `server/migrations/0073_consent_first_reveal.sql:42`, `server/src/api/dating.ts:737` | Your 3D character, age, neighbourhood and shareable sentences are on the words card before any yes. |
 | **Let strangers message you.** A message can only go to an introduced pair. | Yes | `server/migrations/0024_messages.sql:12` | — |
-| **Tell anyone they were turned down.** Nothing is sent on a no. | In words, yes | `server/src/matching/orchestrator.ts:579` | The other person's card disappears early, which can give it away (Known gaps). |
-| **Show you the other person's wants or rules.** Each card lists only its reader's wants. | Yes | `server/src/matching/orchestrator.ts:386` | — |
+| **Tell anyone they were turned down.** Nothing is sent on a no. | In words, yes | `server/src/matching/orchestrator.ts:591` | The other person's card disappears early, which can give it away (Known gaps). |
+| **Show you the other person's wants or rules.** Each card lists only its reader's wants. | Yes | `server/src/matching/orchestrator.ts:398` | — |
 | **Hide anyone for a "Really want" or "Nice to have".** Only must-haves exclude. | Yes | `server/src/matching/candidates.ts:88` | — |
 | **Match the same two people twice.** | Yes | `server/migrations/0022_rendezvous.sql:44` | They can still appear to each other as strangers in the town. |
 | **Store your phone number** in the database. Only a keyed hash is kept. | Yes | `server/migrations/0045_phone_identity.sql:22` | In development, the console SMS sender writes full numbers to the server log. |
@@ -2627,8 +2630,10 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
     again by everybody) and the Settings line now say what the code does
     (`app/src/features/settings/settings-screen.tsx:299`).
-9. **Latent:** the matchmaker role can read every profile summary, which is written from all facts including private
-    ones; nothing reads it in a round today (`server/migrations/0028_matchmaker.sql:51`).
+9. **Closed on 2026-09-29: the matchmaker and the profile summaries.** The round's role could read every profile
+    summary, written from all facts including private ones. It now has no access to that table at all; the one thing
+    a round took from it -- a person's style note, for the agent conversations -- is read as that person, and only
+    when the conversations are on (`server/migrations/0081_matchmaker_reads_no_summary.sql:28`).
 10. **Closed on 2026-09-29: the AI notice.** It names the embedding provider as well as the chat ones, and carries no
     link to a page the server does not serve (`server/src/api/config.ts:51`).
 

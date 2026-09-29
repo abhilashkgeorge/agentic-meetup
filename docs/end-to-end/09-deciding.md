@@ -13,7 +13,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 | Cards are written | A real person facing a practice profile decides first; between two real people, the one with more open cards (a tie goes to the lower account id). The first mover's phone is woken | Code | `rendezvous.first_mover`, `answer_by` = now + 3 days | Nobody sees the rule's result directly | [server/src/matching/brief.ts:797] `if (practice.has(a) !== practice.has(b)) return practice.has(a) ? b : a;` |
 | First mover taps "Yes, share my profile with them" | Their photos, first name and profile open to the other person; the other gets a fresh 3 days | Code | Their yes on their card row | The other person, from then on | [app/src/features/matches/turn.ts:35] `shareFirst: 'Yes, share my profile with them',` |
 | The other taps "Yes, share mine back" | Their profile opens to the first mover; the pair is introduced; chat opens | Code | Pair `introduced` | Both | [app/src/features/matches/turn.ts:44] `shareBack: 'Yes, share mine back',` |
-| Either says no ("Not this one", "Not for me") | The pair ends at once, silently; anything shared closes | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | [server/src/matching/orchestrator.ts:576] `UPDATE rendezvous SET status = 'lapsed' WHERE id = $1 AND status <> 'introduced'` |
+| Either says no ("Not this one", "Not for me") | The pair ends at once, silently; anything shared closes | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | [server/src/matching/orchestrator.ts:588] `UPDATE rendezvous SET status = 'lapsed' WHERE id = $1 AND status <> 'introduced'` |
 | Nobody answers in 3 days | The pair expires; anything shared closes | Code (a timer every 10 minutes) | Pair `expired` | Nobody is told | [server/src/matching/expiry.ts:26] `UPDATE rendezvous SET status = 'expired', expired_at = now()` |
 | An answer out of turn | Refused by the server | Code | Nothing | — | [server/src/api/dating.ts:879] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);` |
 
@@ -37,7 +37,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
   in `decide()` repeats the same test, so no caller can answer out of turn
   ([server/src/api/dating.ts:877] `if (seat.status !== 'decided' || seat.mine !== null) return c.json({ error: 'already_decided' }, 409);`,
   [server/src/api/dating.ts:879] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);`,
-  [server/src/matching/orchestrator.ts:566] `AND (r.first_mover = $2 OR r.first_mover IS NULL`).
+  [server/src/matching/orchestrator.ts:578] `AND (r.first_mover = $2 OR r.first_mover IS NULL`).
   Two old open pairs have no first mover recorded; either side may go first there.
 
 ### 9.2 What each person sees, step by step
@@ -133,11 +133,11 @@ with them." and "Only people you share your profile with"
 
 - **One tap, final**, no confirmation: "Not this one" on the card or "Not for me" on the
   profile screen ([app/src/features/matches/reveal-screen.tsx:152] `<Button label={WORDS.notForMe} disabled={busy}`).
-  It cannot be undone ([server/src/matching/orchestrator.ts:562] `WHERE rendezvous_id = $1 AND for_user = $2 AND human_says_yes IS NULL`).
+  It cannot be undone ([server/src/matching/orchestrator.ts:574] `WHERE rendezvous_id = $1 AND for_user = $2 AND human_says_yes IS NULL`).
 - **The person saying no** sees "Done" / "They are not told anything. Your agent keeps
   looking." ([app/src/features/matches/reveal-screen.tsx:87] `They are not told anything. Your agent keeps looking.`).
 - **The other person** is sent nothing
-  ([server/src/matching/orchestrator.ts:579] `// NOTHING is sent to anybody. The town on the other phone keeps showing`),
+  ([server/src/matching/orchestrator.ts:591] `// NOTHING is sent to anybody. The town on the other phone keeps showing`),
   but their card disappears from Matches at once, because both people's lists hide ended pairs
   ([server/src/api/dating.ts:589] `AND r.status NOT IN ('lapsed', 'expired')`).
 - **Whatever was shared closes:** after a no, the profile screen answers "not found" and the photos
@@ -152,9 +152,9 @@ Each moment that asks something of a person wakes their phone, whether or not th
 
 | Moment | Who is woken | What the lock screen says | Code |
 |---|---|---|---|
-| New card, you decide first | The first mover | "Your agent met someone" / "You decide first. The card is waiting." | [server/src/matching/orchestrator.ts:425] `if (firstMover) void wake(firstMover, 'turn', pair.rendezvousId);` |
-| The first mover shared | The second person | "They shared their profile with you" / "Your turn: see who it is." | [server/src/matching/orchestrator.ts:621] `wakes.push([other, 'shared']);` |
-| The second yes | The first mover (not the person who just tapped) | "You can talk now" / "They shared theirs back. Say hello." | [server/src/matching/orchestrator.ts:608] `wakes.push([other, 'introduced']);` |
+| New card, you decide first | The first mover | "Your agent met someone" / "You decide first. The card is waiting." | [server/src/matching/orchestrator.ts:437] `if (firstMover) void wake(firstMover, 'turn', pair.rendezvousId);` |
+| The first mover shared | The second person | "They shared their profile with you" / "Your turn: see who it is." | [server/src/matching/orchestrator.ts:633] `wakes.push([other, 'shared']);` |
+| The second yes | The first mover (not the person who just tapped) | "You can talk now" / "They shared theirs back. Say hello." | [server/src/matching/orchestrator.ts:620] `wakes.push([other, 'introduced']);` |
 | A card fades within a day | The person whose turn it is, once | "A card fades today" / "Answer it before it is gone." | [server/src/push/index.ts:78] `export async function warnFading(): Promise<number> {` |
 
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
@@ -172,7 +172,7 @@ tap opens the card, their profile or the chat
 - **The clock:** 3 days from when the cards are written, for the first mover; a fresh 3 days
   from the first mover's yes, for the second
   ([server/src/matching/expiry.ts:18] `export const ANSWER_DAYS = 3;`,
-  [server/src/matching/orchestrator.ts:614] `UPDATE rendezvous SET answer_by = ${ANSWER_BY} WHERE id = $1 AND status = 'decided'`).
+  [server/src/matching/orchestrator.ts:626] `UPDATE rendezvous SET answer_by = ${ANSWER_BY} WHERE id = $1 AND status = 'decided'`).
 - **Fading:** with 1 to 2 days left the card dims and says "Fades tomorrow if you don't
   answer."; under a day, "Fades today if you don't answer."; only the person whose turn it is
   sees this ([app/src/features/matches/fade.ts:16] `"Fades today if you don't answer."`). Once

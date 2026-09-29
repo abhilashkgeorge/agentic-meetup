@@ -12,8 +12,8 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe {AI:sheet} | `rounds` row (queued) | Arjun | [server/src/api/dating.ts:956] `.post('/v1/matches/run', async (c) => {` |
 | The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | [server/src/matching/rounds.ts:161] `ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED)` |
 | The candidate list | Real people first, then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | [server/src/matching/candidates.ts:147] `ORDER BY b.is_synthetic ASC, b.last_active_at DESC` |
-| Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | {AI:wants} + code | Want results kept for the cards | Arjun (on his cards) | [server/src/matching/orchestrator.ts:217] `const order = pre && !target ? demote(shortlist.order, notMetCounts(pre.byId)) : shortlist.order;` |
-| The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | [server/src/matching/orchestrator.ts:238] `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, rank_score)` |
+| Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | {AI:wants} + code | Want results kept for the cards | Arjun (on his cards) | [server/src/matching/orchestrator.ts:226] `const order = pre && !target ? demote(shortlist.order, notMetCounts(pre.byId)) : shortlist.order;` |
+| The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | [server/src/matching/orchestrator.ts:247] `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, rank_score)` |
 | Each pair | The agents' exchange and the two cards (stages 7 and 8) | {AI:talk} + code | Two card rows per pair | Each person, their own card | [server/src/matching/brief.ts:644] `(rendezvous_id, for_user, headline, overlap_quotes, concern, questions)` |
 
 ### Arjun and Meera
@@ -35,7 +35,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 5. **Arjun's agent walks to Meera's** on his screen, and his status reads "Your agent is
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
-   start this ([server/src/matching/orchestrator.ts:276] `type: 'round.met', roundId: null, rendezvousId: pair.rendezvousId,`,
+   start this ([server/src/matching/orchestrator.ts:284] `type: 'round.met', roundId: null, rendezvousId: pair.rendezvousId,`,
    [app/src/features/world/hud.tsx:141] `Your agent is out — meeting ${talking} ${talking === 1 ? 'person' : 'people'}`,
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
@@ -48,11 +48,11 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 ### 6.1 The two ways to send
 
 - **"Send my agent out"**: an open round, up to 3 people
-  ([server/src/matching/orchestrator.ts:71] `Number(process.env.ROUND_CANDIDATES ?? 3)`).
+  ([server/src/matching/orchestrator.ts:81] `Number(process.env.ROUND_CANDIDATES ?? 3)`).
 - **"Send my agent over"**: tap one stranger standing in the square, then this button on
   their sheet. It meets exactly that one person, if they pass every rule
   ([app/src/features/world/agent-sheet.tsx:74] `visits.left > 0 ? 'Send my agent over' : 'No visits left today'`,
-  [server/src/matching/orchestrator.ts:130] `if (!(await isCandidate(c, userId, target))) {`).
+  [server/src/matching/orchestrator.ts:140] `if (!(await isCandidate(c, userId, target))) {`).
   The tap itself never checks the rules (since 2026-09-28): a block, someone already met, or a
   handle the square never gave out gets "That person has moved on."; anyone else is a visit that
   counts, and the round checks the rules. Before, a rule failure answered at once and for free, so
@@ -89,7 +89,7 @@ moved on.", "Your agent needs a few more answers before it can go out."
 [app/src/features/world/world-screen.tsx:43] `not_ready: 'Your agent needs a few more answers before it can go out.',`).
 Because chat and rounds share the same 10-calls-a-day allowance, a person who chatted a lot
 can be told their agent "has been out enough for today" when it never went out
-([server/src/matching/orchestrator.ts:293] `const outcomes = await metered(spender, 'rendezvous', async () => {`,
+([server/src/matching/orchestrator.ts:301] `const outcomes = await metered(spender, 'rendezvous', async () => {`,
 [server/src/metering.ts:64] `if (row.turn_cap !== null && row.turns_used >= row.turn_cap) {`).
 
 ### 6.3 The rules: who the agent may meet
@@ -115,14 +115,14 @@ After the SQL, three more steps remove people:
 
 - **Already met, ever.** Anyone Arjun has a pair with, in any state (declined, expired,
   introduced), is removed. A pair can exist only once
-  ([server/src/matching/orchestrator.ts:144] `FROM rendezvous WHERE user_a = $1 OR user_b = $1`,
+  ([server/src/matching/orchestrator.ts:154] `FROM rendezvous WHERE user_a = $1 OR user_b = $1`,
   [server/migrations/0022_rendezvous.sql:44] `CREATE UNIQUE INDEX rendezvous_pair ON rendezvous (user_a, user_b);`).
 - **Weekly exposure cap.** A real person already met by 5 other real people's rounds in the
   last 7 days is skipped. Practice profiles are never capped
   ([server/src/matching/candidates.ts:166] `Number(process.env.WEEKLY_REAL_EXPOSURE ?? 5)`,
   [server/src/matching/candidates.ts:182] `WHERE r.requested_at > now() - interval '7 days'`).
 - **Claims.** Two rounds running at once cannot claim the same pair
-  ([server/src/matching/orchestrator.ts:240] `ON CONFLICT (user_a, user_b) DO NOTHING`).
+  ([server/src/matching/orchestrator.ts:249] `ON CONFLICT (user_a, user_b) DO NOTHING`).
 
 "Ready" (`in_pool`) means: the basics answered, all five core cards answered (a "prefer not
 to say" counts), consent given, and age 18 or over. A moderator's hide or a ban forces it
@@ -133,11 +133,11 @@ off ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');
 ### 6.4 Picking
 
 - **Order:** real people first, then the most recently active; the round looks at the
-  first 500 ([server/src/matching/orchestrator.ts:135] `ids = await candidateIds(c, userId, 500);`).
+  first 500 ([server/src/matching/orchestrator.ts:145] `ids = await candidateIds(c, userId, 500);`).
 - **The score records, it does not pick.** For the first 20 people, a preference score
   (`rank_score`) is computed and stored on each pair, for later measurement only
-  ([server/src/matching/orchestrator.ts:162] `// PICKED IN THE CANDIDATE QUERY'S ORDER: real people first, then the most recently`,
-  [server/src/matching/orchestrator.ts:168] `it just no longer decides who is met.`). The score mixes
+  ([server/src/matching/orchestrator.ts:172] `// PICKED IN THE CANDIDATE QUERY'S ORDER: real people first, then the most recently`,
+  [server/src/matching/orchestrator.ts:178] `it just no longer decides who is met.`). The score mixes
   how many of the other person's Really-want / Nice-to-have rules are met with how many
   tags the two share, in both directions, shrunk when little is known
   ([server/src/matching/score.ts:187] `const forwardTotal = 0.6875 * forward.score + 0.3125 * overlap;`,
@@ -146,7 +146,7 @@ off ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');
 - **The only reorder is downward:** the want check can move a candidate later, inside
   their own group (stage 5).
 - **Three are claimed**, in order, until three claims succeed (one for a visit)
-  ([server/src/matching/orchestrator.ts:231] `const k = target ? 1 : CANDIDATES_PER_ROUND;`).
+  ([server/src/matching/orchestrator.ts:240] `const k = target ? 1 : CANDIDATES_PER_ROUND;`).
 
 ### 6.5 Real people and practice profiles
 
@@ -177,7 +177,7 @@ off ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');
 - HOW-IT-WORKS.md §4 says "Seven rules, and nothing else may exclude anybody". The code
   also excludes by readiness, "already met ever", the weekly cap and claims
   ([HOW-IT-WORKS.md:196] `**Seven rules, and nothing else may exclude anybody:**`,
-  [server/src/matching/orchestrator.ts:157] `const pickable = fresh.filter((id) => !capped.has(id));`).
+  [server/src/matching/orchestrator.ts:167] `const pickable = fresh.filter((id) => !capped.has(id));`).
 - HOW-IT-WORKS.md §4 says every rule is symmetric. "Recently active" is checked on the
   candidate only ([HOW-IT-WORKS.md:204] `| distance | the **shorter** of the two willingnesses |`,
   [server/src/matching/candidates.ts:111] `AND (b.is_synthetic OR b.last_active_at > now() - interval '60 days')`).

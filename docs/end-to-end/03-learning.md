@@ -150,9 +150,9 @@ Two configured model tasks, `reflect` and `canon`, have no caller: no reflection
 - a **row** of matching data (age, gender, who they seek, place, intent, tags, card answers) used by SQL
   ([server/src/matching/candidates.ts:34] `FROM match_profile a, match_profile b`);
 - a **list of the person's own shareable sentences**, loaded under their own database session
-  ([server/src/matching/orchestrator.ts:313] `loadQuotes(plan.a, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`);
+  ([server/src/matching/orchestrator.ts:323] `loadQuotes(plan.a, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`);
 - an **answer sheet** built earlier: 12 fixed questions, each pointing at one of those sentences
-  ([server/src/matching/orchestrator.ts:303] `const sheets = await matchmakerSession((c) => readSheets(c, [`);
+  ([server/src/matching/orchestrator.ts:313] `const sheets = await matchmakerSession((c) => readSheets(c, [`);
 - the person's **wants** (stage 5);
 - and one **model call per pair** that may only point at those sentences and write a date idea
   ({AI:talk}).
