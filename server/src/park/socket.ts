@@ -27,7 +27,7 @@ import { award, balance, type PointReason } from '../points/ledger.js';
 import { ParkPairs } from './pairs.js';
 import { ParkQuests, type Done } from './quests.js';
 import { ParkRoom } from './room.js';
-import { PARK_ROOM, benchRoom, voiceBannedUntil, voiceOn, voicePass } from './voice.js';
+import { PARK_ROOM, benchRoom, evict, voiceBannedUntil, voiceOn, voicePass } from './voice.js';
 
 export const pairs = new ParkPairs();
 export const park = new ParkRoom(agentRef, Date.now, pairs);
@@ -100,7 +100,7 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       if (!msg.yes) { hub.pushTo(from, { type: 'park.finding', status: 'declined' } satisfies ServerEvent); return; }
       const asker = park.members.get(from);
       const asked = park.members.get(me);
-      if (!asker || !asked) { endPair(me); return; }
+      if (!asker || !asked) { await endPair(me); return; }
       // The one who asked rides over to the one who said yes (the app's car).
       hub.pushTo(from, { type: 'park.paired', ref: agentRef(from, me), x: asked.x, z: asked.z, asked: false } satisfies ServerEvent);
       send(ws, { type: 'park.paired', ref: agentRef(me, from), x: asker.x, z: asker.z, asked: true });
@@ -116,7 +116,7 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       if (!take(`park-pair:${me}`, PAIR_LIMIT).ok) return;
       const was = pairs.withdraw(me);
       if (was) { hub.pushTo(was, { type: 'park.unasked' } satisfies ServerEvent); send(ws, { type: 'park.finding', status: 'gone' }); }
-      endPair(me);
+      await endPair(me);
       return;
     }
     case 'park.sit': {
@@ -262,14 +262,37 @@ function unpair(userId: string): void {
   if (r.wasAskedBy) hub.pushTo(r.wasAskedBy, { type: 'park.finding', status: 'gone' } satisfies ServerEvent);
 }
 
-function endPair(userId: string): void {
+/**
+ * Two people kept apart from now on: a block or a report, in the park or anywhere else
+ * while they are both here (api/park.ts, api/messages.ts). Everything between them ends
+ * at once -- an invitation either way (it just goes, as one that timed out), their chat,
+ * their bench -- and neither sees the other in the park again (room.ts apart), so neither
+ * is given the other's voice id. Sitting, the voice server also puts them both out of the
+ * bench's room: a phone cannot talk its way back in with the pass it had.
+ */
+export async function separate(a: string, b: string): Promise<void> {
+  park.keepApart(a, b);
+  for (const [from, to] of [[a, b], [b, a]] as const) {
+    if (pairs.asking(from) !== to) continue;
+    pairs.withdraw(from);
+    hub.pushTo(to, { type: 'park.unasked' } satisfies ServerEvent);
+    hub.pushTo(from, { type: 'park.finding', status: 'no_answer' } satisfies ServerEvent);
+  }
+  if (pairs.partnerOf(a) !== b) return;
+  const sat = pairs.benchOf(a) != null;
+  const voices = [park.members.get(a)?.voice, park.members.get(b)?.voice];
+  await endPair(a);
+  if (sat) await Promise.all(voices.filter((v): v is string => !!v).map((v) => evict(benchRoom(a, b), v)));
+}
+
+async function endPair(userId: string): Promise<void> {
   const wasBenched = pairs.benchOf(userId) != null;
   const other = pairs.part(userId);
   if (!other) return;
   quests.parted(userId, other);
-  // Off the bench: back to the park's room, both of them.
-  if (wasBenched) { void refreshVoice(userId); void refreshVoice(other); }
   for (const u of [userId, other]) hub.pushTo(u, { type: 'park.parted' } satisfies ServerEvent);
+  // Off the bench: back to the park's room, both of them.
+  if (wasBenched) await Promise.all([refreshVoice(userId), refreshVoice(other)]);
 }
 
 /**

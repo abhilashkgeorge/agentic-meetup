@@ -89,6 +89,11 @@ export class ParkPairs {
     return from;
   }
 
+  /** Who `from` is asking now, if anybody. */
+  asking(from: string): string | null {
+    return this.asks.get(from)?.to ?? null;
+  }
+
   /** `from` stops asking. Returns who they were asking. */
   withdraw(from: string): string | null {
     const a = this.asks.get(from);

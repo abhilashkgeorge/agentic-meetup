@@ -33,14 +33,17 @@ details), and **database roles** that limit what each part of the server can rea
   hear only each other; people near see that they sit, never what they say. For "Sit and talk" the
   server counts how many things each says there -- a number, never the words
   ([server/src/park/quests.ts:90] `said(userId: string, partner: string | null, onBench: boolean): Done[] {`,
-  [server/src/park/socket.ts:300] `const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];`).
+  [server/src/park/socket.ts:323] `const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];`).
   Voice (since 2026-09-29) keeps the same rule. Each phone listens only to the people the server says are
   within earshot, and lets only them listen to it -- and the voice server holds a speaker to that list,
   whatever a listener's phone asks for; a bench's two have a room of their own that nobody else is given a
   pass to. The voice server knows each person by an id made up for that visit, never the user id, and
   nothing is recorded, on the phone, the server or the voice server. Mutes stay on the phone. A report
-  marked "said out loud" counts towards a mic ban: three different people within 24 hours
-  ([server/src/park/room.ts:140] `const heard = me && m.voice && !benched(viewerId) && !benched(m.userId)`,
+  marked "said out loud" counts towards a mic ban: three different people within 24 hours. A block or a
+  report -- in the park, or from a card or a chat while both are there -- ends whatever is between the two
+  at once: an invitation either way, their chat, their bench, and the voice server puts both out of the
+  bench's room ([server/src/park/room.ts:140] `const heard = me && m.voice && !benched(viewerId) && !benched(m.userId)`,
+  [server/src/park/socket.ts:273] `export async function separate(a: string, b: string): Promise<void> {`,
   [server/src/park/voice.ts:82] `at.addGrant({ roomJoin: true, room, canPublish: canTalk, canSubscribe: true, canPublishData: false });`,
   [server/src/park/socket.ts:172] `park.enter(ctx.userId, look, apart, undefined, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'));`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own

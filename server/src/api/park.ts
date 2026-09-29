@@ -14,7 +14,7 @@ import { tenantSession } from '../db/client.js';
 import * as messages from '../messaging/store.js';
 import { log } from '../log.js';
 import { REPORT_REASONS } from './messages.js';
-import { park, pairs, refreshVoice } from '../park/socket.js';
+import { park, pairs, refreshVoice, separate } from '../park/socket.js';
 import { PARK_ROOM, VOICE_REPORT, benchRoom, silence, voiceBannedUntil } from '../park/voice.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
@@ -37,7 +37,7 @@ export const parkRoutes = new Hono()
     const other = park.resolve(ctx.userId, body.data.ref);
     if (!other) return c.json({ error: 'not_here' }, 404);
     await tenantSession(ctx, (db) => messages.block(db, ctx.userId, other));
-    park.keepApart(ctx.userId, other);
+    await separate(ctx.userId, other);
     log.info({ userId: ctx.userId }, 'park: blocked someone');
     return c.json({ ok: true });
   })
@@ -59,7 +59,7 @@ export const parkRoutes = new Hono()
       reporterId: ctx.userId, reportedId: other, rendezvousId: null,
       reason: body.data.reason, detail: `${body.data.voice ? VOICE_REPORT : 'In the park.'} ${body.data.detail}`,
     }));
-    park.keepApart(ctx.userId, other);
+    await separate(ctx.userId, other);
     log.warn({ reason: body.data.reason, voice: body.data.voice }, 'park: report filed');
     // Enough people reporting somebody's voice and their mic goes, now: taken on the
     // voice server at once, and their next pass says so.

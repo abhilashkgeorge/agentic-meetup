@@ -13,6 +13,7 @@ import { lookOf, looksFor } from '../looks/store.js';
 import type { Look } from '@clone/shared';
 import * as messages from '../messaging/store.js';
 import { log } from '../log.js';
+import { separate } from '../park/socket.js';
 import { QUIET_DUE } from './date-idea.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
@@ -242,6 +243,8 @@ export const messageRoutes = new Hono()
     if (!other) return c.json({ error: 'not found' }, 404);
 
     await tenantSession(ctx, (db) => messages.block(db, ctx.userId, other));
+    // In the park together right now: apart there too, and whatever was between them ends.
+    await separate(ctx.userId, other);
     log.info({ userId: ctx.userId }, 'blocked someone');
     return c.json({ ok: true });
   })
@@ -280,6 +283,7 @@ export const messageRoutes = new Hono()
       }),
     );
 
+    await separate(ctx.userId, other);
     log.warn({ reason: body.data.reason }, 'report filed');
     return c.json({
       ok: true,

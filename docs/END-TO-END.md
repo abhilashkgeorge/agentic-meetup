@@ -710,14 +710,17 @@ details), and **database roles** that limit what each part of the server can rea
   hear only each other; people near see that they sit, never what they say. For "Sit and talk" the
   server counts how many things each says there -- a number, never the words
   (`server/src/park/quests.ts:90`,
-  `server/src/park/socket.ts:300`).
+  `server/src/park/socket.ts:323`).
   Voice (since 2026-09-29) keeps the same rule. Each phone listens only to the people the server says are
   within earshot, and lets only them listen to it -- and the voice server holds a speaker to that list,
   whatever a listener's phone asks for; a bench's two have a room of their own that nobody else is given a
   pass to. The voice server knows each person by an id made up for that visit, never the user id, and
   nothing is recorded, on the phone, the server or the voice server. Mutes stay on the phone. A report
-  marked "said out loud" counts towards a mic ban: three different people within 24 hours
-  (`server/src/park/room.ts:140`,
+  marked "said out loud" counts towards a mic ban: three different people within 24 hours. A block or a
+  report -- in the park, or from a card or a chat while both are there -- ends whatever is between the two
+  at once: an invitation either way, their chat, their bench, and the voice server puts both out of the
+  bench's room (`server/src/park/room.ts:140`,
+  `server/src/park/socket.ts:273`,
   `server/src/park/voice.ts:82`,
   `server/src/park/socket.ts:172`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own

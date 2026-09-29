@@ -109,6 +109,21 @@ function apiUrl(): string {
 }
 
 /**
+ * Put somebody out of a room now, without waiting for their phone: two people on a bench
+ * who are kept apart from now on (a block, a report) leave its room at once, and the pass
+ * each still holds for it opens it to nobody but the other, who is gone too.
+ */
+export async function evict(room: string, identity: string): Promise<void> {
+  if (!voiceOn()) return;
+  try {
+    const rooms = new RoomServiceClient(apiUrl(), env.LIVEKIT_API_KEY!, env.LIVEKIT_API_SECRET!);
+    await rooms.removeParticipant(room, identity);
+  } catch (err) {
+    log.info({ err: (err as Error).message }, 'park voice: nobody to put out');
+  }
+}
+
+/**
  * Take somebody's mic in a room now, without waiting for their phone: a ban takes
  * effect at once. They can still hear. Nothing to do if they are not in it.
  */
