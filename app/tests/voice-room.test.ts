@@ -59,7 +59,7 @@ vi.mock('livekit-client', () => ({ Room: fake.FakeRoom, RoomEvent: fake.RoomEven
 vi.mock('../src/lib/socket', () => ({ parkVoiceAgain: () => { fake.askAgain.calls++; return fake.askAgain.ok; } }));
 vi.mock('../src/lib/storage', () => ({ getParkMuted: async () => [], setParkMuted: async () => {} }));
 
-const { RETRY_MS, startVoice } = await import('../src/features/world/voice-room');
+const { RETRY_MS, VOICE_UNREACHABLE, startVoice } = await import('../src/features/world/voice-room');
 const { useParkVoice } = await import('../src/features/world/park-voice');
 
 const sim = { get: () => ({ x: 0, z: 0 }) } as never;
@@ -151,5 +151,23 @@ describe('voice after the voice server was lost', () => {
     stop();
     await vi.advanceTimersByTimeAsync(120_000);
     expect(fake.askAgain.calls).toBe(0);
+  });
+});
+
+describe('the red boxes a debug build shows', () => {
+  // As LogBox showed them on the Seeker (2026-09-29): the message, then LiveKit's context.
+  const ctx = ' {"room":"park-cubbon","roomID":"RM_t7SFEQYbmMWa","participant":"429f363c96096f40465ec3e4"}';
+  const ignored = (m: string) => VOICE_UNREACHABLE.some((r) => r.test(m));
+  it('leave out the voice server being out of reach, in every wording seen', () => {
+    for (const m of [
+      `fetch failed: java.net.ConnectException: Failed to connect to localhost/127.0.0.1:7880${ctx}`,
+      `fetch failed: java.io.IOException: unexpected end of stream on http://localhost:7880/...${ctx}`,
+      `error reading from signal stream${ctx}`,
+      '[voice] could not connect could not establish signal connection: fetch failed',
+    ]) expect(ignored(m), m).toBe(true);
+  });
+  it('keep the app\'s own failures, which name no voice room', () => {
+    expect(ignored('fetch failed: java.net.ConnectException: Failed to connect to 0a70.ngrok-free.app')).toBe(false);
+    expect(ignored('TypeError: undefined is not a function')).toBe(false);
   });
 });

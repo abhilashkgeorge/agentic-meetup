@@ -20,6 +20,18 @@ import { mayHearMe, speakingRefs, useParkVoice, voicesToHear, type VoicePass } f
 type Lib = { rn: typeof import('@livekit/react-native'); lk: typeof import('livekit-client') };
 type Room = import('livekit-client').Room;
 
+/**
+ * How LiveKit, and this file, say the voice server is out of reach -- a phone off its
+ * cable, off the Wi-Fi, the server restarting. It is handled below (a fresh pass, again
+ * and again) and said on screen ("Voice lost. Trying again…"), so a debug build need not
+ * also turn each into a red box. LiveKit's own always name the room they were in; the
+ * app's own failed fetches do not, and still show.
+ */
+export const VOICE_UNREACHABLE: RegExp[] = [
+  /(fetch failed|error reading from signal stream|could not establish signal connection)[\s\S]*"room":"/,
+  /^\[voice\] could not connect/,
+];
+
 /** How long to wait before each fresh try after losing the voice server; the last repeats. */
 export const RETRY_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
 let lib: Promise<Lib | null> | null = null;
@@ -34,10 +46,7 @@ function load(): Promise<Lib | null> {
       // At its default, "info", it prints the connection's statistics every half minute,
       // forty lines at a time (seen on the Seeker, 2026-09-29): warnings and errors only.
       lk.setLogLevel('warn');
-      // The voice server out of reach -- a phone off its cable, off the Wi-Fi -- is
-      // handled below (a fresh pass, again and again, and "Voice lost. Trying again" on
-      // screen); LiveKit also calls it an error, which a debug build turns into red boxes.
-      LogBox.ignoreLogs(['fetch failed: java.net.ConnectException', 'error reading from signal stream', 'could not establish signal connection']);
+      LogBox.ignoreLogs(VOICE_UNREACHABLE);
       return { rn, lk };
     } catch (err) {
       console.warn('[voice] not in this build', (err as Error).message);
