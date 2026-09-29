@@ -159,3 +159,25 @@ export async function setFps30(on: boolean): Promise<void> {
   if (on) await SecureStore.setItemAsync(FPS30_KEY, '1').catch(() => {});
   else await SecureStore.deleteItemAsync(FPS30_KEY).catch(() => {});
 }
+
+/**
+ * Whom you muted in the park (features/world/park-voice.ts): the refs the park gives
+ * them to you, which are the same every visit. Not a credential; kept here for the same
+ * reason as the server address, and not cleared with the token -- a muted nuisance
+ * stays muted after signing in again. At most MUTED_MAX, which fits one stored value.
+ */
+const PARK_MUTED_KEY = 'clone.park-muted';
+
+export async function getParkMuted(): Promise<string[]> {
+  try {
+    const raw = await SecureStore.getItemAsync(PARK_MUTED_KEY);
+    const refs: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(refs) ? refs.filter((r): r is string => typeof r === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function setParkMuted(refs: readonly string[]): Promise<void> {
+  await SecureStore.setItemAsync(PARK_MUTED_KEY, JSON.stringify(refs)).catch(() => {});
+}

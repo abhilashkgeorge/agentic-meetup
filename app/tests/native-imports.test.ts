@@ -56,6 +56,12 @@ const NATIVE = [
   'expo-gl',
   '@react-three/fiber',
   '@react-three/fiber/native',
+  // The park's voice (features/world/voice-room.ts), added 2026-09-29: the WebRTC engine
+  // and LiveKit over it. livekit-client itself is plain JavaScript, but it must come after
+  // registerGlobals(), which is the native half's.
+  '@livekit/react-native',
+  '@livekit/react-native-webrtc',
+  'livekit-client',
 ];
 
 /**

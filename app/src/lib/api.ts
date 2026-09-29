@@ -968,7 +968,7 @@ export const proposeDate = (token: string, rendezvousId: string, messageId: stri
  */
 export const blockInPark = (token: string, ref: string) =>
   post<{ ok: boolean }>('/v1/park/block', token, { ref });
-export const reportInPark = (token: string, args: { ref: string; reason: string; detail?: string }) =>
+export const reportInPark = (token: string, args: { ref: string; reason: string; detail?: string; voice?: boolean }) =>
   post<{ ok: boolean }>('/v1/park/report', token, args);
 
 export const blockMatch = (token: string, rendezvousId: string) =>

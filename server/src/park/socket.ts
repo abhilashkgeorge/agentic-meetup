@@ -11,6 +11,7 @@
  * (ParkRoom.snapshot). A person's look goes with the first frame they appear in for a
  * viewer, and again only when it changes.
  */
+import { randomBytes } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import { ClientMessage, lookKey, parkDay, type ParkPerson, type ParkQuestId, type ServerEvent } from '@clone/shared';
 import { matchSession, matchmakerSession, tenantSession, type TenantCtx } from '../db/client.js';
@@ -26,6 +27,7 @@ import { award, balance, type PointReason } from '../points/ledger.js';
 import { ParkPairs } from './pairs.js';
 import { ParkQuests, type Done } from './quests.js';
 import { ParkRoom } from './room.js';
+import { PARK_ROOM, benchRoom, voiceBannedUntil, voiceOn, voicePass } from './voice.js';
 
 export const pairs = new ParkPairs();
 export const park = new ParkRoom(agentRef, Date.now, pairs);
@@ -120,12 +122,17 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       const other = pairs.sit(me, msg.bench);
       if (!other) { send(ws, { type: 'park.bench_taken', bench: msg.bench }); return; }
       for (const u of [me, other]) hub.pushTo(u, { type: 'park.sat', bench: msg.bench } satisfies ServerEvent);
+      // Their voices move to the bench's own room, which nobody else has a pass to.
+      await Promise.all([refreshVoice(me), refreshVoice(other)]);
       return;
     }
     case 'park.stand': {
       if (!take(`park-pair:${me}`, PAIR_LIMIT).ok) return;
       const other = pairs.stand(me);
-      if (other) for (const u of [me, other]) hub.pushTo(u, { type: 'park.stood' } satisfies ServerEvent);
+      if (other) {
+        for (const u of [me, other]) hub.pushTo(u, { type: 'park.stood' } satisfies ServerEvent);
+        await Promise.all([refreshVoice(me), refreshVoice(other)]);
+      }
       return;
     }
     case 'park.enter': {
@@ -154,7 +161,9 @@ async function enter(ctx: TenantCtx): Promise<void> {
       : { rows: [] };
     return { look, apart: rows.map((r) => r.other) };
   });
-  park.enter(ctx.userId, look, apart);
+  // A voice id for this visit: random, never the user id (the voice server lists who is
+  // in its room to everybody in it). Kept across a reconnect within the visit.
+  park.enter(ctx.userId, look, apart, undefined, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'));
   // What they have already been paid for today: the ledger's word, on their own session.
   tenantOf.set(ctx.userId, ctx.tenantId);
   const day = parkDay(Date.now());
@@ -165,7 +174,27 @@ async function enter(ctx: TenantCtx): Promise<void> {
   });
   quests.enter(ctx.userId, done);
   pushQuests(ctx.userId, undefined, points);
+  await refreshVoice(ctx.userId);
   log.info({ userId: ctx.userId, here: park.members.size }, 'park: entered');
+}
+
+/**
+ * Somebody's pass to the voice server, for where they are now: the bench's own room if
+ * they sit on one with their partner, the park's otherwise -- and whether they may speak
+ * (a voice ban). Nothing if there is no voice server, or they are not in the park.
+ */
+export async function refreshVoice(userId: string): Promise<void> {
+  if (!voiceOn()) return;
+  const m = park.members.get(userId);
+  if (!m?.voice) return;
+  const partner = pairs.partnerOf(userId);
+  const room = partner && pairs.benchOf(userId) != null ? benchRoom(userId, partner) : PARK_ROOM;
+  try {
+    const until = await voiceBannedUntil(userId);
+    hub.pushTo(userId, { type: 'park.voice', ...(await voicePass(m.voice, room, !until, until ?? undefined)) } satisfies ServerEvent);
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, 'park voice: no pass');
+  }
 }
 
 /**
@@ -217,15 +246,23 @@ export function leavePark(userId: string): void {
 /** Everything of theirs ends when they go, and whoever it touched is told. */
 function unpair(userId: string): void {
   const r = pairs.leave(userId);
-  if (r.partner) { quests.parted(userId, r.partner); hub.pushTo(r.partner, { type: 'park.parted' } satisfies ServerEvent); }
+  if (r.partner) {
+    quests.parted(userId, r.partner);
+    hub.pushTo(r.partner, { type: 'park.parted' } satisfies ServerEvent);
+    // Left alone on a bench: back to the park's room.
+    void refreshVoice(r.partner);
+  }
   if (r.wasAsking) hub.pushTo(r.wasAsking, { type: 'park.unasked' } satisfies ServerEvent);
   if (r.wasAskedBy) hub.pushTo(r.wasAskedBy, { type: 'park.finding', status: 'gone' } satisfies ServerEvent);
 }
 
 function endPair(userId: string): void {
+  const wasBenched = pairs.benchOf(userId) != null;
   const other = pairs.part(userId);
   if (!other) return;
   quests.parted(userId, other);
+  // Off the bench: back to the park's room, both of them.
+  if (wasBenched) { void refreshVoice(userId); void refreshVoice(other); }
   for (const u of [userId, other]) hub.pushTo(u, { type: 'park.parted' } satisfies ServerEvent);
 }
 

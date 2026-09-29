@@ -47,6 +47,7 @@ import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
 import { useParkPresence } from './park-presence';
 import { BikeButton, CheerToast, InviteCard, LiveSheet, ParkActions, ParkChat, QuestsSheet, SpeechBubbles } from './park-hud';
+import { VoiceMarks, VoicesSheet } from './park-voice-hud';
 import { STICK_RING } from './stick';
 import { useParkLive } from './park-live';
 import { gardenSpots } from './garden';
@@ -304,6 +305,7 @@ export default function WorldScreen() {
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [liveSelected, setLiveSelected] = useState<string | null>(null);
   const [questsOpen, setQuestsOpen] = useState(false);
+  const [voicesOpen, setVoicesOpen] = useState(false);
   const onTap = useCallback((ref: string) => {
     if (ref === YOU) setChatOpen(true);
     // Somebody here in person: not an agent to send yours over to, a person.
@@ -422,7 +424,8 @@ export default function WorldScreen() {
       {realm.phase === 'venue' && walking && (
         <>
           <SpeechBubbles control={control} />
-          <ParkChat bottom={Math.max(insets.bottom, 20) + 24}>
+          <VoiceMarks control={control} />
+          <ParkChat bottom={Math.max(insets.bottom, 20) + 24} onVoices={() => setVoicesOpen(true)}>
             <ParkActions venueSim={venueSim} benches={venueLayout.benches} />
           </ParkChat>
           <InviteCard />
@@ -457,6 +460,7 @@ export default function WorldScreen() {
       )}
       {liveSelected && <LiveSheet parkRef={liveSelected} onClose={() => setLiveSelected(null)} />}
       {questsOpen && realm.phase === 'venue' && <QuestsSheet onClose={() => setQuestsOpen(false)} />}
+      {voicesOpen && realm.phase === 'venue' && <VoicesSheet venueSim={venueSim} onClose={() => setVoicesOpen(false)} />}
       {chatOpen && <CloneSheet onClose={() => setChatOpen(false)} />}
     </View>
   );

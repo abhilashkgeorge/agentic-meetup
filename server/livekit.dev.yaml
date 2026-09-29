@@ -1,0 +1,24 @@
+# The park's voice server (LiveKit, open source) for development on this laptop.
+#
+#   npm run voice      (from server/; needs `brew install livekit`)
+#
+# THE PHONE REACHES IT DOWN THE USB CABLE, like the app server: `adb reverse tcp:7880
+# tcp:7880` for signalling and `adb reverse tcp:7881 tcp:7881` for the audio itself,
+# which is why the audio goes over TCP on 7881 and the server says its address is
+# 127.0.0.1 -- adb reverse carries TCP only, never UDP. A phone off the cable, or a
+# second phone, needs the server on an address it can reach (LIVEKIT_URL, and here
+# `node_ip` and UDP ports open), or a hosted LiveKit.
+#
+# --dev gives the keys devkey / secret, which LIVEKIT_API_KEY / LIVEKIT_API_SECRET in
+# server/.env must match. Development only.
+port: 7880
+bind_addresses:
+  - 0.0.0.0
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: false
+  node_ip: 127.0.0.1
+logging:
+  level: info

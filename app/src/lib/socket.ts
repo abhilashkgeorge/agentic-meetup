@@ -17,6 +17,7 @@ import { useSession } from '../store/session';
 import { useDm } from '../store/dm';
 import { useWorld } from '../features/world/store';
 import { useParkLive } from '../features/world/park-live';
+import { useParkVoice } from '../features/world/park-voice';
 
 /** Two missed heartbeats and we assume the socket is dead, whatever it claims. */
 const DEAD_AFTER_MS = HEARTBEAT_MS * 2 + 5_000;
@@ -61,6 +62,8 @@ function connect(): void {
     // it was a pair on this phone that the server had forgotten: "End" sent a part
     // for a pair the server no longer had, nothing came back, and nothing ended.
     if (useParkLive.getState().inPark) {
+      // The old voice id went with the old socket: walking in brings a new pass.
+      useParkVoice.getState().left();
       useParkLive.getState().rejoined();
       push({ type: 'park.enter' });
     }
@@ -174,6 +177,11 @@ function connect(): void {
       case 'park.bench_taken':
         useParkLive.getState().gotRefused('bench_taken');
         break;
+      case 'park.voice': {
+        const { type: _type, ...pass } = ev;
+        useParkVoice.getState().gotPass(pass);
+        break;
+      }
 
       case 'heartbeat':
         break;
@@ -264,6 +272,7 @@ export function parkEnter(): void {
 export function parkLeave(): void {
   if (!useParkLive.getState().inPark) return;
   useParkLive.getState().setIn(false);
+  useParkVoice.getState().left();
   push({ type: 'park.leave' });
 }
 

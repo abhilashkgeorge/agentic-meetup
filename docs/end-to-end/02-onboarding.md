@@ -209,5 +209,5 @@ the $2.00 daily cost cap still covers them. Measured before the change: real peo
   import that writes a style note, not facts ([HOW-IT-WORKS.md:150] `free paragraphs, extracted into facts.`).
 - The location code and the phone's permission text say only the city is kept. For an unlisted city,
   "Use my location" stores the phone's position rounded to about 1 km
-  ([app/app.json:48] `Only the city is kept — never your exact position, and never in the background.`,
+  ([app/app.json:52] `Only the city is kept — never your exact position, and never in the background.`,
   [app/src/lib/location.ts:72] `lat: coarse(fix.coords.latitude),`).

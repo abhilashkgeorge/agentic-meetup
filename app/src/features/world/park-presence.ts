@@ -13,6 +13,7 @@ import type { WorldControl } from './camera';
 import { livePeople, useParkLive, type LivePerson } from './park-live';
 import { seatOn } from './ride';
 import type { WorldSim } from './sim';
+import { askingForMic, startVoice } from './voice-room';
 
 /** How often where you are is checked, and sent if it changed. */
 const EVERY_MS = 200;
@@ -28,10 +29,14 @@ export function useParkPresence(
   // In and out, with the app's own comings and goings.
   useEffect(() => {
     if (!inPark) return;
-    let front = AppState.currentState === 'active';
+    let front = AppState.currentState !== 'background';
     if (front) parkEnter();
     const sub = AppState.addEventListener('change', (state) => {
-      const now = state === 'active';
+      // Only really put away: not iOS's passing "inactive" (a pulled-down notice, the mic
+      // prompt), nor Android's pause for the phone's "Allow the mic?" (voice-room.ts),
+      // either of which walked you out of the park and ended your bench.
+      if (state === 'background' && askingForMic()) return;
+      const now = state !== 'background';
       if (now === front) return;
       front = now;
       if (now) parkEnter(); else parkLeave();
@@ -90,6 +95,12 @@ export function useParkPresence(
       else venueSim.standUp('you');
     });
   }, [inPark, venueSim, benches]);
+
+  // Voice: into the room each pass is for, out of it on walking out (voice-room.ts).
+  useEffect(() => {
+    if (!inPark) return;
+    return startVoice(venueSim);
+  }, [inPark, venueSim]);
 
   // Whoever is here, into the sim; whoever has gone, out of it.
   useEffect(() => {

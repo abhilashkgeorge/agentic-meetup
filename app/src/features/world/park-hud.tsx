@@ -20,6 +20,8 @@ import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, nearestSight, nextQuest, q
 import { STICK_RING } from './stick';
 import { benchFor } from './ride';
 import type { WorldSim } from './sim';
+import { useParkVoice } from './park-voice';
+import { VoiceButtons, useVoiceHere, wearing } from './park-voice-hud';
 
 /** How wide the right-hand column is: clear of the stick, which has the bottom left. */
 const DOCK_W = 228;
@@ -94,11 +96,15 @@ function SpeechBubble({ line, control }: { line: Line; control: MutableRefObject
 }
 
 /**
- * Saying something to the people near you: a button that opens a line to type in,
- * the last few things said above it, and why a line was not sent when it was not.
+ * Saying something to the people near you: out loud first -- the mic, with the speaker
+ * and the keyboard beside it (park-voice-hud.tsx) -- or typed, in a line the keyboard
+ * button opens; the last few things typed above it, and why a line was not sent when
+ * it was not. With no voice server, or a build without voice, it is typing only.
  */
-export function ParkChat({ bottom, children }: {
+export function ParkChat({ bottom, onVoices, children }: {
   bottom: number;
+  /** Open "Voices near you" (park-voice-hud.tsx VoicesSheet). */
+  onVoices: () => void;
   /** What sits between the log and the chat button: finding, the pair, the bench. */
   children?: React.ReactNode;
 }) {
@@ -110,6 +116,7 @@ export function ParkChat({ bottom, children }: {
   const clearRefused = useParkLive((s) => s.clearRefused);
   const count = useLiveCount();
   const onBench = useParkLive((s) => s.bench !== null);
+  const voice = useVoiceHere();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -186,6 +193,10 @@ export function ParkChat({ bottom, children }: {
             <Text style={[type.callout, { color: p.textSecondary }]}>✕</Text>
           </Pressable>
         </Surface>
+      ) : voice ? (
+        <View style={{ marginBottom: insets.bottom > 0 ? 0 : space.xs }}>
+          <VoiceButtons onType={() => setOpen(true)} onVoices={onVoices} />
+        </View>
       ) : (
         <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Say something"
                    style={{ paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.pill, backgroundColor: p.bg, boxShadow: raised(p, 4), marginBottom: insets.bottom > 0 ? 0 : space.xs }}>
@@ -207,7 +218,12 @@ export function LiveSheet({ parkRef, onClose }: { parkRef: string; onClose: () =
   // a new answer each time, and the store would re-render this for ever.
   const all = useParkLive((s) => s.lines);
   const lines = useMemo(() => all.filter((l) => l.ref === parkRef).slice(-3), [all, parkRef]);
-  const here = useParkLive((s) => s.people.has(parkRef));
+  const person = useParkLive((s) => s.people.get(parkRef));
+  const here = person !== undefined;
+  const muted = useParkVoice((s) => s.muted.includes(parkRef));
+  const talking = useParkVoice((s) => s.speaking.has(parkRef));
+  const toggleMute = useParkVoice((s) => s.toggleMute);
+  const voice = useVoiceHere();
   const [safety, setSafety] = useState(false);
   return (
     <Pressable onPress={onClose} style={{ position: 'absolute', inset: 0 }} accessibilityLabel="Close">
@@ -215,14 +231,20 @@ export function LiveSheet({ parkRef, onClose }: { parkRef: string; onClose: () =
         <Surface radius={radius.xl} style={{ padding: space.screen, paddingBottom: Math.max(insets.bottom, space.lg), gap: space.md,
                                               borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
           <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: p.dark }} />
-          <Text style={[type.title, { color: p.text }]}>Someone here in the park</Text>
+          <Text style={[type.title, { color: p.text }]}>{here ? wearing(person) : 'Someone here in the park'}</Text>
           <Text style={[type.body, { color: p.textSecondary }]}>
-            {here ? 'A real person, walking here right now. Say something and they will hear it if they are close.'
-              : 'They have left the park.'}
+            {!here ? 'They have left the park.'
+              : talking && !muted ? 'A real person, here right now, talking.'
+                : 'A real person, walking here right now. Talk or type and they will hear it if they are close.'}
           </Text>
           {lines.map((l) => (
             <Text key={l.id} style={[type.body, { color: p.text }]}>“{l.text}”</Text>
           ))}
+          {voice && (
+            // As in games: muting is yours alone, at once, and they are not told.
+            <Button label={muted ? 'Unmute their voice' : 'Mute their voice'} variant={muted ? 'primary' : 'secondary'}
+                    onPress={() => toggleMute(parkRef)} />
+          )}
           <Pressable onPress={() => setSafety(true)} accessibilityRole="button" accessibilityLabel="Block or report" hitSlop={8}>
             <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>Block or report</Text>
           </Pressable>
@@ -230,7 +252,7 @@ export function LiveSheet({ parkRef, onClose }: { parkRef: string; onClose: () =
         </Surface>
       </Pressable>
       {safety && (
-        <SafetySheet target={{ parkRef }} onClose={() => setSafety(false)} onDone={onClose} />
+        <SafetySheet target={{ parkRef }} aboutVoice={voice && (talking || muted)} onClose={() => setSafety(false)} onDone={onClose} />
       )}
     </Pressable>
   );

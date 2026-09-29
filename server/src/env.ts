@@ -227,6 +227,17 @@ const Env = z.object({
    * does nothing.
    */
   PUSH_PROVIDER: z.enum(['off', 'console', 'expo']).default('console'),
+  /**
+   * The park's voice (park/voice.ts): a LiveKit server, open source, run on this laptop
+   * in development (`npm run voice`, livekit.dev.yaml) or hosted. Unset, the park is
+   * text only and nothing else changes. LIVEKIT_URL is what the PHONE connects to --
+   * ws://localhost:7880 in development, down the USB cable (adb reverse); the server's
+   * own calls go to LIVEKIT_API_URL, which defaults to it with http for ws.
+   */
+  LIVEKIT_URL: z.string().url().optional(),
+  LIVEKIT_API_URL: z.string().url().optional(),
+  LIVEKIT_API_KEY: z.string().optional(),
+  LIVEKIT_API_SECRET: z.string().optional(),
   /** Optional: Expo's "enhanced push security" access token. Never logged. */
   EXPO_ACCESS_TOKEN: z.string().default(''),
 
@@ -404,6 +415,12 @@ if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {
 
 if (env.NODE_ENV === 'production' && env.AUTH_SECRET.startsWith('dev-only')) {
   throw new Error('AUTH_SECRET must be set in production');
+}
+
+// `livekit-server --dev` signs with devkey / secret, which anybody can read in its docs:
+// a voice pass signed with them is a pass anybody can mint.
+if (env.NODE_ENV === 'production' && env.LIVEKIT_API_SECRET === 'secret') {
+  throw new Error('LIVEKIT_API_SECRET must be a real secret in production, not the --dev placeholder.');
 }
 
 // A DERIVED PEPPER IS ONLY AS GOOD AS WHAT IT IS DERIVED FROM, and it also ties two

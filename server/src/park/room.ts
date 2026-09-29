@@ -25,6 +25,12 @@ import { PARK_EARSHOT, PARK_VIEW, contactDetail, type Look, type ParkPerson } fr
 
 /** Silence this long and you have left the park: a phone put away mid-walk. */
 export const STALE_MS = 30_000;
+/**
+ * How far a voice carries: earshot, as for what is typed, and a little over so a phone
+ * does not drop and pick up a voice at the edge with every step. The phone's own volume
+ * has faded to nothing by earshot (the app's park-voice.ts).
+ */
+export const VOICE_REACH = PARK_EARSHOT + 0.3;
 
 export interface Member {
   userId: string;
@@ -35,6 +41,8 @@ export interface Member {
   moving: boolean;
   /** On a bicycle, as their phone last said. */
   riding: boolean;
+  /** Who they are to the voice server (voice.ts): random per visit, never the user id. */
+  voice: string;
   /** When they last sent anything: moving or standing, the app says so every few seconds. */
   seen: number;
 }
@@ -70,13 +78,14 @@ export class ParkRoom {
    * Somebody walks in. `apartFrom` is everybody already here they are kept apart from,
    * which the caller asked the database for; it goes both ways.
    */
-  enter(userId: string, look: Look, apartFrom: readonly string[], at?: { x: number; z: number }): void {
+  enter(userId: string, look: Look, apartFrom: readonly string[], at?: { x: number; z: number }, voice?: string): void {
     for (const other of apartFrom) this.apart.add(pair(userId, other));
     const was = this.members.get(userId);
     this.members.set(userId, {
       userId, look,
       x: at?.x ?? was?.x ?? 0, z: at?.z ?? was?.z ?? 0,
-      facing: was?.facing ?? 0, moving: false, riding: was?.riding ?? false, seen: this.now(),
+      facing: was?.facing ?? 0, moving: false, riding: was?.riding ?? false,
+      voice: voice ?? was?.voice ?? '', seen: this.now(),
     });
   }
 
@@ -117,15 +126,28 @@ export class ParkRoom {
     return out.sort((a, b) => a.d - b.d).map((o) => o.m);
   }
 
-  /** What `viewer` is sent: the people within the mist, as the square refers to them. */
+  /**
+   * What `viewer` is sent: the people within the mist, as the square refers to them --
+   * and, for those within earshot, their voice id, the only voices the viewer's phone
+   * listens to and the only listeners it lets hear it (voice.ts). Nobody on a bench is
+   * given anybody's voice, or gives theirs: a bench talks in its own room.
+   */
   snapshot(viewerId: string): ParkPerson[] {
-    return this.near(viewerId, PARK_VIEW).map((m) => ({
-      ref: this.refOf(viewerId, m.userId),
-      x: round(m.x), z: round(m.z), facing: round(m.facing), moving: m.moving, look: m.look,
-      // Seen sitting once they have walked to it: what they say there is theirs, that
-      // they are sitting there is not a secret.
-      ...(this.seats?.benchOf(m.userId) != null && !m.moving ? { sitting: true } : m.riding ? { riding: true } : {}),
-    }));
+    const me = this.members.get(viewerId);
+    const benched = (id: string) => this.seats?.benchOf(id) != null;
+    const reach2 = VOICE_REACH * VOICE_REACH;
+    return this.near(viewerId, PARK_VIEW).map((m) => {
+      const heard = me && m.voice && !benched(viewerId) && !benched(m.userId)
+        && (m.x - me.x) ** 2 + (m.z - me.z) ** 2 <= reach2;
+      return {
+        ref: this.refOf(viewerId, m.userId),
+        x: round(m.x), z: round(m.z), facing: round(m.facing), moving: m.moving, look: m.look,
+        // Seen sitting once they have walked to it: what they say there is theirs, that
+        // they are sitting there is not a secret.
+        ...(benched(m.userId) && !m.moving ? { sitting: true } : m.riding ? { riding: true } : {}),
+        ...(heard ? { voice: m.voice } : {}),
+      };
+    });
   }
 
   /**

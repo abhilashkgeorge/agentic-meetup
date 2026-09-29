@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.clone.app"
+      "bundleIdentifier": "com.clone.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "For talking out loud in the park, only while your mic is on. Nothing you say is recorded."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +22,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.clone.app"
+      "package": "com.clone.app",
+      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"]
     },
     "web": {
       "output": "static",
@@ -56,7 +60,8 @@
           "color": "#208AEF"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "@livekit/react-native-expo-plugin"
     ],
     "experiments": {
       "typedRoutes": true,

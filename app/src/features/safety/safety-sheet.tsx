@@ -18,7 +18,7 @@ import {
 } from '../../components/ui';
 import { REPORT_REASONS, SUPPORT_EMAIL, supportMailto, type ReportReason } from './reasons';
 
-export function SafetySheet({ target, name, onClose, onDone }: {
+export function SafetySheet({ target, name, aboutVoice, onClose, onDone }: {
   /**
    * A match (from a card or a profile), a person with their match (from a chat), or
    * somebody in the park, who is only the ref the park gave them.
@@ -26,6 +26,11 @@ export function SafetySheet({ target, name, onClose, onDone }: {
   target: { rendezvousId: string; userId?: string } | { parkRef: string };
   /** How to call them in the sheet: a first name, or "them". */
   name?: string;
+  /**
+   * In the park: whether the report starts as about what they said OUT LOUD, which also
+   * counts towards taking their mic away (server park/voice.ts). The person can change it.
+   */
+  aboutVoice?: boolean;
   onClose: () => void;
   /** After a block or a report: the caller leaves or reloads -- they are gone now. */
   onDone: () => void;
@@ -36,6 +41,7 @@ export function SafetySheet({ target, name, onClose, onDone }: {
   const [detail, setDetail] = useState('');
   const [busy, setBusy] = useState(false);
   const [thanks, setThanks] = useState(false);
+  const [outLoud, setOutLoud] = useState(aboutVoice === true);
   const who = name ?? 'them';
 
   const block = () => {
@@ -62,7 +68,7 @@ export function SafetySheet({ target, name, onClose, onDone }: {
     setBusy(true);
     let ok;
     if ('parkRef' in target) {
-      ok = await reportInPark(token, { ref: target.parkRef, reason, detail: detail.trim() });
+      ok = await reportInPark(token, { ref: target.parkRef, reason, detail: detail.trim(), voice: outLoud });
     } else {
       const args = { rendezvousId: target.rendezvousId, reason, detail: detail.trim() };
       ok = target.userId ? await reportUser(token, { ...args, userId: target.userId }) : await reportMatch(token, args);
@@ -93,6 +99,12 @@ export function SafetySheet({ target, name, onClose, onDone }: {
                 <Chip key={r.id} label={r.label} selected={reason === r.id} onPress={() => setReason(r.id)} />
               ))}
             </ChipGroup>
+            {'parkRef' in target && (
+              <ChipGroup>
+                <Chip label="Said out loud" selected={outLoud} onPress={() => setOutLoud(true)} />
+                <Chip label="Typed" selected={!outLoud} onPress={() => setOutLoud(false)} />
+              </ChipGroup>
+            )}
             <Field value={detail} onChangeText={setDetail} placeholder="Anything else we should know (optional)"
                    multiline minHeight={60} maxLength={2000} />
             <Button label="Report and block" variant="primary" disabled={!reason} loading={busy} onPress={() => void report()} />

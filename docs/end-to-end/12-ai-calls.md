@@ -265,7 +265,7 @@ shown ([server/src/matching/score.ts:292] `if (!model) return { score: null, cos
 With `FACE_CHECK` on, two selfie frames are compared with the person's photos by a face model that runs on the
 server itself, with no vendor; the frames are deleted and only the verdict is kept
 ([server/src/photos/face.ts:7] `Models load from node_modules over file://, never from the network.`,
-[server/src/env.ts:328] `FACE_CHECK: z.enum(['off', 'tfjs-node', 'wasm']).default('off'),`).
+[server/src/env.ts:339] `FACE_CHECK: z.enum(['off', 'tfjs-node', 'wasm']).default('off'),`).
 
 ### Docs vs code
 
@@ -274,7 +274,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 - HOW-IT-WORKS.md §10 says "One meter wraps a whole round". There are two meters, each with its own budget check
   ([HOW-IT-WORKS.md:807] `One meter wraps a whole round`).
 - `MAX_SESSION_OUTPUT_TOKENS` is configured but nothing enforces it
-  ([server/src/env.ts:341] `MAX_SESSION_OUTPUT_TOKENS: z.coerce.number().default(60_000),`).
+  ([server/src/env.ts:352] `MAX_SESSION_OUTPUT_TOKENS: z.coerce.number().default(60_000),`).
 - ARCHITECTURE.md plans chat on GPT-5.6-luna, nightly batch jobs and a paid tier with a 10-turn trial. The code
   runs every task on one model, has no batch jobs and no payment code; the 10-call cap applies to everyone
   ([ARCHITECTURE.md:24] `Chat on GPT-5.6-luna, write path on Claude Sonnet 5.`,

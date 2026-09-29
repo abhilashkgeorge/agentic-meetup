@@ -22,6 +22,8 @@ export interface LivePerson {
   look: Look;
   sitting: boolean;
   riding: boolean;
+  /** Within earshot: who they are to the voice server (park-voice.ts). */
+  voice: string | null;
 }
 
 export interface Line {
@@ -115,7 +117,10 @@ export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readon
   for (const p of frame) {
     const look = p.look ?? prev.get(p.ref)?.look;
     if (!look) continue;
-    out.set(p.ref, { ref: p.ref, x: p.x, z: p.z, facing: p.facing, moving: p.moving, look, sitting: p.sitting === true, riding: p.riding === true });
+    out.set(p.ref, {
+      ref: p.ref, x: p.x, z: p.z, facing: p.facing, moving: p.moving, look,
+      sitting: p.sitting === true, riding: p.riding === true, voice: p.voice ?? null,
+    });
   }
   return out;
 }

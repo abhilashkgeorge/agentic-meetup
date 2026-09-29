@@ -49,14 +49,14 @@ something else, a **Docs vs code** note says so. Where something could not be co
 | Agent conversations | Off (`RENDEZVOUS_RUNS` not set, default 0) | `server/src/matching/rendezvous.ts:75` |
 | The agents' talk | On (`AGENT_TALK` not set, default on) | `server/src/matching/talk.ts:49` |
 | SMS | `console`: no text is sent, the code goes to the server log only (`SMS_DEV_ECHO=false` since 2026-09-28) | `server/src/env.ts:221` |
-| Reusable dev invite `KNOX-1010` | Works (`ALLOW_REUSABLE_INVITES=true`) | `server/src/env.ts:309` |
+| Reusable dev invite `KNOX-1010` | Works (`ALLOW_REUSABLE_INVITES=true`) | `server/src/env.ts:320` |
 | Old-style sign-in (account id as token) | Off (`ALLOW_LEGACY_TOKENS=false` since 2026-09-28; the code default is on) | `server/src/env.ts:199` |
-| Face check | Off | `server/src/env.ts:328` |
-| Spend per person per day | $2.00 and 10 model calls, plus up to 40 setup calls counted apart (since 2026-09-28) | `server/src/env.ts:331`, `server/src/env.ts:340` |
+| Face check | Off | `server/src/env.ts:339` |
+| Spend per person per day | $2.00 and 10 model calls, plus up to 40 setup calls counted apart (since 2026-09-28) | `server/src/env.ts:342`, `server/src/env.ts:351` |
 | Push notifications | `console`: each push is written to the server log, nothing is sent, until the app has an Expo project and `PUSH_PROVIDER=expo` is set | `server/src/env.ts:229` |
 
 The development values come from `server/.env`, which is not in git. A production server refuses to start with the
-development shortcuts on (`server/src/env.ts:363`).
+development shortcuts on (`server/src/env.ts:374`).
 
 **The development database today** (queried 2026-09-28): 11 real people, 4 of them ready to be sent out; 5,008
 practice profiles; no pair between two real people yet; no round since 2026-09-22.
@@ -100,10 +100,10 @@ are unrelated.)
 ### 1.0 Install
 
 The app is called "Clone" (id `com.clone.app` on both platforms)
-(`app/app.json:3`, `app/app.json:22`).
+(`app/app.json:3`, `app/app.json:25`).
 Today it reaches a phone only as a **development build compiled on the founder's computer**
 (`expo run:android` / `expo run:ios`); there is no app-store pipeline in the repository
-(`app/package.json:56`,
+(`app/package.json:60`,
 `app/README.md:7`). The daily loop `./dev.sh`
 starts the server, opens a **public tunnel** to it (cloudflared, else ngrok) so friends' phones
 can reach it off the founder's Wi-Fi, and starts the app's bundler
@@ -155,7 +155,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 
 - **Normalising:** spaces and dashes removed; a local number is completed for the chosen country
   only (+91: 10 digits) (`shared/src/phone.ts:31`).
-  Only +91, +1 and +44 can be texted (`server/src/env.ts:279`).
+  Only +91, +1 and +44 can be texted (`server/src/env.ts:290`).
 - **The code:** six random digits, valid 5 minutes, at most 5 guesses
   (`server/src/phone.ts:85`,
   `shared/src/phone.ts:110`,
@@ -172,7 +172,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **Limits:** per IP 10 codes per 15 minutes; per number 3 per 15 minutes; 500 texts a day in
   total (`server/src/ratelimit.ts:204`,
   `server/src/ratelimit.ts:206`,
-  `server/src/env.ts:286`). These counters live in
+  `server/src/env.ts:297`). These counters live in
   the server's memory and reset when it restarts.
 - **Three outcomes** after a right code: a signed-in person adds the number to their account; a
   known number signs straight in (no invite, no consent screen); an unknown number gets a ticket
@@ -194,9 +194,9 @@ Nothing in sign-up differs by gender. Both see, in order:
   `server/src/api/auth.ts:218`).
 - **A production server refuses to start** with any development shortcut on: reusable invites,
   echoed codes, the console SMS sender, legacy tokens, unverified or device sign-up, practice
-  profiles saying yes, or a development secret (`server/src/env.ts:363`,
-  `server/src/env.ts:367`,
-  `server/src/env.ts:401`).
+  profiles saying yes, or a development secret (`server/src/env.ts:374`,
+  `server/src/env.ts:378`,
+  `server/src/env.ts:412`).
 
 ### 1.3 Consent
 
@@ -471,7 +471,7 @@ the $2.00 daily cost cap still covers them. Measured before the change: real peo
   import that writes a style note, not facts (`HOW-IT-WORKS.md:150`).
 - The location code and the phone's permission text say only the city is kept. For an unlisted city,
   "Use my location" stores the phone's position rounded to about 1 km
-  (`app/app.json:48`,
+  (`app/app.json:52`,
   `app/src/lib/location.ts:72`).
 
 ---
@@ -703,14 +703,23 @@ details), and **database roles** that limit what each part of the server can rea
   they are within about 20 m. Nothing said is written anywhere; a line holding a phone number, email,
   handle or link is not sent; people blocked either way never see or hear each other there
   (`shared/src/events.ts:82`,
-  `server/src/park/room.ts:137`).
+  `server/src/park/room.ts:159`).
   "Find someone to talk to" ranks the free people there by what they have in common, with matching's
   own reading of both files, but tells the one asked only one thing both of them made public ("You both
   like climbing"), never a word from a fact only matching may use. On a bench the two of them see and
   hear only each other; people near see that they sit, never what they say. For "Sit and talk" the
   server counts how many things each says there -- a number, never the words
   (`server/src/park/quests.ts:90`,
-  `server/src/park/socket.ts:257`).
+  `server/src/park/socket.ts:294`).
+  Voice (since 2026-09-29) keeps the same rule. Each phone listens only to the people the server says are
+  within earshot, and lets only them listen to it -- and the voice server holds a speaker to that list,
+  whatever a listener's phone asks for; a bench's two have a room of their own that nobody else is given a
+  pass to. The voice server knows each person by an id made up for that visit, never the user id, and
+  nothing is recorded, on the phone, the server or the voice server. Mutes stay on the phone. A report
+  marked "said out loud" counts towards a mic ban: three different people within 24 hours
+  (`server/src/park/room.ts:140`,
+  `server/src/park/voice.ts:82`,
+  `server/src/park/socket.ts:166`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
   (`server/src/matching/orchestrator.ts:366`).
@@ -1273,7 +1282,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    `app/src/features/world/agent-sheet.tsx:43`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   (`app/src/features/world/world-screen.tsx:274`,
+   (`app/src/features/world/world-screen.tsx:275`,
    `app/src/features/world/exchange-strip.tsx:83`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).
@@ -1306,7 +1315,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Open rounds | 1 per rolling 24 hours | Only a finished open round that met at least one person | `server/src/matching/world.ts:44`, `server/src/matching/rounds.ts:94` |
 | Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | `server/src/matching/world.ts:28`, `server/src/matching/rounds.ts:78` |
 | One round at a time | A second tap returns the round already running | | `server/src/matching/rounds.ts:101` |
-| Model spend | $2.00 per person per day | All of that person's model calls | `server/src/env.ts:323` |
+| Model spend | $2.00 per person per day | All of that person's model calls | `server/src/env.ts:334` |
 | Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | `server/src/metering.ts:59` |
 
 None of `ROUNDS_PER_DAY`, `TARGETED_ROUNDS_PER_DAY`, `ROUND_CANDIDATES`,
@@ -1403,7 +1412,7 @@ off (`server/src/matching/profile.ts:205`,
   `app/src/features/matches/reveal-screen.tsx:179`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a
   production server refuses to start with it on
-  (`server/src/env.ts:356`).
+  (`server/src/env.ts:367`).
 
 ### Docs vs code
 
@@ -1871,7 +1880,7 @@ Each moment that asks something of a person wakes their phone, whether or not th
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
 (`server/src/push/index.ts:31`). The phone asks for
 permission when the person first sends their agent out, not at launch
-(`app/src/features/world/world-screen.tsx:289`), and a
+(`app/src/features/world/world-screen.tsx:290`), and a
 tap opens the card, their profile or the chat
 (`app/src/features/push/route.ts:14`).
 **Not yet reaching phones:** the app has no Expo project id yet and the server sends with
@@ -2046,14 +2055,14 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   person's sheet in the town, and the check-in's "felt unsafe" step
   (`app/src/features/dm/thread-screen.tsx:226`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
-  are not told." (`app/src/features/safety/safety-sheet.tsx:44`).
+  are not told." (`app/src/features/safety/safety-sheet.tsx:50`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
   "Inappropriate messages or photos", "Fake profile", "Seems under 18", "Spam or a scam", "Made
   me feel unsafe", "Something else"; an optional note (up to 2,000 characters); the button
   "Report and block"; and "Something urgent? Write to" the support address
   (`app/src/features/safety/reasons.ts:17`,
   `app/src/features/safety/reasons.ts:23`,
-  `app/src/features/safety/safety-sheet.tsx:101`).
+  `app/src/features/safety/safety-sheet.tsx:113`).
   A report always blocks too (`server/src/messaging/store.ts:220`).
 - **Effect, both ways:** the card, reveal, chat, town seat, photos and date idea disappear for
   both; sends are refused; they are never matched again
@@ -2447,7 +2456,7 @@ shown (`server/src/matching/score.ts:292`,
 With `FACE_CHECK` on, two selfie frames are compared with the person's photos by a face model that runs on the
 server itself, with no vendor; the frames are deleted and only the verdict is kept
 (`server/src/photos/face.ts:7`,
-`server/src/env.ts:328`).
+`server/src/env.ts:339`).
 
 ### Docs vs code
 
@@ -2456,7 +2465,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 - HOW-IT-WORKS.md §10 says "One meter wraps a whole round". There are two meters, each with its own budget check
   (`HOW-IT-WORKS.md:807`).
 - `MAX_SESSION_OUTPUT_TOKENS` is configured but nothing enforces it
-  (`server/src/env.ts:341`).
+  (`server/src/env.ts:352`).
 - ARCHITECTURE.md plans chat on GPT-5.6-luna, nightly batch jobs and a paid tier with a 10-turn trial. The code
   runs every task on one model, has no batch jobs and no payment code; the 10-call cap applies to everyone
   (`ARCHITECTURE.md:24`,
@@ -2478,12 +2487,12 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | Feature | What it does | Who can reach it | Code |
 |---|---|---|---|
 | **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about as full 3D bodies; tap your own agent to talk to it. Development builds add a "Test: add 1000 people" chip that spreads a test crowd over all 30 neighbourhoods (since 2026-09-29) | Everyone | `app/src/features/world/map.ts:4`, `server/src/matching/world.ts:50`, `app/src/features/world/hud.tsx:200` |
-| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search. Everybody is a full walking body drawn by the graphics chip, in less detail further away (since 2026-09-28; before, the nearest 12 had bodies and everyone else was a capsule). A mist ends the view at about 365 m: past it no person, tree, bench or lamp is drawn, and people out of sight are moved less often. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Since 2026-09-29 each is sized against the people using it: a bench's seat is where a sitting person's seat is (it was 28 cm higher, so people sat inside benches), and grass is ankle to knee high, bushes waist to shoulder. Every path can be walked or ridden end to end: no tree, bench, lamp or rock stands on one, the paths keep clear of the buildings' walls, and the park's edge stops you at its real boundary (since 2026-09-29; before, it was a ring of invisible circles that stopped you up to a metre and a half short of it, or let you a metre past it). An iron railing you can see through runs all the way round that boundary, with a gate wherever a path meets it; beyond it is a road with Bengaluru's traffic -- two-wheelers, autos, cars and BMTC buses, keeping left -- and buildings, none of which anybody can reach (since 2026-09-29; before, the park ran into a green plain). "Ride a bike", above the stick, puts you on a bicycle anywhere in the park: twice as fast as walking, pedalling as you go, and everybody near sees you on it; you get off to sit on a bench, and for the car. Talking with someone, "Things to do" lists what the two can do together -- walk side by side 250 m, ride side by side 500 m, sit on a bench and each say three things, stand at three of the park's sights -- and each done pays both of them points (10 to 30) once a day, to spend on their look; the server decides from where they are, never from what they say, and the one you are with wears a ring at their feet. While you two have sights left to see, each is marked by a purple diamond high over it, seen from anywhere in the park, and the card says the nearest and how far. Development builds add a "Test: add 1000 people" chip, to watch the frame rate. Since 2026-09-29 the park is live: real people in it at the same time see each other ("3 here now"), each in place of their agent, and "Say something" reaches whoever is within about 20 m, over their heads and in a short log, stored nowhere; tapping one of them offers "Block or report". "Find someone to talk to" asks the free person here with most in common (never anybody talking, asking or being asked); they get "Someone here would like to talk" ("You both like …" only for something both made public) and say yes or not now; on a yes a small car drives the one who asked over. The two can then "Sit on a bench": they walk to the nearest free bench and sit, and from then on what they say reaches only each other, and nothing said near them reaches them | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/crowd-gpu.ts:117`, `app/src/features/world/camera.ts:77`, `app/src/features/world/venue-mesh.ts:55`, `app/src/features/world/venue-mesh.ts:94`, `app/src/features/world/hud.tsx:183`, `app/src/features/world/park-hud.tsx:171`, `app/src/features/world/park-hud.tsx:394`, `server/src/park/pairs.ts:65`, `app/src/features/world/garden.ts:605`, `app/src/features/world/fence-mesh.ts:23`, `app/src/features/world/city-plan.ts:28`, `app/src/features/world/traffic.ts:26`, `app/src/features/world/bike.ts:55`, `shared/src/park-quests.ts:29`, `server/migrations/0078_park_points.sql:22` |
+| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search. Everybody is a full walking body drawn by the graphics chip, in less detail further away (since 2026-09-28; before, the nearest 12 had bodies and everyone else was a capsule). A mist ends the view at about 365 m: past it no person, tree, bench or lamp is drawn, and people out of sight are moved less often. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Since 2026-09-29 each is sized against the people using it: a bench's seat is where a sitting person's seat is (it was 28 cm higher, so people sat inside benches), and grass is ankle to knee high, bushes waist to shoulder. Every path can be walked or ridden end to end: no tree, bench, lamp or rock stands on one, the paths keep clear of the buildings' walls, and the park's edge stops you at its real boundary (since 2026-09-29; before, it was a ring of invisible circles that stopped you up to a metre and a half short of it, or let you a metre past it). An iron railing you can see through runs all the way round that boundary, with a gate wherever a path meets it; beyond it is a road with Bengaluru's traffic -- two-wheelers, autos, cars and BMTC buses, keeping left -- and buildings, none of which anybody can reach (since 2026-09-29; before, the park ran into a green plain). "Ride a bike", above the stick, puts you on a bicycle anywhere in the park: twice as fast as walking, pedalling as you go, and everybody near sees you on it; you get off to sit on a bench, and for the car. Talking with someone, "Things to do" lists what the two can do together -- walk side by side 250 m, ride side by side 500 m, sit on a bench and each say three things, stand at three of the park's sights -- and each done pays both of them points (10 to 30) once a day, to spend on their look; the server decides from where they are, never from what they say, and the one you are with wears a ring at their feet. While you two have sights left to see, each is marked by a purple diamond high over it, seen from anywhere in the park, and the card says the nearest and how far. Development builds add a "Test: add 1000 people" chip, to watch the frame rate. Since 2026-09-29 the park is live: real people in it at the same time see each other ("3 here now"), each in place of their agent, and "Say something" reaches whoever is within about 20 m, over their heads and in a short log, stored nowhere; tapping one of them offers "Block or report". "Find someone to talk to" asks the free person here with most in common (never anybody talking, asking or being asked); they get "Someone here would like to talk" ("You both like …" only for something both made public) and say yes or not now; on a yes a small car drives the one who asked over. The two can then "Sit on a bench": they walk to the nearest free bench and sit, and from then on what they say reaches only each other, and nothing said near them reaches them. Since 2026-09-29 the park has voice, and talking out loud is the main way to talk: a big mic button (off until you tap it; a ring pulses while you are heard), a speaker button, and a keyboard button that opens the line to type in, as before. You hear the people within about 20 m, louder the nearer, and on a bench only each other; a speaker mark floats over whoever is talking. The speaker button opens "Voices near you" -- each person by the colour they wear, how far, and whether they are talking -- to hear nobody, or to mute one person (for you only; they are not told; it lasts until you unmute them) or report them; tapping a person offers the same mute. A report says whether it was said out loud or typed, and three different people reporting somebody's voice within a day take that person's mic for 24 hours, at once. Voice needs the voice server (`npm run voice`: LiveKit, open source, run on the laptop) and an app build made after it was added; without either, the park is typing only | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/crowd-gpu.ts:117`, `app/src/features/world/camera.ts:77`, `app/src/features/world/venue-mesh.ts:55`, `app/src/features/world/venue-mesh.ts:94`, `app/src/features/world/hud.tsx:183`, `app/src/features/world/park-hud.tsx:178`, `app/src/features/world/park-hud.tsx:416`, `server/src/park/pairs.ts:65`, `app/src/features/world/garden.ts:605`, `app/src/features/world/fence-mesh.ts:23`, `app/src/features/world/city-plan.ts:28`, `app/src/features/world/traffic.ts:26`, `app/src/features/world/bike.ts:55`, `shared/src/park-quests.ts:29`, `server/migrations/0078_park_points.sql:22`, `app/src/features/world/park-voice.ts:29`, `app/src/features/world/park-voice-hud.tsx:234`, `server/src/park/voice.ts:41`, `server/package.json:7` |
 | **"Who's here"** | A list of the same people as the town, practice profiles marked "Not a real person" | Everyone | `app/src/features/world/people.ts:52` |
 | **Character builder** | The 3D figure others see in the town and on cards until you share your profile with them; items bought with points. Seven tabs (Body, Face, Hair, Top, Bottoms, Shoes, Extras), each a few titled rows, every colour named for what it colours ("Top colour"); the camera goes to what is being changed, and a line says when a pick changed something else ("Your bottoms changed to fit."). Since 2026-09-29: hairstyle apart from the face (11, one of them Shaved, men's faces only), eye colour, height, colours for trousers and shoes ("As made" first), more skin tones, hair and cloth colours, and five places to wear things instead of one "extra": hat (cap, beanie, bucket hat, hard hat, beret), glasses, earrings, round the neck, bag. Anything bought before keeps its meaning | Everyone | `app/src/features/look/builder-screen.tsx:32`, `shared/src/look.ts:70`, `app/src/features/look/builder-model.ts:64` |
 | **Points** | +50 for a check-in, +10 for "did you meet", +20 first look, +30 photos checked; in Cubbon Park, +10 to +30 for each thing done together, once a day (since 2026-09-29); only the person sees the balance | Everyone | `server/src/points/ledger.ts:14`, `server/src/points/ledger.ts:18` |
 | **Round recap** | "WHAT YOUR AGENT DID" after your own round: template sentences, up to two of your own sentences it used, topics, and what it had to say "I don't know" to | The round's sender | `server/src/matching/recap.ts:36` |
-| **Live updates** | One connection carries clone chat, messages and town events (queued, met, talking, decided, done, your turn, introduced) | Everyone | `shared/src/events.ts:198` |
+| **Live updates** | One connection carries clone chat, messages and town events (queued, met, talking, decided, done, your turn, introduced) | Everyone | `shared/src/events.ts:200` |
 | **Push notifications** | A closed app is woken for a new card, "they shared their profile", "you can talk now", a message, and "a card fades today"; no names or words on the lock screen. Needs the founder's Expo setup before it reaches phones (stage 9.5) | Everyone, once allowed | `server/src/push/index.ts:34` |
 | **Photos screen** | Up to six photos, re-encoded to drop location data | Everyone | `server/src/photos/store.ts:30` |
 | **Selfie check** | "Photos checked" badge from a local face model | Off (`FACE_CHECK=off`) | `server/src/api/verify.ts:39` |
@@ -2496,12 +2505,12 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:39` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
-| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:378` |
+| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:380` |
 
 Also present in the code but not visible anywhere: a "how well it knows you" score that the YOU tab fetches but
 never draws (`server/src/memory/completion.ts:83`),
-and a "voice" message source that the app never sends; "voice" in this app means the WhatsApp style import
-(`shared/src/events.ts:31`).
+and a "voice" message source that the app never sends; "voice" in the clone chat means the WhatsApp style import,
+not the park's voice chat (`shared/src/events.ts:31`).
 
 ---
 
@@ -2514,7 +2523,7 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | **Train or fine-tune any model.** Every model is a stock vendor model. | Yes | `server/src/llm/caps.ts:87` | — |
 | **Predict chemistry or compatibility.** No model judges the pair; a preference score is recorded but does not pick who is met; the date idea is refused if it uses words like "match", "compatible" or "chemistry". | Mostly | `server/src/matching/orchestrator.ts:168`, `server/src/matching/talk.ts:131` | A model does judge each **want** (met / not met), which moves people later. A switched-off option ([AI-14](#ai-14)) would store a hidden "would want a second evening" probability. |
 | **Show a score or percentage** to a person. The card query does not even select the score columns. | Yes | `server/src/api/dating.ts:566` | Counts appear: "Confirmed by N people who met them", rounded pool sizes, the reviewer's Numbers page. |
-| **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:848`, `server/src/matching/orchestrator.ts:82` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:356`). |
+| **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:848`, `server/src/matching/orchestrator.ts:82` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:367`). |
 | **Let a model write what others read about you.** Cards are written by code from your own words. | Mostly | `server/src/matching/brief.ts:4` | The date idea is model-written (and checked by code) (`server/src/matching/talk.ts:28`). |
 | **Judge looks.** No photo is ever sent to a model; matching never uses photos. | Yes | `server/src/llm/port.ts:29`, `app/src/features/matches/reveal-screen.tsx:259` | — |
 | **Show your photos or first name to anyone you have not said yes to.** The photo rule and the profile screen both test your own yes in that pair. | Yes | `server/migrations/0073_consent_first_reveal.sql:42`, `server/src/api/dating.ts:731` | Your 3D character, age, neighbourhood and shareable sentences are on the words card before any yes. |
@@ -2549,7 +2558,7 @@ the SMS code is no longer sent back in the reply (`SMS_DEV_ECHO=false`). What re
 2. **The code default is still on.** A new development setup whose `.env` lacks the line turns the
    old sign-in method back on; only a production server refuses it
    (`server/src/env.ts:199`,
-   `server/src/env.ts:363`).
+   `server/src/env.ts:374`).
 
 ### 15.2 Private information that can reach another person
 
@@ -2601,7 +2610,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 
 11. **Ten model calls a day** for chat, learning and rounds together (setup is counted apart since 2026-09-28).
     Somebody who chats a lot can leave no call for a round, which then fails with "Your agent has been out enough
-    for today", and in chat the reason is never shown (`server/src/env.ts:331`,
+    for today", and in chat the reason is never shown (`server/src/env.ts:342`,
     `app/src/lib/api.ts:361`).
 12. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
     list" (stage 5).
@@ -2634,6 +2643,13 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     `server/src/db/stats.ts:5`).
 22. **Documentation drift.** HOW-IT-WORKS.md, ARCHITECTURE.md, ENGINE-DECISION.md, both READMEs and several code
     comments describe older designs; the "Docs vs code" notes in each stage list the specific disagreements.
+23. **Park voice is untried at scale and has no host.** The whole park is one voice room, so everybody in it is
+    told everybody else's visit id (never who they are) and every phone checks every voice four times a second;
+    past a few hundred people talking at once the park needs splitting into rooms by area. The voice server runs on
+    the laptop with LiveKit's public development keys, which a production server refuses to start with; a real host
+    and keys are the founder's. A mic ban is automatic, with nobody reviewing it first
+    (`server/src/env.ts:422`,
+    `app/src/features/world/voice-room.ts:197`).
 
 ---
 

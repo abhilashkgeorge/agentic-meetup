@@ -157,6 +157,8 @@ export const ParkPerson = z.object({
   sitting: z.boolean().optional(),
   /** On a bicycle: drawn riding one. */
   riding: z.boolean().optional(),
+  /** Within earshot: who they are to the voice server, to listen to them (server park/voice.ts). */
+  voice: z.string().optional(),
 });
 export type ParkPerson = z.infer<typeof ParkPerson>;
 
@@ -267,6 +269,18 @@ export const ServerEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('park.stood') }),
   /** That bench is taken. */
   z.object({ type: z.literal('park.bench_taken'), bench: z.number().int() }),
+  /**
+   * A pass to the voice server's room: the park's on walking in (and on getting up off a
+   * bench), the two's own on a bench. canTalk false with `until`: reported for voice too
+   * often, the mic is off until then (server park/voice.ts VOICE_BAN).
+   */
+  z.object({
+    type: z.literal('park.voice'),
+    url: z.string(), room: z.string(), token: z.string(), identity: z.string(),
+    /** A bench's own room: only the two of them in it. */
+    bench: z.boolean(),
+    canTalk: z.boolean(), until: z.string().optional(),
+  }),
   /**
    * What you have done together in the park today, and how far along the rest are
    * (shared/park-quests.ts; the server's park/quests.ts decides). `just` is the one

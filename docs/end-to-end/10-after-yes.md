@@ -128,14 +128,14 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   person's sheet in the town, and the check-in's "felt unsafe" step
   ([app/src/features/dm/thread-screen.tsx:226] `right={{ glyph: '⋯', label: 'Block or report', onPress: stop }}`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
-  are not told." ([app/src/features/safety/safety-sheet.tsx:44] `'You will never see each other again, anywhere in the app. They are not told.',`).
+  are not told." ([app/src/features/safety/safety-sheet.tsx:50] `'You will never see each other again, anywhere in the app. They are not told.',`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
   "Inappropriate messages or photos", "Fake profile", "Seems under 18", "Spam or a scam", "Made
   me feel unsafe", "Something else"; an optional note (up to 2,000 characters); the button
   "Report and block"; and "Something urgent? Write to" the support address
   ([app/src/features/safety/reasons.ts:17] `{ id: 'harassment', label: 'Harassment or threats' },`,
   [app/src/features/safety/reasons.ts:23] `{ id: 'other', label: 'Something else' },`,
-  [app/src/features/safety/safety-sheet.tsx:101] `Something urgent? Write to {SUPPORT_EMAIL}`).
+  [app/src/features/safety/safety-sheet.tsx:113] `Something urgent? Write to {SUPPORT_EMAIL}`).
   A report always blocks too ([server/src/messaging/store.ts:220] `await block(c, args.reporterId, args.reportedId);`).
 - **Effect, both ways:** the card, reveal, chat, town seat, photos and date idea disappear for
   both; sends are refused; they are never matched again
