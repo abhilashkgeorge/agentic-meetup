@@ -105,6 +105,8 @@ interface ParkLive {
   rode: () => void;
   gotParted: () => void;
   gotBench: (bench: number | null) => void;
+  /** Back after a dropped connection: the server ended any pair, asking or bench then. */
+  rejoined: () => void;
 }
 
 let nextId = 1;
@@ -138,4 +140,5 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   rode: () => { const p = get().partner; if (p) set({ partner: { ...p, rideTo: null } }); },
   gotParted: () => set({ partner: null, bench: null }),
   gotBench: (bench) => set({ bench }),
+  rejoined: () => set({ partner: null, bench: null, finding: null, asked: null, people: new Map() }),
 }));

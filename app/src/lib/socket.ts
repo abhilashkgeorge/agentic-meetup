@@ -56,8 +56,14 @@ function connect(): void {
     armDeadTimer();
     push({ type: 'hello', sessionId, lastSeenTurnId: lastSeenTurn });
     // Back in the park after a dropped connection: the server let us go when the old
-    // socket closed, so walk in again.
-    if (useParkLive.getState().inPark) push({ type: 'park.enter' });
+    // socket closed, so walk in again -- and whatever we were doing with somebody is
+    // over, because the server ended it then (and could not tell this socket). Kept,
+    // it was a pair on this phone that the server had forgotten: "End" sent a part
+    // for a pair the server no longer had, nothing came back, and nothing ended.
+    if (useParkLive.getState().inPark) {
+      useParkLive.getState().rejoined();
+      push({ type: 'park.enter' });
+    }
     // Anything typed while the connection was down goes now. Every message carries the
     // id the phone generated, so a message that actually did arrive before the socket
     // dropped is recognised and not written twice.
@@ -273,9 +279,13 @@ export function parkAnswer(yes: boolean): void {
   push({ type: 'park.answer', yes });
 }
 
-/** Stop asking, or stop talking. */
+/**
+ * Stop asking, or stop talking. Over on this phone at once, whatever the server says:
+ * "End" that waits for an answer does nothing when there is none to wait for.
+ */
 export function parkPart(): void {
   useParkLive.getState().setFinding(null);
+  useParkLive.getState().gotParted();
   push({ type: 'park.part' });
 }
 
@@ -283,7 +293,9 @@ export function parkSit(bench: number): void {
   push({ type: 'park.sit', bench });
 }
 
+/** Up off the bench: here at once, as with parting; the server tells the other. */
 export function parkStand(): void {
+  useParkLive.getState().gotBench(null);
   push({ type: 'park.stand' });
 }
 

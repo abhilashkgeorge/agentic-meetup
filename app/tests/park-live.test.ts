@@ -15,6 +15,8 @@
  *   - let `upsert` touch live people -> "a roster refresh leaves them alone" fails;
  *   - glide at walking pace only -> "closes on the server's word" fails.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STARTER, type Look, type ParkPerson } from '@clone/shared';
 import { BUBBLE_MS, bubbles, mergePeople, useParkLive, type Line } from '../src/features/world/park-live';
@@ -127,6 +129,23 @@ describe('talking with somebody in the park', () => {
     s.gotPaired(REF(8), null); s.gotBench(2);
     s.setIn(false);
     expect(useParkLive.getState()).toMatchObject({ partner: null, bench: null, asked: null, finding: null });
+  });
+
+  it('forgets the pair after a dropped connection, and on "End" without waiting', () => {
+    const s = useParkLive.getState();
+    s.setIn(true);
+    s.gotPaired(REF(9), null); s.gotBench(4); s.gotAsked(REF(10));
+    s.rejoined();
+    expect(useParkLive.getState()).toMatchObject({ inPark: true, partner: null, bench: null, asked: null, finding: null });
+    // SOURCE SHAPE: the socket's own handlers need a live WebSocket, which a test in
+    // node has none of. On reopening it forgets before walking back in; "End" and "Get
+    // up" end things on the phone at once rather than waiting for a server that, after
+    // a restart, has nothing to answer with.
+    const src = readFileSync(join(import.meta.dirname, '..', 'src', 'lib', 'socket.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(src).toMatch(/useParkLive\.getState\(\)\.rejoined\(\);\s*push\(\{ type: 'park\.enter' \}\)/);
+    expect(src).toMatch(/export function parkPart\(\): void \{[^}]*gotParted\(\)/);
+    expect(src).toMatch(/export function parkStand\(\): void \{[^}]*gotBench\(null\)/);
   });
 
   it('carries who is sitting', () => {
