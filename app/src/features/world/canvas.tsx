@@ -958,11 +958,13 @@ function Town({
    * `adb logcat -s ReactNativeJS`. `render` is three issuing the draw calls; the
    * gap between the sections' sum and the frame is the GPU and the native side.
    */
-  const prof = useRef({ on: false, n: 0, at: 0, sim: 0, vis: 0, crowd: 0, marks: 0, render: 0, frame: 0, loop: 0, start: 0 });
+  const prof = useRef({ on: false, n: 0, at: 0, sim: 0, vis: 0, crowd: 0, marks: 0, city: 0, render: 0, frame: 0, loop: 0, start: 0 });
   useEffect(() => {
     if (!__DEV__) return;
     const p = prof.current;
-    p.on = slots > SLOTS;
+    // On in every debug build: the park's own frame (and the city round it) is worth
+    // reading off a plugged-in phone, not only the crowd test's.
+    p.on = true;
     const orig = gl.render.bind(gl);
     gl.render = (sc: THREE.Object3D, cm: THREE.Camera) => {
       if (!p.on) { orig(sc, cm); return; }
@@ -1195,7 +1197,9 @@ function Town({
     // The same question of the trees, hedges and flowers (garden-mesh.ts packByCell).
     if (walking) garden.cull(view, ex, ez);
     // The traffic moves on, and only what is near is drawn; so are the buildings.
+    const c0 = prof.current.on ? performance.now() : 0;
     if (walking && city) { city.tick(clamped, ex, ez); city.cull(ex, ez); }
+    if (prof.current.on) prof.current.city += performance.now() - c0;
     const reach = walking ? VIEW * VIEW : Infinity;
     const used = visible(live.agents(), view, shown, {
       limit: slots,
@@ -1336,8 +1340,8 @@ function Town({
       if (t - q.at >= 2 && q.n) {
         const f = (x: number) => (x / q.n).toFixed(1);
         const lv = bodies ? `${bodies.stats.near}/${bodies.stats.middle}/${bodies.stats.far}/${bodies.stats.tiny}` : '-';
-        console.log(`[perf] frame ${f(q.frame)} ms | loop ${f(q.loop)} | sim ${f(q.sim)} | visible ${f(q.vis)} | crowd ${f(q.crowd)} | marks ${f(q.marks)} | render ${f(q.render)} | idle ${f(q.frame - q.loop - q.render)} | shown ${used} (${lv}) | calls ${gl.info.render.calls} | tris ${gl.info.render.triangles}`);
-        q.at = t; q.n = 0; q.sim = 0; q.vis = 0; q.crowd = 0; q.marks = 0; q.render = 0; q.frame = 0; q.loop = 0;
+        console.log(`[perf] frame ${f(q.frame)} ms | loop ${f(q.loop)} | sim ${f(q.sim)} | visible ${f(q.vis)} | city ${f(q.city)} | crowd ${f(q.crowd)} | marks ${f(q.marks)} | render ${f(q.render)} | idle ${f(q.frame - q.loop - q.render)} | shown ${used} (${lv}) | calls ${gl.info.render.calls} | tris ${gl.info.render.triangles}`);
+        q.at = t; q.n = 0; q.sim = 0; q.vis = 0; q.crowd = 0; q.marks = 0; q.city = 0; q.render = 0; q.frame = 0; q.loop = 0;
       }
     }
 
