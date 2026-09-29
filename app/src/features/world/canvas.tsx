@@ -40,7 +40,7 @@ import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
 import { CENTRAL_AREA, HAIR_HEX, HEIGHT_SCALE, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
-  CITY_BAND, FLY_SECS, MIST_NEAR, VIEW, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget,
+  CITY_BAND, FLY_SECS, MIST_NEAR, PERSON, VIEW, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget,
   driveVector, groundReach, mapDistance,
   elevationFor, eyeOffset, flyAt, followPose, orthographicBounds, pan, pinch, tileZoom, turnToward, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
@@ -678,17 +678,6 @@ export function WorldCanvas(props: WorldCanvasProps) {
   );
 }
 
-/**
- * How big a person is drawn, against a map whose unit is 550 real metres.
- *
- * Nothing on this map is to scale with anything -- it is a model of a city with
- * markers walking on it -- so the only question that matters is how a person reads
- * against the buildings beside them. At full size they were half a kilometre tall,
- * stood on rooftops and stepped over towers: "why are people bigger than the
- * buildings" (2026-09-22). At 0.16 a person is about a quarter of a unit, the
- * shortest building is twice their height and a street is three of them across.
- */
-const PERSON = 0.16;
 /** Reused for every head the bubbles ask about. */
 const head = new THREE.Vector3();
 /** How tall a body stands in the town: the model is 1.87 units (character-mesh.ts). */

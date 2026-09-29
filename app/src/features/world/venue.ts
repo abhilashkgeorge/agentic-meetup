@@ -105,6 +105,9 @@ export function venueGarden(venue: Venue): Garden {
 
 const kindOrder: Record<AgentSpec['kind'], number> = {
   you: 0,
+  // Never on a roster: somebody here in person is the server's to place
+  // (park-presence.ts). Listed because the kind is, and first after you if it were.
+  live: 0.5,
   met: 1,
   stranger: 2,
   practice: 3,

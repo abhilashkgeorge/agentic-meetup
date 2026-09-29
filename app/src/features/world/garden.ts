@@ -105,14 +105,25 @@ const TREE_R = 0.55;
 const TRUNK_R = 0.06;
 /** A lamp post is a post. */
 const PROP_R = 0.07;
-/** A bench is about 1.8 m long, so a little under a metre from its middle. */
-const BENCH_R = 0.11;
 /**
- * A bush is drawn as a sphere of 0.15 x its scale, and this used to be 0.16 -- bigger
- * than the leaves, so the bush ended half a metre before what stopped you. Just inside
- * the foliage instead: a hedge is a soft thing and brushing the outer leaves is right.
+ * A bench is 1.55 m long and under half a metre deep (venue-mesh.ts SIZE), so it stops
+ * you as a row of five small circles along its length rather than one wide one. The
+ * one wide circle (0.11, 89 cm) was sized for the old, bigger bench, and round a long,
+ * thin thing it left most of a metre of thin air in front of the seat
+ * (tests/no-invisible-skirt.test.ts).
  */
-const BUSH_R = 0.12;
+const BENCH_R = 0.024;
+/** Where along the bench each circle sits: each overlaps the next. */
+const BENCH_ALONG = [-0.07, -0.035, 0, 0.035, 0.07] as const;
+/** How far from a bench's middle it reaches, for anything placed near one. */
+const BENCH_HALF = 0.07 + BENCH_R;
+/**
+ * A bush is drawn as a sphere of BUSH_SIZE x its scale (garden-mesh.ts), and this used
+ * to be bigger than the leaves, so the bush ended half a metre before what stopped you.
+ * Just inside the foliage instead: a hedge is a soft thing and brushing the outer
+ * leaves is right. 0.8 of the drawn radius, as it was at the old size.
+ */
+const BUSH_R = 0.084;
 /** Wide enough to read as water you would not step into, narrow enough to bridge. */
 const RIVER_W = 2.1;
 
@@ -427,7 +438,7 @@ export function makeGarden(id: string): Garden {
     const p: Pt = [at[0] - (dz / len) * off * side, at[1] + (dx / len) * off * side];
     const blocked = trees.some((t2) => dist([t2.x, t2.z], p) < TREE_R * t2.scale + 0.2)
       || props.some((pr) => dist([pr.x, pr.z], p) < PROP_R + 0.2)
-      || benches.some((b) => dist([b.x, b.z], p) < BENCH_R + 0.2)
+      || benches.some((b) => dist([b.x, b.z], p) < BENCH_HALF + 0.2)
       || bushes.some((b) => dist([b.x, b.z], p) < BUSH_R * b.scale + 0.2)
       || dist(p, [fountain.x, fountain.z]) < fountain.radius + 0.2
       || (inRiver(p) && !onBridge(p))
@@ -480,8 +491,11 @@ export function gardenSpots(g: Garden): MapSpots {
     ...g.props.map((p) => ({ x: p.x, z: p.z, r: PROP_R, h: p.kind === 'lantern' ? 0.35 : 0.15 })),
     // You walk round a bench, not through it, but the camera sees over both it and
     // the hedges -- which is what the height on each of these is for.
-    ...g.benches.map((b) => ({ x: b.x, z: b.z, r: BENCH_R, h: 0.13 })),
-    ...g.bushes.map((b) => ({ x: b.x, z: b.z, r: BUSH_R * b.scale, h: 0.16 * b.scale })),
+    ...g.benches.flatMap((b) => BENCH_ALONG.map((d) => ({
+      // Along the bench's own length, which is its x: (cos rot, -sin rot) in the world.
+      x: b.x + Math.cos(b.rot) * d, z: b.z - Math.sin(b.rot) * d, r: BENCH_R, h: 0.1,
+    }))),
+    ...g.bushes.map((b) => ({ x: b.x, z: b.z, r: BUSH_R * b.scale, h: 0.14 * b.scale })),
     { x: g.fountain.x, z: g.fountain.z, r: g.fountain.radius, h: 0.5 },
   ];
   // A BUILDING IS A WALL, AND A WALL IS ITS EDGES, NOT ITS CORNERS.

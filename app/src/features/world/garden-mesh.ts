@@ -152,6 +152,22 @@ export interface GardenMeshOptions {
  * 2026-09-22).
  */
 const GRASS_H = 0.044;
+/**
+ * How much taller than GRASS_H a blade is drawn, before its own scale. It was 1.5,
+ * which with the scales on top made the tallest blades a metre high -- waist high on a
+ * person 1.75 m tall, and on the phone the lawn read as a hayfield round your knees
+ * (the founder, 2026-09-29: "fix scale ... everything else"). At 0.65 a lawn is 13 to
+ * 45 cm, ankle to knee (tests/park-scale.test.ts).
+ */
+const GRASS_TALL = 0.65;
+/**
+ * A bush: a sphere this big times its scale, standing BUSH_LIFT x scale off the ground
+ * and squashed to 0.72 of its height. At 0.15 the park's bushes were 1.2 to 2.5 m tall,
+ * taller than the people walking past them; at 0.105 they are 0.8 to 1.7 m, waist to
+ * shoulder, and their colliders (garden.ts BUSH_R) shrank with them.
+ */
+export const BUSH_SIZE = 0.105;
+const BUSH_LIFT = 0.0665;
 const GRASS_W = 0.022;
 const TRUNK_H = 1.15;
 // Barely off the ground, and BELOW the disc drawn under your own agent (0.02 x
@@ -605,7 +621,7 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
         dummy.position.set(b.x, 0, b.z);
         dummy.rotation.set(0, b.rot, 0);
         if (b.reed) dummy.scale.set(b.scale * 0.7, b.scale * 2.6, b.scale * 0.7);
-        else dummy.scale.set(b.scale * 1.3, b.scale * (0.8 + (b.i % 5) * 0.1) * 1.5, b.scale * 1.3);
+        else dummy.scale.set(b.scale, b.scale * (0.8 + (b.i % 5) * 0.1) * GRASS_TALL, b.scale);
         dummy.updateMatrix();
         mesh.setMatrixAt(k, dummy.matrix);
         mesh.setColorAt(k, b.reed
@@ -689,12 +705,12 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
   // Hedges.
   if (g.bushes.length) {
     // A hedge is about waist high on a person, not shoulder high: at 0.3 they were
-    // boulders with leaves (on the phone, 2026-09-22).
+    // boulders with leaves (on the phone, 2026-09-22). See BUSH_SIZE for the rest.
     const bushMesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(0.15, 7, 5),
+      new THREE.SphereGeometry(BUSH_SIZE, 7, 5),
       new THREE.MeshLambertMaterial({ color: '#ffffff' }), g.bushes.length);
     g.bushes.forEach((b, i) => {
-      dummy.position.set(b.x, 0.095 * b.scale, b.z);
+      dummy.position.set(b.x, BUSH_LIFT * b.scale, b.z);
       dummy.rotation.set(0, i * 1.1, 0);
       dummy.scale.set(b.scale, b.scale * 0.72, b.scale * 0.92);
       dummy.updateMatrix(); bushMesh.setMatrixAt(i, dummy.matrix);
@@ -713,7 +729,8 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
     g.flowers.forEach((f, i) => {
       dummy.position.set(f.x, 0, f.z);
       dummy.rotation.set(0, i * 2.4, 0);
-      dummy.scale.set(f.scale * 1.5, f.scale * 1.7, f.scale * 1.5);
+      // Knee high on a person: at 1.7 the tallest stood at 73 cm (the size test).
+      dummy.scale.set(f.scale * 1.3, f.scale * 1.3, f.scale * 1.3);
       dummy.updateMatrix(); bloom.setMatrixAt(i, dummy.matrix);
       bloom.setColorAt(i, shade.set(BLOOMS[Math.floor(f.tint * BLOOMS.length) % BLOOMS.length]!));
     });

@@ -39,6 +39,20 @@ export type Band = 'city' | 'mid' | 'near';
  * over most of them, and only gives way to the genuinely tall ones -- which is both
  * the steadier picture and the one where you can see where you are going.
  */
+/**
+ * How big a person is drawn, against a map whose unit is 550 real metres.
+ *
+ * Nothing on this map is to scale with anything -- it is a model of a city with
+ * markers walking on it -- so the only question that matters is how a person reads
+ * against the buildings beside them. At full size they were half a kilometre tall,
+ * stood on rooftops and stepped over towers: "why are people bigger than the
+ * buildings" (2026-09-22). At 0.16 a person is about a quarter of a unit, the
+ * shortest building is twice their height and a street is three of them across.
+ *
+ * Here, rather than in canvas.tsx, so the park's size test can hold every bench and
+ * bicycle against the people who use them (tests/park-scale.test.ts).
+ */
+export const PERSON = 0.16;
 export const WALK_BACK = 1.45;
 export const WALK_RISE = 0.95;
 export const WALK_AIM = 1.6;

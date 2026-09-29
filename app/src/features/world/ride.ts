@@ -133,8 +133,13 @@ export function benchFor(
   return best < 0 ? null : best;
 }
 
-/** How far each of the two sits from the middle of a bench, along it. */
-export const SEAT = 0.068;
+/**
+ * How far each of the two sits from the middle of a bench, along it: a sitting person
+ * is 0.64 m across at the elbows, the bench 1.55 m long (venue-mesh.ts SIZE), so they
+ * sit 0.68 m apart -- side by side, a few centimetres between them, and neither off an
+ * end (tests/park-scale.test.ts).
+ */
+export const SEAT = 0.042;
 
 /**
  * Where to sit on a bench, and which way to face: the left seat for the one who asked,
@@ -144,6 +149,7 @@ export const SEAT = 0.068;
 export function seatOn(bench: { x: number; z: number; rot: number }, left: boolean): { x: number; z: number; facing: number } {
   const l = left ? -SEAT : SEAT;
   const c = Math.cos(bench.rot), s = Math.sin(bench.rot);
-  // The bench's own x is (cos, -sin) in the world, and its front (sin, cos).
-  return { x: bench.x + l * c + 0.012 * s, z: bench.z - l * s + 0.012 * c, facing: bench.rot };
+  // The bench's own x is (cos, -sin) in the world. On its middle line, a sitting
+  // person's back is a few centimetres in front of the backrest (the size test).
+  return { x: bench.x + l * c, z: bench.z - l * s, facing: bench.rot };
 }

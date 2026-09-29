@@ -15,12 +15,14 @@
  *
  * Negative controls, run by hand and recorded in the commit:
  *   - `FOOT = 0.09` -> the bush and the trunk both fail, by about 50 cm.
- *   - `BUSH_R = 0.16` -> the bush fails.
+ *   - `BUSH_R = 0.16` -> the bush fails (and, since the bushes shrank on 2026-09-29,
+ *     `BUSH_R = 0.12` does too).
  *   - either one -> the "daylight" test finds pairs you cannot walk between.
  */
 import { describe, expect, it } from 'vitest';
 import { FOOT } from '../src/features/world/sim';
 import { gardenSpots } from '../src/features/world/garden';
+import { BUSH_SIZE } from '../src/features/world/garden-mesh';
 import { makeCubbon } from '../src/features/world/cubbon';
 
 const M = 8.1;
@@ -35,9 +37,9 @@ const AIR = 0.25 / M;
 const DRAWN = {
   // CylinderGeometry(0.055, 0.085, ...) -- the wider end is the one at your knees.
   trunk: 0.085,
-  // SphereGeometry(0.15) scaled (s, 0.72 s, 0.92 s), spun about y, so the radius you
-  // meet is somewhere between 0.138 and 0.15. The smaller one is the fair test.
-  bush: 0.138,
+  // SphereGeometry(BUSH_SIZE) scaled (s, 0.72 s, 0.92 s), spun about y, so the radius
+  // you meet is somewhere between 0.92 and 1 of it. The smaller one is the fair test.
+  bush: BUSH_SIZE * 0.92,
 };
 
 const park = makeCubbon();

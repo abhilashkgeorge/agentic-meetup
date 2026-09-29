@@ -46,7 +46,6 @@ export interface BuiltVenueFurniture {
   dispose(): void;
 }
 
-const SCALE = 0.16;
 /**
  * How close a piece has to be for the detailed model. The mist starts at MIST_NEAR
  * (camera.ts, 10 units), so the change from model to stand-in happens where it is
@@ -69,6 +68,37 @@ const MESH_OF: Record<FurnitureKind, string> = {
 };
 
 export interface Piece { kind: FurnitureKind; x: number; z: number; rot: number; scale: number }
+
+/**
+ * HOW BIG EACH KIND IS DRAWN: world units per unit of the GLB, along its length (x),
+ * its height (y) and its depth (z). The library is authored about six times too big,
+ * and every kind used to share one number, 0.16 -- the people's own PERSON -- as if the
+ * furniture had been made against the same figure. It was not (the founder,
+ * 2026-09-29: "fix scale too wrt to park bench cycle and everything else").
+ *
+ * WHAT WAS WRONG, measured on the real GLB and the real rig at 8.1 m a unit
+ * (tests/park-scale.test.ts): a bench's seat stood 0.66 m off the ground, and a person
+ * sitting -- sitPose -- has the seat of their trousers at 0.38 m, so everybody on a
+ * bench sat 28 cm inside it. The bench was 2.25 m long with a back 1.3 m high, and the
+ * table's top was at 1.08 m, chest high on a person 1.75 m tall.
+ *
+ * NOW each kind is sized against what a person does with it:
+ *   - a BENCH's seat is where a sitting person's seat is: the GLB's seat top is 0.505
+ *     of its units and the rig's sitting seat 0.402 of its own, so 0.402 x the
+ *     person's scale / 0.505. Stretched a fifth along its length, so the two of a pair
+ *     sit side by side without hanging off the ends (SEAT in ride.ts): 1.55 m long,
+ *     the back 0.77 m high;
+ *   - a TABLE's top at 0.75 m;
+ *   - a LAMP at 4.0 m and a BIN at 0.95 m, which they already were.
+ */
+export const SIZE: Readonly<Record<FurnitureKind, readonly [number, number, number]>> = {
+  bench: [0.11, 0.0917, 0.0917],
+  lamp: [0.16, 0.16, 0.16],
+  bin: [0.16, 0.16, 0.16],
+  table: [0.111, 0.111, 0.111],
+};
+/** The one size the stand-ins below were measured at (the old shared scale). */
+const MEASURED_AT = 0.16;
 
 /** Every piece of furniture in the park, from its layout. Pure, so a test can count it. */
 export function furniturePieces(garden: Garden): Piece[] {
@@ -120,9 +150,10 @@ export function chooseDetail(
 }
 
 /**
- * The stand-ins: a few boxes the size of each model at SCALE, measured from the GLB
- * (a bench is 0.28 wide and 0.16 high with its back at -z; a lamp 0.49 tall). Plain
- * light grey, like the models themselves (#e7e7e7, no texture).
+ * The stand-ins: a few boxes the size of each model, measured from the GLB at 0.16 (a
+ * bench is 0.28 wide and 0.16 high with its back at -z; a lamp 0.49 tall) and returned
+ * in the GLB's own units, so a stand-in takes exactly the detailed model's matrix.
+ * Plain light grey, like the models themselves (#e7e7e7, no texture).
  */
 function standIn(kind: FurnitureKind): THREE.BufferGeometry {
   const box = (w: number, h: number, d: number, x: number, y: number, z: number) =>
@@ -142,7 +173,7 @@ function standIn(kind: FurnitureKind): THREE.BufferGeometry {
     : [box(0.17, 0.02, 0.078, 0, 0.123, 0), box(0.02, 0.113, 0.02, 0, 0.0565, 0)];
   const merged = mergeGeometries(parts, false)!;
   for (const p of parts) p.dispose();
-  return merged;
+  return merged.scale(1 / MEASURED_AT, 1 / MEASURED_AT, 1 / MEASURED_AT);
 }
 
 async function readModel(): Promise<ArrayBuffer> {
@@ -212,15 +243,13 @@ export function makeVenueFurniture(
     }
   }
 
-  /** Each piece's matrix, detailed (the GLB is authored ~6x too big) and stand-in. */
+  /** Each piece's matrix, the same for the detailed model and its stand-in (SIZE). */
   const bigM = pieces.map((p) => {
-    dummy.position.set(p.x, 0, p.z); dummy.rotation.set(0, p.rot, 0); dummy.scale.setScalar(SCALE * p.scale);
+    const [sx, sy, sz] = SIZE[p.kind];
+    dummy.position.set(p.x, 0, p.z); dummy.rotation.set(0, p.rot, 0); dummy.scale.set(sx * p.scale, sy * p.scale, sz * p.scale);
     dummy.updateMatrix(); return dummy.matrix.clone();
   });
-  const smallM = pieces.map((p) => {
-    dummy.position.set(p.x, 0, p.z); dummy.rotation.set(0, p.rot, 0); dummy.scale.setScalar(p.scale);
-    dummy.updateMatrix(); return dummy.matrix.clone();
-  });
+  const smallM = bigM;
 
   let at: [number, number] | null = null;
   let drawn = { meshes: 0, triangles: 0 };
