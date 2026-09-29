@@ -274,7 +274,8 @@ export function ParkActions({ venueSim, benches }: {
   };
 
   const quests = useParkLive((s) => s.quests);
-  const next = nextQuest(quests);
+  const riding = useParkLive((s) => s.riding);
+  const next = nextQuest(quests, { bench: bench !== null, riding });
   const card = { paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, backgroundColor: p.bg, boxShadow: raised(p, 4), gap: space.sm, maxWidth: DOCK_W };
   return (
     <View pointerEvents="box-none" style={{ alignItems: 'flex-end', gap: space.sm }}>
@@ -402,7 +403,7 @@ export function QuestsSheet({ onClose }: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const quests = useParkLive((s) => s.quests);
   const partner = useParkLive((s) => s.partner);
-  const cheer = useParkLive((s) => s.cheer);
+  const balance = useParkLive((s) => s.balance);
   const done = new Set(quests?.done ?? []);
   return (
     <Pressable onPress={onClose} style={{ position: 'absolute', inset: 0 }} accessibilityLabel="Close">
@@ -414,7 +415,7 @@ export function QuestsSheet({ onClose }: { onClose: () => void }) {
           <Text style={[type.body, { color: p.textSecondary }]}>
             {partner ? 'Do these with the person you are talking to. ' : 'Find someone to talk to first, then do these together. '}
             Each pays you both points once a day, to spend on your look.
-            {cheer ? ` You have ${cheer.balance} points.` : ''}
+            {balance !== null ? ` You have ${balance} points.` : ''}
           </Text>
           {PARK_QUESTS.map((q) => {
             const n = quests?.progress[q.id] ?? 0;

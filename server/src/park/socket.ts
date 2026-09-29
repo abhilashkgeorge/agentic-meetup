@@ -158,13 +158,13 @@ async function enter(ctx: TenantCtx): Promise<void> {
   // What they have already been paid for today: the ledger's word, on their own session.
   tenantOf.set(ctx.userId, ctx.tenantId);
   const day = parkDay(Date.now());
-  const done = await tenantSession(ctx, async (c) => {
+  const { done, points } = await tenantSession(ctx, async (c) => {
     const { rows } = await c.query<{ reason: string }>(
       `SELECT reason FROM points_ledger WHERE user_id = $1 AND ref = $2 AND reason LIKE 'park\\_%'`, [ctx.userId, day]);
-    return rows.map((r) => r.reason.slice('park_'.length) as ParkQuestId);
+    return { done: rows.map((r) => r.reason.slice('park_'.length) as ParkQuestId), points: await balance(c, ctx.userId) };
   });
   quests.enter(ctx.userId, done);
-  pushQuests(ctx.userId);
+  pushQuests(ctx.userId, undefined, points);
   log.info({ userId: ctx.userId, here: park.members.size }, 'park: entered');
 }
 
@@ -191,11 +191,17 @@ async function pay(done: readonly Done[]): Promise<void> {
   }
 }
 
-/** Somebody's quests, sent to them: what is done today and how far along the rest are. */
-function pushQuests(userId: string, just?: { quest: ParkQuestId; points: number; balance: number }): void {
+/**
+ * Somebody's quests, sent to them: what is done today, how far along the rest are, and
+ * their points when they were just read (walking in, a payment).
+ */
+function pushQuests(userId: string, just?: { quest: ParkQuestId; points: number; balance: number }, points?: number): void {
   const state = quests.stateOf(userId, pairs.partnerOf(userId));
   if (!state) return;
-  hub.pushTo(userId, { type: 'park.quests', ...state, ...(just ? { just } : {}) } satisfies ServerEvent);
+  const total = just?.balance ?? points;
+  hub.pushTo(userId, {
+    type: 'park.quests', ...state, ...(just ? { just } : {}), ...(total !== undefined ? { balance: total } : {}),
+  } satisfies ServerEvent);
 }
 
 export function leavePark(userId: string): void {

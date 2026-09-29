@@ -128,6 +128,8 @@ describe('finding someone to talk to in the park', () => {
       [day, [seeker.userId, climber.userId]]);
     expect(rows.map((r) => r.user_id).sort()).toEqual([seeker.userId, climber.userId].sort());
     expect(rows.every((r) => r.amount === 10)).toBe(true);
+    // Walking in, each was told their points: nothing yet.
+    expect(seeker.frames.find((f) => f.type === 'park.quests')).toMatchObject({ balance: 0 });
     const told = seeker.frames.filter((f) => f.type === 'park.quests' && f.just?.quest === 'hello');
     expect(told).toHaveLength(1);
     expect(told[0]).toMatchObject({ day, just: { quest: 'hello', points: 10, balance: 10 } });

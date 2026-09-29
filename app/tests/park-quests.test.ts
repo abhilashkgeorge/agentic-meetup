@@ -12,7 +12,8 @@
  *     people can stand at it together -- no sight is inside a statue's plinth, a
  *     building or a pond;
  *   - how far along reads in metres, things said and sights seen, and the next thing
- *     to do is the first not done;
+ *     to do is what fits where you are (a bench, a bike), else the first not done;
+ *   - your points, from walking in and from each payment, are kept;
  *   - a payment is cheered, a payment of nothing (already done today) is not, and
  *     walking out forgets it all;
  *   - the one you are talking with, and only they, wears a ring at their feet;
@@ -22,6 +23,7 @@
  *   - move a sight 10 units off its statue            -> "at a landmark" fails
  *   - cheer every park.quests, paid or not             -> "a payment of nothing" fails
  *   - ring everybody live                              -> "only they" fails
+ *   - the next thing to do ignoring where you are      -> "what fits where you are" fails
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -74,6 +76,28 @@ describe('things to do, on the phone', () => {
     expect(nextQuest(null)!.id).toBe('walk');
     expect(nextQuest({ day: 'd', done: ['hello', 'walk'], progress: {}, sights: [] })!.id).toBe('ride');
     expect(nextQuest({ day: 'd', done: PARK_QUESTS.map((q) => q.id), progress: {}, sights: [] })).toBeNull();
+  });
+
+  it('suggests what fits where you are: sitting and talking on a bench, riding together on a bike', () => {
+    const q = { day: 'd', done: ['hello' as const], progress: {}, sights: [] };
+    expect(nextQuest(q, { bench: true })!.id).toBe('talk');
+    expect(nextQuest(q, { riding: true })!.id).toBe('ride');
+    expect(nextQuest(q)!.id).toBe('walk');
+    // Done already: the first thing still to do instead.
+    expect(nextQuest({ ...q, done: ['hello', 'talk'] }, { bench: true })!.id).toBe('walk');
+  });
+
+  it('keeps your points from walking in, and from each payment', () => {
+    const s = useParkLive.getState();
+    s.setIn(true);
+    const q = { day: 'd', done: [], progress: {}, sights: [] };
+    s.gotQuests(q, undefined, 40);
+    expect(useParkLive.getState().balance).toBe(40);
+    s.gotQuests(q);
+    expect(useParkLive.getState().balance, 'a progress update forgot your points').toBe(40);
+    s.gotQuests(q, { quest: 'walk', points: 15, balance: 55 });
+    expect(useParkLive.getState().balance).toBe(55);
+    s.setIn(false);
   });
 
   it('cheers what paid, not a payment of nothing, and forgets it all on walking out', () => {

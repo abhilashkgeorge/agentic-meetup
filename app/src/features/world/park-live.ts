@@ -79,9 +79,15 @@ export function questProgress(id: ParkQuestId, n: number): string {
   return '';
 }
 
-/** The next thing to do together: the first not done today, after meeting somebody. */
-export function nextQuest(quests: Quests | null): (typeof PARK_QUESTS)[number] | null {
-  return PARK_QUESTS.find((q) => q.id !== 'hello' && !(quests?.done ?? []).includes(q.id)) ?? null;
+/**
+ * The next thing to do together: what fits where you are -- sitting and talking on a
+ * bench, riding together on a bike -- if it is not done yet, else the first not done
+ * today, after meeting somebody.
+ */
+export function nextQuest(quests: Quests | null, now: { bench?: boolean; riding?: boolean } = {}): (typeof PARK_QUESTS)[number] | null {
+  const open = PARK_QUESTS.filter((q) => q.id !== 'hello' && !(quests?.done ?? []).includes(q.id));
+  const fits = now.bench ? open.find((q) => q.id === 'talk') : now.riding ? open.find((q) => q.id === 'ride') : undefined;
+  return fits ?? open[0] ?? null;
 }
 
 /** This frame's people, their looks carried over from the last. Nobody without a look yet. */
@@ -138,6 +144,8 @@ interface ParkLive {
   /** Things to do together today, and the one just done, for a moment on screen. */
   quests: Quests | null;
   cheer: { quest: ParkQuestId; points: number; balance: number; at: number } | null;
+  /** Your points, as of the last payment: shown with the things to do. */
+  balance: number | null;
   setIn: (on: boolean) => void;
   gotPeople: (frame: readonly ParkPerson[]) => void;
   gotLine: (ref: string, text: string, at: number, priv?: boolean) => void;
@@ -155,7 +163,7 @@ interface ParkLive {
   rejoined: () => void;
   /** Get on a bicycle, or off it. Not while on a bench, or while a car is taking you. */
   setRiding: (on: boolean) => void;
-  gotQuests: (q: Quests, just?: { quest: ParkQuestId; points: number; balance: number }) => void;
+  gotQuests: (q: Quests, just?: { quest: ParkQuestId; points: number; balance: number }, balance?: number) => void;
   clearCheer: () => void;
 }
 
@@ -173,6 +181,7 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   riding: false,
   quests: null,
   cheer: null,
+  balance: null,
   // Leaving forgets everybody -- and ends whatever you were in the middle of, which the
   // server ends too: the next visit starts from what it sends.
   setIn: (on) => set(on ? { inPark: true } : {
@@ -200,7 +209,11 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   gotBench: (bench) => set(bench !== null ? { bench, riding: false } : { bench }),
   rejoined: () => set({ partner: null, bench: null, finding: null, asked: null, people: new Map() }),
   // A payment is cheered; one that paid nothing (already done today) is not.
-  gotQuests: (quests, just) => set(just && just.points > 0 ? { quests, cheer: { ...just, at: Date.now() } } : { quests }),
+  gotQuests: (quests, just, balance) => set({
+    quests,
+    ...(just ? { balance: just.balance } : balance !== undefined ? { balance } : {}),
+    ...(just && just.points > 0 ? { cheer: { ...just, at: Date.now() } } : {}),
+  }),
   clearCheer: () => set({ cheer: null }),
   setRiding: (on) => {
     const s = get();

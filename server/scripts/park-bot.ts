@@ -112,6 +112,11 @@ function stepTo(tx: number, tz: number, speed: number): boolean {
 }
 
 const walk = setInterval(() => {
+  // Answering first, wherever it is: sat on a bench is where it talks most.
+  if (replyAt && Date.now() >= replyAt) {
+    replyAt = 0;
+    send({ type: 'park.say', text: REPLIES[reply++ % REPLIES.length] });
+  }
   // On the pair's bench: to the front of its seat at a brisk walk, then onto it, as
   // the app's sim does (sitOn), and sat still facing out.
   if (seat) {
@@ -152,10 +157,6 @@ const walk = setInterval(() => {
     }
   }
   send({ type: 'park.move', x, z, facing, moving });
-  if (replyAt && Date.now() >= replyAt) {
-    replyAt = 0;
-    send({ type: 'park.say', text: REPLIES[reply++ % REPLIES.length] });
-  }
 }, 200);
 
 async function done(): Promise<void> {

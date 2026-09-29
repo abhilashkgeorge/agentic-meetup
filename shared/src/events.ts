@@ -279,6 +279,8 @@ export const ServerEvent = z.discriminatedUnion('type', [
     progress: z.record(z.string(), z.number()),
     sights: z.array(z.string()),
     just: z.object({ quest: z.enum(['hello', 'walk', 'ride', 'talk', 'sights']), points: z.number().int(), balance: z.number().int() }).optional(),
+    /** Your points, when the server has just read them: on walking in, and with a payment. */
+    balance: z.number().int().optional(),
   }),
 
   z.object({ type: z.literal('heartbeat') }),

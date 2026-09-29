@@ -169,7 +169,7 @@ function connect(): void {
         useParkLive.getState().gotBench(null);
         break;
       case 'park.quests':
-        useParkLive.getState().gotQuests({ day: ev.day, done: ev.done, progress: ev.progress, sights: ev.sights }, ev.just);
+        useParkLive.getState().gotQuests({ day: ev.day, done: ev.done, progress: ev.progress, sights: ev.sights }, ev.just, ev.balance);
         break;
       case 'park.bench_taken':
         useParkLive.getState().gotRefused('bench_taken');
