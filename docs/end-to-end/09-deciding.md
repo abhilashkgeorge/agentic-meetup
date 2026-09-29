@@ -122,10 +122,10 @@ neighbourhood, so the second mover does not learn where the first mover lives
 The first mover's button is "Yes, share my profile with them" and the second person's is "Yes,
 share mine back"; nothing of a person is shown to the other before their own tap
 ([app/src/features/matches/turn.ts:35] `shareFirst: 'Yes, share my profile with them',`).
-The promises match: consent says "Your photos and first name are never public. A person sees them
-only after you say yes to sharing them with that person."; the photo screens say "Nobody sees these
-until you share your profile with them." and "Only people you share your profile with"
-([app/src/features/consent/consent-screen.tsx:47] `'Your photos and first name are never public. A person sees them only after you say yes to sharing them with that person.',`,
+The promises match: consent says "Your photos and first name reach a person only after you say yes to
+sharing your profile with them."; the photo screens say "Nobody sees these until you share your profile
+with them." and "Only people you share your profile with"
+([app/src/features/consent/consent-screen.tsx:52] `'Your photos and first name reach a person only after you say yes to sharing your profile with them.',`,
 [app/src/features/onboarding/photos-step.tsx:168] `Nobody sees these until you share your profile with them. Your agent never does,`,
 [app/src/features/photos/photos-screen.tsx:133] `<Card label="Only people you share your profile with">`).
 

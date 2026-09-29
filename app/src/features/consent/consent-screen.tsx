@@ -42,11 +42,16 @@ const SAYS: Record<string, string[]> = {
     'Your agent talks to other agents for you. You always make the final call about who you meet — it never decides that.',
     'We can take photos down, or remove an account, if somebody reports it and we agree with them.',
   ],
+  // What the code does, said plainly (the founder's (f, h), 2026-09-29; server consent.ts
+  // privacy v2). The first version promised "Only things marked public ever leave your
+  // account" and that you could "change" everything -- neither was true.
   privacy: [
-    'What you tell your clone is used to represent you to other agents. Only things marked public ever leave your account.',
-    'Your photos and first name are never public. A person sees them only after you say yes to sharing them with that person.',
-    'You can read everything it knows about you, change it, or delete the whole account, from Settings.',
-    'We send text to AI providers to run your clone. We do not sell anything to anybody.',
+    'Your clone uses what you tell it to represent you to other agents.',
+    'Someone your agent meets sees what you mark public, your age, your part of town and what you are here for, and whether you fit what they asked for about work, exercise, sleep or moving cities.',
+    'Your answers to private questions, like faith, drinking or kids, help decide who you meet. They are never shown.',
+    'Your photos and first name reach a person only after you say yes to sharing your profile with them.',
+    'In Settings you can read everything it knows about you, say what is wrong, and delete the whole account.',
+    'What you type and your messages go to AI providers, to run your clone and to search what it remembers. We do not sell anything to anybody.',
   ],
 };
 

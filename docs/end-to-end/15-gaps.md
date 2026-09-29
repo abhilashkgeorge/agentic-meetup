@@ -46,15 +46,13 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 7. **Deleting an account deletes both halves of their chats**, the other person's messages with them
     ([server/src/memory/erasure.ts:81] `{ table: 'rendezvous', columns: ['user_a', 'user_b'] },`). (Reports
     against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5.)
-8. **Promises that are broader than the code.** "Nobody else has ever seen what your clone knows about you." and
-    "Only things marked public ever leave your account." sit beside the first name, age and city on the reveal,
-    "Matches" on situation wants, the reviewer's want topics, and AI providers processing the text
-    ([app/src/features/settings/settings-screen.tsx:299] `Nobody else has ever seen what your clone knows about you.`).
+8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
+    again by everybody) and the Settings line now say what the code does
+    ([app/src/features/settings/settings-screen.tsx:299] `Nobody sees your photos or first name until you say yes to them.`).
 9. **Latent:** the matchmaker role can read every profile summary, which is written from all facts including private
     ones; nothing reads it in a round today ([server/migrations/0028_matchmaker.sql:51] `GRANT SELECT ON core_profile TO clone_matchmaker;`).
-10. **AI providers** receive everything typed to the clone and every message's text (embeddings); the in-app notice
-    names the chat providers but not the embedding provider, and its privacy links point to pages the server does not
-    serve ([server/src/api/config.ts:51] `privacyUrl: '/legal/privacy',`).
+10. **Closed on 2026-09-29: the AI notice.** It names the embedding provider as well as the chat ones, and carries no
+    link to a page the server does not serve ([server/src/api/config.ts:51] `const embeds = embeddingProvider();`).
 
 ### 15.3 Behaviour a person would not expect
 

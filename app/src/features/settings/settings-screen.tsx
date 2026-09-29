@@ -296,7 +296,7 @@ export default function SettingsScreen() {
         <Button label="Sign out" variant="ghost" onPress={signOut} />
 
         <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
-          Nobody else has ever seen what your clone knows about you.
+          Nobody sees your photos or first name until you say yes to them.
         </Text>
         {/* The map on Home is drawn from OpenStreetMap data (app/assets/map/ATTRIBUTION.md);
             the Open Database License asks for this line wherever the map is shown. */}

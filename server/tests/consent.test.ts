@@ -122,6 +122,18 @@ describe('the record', () => {
     expect(Number(rows[0]!.n)).toBe(REQUIRED.length);
   });
 
+  // The founder's (f, h), 2026-09-29: the privacy notice's words changed to match the
+  // code, so what a person agreed to changed. Negative control, run by hand and recorded
+  // in the commit: its version back to 1 -> this test fails.
+  it('asks again for a privacy notice whose words changed: agreeing to version 1 no longer settles it', async () => {
+    await owner.query(`INSERT INTO consents (tenant_id, user_id, document, version) VALUES ($1,$2,'privacy','1')`,
+      [ctx.tenantId, ctx.userId]);
+    await req('POST', { accept: REQUIRED.filter((r) => r.document !== 'privacy').map((r) => ({ document: r.document, version: r.version })) });
+    const body = await (await req('GET')).json() as { outstanding: { document: string; version: string }[]; settled: boolean };
+    expect(body.settled, 'the old privacy notice still counted').toBe(false);
+    expect(body.outstanding).toEqual([expect.objectContaining({ document: 'privacy', version: '2' })]);
+  });
+
   it('refuses a document this server never asked for', async () => {
     // Otherwise a client could manufacture a record of consent to something nobody
     // wrote, which is worse than having no record.

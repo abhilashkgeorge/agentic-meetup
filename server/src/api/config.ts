@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { decideModel, modelFor } from '../llm/index.js';
 import { providerOf, type Task } from '../llm/caps.js';
+import { embeddingProvider } from '../llm/embeddings.js';
 
 /**
  * Every task whose provider a person is told about. Exported so a test can check that
@@ -43,13 +44,22 @@ export const LABELLED_PROVIDERS = new Set(Object.keys(LABEL));
  * in force since 2026-08-02.
  */
 export const configRoutes = new Hono().get('/v1/config', (c) => {
-  const providers = [...new Set(disclosedTasks().map((t) => LABEL[providerOf(modelFor(t))] ?? 'unknown'))].sort();
+  // THE EMBEDDING PROVIDER IS NAMED TOO (the founder's (f, h), 2026-09-29). Every message
+  // and every remembered sentence is sent to it to be turned into numbers for search
+  // (llm/embeddings.ts) -- a provider like the chat's, and the one nobody was told about:
+  // with chat on Anthropic and embeddings on Gemini, the notice named Anthropic alone.
+  const embeds = embeddingProvider();
+  const providers = [...new Set([
+    ...disclosedTasks().map((t) => LABEL[providerOf(modelFor(t))] ?? 'unknown'),
+    ...(embeds === 'none' ? [] : [LABEL[embeds] ?? 'unknown']),
+  ])].sort();
   return c.json({
     aiProviders: providers,
+    // No links: /legal/privacy and /legal/safety were never served, and the app never
+    // showed them. A privacy policy is the founder's to write; until one is published,
+    // pointing at nothing promised a page that did not exist.
     disclosure: {
       perSession: `You are talking to an AI. Your messages are processed by ${providers.join(' and ')}.`,
-      privacyUrl: '/legal/privacy',
-      safetyProtocolUrl: '/legal/safety',
     },
     limits: { maxMessageChars: 16_000 },
   });

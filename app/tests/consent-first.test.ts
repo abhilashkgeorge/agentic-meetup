@@ -80,8 +80,9 @@ describe('no screen promises the old rule', () => {
   });
 
   it('the consent, the photo screens and the phone permission say the new rule', () => {
+    // Reworded with the privacy notice's version 2 (2026-09-29); the rule is the same.
     expect(said('src/features/consent/consent-screen.tsx'))
-      .toContain('Your photos and first name are never public. A person sees them only after you say yes to sharing them with that person.');
+      .toContain('Your photos and first name reach a person only after you say yes to sharing your profile with them.');
     expect(said('src/features/onboarding/photos-step.tsx')).toContain('Nobody sees these until you share your profile with them.');
     expect(said('src/features/photos/photos-screen.tsx')).toContain('label="Only people you share your profile with"');
     expect(read('app.json')).toContain('Your photos are shown only to people you share your profile with.');

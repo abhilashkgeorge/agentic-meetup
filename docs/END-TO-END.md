@@ -125,7 +125,7 @@ setup is finished on this phone
 | Phone number | Normalised; a 6-digit code is made and "sent" | Code | `phone_challenges`: a hash of the number and a hash of the code, 5-minute expiry, caller's IP | Nobody reads it back; only the sign-in role touches this table | `server/src/api/auth.ts:427` |
 | The code | Checked (5 tries); a known number signs in, an unknown one needs an invite | Code | The challenge becomes a 15-minute "ticket" | | `server/src/api/auth.ts:533` |
 | Invite code | Checked; the account is created | Code | `tenants`, `app_users` (number hash, no number), `device_sessions` | The person | `server/src/api/auth.ts:77` |
-| "I agree" | Three documents accepted | Code | `consents` rows, append-only | The person | `server/src/api/consent.ts:93` |
+| "I agree" | Three documents accepted | Code | `consents` rows, append-only | The person | `server/src/api/consent.ts:96` |
 
 ### Arjun and Meera
 
@@ -147,8 +147,8 @@ Nothing in sign-up differs by gender. Both see, in order:
    In development, the reusable code KNOX-1010 works.
 4. **"Before we start"**: three short documents and one button, "I agree". There is no decline
    button: "If you would rather not, close the app — nothing has been set up yet."
-   (`app/src/features/consent/consent-screen.tsx:103`,
-   `app/src/features/consent/consent-screen.tsx:96`).
+   (`app/src/features/consent/consent-screen.tsx:108`,
+   `app/src/features/consent/consent-screen.tsx:101`).
 5. Then setup (stage 2).
 
 ### 1.1 Phone and SMS code
@@ -203,19 +203,23 @@ Nothing in sign-up differs by gender. Both see, in order:
 Three documents, shown in plain words and accepted with one "I agree"
 (`server/src/api/consent.ts:32`,
 `server/src/api/consent.ts:33`,
-`server/src/api/consent.ts:34`):
+`server/src/api/consent.ts:37`):
 
 - **Age:** "You have to be 18 or older to use this." "We keep the year you were born. Other people
   only ever see your age." (`app/src/features/consent/consent-screen.tsx:37`)
 - **Terms:** "Be a person. No harassment, no pretending to be somebody else, no pictures that are not
   of you." "Your agent talks to other agents for you. You always make the final call about who you
   meet" (`app/src/features/consent/consent-screen.tsx:42`)
-- **Privacy:** "What you tell your clone is used to represent you to other agents. Only things marked
-  public ever leave your account." "Your photos and first name are never public. A person sees them
-  only after you say yes to sharing them with that person." "We send text to AI providers to run your
-  clone. We do not sell anything to anybody." (`app/src/features/consent/consent-screen.tsx:46`,
-  `app/src/features/consent/consent-screen.tsx:47`,
-  `app/src/features/consent/consent-screen.tsx:49`)
+- **Privacy** (version 2 since 2026-09-29, so everybody reads it again): "Your clone uses what you tell
+  it to represent you to other agents." "Someone your agent meets sees what you mark public, your age,
+  your part of town and what you are here for, and whether you fit what they asked for about work,
+  exercise, sleep or moving cities." "Your answers to private questions, like faith, drinking or kids,
+  help decide who you meet. They are never shown." "Your photos and first name reach a person only after
+  you say yes to sharing your profile with them." "In Settings you can read everything it knows about you,
+  say what is wrong, and delete the whole account." "What you type and your messages go to AI providers,
+  to run your clone and to search what it remembers. We do not sell anything to anybody."
+  (`app/src/features/consent/consent-screen.tsx:50`,
+  `server/src/api/consent.ts:37`)
 
 Stored as append-only rows; the app role cannot change or delete them
 (`server/migrations/0042_consents_append_only.sql:25`).
@@ -884,17 +888,18 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **AI providers** receive: everything typed to the clone, and its replies, for chat; only the
   person's own lines for extraction (`server/src/memory/extract.ts:187`);
   every message's text for embeddings, and in a round the other person's public sentences and both
-  people's wants. The per-session notice names the provider: "You are talking to an AI. Your messages are
-  processed by…" (`server/src/api/config.ts:50`).
+  people's wants. The per-session notice names every provider -- the embedding one too, since
+  2026-09-29: "You are talking to an AI. Your messages are processed by…"
+  (`server/src/api/config.ts:51`).
+  It carries no links: the two it had pointed at pages the server never served.
 - **Push notifications** (since 2026-09-28) pass through Expo's push service and, on Android, Google's:
   each carries the kind of event and the card's id, never a name or anybody's words. A phone's push
   token is kept against its account only (row-level security), dropped at sign-out, and deleted with
   the account (`server/src/api/push.ts:36`,
   `server/src/memory/erasure.ts:41`).
-- **The Settings promise** reads "Nobody else has ever seen what your clone knows about you."
-  (`app/src/features/settings/settings-screen.tsx:299`).
-  By design, other members see public sentences, tags and a first name; the reviewer sees want topic
-  words; AI providers process the text. Read literally, the promise is broader than the code.
+- **The Settings promise** reads "Nobody sees your photos or first name until you say yes to them."
+  (since 2026-09-29; it used to say "Nobody else has ever seen what your clone knows about you", which
+  was broader than the code) (`app/src/features/settings/settings-screen.tsx:299`).
 
 ### Docs vs code
 
@@ -908,13 +913,6 @@ Row-level security is the boundary. Each part of the server connects as its own 
   every live preference (`HOW-IT-WORKS.md:830`).
 - HOW-IT-WORKS.md and CLAUDE.md say the discovery role reads "never content". It can read each account's
   device name, which often contains a person's name (`HOW-IT-WORKS.md:834`).
-- The consent screen says "Only things marked public ever leave your account." Since 2026-09-28 reveal
-  tags are public-only and private-topic wants show nothing, and since 2026-09-29 neither do wants tied to
-  a situation question, but the first name (typed for this), age and city on the reveal also reach other
-  people
-  (`app/src/features/consent/consent-screen.tsx:46`).
-- The consent screen says you can "change" everything the clone knows. There is no per-fact edit or delete,
-  only hide, confirm/reject and answering again (`app/src/features/consent/consent-screen.tsx:48`).
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately (`ARCHITECTURE.md:391`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
@@ -1863,10 +1861,10 @@ neighbourhood, so the second mover does not learn where the first mover lives
 The first mover's button is "Yes, share my profile with them" and the second person's is "Yes,
 share mine back"; nothing of a person is shown to the other before their own tap
 (`app/src/features/matches/turn.ts:35`).
-The promises match: consent says "Your photos and first name are never public. A person sees them
-only after you say yes to sharing them with that person."; the photo screens say "Nobody sees these
-until you share your profile with them." and "Only people you share your profile with"
-(`app/src/features/consent/consent-screen.tsx:47`,
+The promises match: consent says "Your photos and first name reach a person only after you say yes to
+sharing your profile with them."; the photo screens say "Nobody sees these until you share your profile
+with them." and "Only people you share your profile with"
+(`app/src/features/consent/consent-screen.tsx:52`,
 `app/src/features/onboarding/photos-step.tsx:168`,
 `app/src/features/photos/photos-screen.tsx:133`).
 
@@ -2609,15 +2607,13 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 7. **Deleting an account deletes both halves of their chats**, the other person's messages with them
     (`server/src/memory/erasure.ts:81`). (Reports
     against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5.)
-8. **Promises that are broader than the code.** "Nobody else has ever seen what your clone knows about you." and
-    "Only things marked public ever leave your account." sit beside the first name, age and city on the reveal,
-    "Matches" on situation wants, the reviewer's want topics, and AI providers processing the text
+8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
+    again by everybody) and the Settings line now say what the code does
     (`app/src/features/settings/settings-screen.tsx:299`).
 9. **Latent:** the matchmaker role can read every profile summary, which is written from all facts including private
     ones; nothing reads it in a round today (`server/migrations/0028_matchmaker.sql:51`).
-10. **AI providers** receive everything typed to the clone and every message's text (embeddings); the in-app notice
-    names the chat providers but not the embedding provider, and its privacy links point to pages the server does not
-    serve (`server/src/api/config.ts:51`).
+10. **Closed on 2026-09-29: the AI notice.** It names the embedding provider as well as the chat ones, and carries no
+    link to a page the server does not serve (`server/src/api/config.ts:51`).
 
 ### 15.3 Behaviour a person would not expect
 

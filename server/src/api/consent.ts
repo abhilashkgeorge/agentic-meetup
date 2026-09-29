@@ -31,7 +31,10 @@ import { log } from '../log.js';
 export const REQUIRED = [
   { document: 'age', version: '1', title: 'You are 18 or older' },
   { document: 'terms', version: '1', title: 'Terms of use' },
-  { document: 'privacy', version: '1', title: 'How your data is used' },
+  // 2 (2026-09-29): its words now match what the code does -- who sees what, what can be
+  // changed, and that messages go to AI providers for search as well as chat (the
+  // founder's (f, h)). What a person agreed to changed, so everybody reads it again.
+  { document: 'privacy', version: '2', title: 'How your data is used' },
 ] as const;
 
 const Body = z.object({

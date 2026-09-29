@@ -54,7 +54,7 @@ export interface Profile {
 
 export interface Config {
   aiProviders: string[];
-  disclosure: { perSession: string; privacyUrl: string; safetyProtocolUrl: string };
+  disclosure: { perSession: string };
 }
 
 async function get<T>(path: string, token?: string): Promise<T | null> {

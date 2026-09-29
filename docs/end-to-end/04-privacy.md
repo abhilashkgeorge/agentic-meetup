@@ -207,17 +207,18 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **AI providers** receive: everything typed to the clone, and its replies, for chat; only the
   person's own lines for extraction ([server/src/memory/extract.ts:187] `const said = input.transcript.filter((t) => t.role === 'user');`);
   every message's text for embeddings, and in a round the other person's public sentences and both
-  people's wants. The per-session notice names the provider: "You are talking to an AI. Your messages are
-  processed by…" ([server/src/api/config.ts:50] `You are talking to an AI. Your messages are processed by`).
+  people's wants. The per-session notice names every provider -- the embedding one too, since
+  2026-09-29: "You are talking to an AI. Your messages are processed by…"
+  ([server/src/api/config.ts:51] `const embeds = embeddingProvider();`).
+  It carries no links: the two it had pointed at pages the server never served.
 - **Push notifications** (since 2026-09-28) pass through Expo's push service and, on Android, Google's:
   each carries the kind of event and the card's id, never a name or anybody's words. A phone's push
   token is kept against its account only (row-level security), dropped at sign-out, and deleted with
   the account ([server/src/api/push.ts:36] `await tenantSession(ctx, (db) => db.query('SELECT claim_push_token($1, $2)', [body.data.token, body.data.platform]));`,
   [server/src/memory/erasure.ts:41] `'push_tokens',`).
-- **The Settings promise** reads "Nobody else has ever seen what your clone knows about you."
-  ([app/src/features/settings/settings-screen.tsx:299] `Nobody else has ever seen what your clone knows about you.`).
-  By design, other members see public sentences, tags and a first name; the reviewer sees want topic
-  words; AI providers process the text. Read literally, the promise is broader than the code.
+- **The Settings promise** reads "Nobody sees your photos or first name until you say yes to them."
+  (since 2026-09-29; it used to say "Nobody else has ever seen what your clone knows about you", which
+  was broader than the code) ([app/src/features/settings/settings-screen.tsx:299] `Nobody sees your photos or first name until you say yes to them.`).
 
 ### Docs vs code
 
@@ -231,13 +232,6 @@ Row-level security is the boundary. Each part of the server connects as its own 
   every live preference ([HOW-IT-WORKS.md:830] `and dealbreaker preferences only`).
 - HOW-IT-WORKS.md and CLAUDE.md say the discovery role reads "never content". It can read each account's
   device name, which often contains a person's name ([HOW-IT-WORKS.md:834] `background work: ids, counts and times across tenants, never content (0066)`).
-- The consent screen says "Only things marked public ever leave your account." Since 2026-09-28 reveal
-  tags are public-only and private-topic wants show nothing, and since 2026-09-29 neither do wants tied to
-  a situation question, but the first name (typed for this), age and city on the reveal also reach other
-  people
-  ([app/src/features/consent/consent-screen.tsx:46] `Only things marked public ever leave your account.`).
-- The consent screen says you can "change" everything the clone knows. There is no per-fact edit or delete,
-  only hide, confirm/reject and answering again ([app/src/features/consent/consent-screen.tsx:48] `You can read everything it knows about you, change it, or delete the whole account, from Settings.`).
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately ([ARCHITECTURE.md:391] `from the first migration, on every table.`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
