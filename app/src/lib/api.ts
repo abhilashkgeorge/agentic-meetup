@@ -529,7 +529,7 @@ export const getHistory = (token: string, predicate: string) =>
 
 /** Yes / No on a staged claim. The highest-quality signal the system can collect. */
 export const judgeFact = (token: string, factId: string, verdict: 'yes' | 'no') =>
-  post<{ ok: boolean; message: string }>('/v1/knowledge/confirm', token, { factId, verdict });
+  post<{ ok: boolean; message: string; keptCard?: boolean }>('/v1/knowledge/confirm', token, { factId, verdict });
 
 export interface SelfTestItem { id: string; question: string; answer: string }
 export interface Readiness {

@@ -231,13 +231,20 @@ export const knowledgeRoutes = new Hono()
     const { factId, verdict } = body.data;
     const done = await tenantSession(ctx, async (db) =>
       verdict === 'yes'
-        ? (await confirmStagedFact(db, ctx, factId)).confirmed
-        : (await rejectStagedFact(db, ctx.userId, factId), true),
+        ? await confirmStagedFact(db, ctx, factId)
+        : (await rejectStagedFact(db, ctx.userId, factId), { confirmed: true }),
     );
 
     log.info({ userId: ctx.userId, factId, verdict }, 'staged fact judged');
+    // The card answer was kept (memory/card-guard.ts): say so, and where to change it.
+    if (done.cardKept !== undefined) {
+      return c.json({
+        ok: true, keptCard: true,
+        message: `Your card answer stays: ${done.cardKept}. If it has changed, change it on the card.`,
+      });
+    }
     return c.json({
-      ok: done,
+      ok: done.confirmed,
       // Confirming re-commits as first-party, so it is now a belief rather than a
       // report. Saying so is the whole reward for answering.
       message: verdict === 'yes' ? 'Good. It believes you now.' : 'Dropped. It will not use that.',

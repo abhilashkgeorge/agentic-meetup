@@ -157,7 +157,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 [server/src/api/dating.ts:166] `const name = other.display_name ?? 'Someone';`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
 ("First name") ([app/src/features/world/hud.tsx:189] `{askName && <Chip label="Add your first name" selected={false} onPress={onName} />}`,
-[app/src/features/profile/profile-screen.tsx:244] `<Row title="First name" value={name ?? 'Not set'}`).
+[app/src/features/profile/profile-screen.tsx:246] `<Row title="First name" value={name ?? 'Not set'}`).
 
 ### 2.3 Required vs optional, and "ready to send"
 
@@ -200,7 +200,7 @@ the $2.00 daily cost cap still covers them. Measured before the change: real peo
   character → photos → home`, skipping the middle only after a paste. The code skips to Stories when the
   person is already in the pool, and a paste can never put a new person in the pool, because pasted
   facts are held until confirmed ([HOW-IT-WORKS.md:63] `start → interview → (essentials → voice → self-test) → character → photos → home`,
-  [server/src/memory/pasteImport.ts:188] `originClass: 'untrusted',`).
+  [server/src/memory/pasteImport.ts:189] `originClass: 'untrusted',`).
 - HOW-IT-WORKS.md §2a describes the partner row as "Anyone is fine" or "Let me choose". The screen shows
   "All are okay" and every answer, unticked ([HOW-IT-WORKS.md:82] `one explicit tap -- "Anyone is fine" or "Let me choose".`).
 - HOW-IT-WORKS.md §2b says "which part of town" is asked in setup; it is not asked until the person has

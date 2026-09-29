@@ -77,9 +77,9 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     ([shared/src/values.ts:118] `return typeof value.month === 'number' && value.month <= now.getUTCMonth() + 1;`).
 15. **Closed on 2026-09-29: a mistyped invite code.** It says "That code didn't work, try again." and the number stays
     verified for the retry; the invite screen has a Back button ([server/src/api/auth.ts:262] `return c.json({ error: 'invalid code', message: "That code didn't work, try again." }, 400);`).
-16. **"Yes, that's right" can do more than agree.** A confirmed free phrase replaces a card answer with "unknown" (for
-    example "socially" for drinking), and a confirmed city phrase without a map point takes the person out of the pool
-    ([server/src/memory/pasteImport.ts:329] `objectText: row.object_text,`).
+16. **Closed on 2026-09-29: "Yes, that's right" doing more than agree.** Words a card cannot read, or a place with no
+    map point, leave the card's answer as it was and say so; words it can read still change it
+    ([server/src/memory/card-guard.ts:31] `export async function cardItWouldWipe(`).
 17. **Unconfirmed chat can still retire answers** on multi-answer fields such as who they want to meet or work field, with
     no Yes and no record (read, not run) ([server/src/memory/session.ts:142] `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'`).
 18. **Rule clashes.** Two wants tied to the same question overwrite each other's rule; a must-have outlives its want

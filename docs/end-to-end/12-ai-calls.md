@@ -114,14 +114,14 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-4"></a>
 ### AI-4. Paste import
 
-- **Task / model:** `extract` → Flash-Lite, 8,192 tokens ([server/src/memory/pasteImport.ts:159] `maxOutputTokens: 8192,`).
+- **Task / model:** `extract` → Flash-Lite, 8,192 tokens ([server/src/memory/pasteImport.ts:160] `maxOutputTokens: 8192,`).
 - **When:** "Paste from another AI", "In your words", "Catch it up fast".
 - **In:** the pasted text, up to 60,000 characters. Instructions: "Extract only what the text actually says." "A
-  guess is NEVER a fact." ([server/src/memory/pasteImport.ts:80] `Extract only what the text actually says.`,
-  [server/src/memory/pasteImport.ts:86] `A guess is NEVER a fact.`).
+  guess is NEVER a fact." ([server/src/memory/pasteImport.ts:81] `Extract only what the text actually says.`,
+  [server/src/memory/pasteImport.ts:87] `A guess is NEVER a fact.`).
 - **Out:** facts, and guesses with a question for each.
 - **Checks:** must parse; every fact is forced to "reported" and "untrusted", so it is held
-  ([server/src/memory/pasteImport.ts:183] `stance: 'reported',`).
+  ([server/src/memory/pasteImport.ts:184] `stance: 'reported',`).
 - **Stored:** held facts and questions; the pasted text is thrown away.
 
 <a id="ai-5"></a>

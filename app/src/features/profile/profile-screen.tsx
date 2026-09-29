@@ -11,7 +11,7 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { Alert, Image, Pressable, Text, View } from 'react-native';
 import {
   getKnowledge, getMyPhotos, getPool, getProfile, judgeFact,
   type Knowledge, type Photo, type Profile,
@@ -105,8 +105,10 @@ export default function ProfileScreen() {
   const judge = useCallback(async (verdict: 'yes' | 'no') => {
     if (!token || !k?.confirm) return;
     setJudging(true);
-    await judgeFact(token, k.confirm.factId, verdict);
+    const r = await judgeFact(token, k.confirm.factId, verdict);
     setJudging(false);
+    // Words a card cannot read never replace its answer (server memory/card-guard.ts).
+    if (r?.keptCard) Alert.alert('Your card answer stays', r.message);
     void load();
   }, [token, k, load]);
 

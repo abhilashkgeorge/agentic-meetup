@@ -21,6 +21,7 @@ import { commit, type FactCandidate } from './facts.js';
 import { EXTRACTOR_VERSION } from './extract.js';
 import { TAPPED_PREDICATES } from '../onboarding/questions.js';
 import { learnedDisclosure } from '../matching/brief.js';
+import { cardItWouldWipe } from './card-guard.js';
 
 export const PASTE_PROMPT_VERSION = '2026-09-09.paste.2';
 
@@ -307,7 +308,7 @@ export async function confirmStagedFact(
   c: PoolClient,
   ctx: { tenantId: string; userId: string },
   factId: string,
-): Promise<{ confirmed: boolean }> {
+): Promise<{ confirmed: boolean; cardKept?: string }> {
   const { rows } = await c.query<{
     predicate: string; object_text: string; source_quote: string; valid_from: Date | null;
   }>(
@@ -317,6 +318,13 @@ export async function confirmStagedFact(
   );
   const row = rows[0];
   if (!row) return { confirmed: false };
+
+  // NEVER OVER A CARD ANSWER IT CANNOT READ (card-guard.ts): the card stays, the words go.
+  const cardKept = await cardItWouldWipe(c, ctx.userId, row.predicate, row.object_text);
+  if (cardKept !== null) {
+    await rejectStagedFact(c, ctx.userId, factId);
+    return { confirmed: false, cardKept };
+  }
 
   await c.query(
     `UPDATE facts SET status = 'retracted', invalidated_at = now()
