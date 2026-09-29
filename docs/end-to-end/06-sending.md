@@ -21,7 +21,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") ([app/src/app/(tabs)/index.tsx:1] `export { default } from '../../features/world/world-screen';`,
    [app/src/features/world/hud.tsx:225] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
-   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:273] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:277] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
    the round ([server/src/api/dating.ts:986] `return poolNow(db, ctx);`,
@@ -171,7 +171,7 @@ off ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');
 - **How they are labelled.** "Practice match — this one is not a real person." on the card,
   "Practice match / Not a real person" in lists, their lines marked "(practice)", and the
   reveal says "This is not a real person. The pool is invented until enough people have
-  joined…" ([app/src/features/matches/matches-screen.tsx:343] `Practice match — this one is not a real person.`,
+  joined…" ([app/src/features/matches/matches-screen.tsx:351] `Practice match — this one is not a real person.`,
   [app/src/features/matches/exchange.ts:47] `${s.text} (practice)`,
   [app/src/features/matches/reveal-screen.tsx:179] `This is not a real person. The pool is invented until enough people have`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a

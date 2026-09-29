@@ -87,9 +87,9 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 18. **Closed on 2026-09-29: rule clashes.** Two wants tied to the same question keep a rule each, and every rule --
     a must-have too -- has "Remove" on "Looking for" ([server/migrations/0085_one_rule_per_want.sql:21] `ON preferences (user_id, predicate, operator, source_quote) WHERE retired_at IS NULL;`).
     Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.
-19. **Only one waiting card shows at a time.** Each card now wakes the phone when it arrives and the day it fades,
-    but only after the founder's push setup; until then a second card can still run out unseen
-    ([app/src/features/matches/matches-screen.tsx:322] `[...matches.filter((m) => m.waitingOnYou).slice(0, 1),`).
+19. **Closed on 2026-09-29: a waiting card running out unseen.** The one waiting card on screen is the one that fades
+    soonest, and "2 more waiting" says how many are behind it; each card also wakes the phone when it arrives and the
+    day it fades, once push is set up ([app/src/features/matches/matches-screen.tsx:327] `[...soonestFirst(matches.filter((m) => m.waitingOnYou)).slice(0, 1),`).
 20. **Check-in details.** "Not yet" is final; tapping Block from "Did you feel safe?" drops the unsafe answer; "Not sure"
     counts toward "Confirmed by N people" ([app/src/features/dm/checkin.tsx:77] `const done = () => router.back();`,
     [server/migrations/0058_date_checkins.sql:67] `WHERE a.key IN ('photos', 'age', 'name', 'city') AND a.value = 'no'))`).

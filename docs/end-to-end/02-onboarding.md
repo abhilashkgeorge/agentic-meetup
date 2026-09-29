@@ -182,7 +182,7 @@ first missing item ("Your birth year", "Where you live"...); the Matches tab say
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
 ([app/src/features/world/hud.tsx:223] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
-[app/src/features/matches/matches-screen.tsx:229] `It needs a few more things before it can talk to anyone.`).
+[app/src/features/matches/matches-screen.tsx:233] `It needs a few more things before it can talk to anyone.`).
 
 ### 2.4 Model calls during setup
 

@@ -39,6 +39,7 @@ import { CharacterAvatar } from '../look/character-avatar';
 import { chatRows, exchangeRows, sayOnCard, sharedSaid, wantRowsView, type Said } from './exchange';
 import { SafetySheet } from '../safety/safety-sheet';
 import { fade } from './fade';
+import { moreWaiting, soonestFirst } from './waiting';
 import { recapLines } from './recap';
 import { WORDS, turnOf } from './turn';
 
@@ -216,6 +217,9 @@ export default function MatchesScreen() {
     [token],
   );
 
+  // How many more wait behind the card in front (waiting.ts): none runs out unseen.
+  const moreLine = moreWaiting(matches.filter((m) => m.waitingOnYou).length - 1);
+
   return (
     <Screen onRefresh={() => void load()} padded={false}>
       <ScreenTitle title="Matches" />
@@ -314,13 +318,14 @@ export default function MatchesScreen() {
             }
           />
         ) : (
-          // ONE AT A TIME. The list comes newest round first and, within a round, in
-          // an order that means nothing (a hash) -- never by a score, because the head
-          // of a list ordered by a score reads as "the one it liked most". Saying
-          // not-for-me removes it and the next is already here. Cards already
-          // answered and waiting on the other side sit underneath, quietly.
-          [...matches.filter((m) => m.waitingOnYou).slice(0, 1),
-           ...matches.filter((m) => !m.waitingOnYou)].map((m) => (
+          // ONE AT A TIME -- never by a score, because the head of a list ordered by a
+          // score reads as "the one it liked most". The one in front is the one that
+          // fades soonest (waiting.ts, 2026-09-29), so none runs out unseen, and under
+          // it the screen says how many more wait. Saying not-for-me removes it and the
+          // next is already here. Cards already answered and waiting on the other side
+          // sit underneath, quietly.
+          [...soonestFirst(matches.filter((m) => m.waitingOnYou)).slice(0, 1),
+           ...matches.filter((m) => !m.waitingOnYou)].map((m, i) => (
             // THE CARD FADES toward the end of its three days (server 0069).
             <Surface key={m.id} radius={radius.lg}
                      style={{ padding: space.screen, gap: space.md, opacity: fade(m.fadesAt).opacity }}>
@@ -329,6 +334,9 @@ export default function MatchesScreen() {
               <Text style={[type.label, { color: p.textSecondary }]}>
                 {m.waitingOnYou ? 'WAITING ON YOU' : 'WAITING ON THEM'}
               </Text>
+              {i === 0 && m.waitingOnYou && moreLine && (
+                <Text style={[type.callout, { color: p.accent }]}>{moreLine}</Text>
+              )}
               {/* Intent, age, area -- the facts line. */}
               <Text style={[type.title, { color: p.text }]}>{m.headline}</Text>
               {/* The same words on every card, so the wording can never say anything
