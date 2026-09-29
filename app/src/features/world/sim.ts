@@ -20,7 +20,12 @@
  */
 import { lookFor, pointInPolygon, type Look } from '@clone/shared';
 
-export type AgentKind = 'you' | 'stranger' | 'practice' | 'met';
+/**
+ * `live` is a real person walking in the park right now (park-live.ts): the server
+ * says where they are and the sim only glides them there -- no wandering, no visits,
+ * and a roster refresh leaves them alone.
+ */
+export type AgentKind = 'you' | 'stranger' | 'practice' | 'met' | 'live';
 export type AgentState =
   | 'idle' | 'walking' | 'approaching' | 'talking' | 'parting' | 'leaving' | 'introduced' | 'gone';
 /**
@@ -210,6 +215,9 @@ export interface SimAgent {
   partner: string | null;
   bubble: Bubble;
   ring: boolean;
+  /** A live person's facing and walking, as their own phone last said (`live`). */
+  liveFacing?: number;
+  liveMoving?: boolean;
 }
 
 export interface AgentInput {
@@ -241,6 +249,12 @@ export const HOME: readonly [number, number] = [0, PLAZA * 0.55];
  * agents speedrunning . they are walking at around 200kmph" (2026-09-22).
  */
 const WALK = 0.2;
+/** A live person reaches where the server put them in about this many seconds. */
+export const LIVE_CATCH_UP = 0.25;
+/** Further than this and they are put there: a gap that size is a lost connection, not a walk. */
+export const LIVE_JUMP = 3;
+/** A seed from a ref, so the same person walks in the same step on every phone. */
+const seedOf = (ref: string): number => (parseInt(ref.slice(0, 8), 16) >>> 0) || 1;
 const HURRY = 0.38;
 /** The fastest anybody moves: a run, not a car. */
 const RUN_MAX = 0.84;
@@ -419,6 +433,8 @@ export class WorldSim {
   upsert(list: ReadonlyArray<AgentInput>): void {
     for (const { ref, kind, seed, ghost, look, area } of list) {
       const have = this.byRef.get(ref);
+      // Here in person: the server moves them, not the roster.
+      if (have?.kind === 'live') continue;
       // A practice profile stays a ghost after it is met: "not a real person" is
       // about who they are, not about whether the agents have talked.
       const seeThrough = ghost ?? kind === 'practice';
@@ -449,6 +465,39 @@ export class WorldSim {
       this.order.push(ref);
       this.list = null;
     }
+  }
+
+  /**
+   * A real person in the park, where the server last said they were. The first time,
+   * they appear there; after that they glide to it (LIVE_CATCH_UP) -- the server says
+   * a few times a second, and a jump each time would look like a stutter. Somebody the
+   * square was drawing as an agent becomes the person: one body each, never two.
+   */
+  live(ref: string, look: Look, x: number, z: number, facing: number, moving: boolean): void {
+    const have = this.byRef.get(ref);
+    if (have) {
+      if (have.kind !== 'live') {
+        have.kind = 'live'; have.ghost = false; have.partner = null; have.bubble = null; have.ring = false;
+        this.visits.delete(ref);
+      }
+      have.look = look; have.tx = x; have.tz = z; have.liveFacing = facing; have.liveMoving = moving;
+      // One steady pace per word from the server, set to arrive as the next one does:
+      // closing a share of the gap each frame instead eased in, and was always late.
+      have.speed = Math.max(WALK, Math.hypot(x - have.x, z - have.z) / LIVE_CATCH_UP);
+      return;
+    }
+    this.byRef.set(ref, {
+      ref, kind: 'live', seed: seedOf(ref), ghost: false, look, area: null, x, z, tx: x, tz: z, speed: WALK,
+      facing, state: moving ? 'walking' : 'idle', wait: 0, stuck: 0, dodge: 1, dodgeFor: 0,
+      driveX: 0, driveZ: 0, partner: null, bubble: null, ring: false, liveFacing: facing, liveMoving: moving,
+    });
+    this.order.push(ref);
+    this.list = null;
+  }
+
+  /** Gone from the park: the person goes (the roster may bring their agent back). */
+  unlive(ref: string): void {
+    if (this.byRef.get(ref)?.kind === 'live') this.remove(ref);
   }
 
   remove(ref: string): void {
@@ -621,6 +670,7 @@ export class WorldSim {
   }
 
   private stepOne(a: SimAgent, dt: number): void {
+    if (a.kind === 'live') { this.glide(a, dt); return; }
     // Somebody is driving: their hand beats the state machine. They still face where
     // they push even when a wall stops them, which is what tells you it is a wall.
     if (a.driveX !== 0 || a.driveZ !== 0) {
@@ -684,6 +734,25 @@ export class WorldSim {
       case 'gone':
         break;
     }
+  }
+
+  /**
+   * A live person closes on where the server last put them, at the pace `live` set --
+   * arriving as the next word does (a quarter of a second), never slower than a walk --
+   * and straight: their own phone already kept them out of the walls.
+   */
+  private glide(a: SimAgent, dt: number): void {
+    const dx = a.tx - a.x, dz = a.tz - a.z;
+    const d = Math.hypot(dx, dz);
+    if (d > LIVE_JUMP) { a.x = a.tx; a.z = a.tz; }
+    else if (d > 1e-4) {
+      const step = Math.min(d, a.speed * dt);
+      a.x += (dx / d) * step; a.z += (dz / d) * step;
+    }
+    const moving = a.liveMoving === true || d > 0.01;
+    a.state = moving ? 'walking' : 'idle';
+    // Facing where they are going while they go; where their own phone says, stood still.
+    a.facing = moving && d > 0.01 ? Math.atan2(dx, dz) : a.liveFacing ?? a.facing;
   }
 
   /**

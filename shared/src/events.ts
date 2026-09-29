@@ -9,6 +9,7 @@
  * hangs), while React Native's WebSocket is built in and stable.
  */
 import { z } from 'zod';
+import { Look } from './look.js';
 
 /** Client-generated. THE idempotency key: a reconnect can never spawn a second LLM call. */
 export const TurnId = z.uuid();
@@ -64,8 +65,40 @@ export const ClientTyping = z.object({
   typing: z.boolean(),
 });
 
+/**
+ * The park, live: real people walking in Cubbon Park at the same time see each other
+ * and can talk to whoever is near.
+ *
+ * WHERE YOU ARE goes to the server a few times a second while you are in the park,
+ * and to nobody further than the park's mist (PARK_VIEW). WHAT YOU SAY goes to the
+ * people within PARK_EARSHOT of you and to nobody else, is kept by nobody (not written
+ * anywhere), and is refused if it holds a phone number, a handle or a link -- those
+ * are swapped after both say yes, as everywhere else in the app.
+ */
+export const PARK_SAY_MAX = 200;
+/** How far a person in the park is sent to you, in park units (8.1 m each): the mist. */
+export const PARK_VIEW = 45;
+/** How far what you say carries: about twenty metres. */
+export const PARK_EARSHOT = 2.5;
+
+const ParkCoord = z.number().finite().min(-500).max(500);
+export const ClientParkEnter = z.object({ type: z.literal('park.enter') });
+export const ClientParkLeave = z.object({ type: z.literal('park.leave') });
+export const ClientParkMove = z.object({
+  type: z.literal('park.move'),
+  x: ParkCoord,
+  z: ParkCoord,
+  facing: z.number().finite(),
+  moving: z.boolean(),
+});
+export const ClientParkSay = z.object({
+  type: z.literal('park.say'),
+  text: z.string().trim().min(1).max(PARK_SAY_MAX),
+});
+
 export const ClientMessage = z.discriminatedUnion('type', [
   ClientHello, ClientTurn, ClientDm, ClientDmRead, ClientTyping,
+  ClientParkEnter, ClientParkLeave, ClientParkMove, ClientParkSay,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -86,6 +119,23 @@ const DmMessage = z.object({
 
 /** A per-viewer handle for somebody in the square. 32 hex; never a user id. */
 const AgentRef = z.string().regex(/^[0-9a-f]{32}$/);
+
+/**
+ * Somebody in the park right now, as you are allowed to see them: where they stand
+ * and how they look, under the same per-viewer ref the square gives them -- so the
+ * app can put the person in place of their agent, never both.
+ */
+export const ParkPerson = z.object({
+  ref: AgentRef,
+  x: z.number(),
+  z: z.number(),
+  facing: z.number(),
+  moving: z.boolean(),
+  /** Sent the first time you are sent them, and when it changes: four times a second
+   *  over a slow tunnel, a whole look per person per frame was most of the bytes. */
+  look: Look.optional(),
+});
+export type ParkPerson = z.infer<typeof ParkPerson>;
 
 export const ServerEvent = z.discriminatedUnion('type', [
   /** A message, echoed to the sender and pushed to the recipient. */
@@ -154,6 +204,19 @@ export const ServerEvent = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('photos.checked'),
     result: z.enum(['match', 'no_match', 'no_face', 'not_live', 'no_photos', 'error']),
+  }),
+
+  // ── the park, live ────────────────────────────────────────────────────
+  /** Everybody within PARK_VIEW of you, a few times a second, you excluded. */
+  z.object({ type: z.literal('park.people'), people: z.array(ParkPerson) }),
+  /** Something said within earshot. `you` when it was you, so it shows over your head. */
+  z.object({
+    type: z.literal('park.said'), ref: z.union([AgentRef, z.literal('you')]), text: z.string(), at: z.number(),
+  }),
+  /** What you said was not sent, and why: to you, only. */
+  z.object({
+    type: z.literal('park.refused'),
+    reason: z.enum(['contact', 'too_fast', 'not_in_park']),
   }),
 
   z.object({ type: z.literal('heartbeat') }),

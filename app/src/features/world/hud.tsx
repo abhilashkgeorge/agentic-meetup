@@ -18,6 +18,7 @@ import { Stick } from './stick';
 import { cityPose, placeLabels, toScreen, type Band, type Size } from './camera';
 import { MAP, areaName, cityTitle, type Frame } from './map';
 import { MAX_VENUE_AGENTS, type Venue } from './venue';
+import { useLiveCount } from './park-hud';
 
 export function Hud({
   world,
@@ -109,6 +110,8 @@ export function Hud({
   const myArea = world?.me.area ?? CENTRAL_AREA;
   const here = world?.agents.filter((a) => (a.area ?? CENTRAL_AREA) === myArea).length ?? 0;
   const askArea = world?.me.need.includes('area') ?? false;
+  // People here in person, besides you (the park, live).
+  const live = useLiveCount();
   const askName = world?.me.need.includes('first_name') ?? false;
 
   // The thirty names, laid over the city at its zoomed-out pose, faded in and out
@@ -154,15 +157,20 @@ export function Hud({
             style={{ position: 'absolute', top: insets.top + space.sm, left: space.screen, right: space.screen, gap: space.sm }}>
         <Text style={[type.title, { color: p.text }]}>{title}</Text>
         <Card>
-          <Text style={[type.body, { color: p.text }]}>{status}</Text>
+          {/* Walking in the park, the line about the park gives its room to the park:
+              the chips are all that is needed there. */}
+          {!(venue && walking) && <Text style={[type.body, { color: p.text }]}>{status}</Text>}
           {world && world.me.inPool && (
             <ChipGroup>
               {venue ? (
                 <>
                   <Chip label="Back to Bengaluru" selected={false} onPress={onLeaveVenue} />
+                  {/* People here in person, first: the reason to be in the park now. */}
+                  <Chip label={live > 0 ? `${live} here now` : 'Nobody else here now'} selected={live > 0}
+                        onPress={() => {}} disabled={live === 0} />
                   <Chip label="Directions" selected={false} onPress={onDirections} />
-                  <Chip label={crowd ? `${crowd} test people in the park` : `${Math.min(here + 1, MAX_VENUE_AGENTS)} people in the park`}
-                        selected onPress={() => {}} disabled />
+                  <Chip label={crowd ? `${crowd} test people in the park` : `${Math.min(here + 1, MAX_VENUE_AGENTS)} agents in the park`}
+                        selected={false} onPress={() => {}} disabled />
                   {onCrowd && (
                     <Chip label={crowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
                           selected={crowd > 0} onPress={onCrowd} />

@@ -57,7 +57,7 @@ three shapes:
 - **What Meera sees** later, if it is her most-asked gap: a "A question for you" chip in
   the town; the screen says "MONEY", the question, and "Other agents needed this once
   lately to check who fits, and yours could not say. One tap. Nobody ever sees your
-  answer." ([app/src/features/world/hud.tsx:175] `<Chip label="A question for you" selected onPress={onQuestion} />`,
+  answer." ([app/src/features/world/hud.tsx:183] `<Chip label="A question for you" selected onPress={onQuestion} />`,
   [app/src/features/question/question-state.ts:45] `lately to check who fits, and yours could not say. One tap. Nobody ever sees your answer.`).
   She is never told whose want it was, or what the want said.
 - **If Meera had answered** "Saved or invested", Arjun's card says "Matches"; if she

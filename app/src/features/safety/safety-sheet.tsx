@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import { Alert, Linking, Modal, Pressable, Text, View } from 'react-native';
-import { blockMatch, blockUser, reportMatch, reportUser } from '../../lib/api';
+import { blockInPark, blockMatch, blockUser, reportInPark, reportMatch, reportUser } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
   Button, Chip, ChipGroup, Field, Surface, radius, space, type, usePalette,
@@ -19,8 +19,11 @@ import {
 import { REPORT_REASONS, SUPPORT_EMAIL, supportMailto, type ReportReason } from './reasons';
 
 export function SafetySheet({ target, name, onClose, onDone }: {
-  /** A match (from a card or a profile), or a person with their match (from a chat). */
-  target: { rendezvousId: string; userId?: string };
+  /**
+   * A match (from a card or a profile), a person with their match (from a chat), or
+   * somebody in the park, who is only the ref the park gave them.
+   */
+  target: { rendezvousId: string; userId?: string } | { parkRef: string };
   /** How to call them in the sheet: a first name, or "them". */
   name?: string;
   onClose: () => void;
@@ -45,7 +48,8 @@ export function SafetySheet({ target, name, onClose, onDone }: {
           text: 'Block', style: 'destructive',
           onPress: () => {
             if (!token) return;
-            const done = target.userId ? blockUser(token, target.userId) : blockMatch(token, target.rendezvousId);
+            const done = 'parkRef' in target ? blockInPark(token, target.parkRef)
+              : target.userId ? blockUser(token, target.userId) : blockMatch(token, target.rendezvousId);
             void done.then(() => { onClose(); onDone(); });
           },
         },
@@ -56,8 +60,13 @@ export function SafetySheet({ target, name, onClose, onDone }: {
   const report = async () => {
     if (!token || !reason) return;
     setBusy(true);
-    const args = { rendezvousId: target.rendezvousId, reason, detail: detail.trim() };
-    const ok = target.userId ? await reportUser(token, { ...args, userId: target.userId }) : await reportMatch(token, args);
+    let ok;
+    if ('parkRef' in target) {
+      ok = await reportInPark(token, { ref: target.parkRef, reason, detail: detail.trim() });
+    } else {
+      const args = { rendezvousId: target.rendezvousId, reason, detail: detail.trim() };
+      ok = target.userId ? await reportUser(token, { ...args, userId: target.userId }) : await reportMatch(token, args);
+    }
     setBusy(false);
     if (ok) setThanks(true);
   };

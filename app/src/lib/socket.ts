@@ -16,6 +16,7 @@ import { getWsBase } from './env';
 import { useSession } from '../store/session';
 import { useDm } from '../store/dm';
 import { useWorld } from '../features/world/store';
+import { useParkLive } from '../features/world/park-live';
 
 /** Two missed heartbeats and we assume the socket is dead, whatever it claims. */
 const DEAD_AFTER_MS = HEARTBEAT_MS * 2 + 5_000;
@@ -54,6 +55,9 @@ function connect(): void {
     useSession.getState().setConnected(true);
     armDeadTimer();
     push({ type: 'hello', sessionId, lastSeenTurnId: lastSeenTurn });
+    // Back in the park after a dropped connection: the server let us go when the old
+    // socket closed, so walk in again.
+    if (useParkLive.getState().inPark) push({ type: 'park.enter' });
     // Anything typed while the connection was down goes now. Every message carries the
     // id the phone generated, so a message that actually did arrive before the socket
     // dropped is recognised and not written twice.
@@ -124,6 +128,17 @@ function connect(): void {
       case 'photos.checked':
         // The selfie screen polls for the verdict; this is only the log line.
         if (__DEV__) console.log(`[photos] checked: ${ev.result}`);
+        break;
+
+      // ── the park, live ────────────────────────────────────────────────
+      case 'park.people':
+        useParkLive.getState().gotPeople(ev.people);
+        break;
+      case 'park.said':
+        useParkLive.getState().gotLine(ev.ref, ev.text, ev.at);
+        break;
+      case 'park.refused':
+        useParkLive.getState().gotRefused(ev.reason);
         break;
 
       case 'heartbeat':
@@ -199,6 +214,33 @@ export function readDm(rendezvousId: string): void {
 
 export function sendTyping(rendezvousId: string, typing: boolean): void {
   push({ type: 'dm.typing', rendezvousId, typing });
+}
+
+/**
+ * The park, live. Walking in and out, where you are (a few times a second while in),
+ * and what you say to the people near you. Nothing is queued while the socket is
+ * down: where you were a minute ago is worth nothing, and a line said into a dead
+ * connection is better not said late.
+ */
+export function parkEnter(): void {
+  useParkLive.getState().setIn(true);
+  push({ type: 'park.enter' });
+}
+
+export function parkLeave(): void {
+  if (!useParkLive.getState().inPark) return;
+  useParkLive.getState().setIn(false);
+  push({ type: 'park.leave' });
+}
+
+export function parkMove(x: number, z: number, facing: number, moving: boolean): void {
+  push({ type: 'park.move', x, z, facing, moving });
+}
+
+export function parkSay(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return push({ type: 'park.say', text: trimmed.slice(0, 200) });
 }
 
 /** Everything typed offline, in the order it was typed. */

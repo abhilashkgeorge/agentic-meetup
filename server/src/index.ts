@@ -32,6 +32,8 @@ import { embeddingsAvailable } from './llm/embeddings.js';
 import { adminRoutes, hasReviewer } from './api/admin.js';
 import { consentRoutes } from './api/consent.js';
 import { pushRoutes } from './api/push.js';
+import { parkRoutes } from './api/park.js';
+import { startPark } from './park/socket.js';
 import { log } from './log.js';
 import { LIMITS, callerIp, take } from './ratelimit.js';
 import { SESSION_IDLE_MS, sweepOnce } from './memory/session.js';
@@ -74,6 +76,7 @@ app.route('/', questionOfDayRoutes);
 app.route('/', adminRoutes);
 app.route('/', consentRoutes);
 app.route('/', pushRoutes);
+app.route('/', parkRoutes);
 
 // serve() builds the http.Server AND attaches Hono as its request listener, then
 // returns it. Handing it a pre-made bare server instead leaves it with no request
@@ -153,6 +156,10 @@ const rounds = setInterval(() => {
   void roundWorkerTick().catch((err: unknown) => log.error({ err }, 'round worker failed'));
 }, 5_000);
 rounds.unref();
+
+// The park, live: four times a second, everybody in it is sent the people near them,
+// and anybody silent for half a minute has left. See park/socket.ts.
+startPark();
 
 // The photo check. Same shape as rounds: the app queues a row, this drains them. Off
 // by default; when off the app is told so and never offers it. Frames left behind by

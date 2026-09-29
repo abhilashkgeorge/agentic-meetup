@@ -418,7 +418,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 `server/src/matching/profile.ts:76`,
 `server/src/api/dating.ts:166`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
-("First name") (`app/src/features/world/hud.tsx:173`,
+("First name") (`app/src/features/world/hud.tsx:181`,
 `app/src/features/profile/profile-screen.tsx:244`).
 
 ### 2.3 Required vs optional, and "ready to send"
@@ -443,7 +443,7 @@ is a separate notion and gates nothing (`app/src/features/onboarding/self-test-s
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
-(`app/src/features/world/hud.tsx:207`,
+(`app/src/features/world/hud.tsx:215`,
 `app/src/features/matches/matches-screen.tsx:229`).
 
 ### 2.4 Model calls during setup
@@ -502,9 +502,9 @@ used only to **extract** facts from what a person typed, to **point** at their o
 
 - **Arjun tells his clone** "I work in AI and run most mornings." His phone sends it over the live
   chat connection; the server stores it, and the clone replies. No fact is written yet
-  (`server/src/api/chat.ts:304`).
+  (`server/src/api/chat.ts:315`).
 - **About five minutes after he stops**, a background sweep runs the extractor over the whole
-  session ([AI-1](#ai-1)) (`server/src/index.ts:146`).
+  session ([AI-1](#ai-1)) (`server/src/index.ts:149`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
   mornings". Both are fields a must-have can depend on, so both are **held**
   (`server/src/onboarding/questions.ts:415`).
@@ -613,10 +613,10 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 
 | Job | When | What it does | Model? | Code |
 |---|---|---|---|---|
-| Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:144` |
+| Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:147` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | `server/src/memory/consolidate.ts:26` |
-| Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:459` |
-| Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:152` |
+| Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:470` |
+| Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:155` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs
 (`server/src/llm/index.ts:32`, `server/src/llm/index.ts:34`).
@@ -640,14 +640,14 @@ The matchmaker's database role can read a person's facts only where they are pub
 
 **In the person's own chat**, the clone is a model prompt ([AI-6](#ai-6)) that says "You are this person's clone:
 an agent that knows them and speaks with their voice and judgement." and "Never invent a detail about them
-that is not in the fragments." (`server/src/api/chat.ts:34`,
-`server/src/api/chat.ts:40`). It is given the
+that is not in the fragments." (`server/src/api/chat.ts:35`,
+`server/src/api/chat.ts:41`). It is given the
 profile summary, the style note, the last 20 messages of this chat, **every** live fact (private ones
 included, since it talks only to its own person), and up to 5 recalled old messages
-(`server/src/api/chat.ts:97`). Its replies are not
+(`server/src/api/chat.ts:98`). Its replies are not
 checked by code. They are stored, but since 2026-09-28 neither the extractor nor recall reads them: facts
 and "things they said before" come only from the person's own lines
-(`server/src/api/chat.ts:90`,
+(`server/src/api/chat.ts:91`,
 `server/src/memory/retrieval.ts:81`).
 
 ### Docs vs code
@@ -698,6 +698,12 @@ details), and **database roles** that limit what each part of the server can rea
   (`server/migrations/0019_match_role.sql:40`). Arjun himself sees at most her 3D
   character and neighbourhood in the town: no name, age, tags or photo
   (`server/src/api/world.ts:256`).
+- **In Cubbon Park, live** (since 2026-09-29): walking in the park at the same time, each sees the
+  other's character where they stand, out to the mist (about 365 m), and reads what the other types if
+  they are within about 20 m. Nothing said is written anywhere; a line holding a phone number, email,
+  handle or link is not sent; people blocked either way never see or hear each other there
+  (`shared/src/events.ts:82`,
+  `server/src/park/room.ts:121`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
   (`server/src/matching/orchestrator.ts:366`).
@@ -950,7 +956,7 @@ three shapes:
 - **What Meera sees** later, if it is her most-asked gap: a "A question for you" chip in
   the town; the screen says "MONEY", the question, and "Other agents needed this once
   lately to check who fits, and yours could not say. One tap. Nobody ever sees your
-  answer." (`app/src/features/world/hud.tsx:175`,
+  answer." (`app/src/features/world/hud.tsx:183`,
   `app/src/features/question/question-state.ts:45`).
   She is never told whose want it was, or what the want said.
 - **If Meera had answered** "Saved or invested", Arjun's card says "Matches"; if she
@@ -1240,7 +1246,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") (`app/src/app/(tabs)/index.tsx:1`,
-   `app/src/features/world/hud.tsx:209`).
+   `app/src/features/world/hud.tsx:217`).
    The same button is on the Matches tab (`app/src/features/matches/matches-screen.tsx:273`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
@@ -1248,7 +1254,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    `server/src/api/dating.ts:968`,
    `server/src/api/dating.ts:1011`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
-   heading out…" (`app/src/features/world/hud.tsx:132`).
+   heading out…" (`app/src/features/world/hud.tsx:135`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
    all of them (`server/src/matching/rounds.ts:158`).
@@ -1256,11 +1262,11 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
    start this (`server/src/matching/orchestrator.ts:276`,
-   `app/src/features/world/hud.tsx:134`,
+   `app/src/features/world/hud.tsx:137`,
    `app/src/features/world/agent-sheet.tsx:43`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   (`app/src/features/world/world-screen.tsx:264`,
+   (`app/src/features/world/world-screen.tsx:273`,
    `app/src/features/world/exchange-strip.tsx:83`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).
@@ -1858,7 +1864,7 @@ Each moment that asks something of a person wakes their phone, whether or not th
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
 (`server/src/push/index.ts:31`). The phone asks for
 permission when the person first sends their agent out, not at launch
-(`app/src/features/world/world-screen.tsx:279`), and a
+(`app/src/features/world/world-screen.tsx:288`), and a
 tap opens the card, their profile or the chat
 (`app/src/features/push/route.ts:14`).
 **Not yet reaching phones:** the app has no Expo project id yet and the server sends with
@@ -1878,7 +1884,7 @@ tap opens the card, their profile or the chat
   (`server/src/push/index.ts:78`).
 - **The sweeper** runs every 10 minutes and whenever the Matches list or a decision is
   loaded; it marks overdue pairs `expired` and writes no answer
-  (`server/src/index.ts:195`,
+  (`server/src/index.ts:202`,
   `server/src/matching/expiry.ts:27`).
 - **Expired is not no:** a no is `lapsed` plus a recorded "no"; an expiry is its own status and
   is left out of the yes/no measurement; the founder's numbers count it separately
@@ -1936,7 +1942,7 @@ words are the date idea, written earlier (stage 7).
    `app/src/features/dm/conversations-screen.tsx:94`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
-   (`server/src/api/chat.ts:270`,
+   (`server/src/api/chat.ts:281`,
    `server/src/push/index.ts:39`).
 3. **The chat** opens with the agents' date idea at the top: "YOUR AGENTS' DATE IDEA", the idea,
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
@@ -1957,9 +1963,9 @@ words are the date idea, written earlier (stage 7).
 - **Only introduced pairs can write**, enforced by the database policy and by the live
   connection; a message can only be addressed to a pair, never to a person, so nobody can
   message a stranger (`server/migrations/0024_messages.sql:12`,
-  `server/src/api/chat.ts:222`).
+  `server/src/api/chat.ts:233`).
 - **Limits:** 1 to 4,000 characters; 60 events a minute per person ("Slow down a moment."); no
-  daily cap (`shared/src/events.ts:53`,
+  daily cap (`shared/src/events.ts:54`,
   `server/src/ratelimit.ts:216`).
 - **Contact details are allowed in chat.** The contact-detail filter guards what agents say,
   not what people type to each other; the app itself tells people to swap details in chat
@@ -2033,20 +2039,20 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   person's sheet in the town, and the check-in's "felt unsafe" step
   (`app/src/features/dm/thread-screen.tsx:226`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
-  are not told." (`app/src/features/safety/safety-sheet.tsx:41`).
+  are not told." (`app/src/features/safety/safety-sheet.tsx:44`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
   "Inappropriate messages or photos", "Fake profile", "Seems under 18", "Spam or a scam", "Made
   me feel unsafe", "Something else"; an optional note (up to 2,000 characters); the button
   "Report and block"; and "Something urgent? Write to" the support address
   (`app/src/features/safety/reasons.ts:17`,
   `app/src/features/safety/reasons.ts:23`,
-  `app/src/features/safety/safety-sheet.tsx:92`).
+  `app/src/features/safety/safety-sheet.tsx:101`).
   A report always blocks too (`server/src/messaging/store.ts:220`).
 - **Effect, both ways:** the card, reveal, chat, town seat, photos and date idea disappear for
   both; sends are refused; they are never matched again
   (`server/migrations/0064_bans_and_apart.sql:54`).
   The blocked person is told nothing; a message they try to send shows "not sent"
-  (`server/src/api/chat.ts:242`).
+  (`server/src/api/chat.ts:253`).
 - **No automatic action on reports**; a reviewer looks at them
   (`server/migrations/0039_trust_and_safety.sql:21`).
 
@@ -2309,18 +2315,18 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-6"></a>
 ### AI-6. Own-clone chat reply
 
-- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens (`server/src/api/chat.ts:366`,
-  `server/src/api/chat.ts:391`).
+- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens (`server/src/api/chat.ts:377`,
+  `server/src/api/chat.ts:402`).
 - **When:** every message a person sends to their own clone.
 - **In:** the profile summary, style note, last 20 messages, **every** live fact (including private ones: it
   talks only to its own person), up to 5 recalled old messages. Instructions: "You are this person's clone: an
   agent that knows them and speaks with their voice and judgement." "Never invent a detail about them that is not
   in the fragments." "Speak plainly, in their register."
-  (`server/src/api/chat.ts:34`,
-  `server/src/api/chat.ts:40`,
-  `server/src/api/chat.ts:42`).
+  (`server/src/api/chat.ts:35`,
+  `server/src/api/chat.ts:41`,
+  `server/src/api/chat.ts:43`).
 - **Out:** free text. **Checks:** none; streamed straight to the phone
-  (`server/src/api/chat.ts:398`).
+  (`server/src/api/chat.ts:409`).
 - **Stored:** the reply, as a message in the person's history.
 
 <a id="ai-7"></a>
@@ -2329,7 +2335,7 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Model:** Gemini Embedding 001, 768 numbers per text (`server/src/llm/adapters/google.ts:216`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
   are embedded and stored (`server/src/memory/retrieval.ts:64`,
-  `server/src/api/chat.ts:469`).
+  `server/src/api/chat.ts:480`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   (`server/src/llm/embeddings.ts:26`).
 
@@ -2464,13 +2470,13 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 
 | Feature | What it does | Who can reach it | Code |
 |---|---|---|---|
-| **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about as full 3D bodies; tap your own agent to talk to it. Development builds add a "Test: add 1000 people" chip that spreads a test crowd over all 30 neighbourhoods (since 2026-09-29) | Everyone | `app/src/features/world/map.ts:4`, `server/src/matching/world.ts:50`, `app/src/features/world/hud.tsx:184` |
-| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search. Everybody is a full walking body drawn by the graphics chip, in less detail further away (since 2026-09-28; before, the nearest 12 had bodies and everyone else was a capsule). A mist ends the view at about 365 m: past it no person, tree, bench or lamp is drawn, and people out of sight are moved less often. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Development builds add a "Test: add 1000 people" chip, to watch the frame rate | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/crowd-gpu.ts:116`, `app/src/features/world/camera.ts:63`, `app/src/features/world/venue-mesh.ts:56`, `app/src/features/world/hud.tsx:167` |
+| **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about as full 3D bodies; tap your own agent to talk to it. Development builds add a "Test: add 1000 people" chip that spreads a test crowd over all 30 neighbourhoods (since 2026-09-29) | Everyone | `app/src/features/world/map.ts:4`, `server/src/matching/world.ts:50`, `app/src/features/world/hud.tsx:192` |
+| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search. Everybody is a full walking body drawn by the graphics chip, in less detail further away (since 2026-09-28; before, the nearest 12 had bodies and everyone else was a capsule). A mist ends the view at about 365 m: past it no person, tree, bench or lamp is drawn, and people out of sight are moved less often. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Development builds add a "Test: add 1000 people" chip, to watch the frame rate. Since 2026-09-29 the park is live: real people in it at the same time see each other ("3 here now"), each in place of their agent, and "Say something" reaches whoever is within about 20 m, over their heads and in a short log, stored nowhere; tapping one of them offers "Block or report" | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/crowd-gpu.ts:116`, `app/src/features/world/camera.ts:63`, `app/src/features/world/venue-mesh.ts:56`, `app/src/features/world/hud.tsx:175`, `app/src/features/world/park-hud.tsx:147` |
 | **"Who's here"** | A list of the same people as the town, practice profiles marked "Not a real person" | Everyone | `app/src/features/world/people.ts:52` |
 | **Character builder** | The 3D figure others see in the town and on cards until you share your profile with them; items bought with points. Seven tabs (Body, Face, Hair, Top, Bottoms, Shoes, Extras), each a few titled rows, every colour named for what it colours ("Top colour"); the camera goes to what is being changed, and a line says when a pick changed something else ("Your bottoms changed to fit."). Since 2026-09-29: hairstyle apart from the face (11, one of them Shaved, men's faces only), eye colour, height, colours for trousers and shoes ("As made" first), more skin tones, hair and cloth colours, and five places to wear things instead of one "extra": hat (cap, beanie, bucket hat, hard hat, beret), glasses, earrings, round the neck, bag. Anything bought before keeps its meaning | Everyone | `app/src/features/look/builder-screen.tsx:32`, `shared/src/look.ts:70`, `app/src/features/look/builder-model.ts:64` |
 | **Points** | +50 for a check-in, +10 for "did you meet", +20 first look, +30 photos checked; only the person sees the balance | Everyone | `server/src/points/ledger.ts:13` |
 | **Round recap** | "WHAT YOUR AGENT DID" after your own round: template sentences, up to two of your own sentences it used, topics, and what it had to say "I don't know" to | The round's sender | `server/src/matching/recap.ts:36` |
-| **Live updates** | One connection carries clone chat, messages and town events (queued, met, talking, decided, done, your turn, introduced) | Everyone | `shared/src/events.ts:125` |
+| **Live updates** | One connection carries clone chat, messages and town events (queued, met, talking, decided, done, your turn, introduced) | Everyone | `shared/src/events.ts:175` |
 | **Push notifications** | A closed app is woken for a new card, "they shared their profile", "you can talk now", a message, and "a card fades today"; no names or words on the lock screen. Needs the founder's Expo setup before it reaches phones (stage 9.5) | Everyone, once allowed | `server/src/push/index.ts:34` |
 | **Photos screen** | Up to six photos, re-encoded to drop location data | Everyone | `server/src/photos/store.ts:30` |
 | **Selfie check** | "Photos checked" badge from a local face model | Off (`FACE_CHECK=off`) | `server/src/api/verify.ts:39` |
@@ -2483,12 +2489,12 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:39` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
-| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:361` |
+| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:376` |
 
 Also present in the code but not visible anywhere: a "how well it knows you" score that the YOU tab fetches but
 never draws (`server/src/memory/completion.ts:83`),
 and a "voice" message source that the app never sends; "voice" in this app means the WhatsApp style import
-(`shared/src/events.ts:30`).
+(`shared/src/events.ts:31`).
 
 ---
 

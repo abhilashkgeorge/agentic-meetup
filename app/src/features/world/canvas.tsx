@@ -38,7 +38,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
-import { CENTRAL_AREA, HAIR_HEX, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
+import { CENTRAL_AREA, HAIR_HEX, HEIGHT_SCALE, OUTFIT_HEX, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
   CITY_BAND, FLY_SECS, MIST_NEAR, VIEW, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget,
   driveVector, groundReach, mapDistance,
@@ -264,6 +264,8 @@ interface CamState {
   /** Seconds of sim time, so a fly started from a tap has a clock. */
   clock: number;
   lastDx: number; lastDy: number; pinchDist: number | null;
+  /** The camera being drawn through, set by the frame loop: what `headOnScreen` projects with. */
+  camera?: THREE.Camera;
 }
 
 function startFly(cam: CamState, to: Pose, followAfter: boolean): void {
@@ -622,6 +624,14 @@ export function WorldCanvas(props: WorldCanvasProps) {
         startFly(c, { tx: hx, tz: hz, zoom: ZOOM_START }, true);
       },
       flyCity: () => { c.walking = false; sim.drive('you', 0, 0); startFly(c, c.city, false); },
+      headOnScreen: (ref) => {
+        const a = (c.walking ? venueSim ?? sim : sim).get(ref);
+        if (!a || !c.camera) return null;
+        head.set(a.x, BODY_H * (HEIGHT_SCALE[a.look.height] ?? 1) * 1.12, a.z).project(c.camera);
+        // Behind the lens, or off the screen by more than a bubble's width.
+        if (head.z > 1 || head.x < -1.3 || head.x > 1.3 || head.y < -1.3 || head.y > 1.3) return null;
+        return [(head.x + 1) / 2 * c.size.width, (1 - head.y) / 2 * c.size.height];
+      },
     };
     return () => { control.current = null; };
   }, [control, c, sim, venueSim]);
@@ -670,6 +680,8 @@ export function WorldCanvas(props: WorldCanvasProps) {
  * shortest building is twice their height and a street is three of them across.
  */
 const PERSON = 0.16;
+/** Reused for every head the bubbles ask about. */
+const head = new THREE.Vector3();
 /** How tall a body stands in the town: the model is 1.87 units (character-mesh.ts). */
 const BODY_H = 1.87 * MODEL_SCALE * PERSON;
 /**
@@ -998,6 +1010,7 @@ function Town({
       set({ camera });
       lens.current = '';
     }
+    cam.camera = camera;
 
     const lensNow = want === 'walk'
       ? `w:${size.width}:${size.height}`

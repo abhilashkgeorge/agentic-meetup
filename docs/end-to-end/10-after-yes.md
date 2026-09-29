@@ -31,7 +31,7 @@ words are the date idea, written earlier (stage 7).
    [app/src/features/dm/conversations-screen.tsx:94] `: 'Say something'`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
-   ([server/src/api/chat.ts:270] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,
+   ([server/src/api/chat.ts:281] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,
    [server/src/push/index.ts:39] `const MESSAGE_QUIET_MS = 2 * 60_000;`).
 3. **The chat** opens with the agents' date idea at the top: "YOUR AGENTS' DATE IDEA", the idea,
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
@@ -52,9 +52,9 @@ words are the date idea, written earlier (stage 7).
 - **Only introduced pairs can write**, enforced by the database policy and by the live
   connection; a message can only be addressed to a pair, never to a person, so nobody can
   message a stranger ([server/migrations/0024_messages.sql:12] `-- there is. Unsolicited contact is not policed, it is unrepresentable.`,
-  [server/src/api/chat.ts:222] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'not introduced yet' });`).
+  [server/src/api/chat.ts:233] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'not introduced yet' });`).
 - **Limits:** 1 to 4,000 characters; 60 events a minute per person ("Slow down a moment."); no
-  daily cap ([shared/src/events.ts:53] `text: z.string().min(1).max(4000),`,
+  daily cap ([shared/src/events.ts:54] `text: z.string().min(1).max(4000),`,
   [server/src/ratelimit.ts:216] `message: { max: 60, windowMs: 60_000 },`).
 - **Contact details are allowed in chat.** The contact-detail filter guards what agents say,
   not what people type to each other; the app itself tells people to swap details in chat
@@ -128,20 +128,20 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   person's sheet in the town, and the check-in's "felt unsafe" step
   ([app/src/features/dm/thread-screen.tsx:226] `right={{ glyph: '⋯', label: 'Block or report', onPress: stop }}`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
-  are not told." ([app/src/features/safety/safety-sheet.tsx:41] `'You will never see each other again, anywhere in the app. They are not told.',`).
+  are not told." ([app/src/features/safety/safety-sheet.tsx:44] `'You will never see each other again, anywhere in the app. They are not told.',`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
   "Inappropriate messages or photos", "Fake profile", "Seems under 18", "Spam or a scam", "Made
   me feel unsafe", "Something else"; an optional note (up to 2,000 characters); the button
   "Report and block"; and "Something urgent? Write to" the support address
   ([app/src/features/safety/reasons.ts:17] `{ id: 'harassment', label: 'Harassment or threats' },`,
   [app/src/features/safety/reasons.ts:23] `{ id: 'other', label: 'Something else' },`,
-  [app/src/features/safety/safety-sheet.tsx:92] `Something urgent? Write to {SUPPORT_EMAIL}`).
+  [app/src/features/safety/safety-sheet.tsx:101] `Something urgent? Write to {SUPPORT_EMAIL}`).
   A report always blocks too ([server/src/messaging/store.ts:220] `await block(c, args.reporterId, args.reportedId);`).
 - **Effect, both ways:** the card, reveal, chat, town seat, photos and date idea disappear for
   both; sends are refused; they are never matched again
   ([server/migrations/0064_bans_and_apart.sql:54] `SELECT block_exists(me, other) OR is_banned(other)`).
   The blocked person is told nothing; a message they try to send shows "not sent"
-  ([server/src/api/chat.ts:242] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'cannot send' });`).
+  ([server/src/api/chat.ts:253] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'cannot send' });`).
 - **No automatic action on reports**; a reviewer looks at them
   ([server/migrations/0039_trust_and_safety.sql:21] `--    AUTO-HIDING ON REPORT IS DELIBERATELY NOT DONE HERE. One malicious report would`).
 

@@ -962,6 +962,15 @@ export const proposeDate = (token: string, rendezvousId: string, messageId: stri
  * Block or report from a card or a profile: by MATCH, since neither carries anybody's
  * id -- the server works out the other half, and only of a match you are half of.
  */
+/**
+ * Somebody met in the park, who is only a ref: the server looks them up among the
+ * people there now (api/park.ts). 404 `not_here` once they have left.
+ */
+export const blockInPark = (token: string, ref: string) =>
+  post<{ ok: boolean }>('/v1/park/block', token, { ref });
+export const reportInPark = (token: string, args: { ref: string; reason: string; detail?: string }) =>
+  post<{ ok: boolean }>('/v1/park/report', token, args);
+
 export const blockMatch = (token: string, rendezvousId: string) =>
   post<{ ok: boolean }>('/v1/block', token, { rendezvousId });
 export const reportMatch = (token: string, args: { rendezvousId: string; reason: string; detail?: string }) =>

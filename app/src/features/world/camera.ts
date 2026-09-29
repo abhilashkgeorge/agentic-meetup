@@ -122,6 +122,12 @@ export interface WorldControl {
   flyCity(): void;
   /** Walk your agent yourself, with the camera behind its head. */
   setWalking(on: boolean): void;
+  /**
+   * Where somebody's head is on screen, in layout points from the canvas's top left,
+   * or null when they are behind the camera, off the edge, or not here. Read by the
+   * park's speech bubbles a few dozen times a second.
+   */
+  headOnScreen(ref: string): [number, number] | null;
 }
 
 const SQ2 = Math.SQRT2;

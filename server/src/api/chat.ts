@@ -25,6 +25,7 @@ import { LIMITS, take } from '../ratelimit.js';
 import * as hub from '../messaging/hub.js';
 import * as messages from '../messaging/store.js';
 import { wake } from '../push/index.js';
+import { handleParkFrame, isParkFrame, socketClosed } from '../park/socket.js';
 
 /**
  * The stable prefix. NOTHING volatile may appear here -- no date, no user name, no
@@ -106,9 +107,19 @@ export function attachChat(ws: WebSocket, ctx: TenantCtx): void {
   ws.on('close', () => {
     clearInterval(heartbeat);
     hub.leave(ctx.userId, ws);
+    // Their last socket gone: they have left the park as well.
+    socketClosed(ctx.userId);
   });
 
   ws.on('message', (data) => {
+    const raw = data.toString();
+    // The park first, and outside the message limit: a walk is several frames a
+    // second and would use a minute's sixty in ten seconds. The park has limits of
+    // its own (park/socket.ts).
+    if (isParkFrame(raw)) {
+      void handleParkFrame(ws, ctx, raw).catch((err: unknown) => log.error({ err, userId: ctx.userId }, 'park frame failed'));
+      return;
+    }
     // PER SOCKET, PER USER, and separate from every budget in the system. The daily
     // cost cap is keyed on the user, which is the right shape for spend and the wrong
     // shape for volume: a client stuck in a send loop, or one person flooding a
@@ -128,7 +139,7 @@ export function attachChat(ws: WebSocket, ctx: TenantCtx): void {
       });
       return;
     }
-    void handle(ws, ctx, data.toString()).catch((err: unknown) => {
+    void handle(ws, ctx, raw).catch((err: unknown) => {
       log.error({ err, userId: ctx.userId }, 'chat turn failed');
       send(ws, {
         type: 'error',

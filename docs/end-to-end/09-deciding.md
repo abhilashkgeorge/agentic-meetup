@@ -160,7 +160,7 @@ Each moment that asks something of a person wakes their phone, whether or not th
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
 ([server/src/push/index.ts:31] `turn: { title: 'Your agent met someone'`). The phone asks for
 permission when the person first sends their agent out, not at launch
-([app/src/features/world/world-screen.tsx:279] `void registerForPush(token, { ask: true });`), and a
+([app/src/features/world/world-screen.tsx:288] `void registerForPush(token, { ask: true });`), and a
 tap opens the card, their profile or the chat
 ([app/src/features/push/route.ts:14] `export function routeForPush(data: Record<string, unknown> | null | undefined): string | null {`).
 **Not yet reaching phones:** the app has no Expo project id yet and the server sends with
@@ -180,7 +180,7 @@ tap opens the card, their profile or the chat
   ([server/src/push/index.ts:78] `export async function warnFading(): Promise<number> {`).
 - **The sweeper** runs every 10 minutes and whenever the Matches list or a decision is
   loaded; it marks overdue pairs `expired` and writes no answer
-  ([server/src/index.ts:195] `}, 10 * 60 * 1000);`,
+  ([server/src/index.ts:202] `}, 10 * 60 * 1000);`,
   [server/src/matching/expiry.ts:27] `WHERE status = 'decided' AND answer_by < now()`).
 - **Expired is not no:** a no is `lapsed` plus a recorded "no"; an expiry is its own status and
   is left out of the yes/no measurement; the founder's numbers count it separately

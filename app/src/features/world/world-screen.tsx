@@ -45,6 +45,9 @@ const REFUSED: Record<string, string> = {
 import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
+import { useParkPresence } from './park-presence';
+import { LiveSheet, ParkChat, SpeechBubbles } from './park-hud';
+import { useParkLive } from './park-live';
 import { gardenSpots } from './garden';
 import { MAP, spotsFrom } from './map';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
@@ -200,9 +203,15 @@ export default function WorldScreen() {
     const local = agentsForVenue(roster, CUBBON_PARK);
     venueSim.upsert(local);
     const localRefs = new Set(local.map((a) => a.ref));
-    // The crowd test's walkers are nobody's roster entry: they stay until cleared.
-    for (const a of venueSim.agents()) if (!localRefs.has(a.ref) && !isCrowd(a.ref)) venueSim.remove(a.ref);
-    for (const ref of departed(applied.current, world.agents)) { sim.remove(ref); venueSim.remove(ref); }
+    // The crowd test's walkers are nobody's roster entry: they stay until cleared. And
+    // somebody here in person (park-presence.ts) is the server's to move, not the roster's.
+    for (const a of venueSim.agents()) {
+      if (!localRefs.has(a.ref) && !isCrowd(a.ref) && a.kind !== 'live') venueSim.remove(a.ref);
+    }
+    for (const ref of departed(applied.current, world.agents)) {
+      sim.remove(ref);
+      if (venueSim.get(ref)?.kind !== 'live') venueSim.remove(ref);
+    }
     for (const t of planTransitions(applied.current, world.agents)) {
       if (t.op === 'meet') sim.meet(YOU, t.ref);
       else if (t.op === 'introduced') sim.introduced(YOU, t.ref);
@@ -292,8 +301,11 @@ export default function WorldScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [liveSelected, setLiveSelected] = useState<string | null>(null);
   const onTap = useCallback((ref: string) => {
     if (ref === YOU) setChatOpen(true);
+    // Somebody here in person: not an agent to send yours over to, a person.
+    else if (useParkLive.getState().people.has(ref)) setLiveSelected(ref);
     else setSelected(ref);
   }, []);
   const selectedAgent = useMemo(
@@ -310,6 +322,9 @@ export default function WorldScreen() {
   const [realm, dispatchRealm] = useReducer(transitionRealm, CITY_REALM);
   const veil = useRef(new Animated.Value(0)).current;
   const transitioning = realm.phase === 'entering' || realm.phase === 'leaving';
+
+  // In the park, live: while it is on screen, you are in it for everybody else too.
+  useParkPresence(realm.phase === 'venue' && focused, venueSim);
 
   const enterVenue = useCallback(() => {
     if (realm.phase !== 'city' || !world) return;
@@ -399,6 +414,14 @@ export default function WorldScreen() {
                             onClose={() => setExchange(null)}
                             onSeeCard={() => { setExchange(null); router.push('/matches'); }} />
            ) : null} />
+      {/* The park, live: what people near you say, over their heads, and the line to
+          say something back. Only while you are walking in it. */}
+      {realm.phase === 'venue' && walking && (
+        <>
+          <SpeechBubbles control={control} />
+          <ParkChat bottom={Math.max(insets.bottom, 20) + 24} />
+        </>
+      )}
       {/* Over everything, including the HUD, and under nothing. Debug builds only. */}
       <FpsMeter capped={cap30} />
       <Animated.View
@@ -424,6 +447,7 @@ export default function WorldScreen() {
                     visits={{ left: world?.targetsLeftToday ?? 0, busy: active }}
                     onSendOver={(ref) => { setSelected(null); void sendOut(ref); }} />
       )}
+      {liveSelected && <LiveSheet parkRef={liveSelected} onClose={() => setLiveSelected(null)} />}
       {chatOpen && <CloneSheet onClose={() => setChatOpen(false)} />}
     </View>
   );

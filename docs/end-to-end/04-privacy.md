@@ -21,6 +21,12 @@ details), and **database roles** that limit what each part of the server can rea
   ([server/migrations/0019_match_role.sql:40] `USING (in_pool);`). Arjun himself sees at most her 3D
   character and neighbourhood in the town: no name, age, tags or photo
   ([server/src/api/world.ts:256] `area: strangers.areas.get(id) ?? CENTRAL_AREA`).
+- **In Cubbon Park, live** (since 2026-09-29): walking in the park at the same time, each sees the
+  other's character where they stand, out to the mist (about 365 m), and reads what the other types if
+  they are within about 20 m. Nothing said is written anywhere; a line holding a phone number, email,
+  handle or link is not sent; people blocked either way never see or hear each other there
+  ([shared/src/events.ts:82] `export const PARK_EARSHOT = 2.5;`,
+  [server/src/park/room.ts:121] `if (contactDetail(text)) return { ok: false, reason: 'contact' };`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
   ([server/src/matching/orchestrator.ts:366] `loadQuotes(pair.b, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`).

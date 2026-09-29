@@ -96,9 +96,9 @@ describe('the Home, with the test on', () => {
   const code = (rel: string) => readFileSync(join(import.meta.dirname, '..', 'src', rel), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
-  it('keeps them through roster polls', () => {
+  it('keeps them through roster polls, and the people here in person too', () => {
     expect(code('features/world/world-screen.tsx'))
-      .toContain('if (!localRefs.has(a.ref) && !isCrowd(a.ref)) venueSim.remove(a.ref);');
+      .toContain("if (!localRefs.has(a.ref) && !isCrowd(a.ref) && a.kind !== 'live') venueSim.remove(a.ref);");
   });
 
   it('draws them all, with slots only while the test is on', async () => {
