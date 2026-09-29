@@ -75,8 +75,8 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     not know where you are." ([server/src/matching/profile.ts:152] `if (p === 'lives_in') return lat === null;`).
 14. **Someone who turns 18 this year is refused all year**, because only the birth year is asked
     ([shared/src/values.ts:118] `return typeof value.month === 'number' && value.month <= now.getUTCMonth() + 1;`).
-15. **A mistyped invite code burns the sign-in ticket**; the retry says "That took too long. Ask for a new code.", and the
-    invite screen has no back button ([server/src/api/auth.ts:194] `phone = await phoneSession((db) => spendTicket(db, body.data.ticket!));`).
+15. **Closed on 2026-09-29: a mistyped invite code.** It says "That code didn't work, try again." and the number stays
+    verified for the retry; the invite screen has a Back button ([server/src/api/auth.ts:262] `return c.json({ error: 'invalid code', message: "That code didn't work, try again." }, 400);`).
 16. **"Yes, that's right" can do more than agree.** A confirmed free phrase replaces a card answer with "unknown" (for
     example "socially" for drinking), and a confirmed city phrase without a map point takes the person out of the pool
     ([server/src/memory/pasteImport.ts:329] `objectText: row.object_text,`).

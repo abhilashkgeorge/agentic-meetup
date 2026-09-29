@@ -306,6 +306,27 @@ describe('spending the ticket', () => {
     expect(second.status).toBe(400);
   });
 
+  // The founder, 2026-09-29 (docs 15.3 item 15): a mistyped invite code spent the
+  // verified number, and the retry said "That took too long. Ask for a new code."
+  // Negative control, run by hand and recorded in the commit: the redeem route without
+  // returnTicket -> this fails on the second try.
+  it('lets a mistyped code be typed again: the number is not spent, and it says so plainly', async () => {
+    const phone = freshPhone();
+    const id = await challenge(phone, '777777', { verified: true });
+    const typo = await post('/v1/auth/redeem', { code: 'WRNG-CDEF', label: 'd', ticket: id });
+    expect(typo.status).toBe(400);
+    expect((await typo.json() as { message: string }).message).toBe("That code didn't work, try again.");
+
+    const right = await post('/v1/auth/redeem', { code: await freshCode(), label: 'd', ticket: id });
+    expect(right.status, 'the mistyped code spent the verified number').toBe(200);
+    tenants.push(...(await owner.query<{ id: string }>(
+      `SELECT t.id FROM tenants t JOIN app_users u ON u.tenant_id = t.id
+        WHERE u.phone_hmac = $1`, [phoneHmac(phone)])).rows.map((r) => r.id));
+    // And, once it has made the account, it is spent for good.
+    const again = await post('/v1/auth/redeem', { code: await freshCode(), label: 'd', ticket: id });
+    expect(again.status).toBe(400);
+  });
+
   it('writes the number onto the account it creates', async () => {
     const phone = freshPhone();
     const id = await challenge(phone, '666666', { verified: true });

@@ -66,6 +66,10 @@ export default function InviteScreen() {
           <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
             We keep it small. Everyone here was vouched for.
           </Text>
+          {/* A way back (the founder, 2026-09-29): this screen had none. Back is the phone
+              screen; opened with no history, it is sent there. */}
+          <Button label="Back" variant="ghost"
+                  onPress={() => (router.canGoBack() ? router.back() : router.replace('/phone'))} />
         </>
       }
     >

@@ -122,8 +122,8 @@ setup is finished on this phone
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Phone number | Normalised; a 6-digit code is made and "sent" | Code | `phone_challenges`: a hash of the number and a hash of the code, 5-minute expiry, caller's IP | Nobody reads it back; only the sign-in role touches this table | `server/src/api/auth.ts:427` |
-| The code | Checked (5 tries); a known number signs in, an unknown one needs an invite | Code | The challenge becomes a 15-minute "ticket" | | `server/src/api/auth.ts:533` |
+| Phone number | Normalised; a 6-digit code is made and "sent" | Code | `phone_challenges`: a hash of the number and a hash of the code, 5-minute expiry, caller's IP | Nobody reads it back; only the sign-in role touches this table | `server/src/api/auth.ts:445` |
+| The code | Checked (5 tries); a known number signs in, an unknown one needs an invite | Code | The challenge becomes a 15-minute "ticket" | | `server/src/api/auth.ts:551` |
 | Invite code | Checked; the account is created | Code | `tenants`, `app_users` (number hash, no number), `device_sessions` | The person | `server/src/api/auth.ts:77` |
 | "I agree" | Three documents accepted | Code | `consents` rows, append-only | The person | `server/src/api/consent.ts:98` |
 
@@ -143,8 +143,13 @@ Nothing in sign-up differs by gender. Both see, in order:
    (`app/src/features/auth/verify-screen.tsx:149`,
    `app/src/features/auth/verify-screen.tsx:182`).
 3. **"You need a code"**: "Your number is confirmed. Now someone has to let you in. If a friend
-   sent you eight characters, put them here." (`app/src/features/auth/invite-screen.tsx:73`).
-   In development, the reusable code KNOX-1010 works.
+   sent you eight characters, put them here." (`app/src/features/auth/invite-screen.tsx:77`).
+   In development, the reusable code KNOX-1010 works. A code that does not work says "That code didn't
+   work, try again." and the verified number stays good for another try; "Back" returns to the phone
+   screen (since 2026-09-29; before, a typo spent the number -- the retry said "That took too long. Ask
+   for a new code." -- and there was no way back)
+   (`server/src/api/auth.ts:262`,
+   `app/src/features/auth/invite-screen.tsx:71`).
 4. **"Before we start"**: three short documents and one button, "I agree". There is no decline
    button: "If you would rather not, close the app — nothing has been set up yet."
    (`app/src/features/consent/consent-screen.tsx:110`,
@@ -168,7 +173,7 @@ Nothing in sign-up differs by gender. Both see, in order:
   `server/src/sms.ts:51`).
   With `SMS_DEV_ECHO=true` the server would also return the code in its reply; it is off in the
   development setup since 2026-09-28
-  (`server/src/api/auth.ts:451`).
+  (`server/src/api/auth.ts:469`).
 - **Limits:** per IP 10 codes per 15 minutes; per number 3 per 15 minutes; 500 texts a day in
   total (`server/src/ratelimit.ts:204`,
   `server/src/ratelimit.ts:206`,
@@ -176,8 +181,8 @@ Nothing in sign-up differs by gender. Both see, in order:
   the server's memory and reset when it restarts.
 - **Three outcomes** after a right code: a signed-in person adds the number to their account; a
   known number signs straight in (no invite, no consent screen); an unknown number gets a ticket
-  for the invite screen (`server/src/api/auth.ts:610`,
-  `server/src/api/auth.ts:615`).
+  for the invite screen (`server/src/api/auth.ts:628`,
+  `server/src/api/auth.ts:633`).
 
 ### 1.2 Invites
 
@@ -191,7 +196,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **KNOX-1010** is a reusable development code made by a script; it works only while
   `ALLOW_REUSABLE_INVITES=true` (on in development) and each use makes a new account
   (`server/scripts/dev-invite.ts:25`,
-  `server/src/api/auth.ts:218`).
+  `server/src/api/auth.ts:230`).
 - **A production server refuses to start** with any development shortcut on: reusable invites,
   echoed codes, the console SMS sender, legacy tokens, unverified or device sign-up, practice
   profiles saying yes, or a development secret (`server/src/env.ts:374`,
@@ -249,13 +254,13 @@ Consent is also a condition for being sent out (stage 2).
 ### Docs vs code
 
 - The consent footer says "nothing has been set up yet"; by then the account, the number's hash and a
-  session already exist (`server/src/api/auth.ts:249`).
+  session already exist (`server/src/api/auth.ts:267`).
 - The phone screen promises the number is kept only in scrambled form; with the console sender (the
   development default) the full number is written to the server log
   (`app/src/features/auth/phone-screen.tsx:86`).
 - HOW-IT-WORKS.md §11 says every door checks bans "before spending anything"; at the invite step the
   phone ticket is spent before the ban check (`HOW-IT-WORKS.md:876`,
-  `server/src/api/auth.ts:194`).
+  `server/src/api/auth.ts:206`).
 - `app/README.md` still lists a "signin = dev token" route and says real sign-in and consent are
   "Not built" (`app/README.md:20`).
 
@@ -2684,8 +2689,8 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     not know where you are." (`server/src/matching/profile.ts:152`).
 14. **Someone who turns 18 this year is refused all year**, because only the birth year is asked
     (`shared/src/values.ts:118`).
-15. **A mistyped invite code burns the sign-in ticket**; the retry says "That took too long. Ask for a new code.", and the
-    invite screen has no back button (`server/src/api/auth.ts:194`).
+15. **Closed on 2026-09-29: a mistyped invite code.** It says "That code didn't work, try again." and the number stays
+    verified for the retry; the invite screen has a Back button (`server/src/api/auth.ts:262`).
 16. **"Yes, that's right" can do more than agree.** A confirmed free phrase replaces a card answer with "unknown" (for
     example "socially" for drinking), and a confirmed city phrase without a map point takes the person out of the pool
     (`server/src/memory/pasteImport.ts:329`).

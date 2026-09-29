@@ -165,6 +165,18 @@ async function spendTicket(db: import('pg').PoolClient, id: string): Promise<str
   return rows[0]?.phone_hmac ?? null;
 }
 
+/**
+ * Give a spent ticket back, when what was wrong was the invite code and not the number.
+ * Only the same ticket, for the same number, still in its time.
+ */
+async function returnTicket(db: import('pg').PoolClient, id: string, phone: string): Promise<void> {
+  await db.query(
+    `UPDATE phone_challenges SET consumed_at = NULL
+      WHERE id = $1 AND phone_hmac = $2 AND consumed_at IS NOT NULL AND expires_at > now()`,
+    [id, phone],
+  );
+}
+
 export const authRoutes = new Hono()
   /**
    * Redeem an invite. The code is claimed with a conditional UPDATE, so two devices
@@ -239,9 +251,15 @@ export const authRoutes = new Hono()
     });
 
     if (!claimed) {
-      // One message for expired, used and never-existed. Distinguishing them turns
-      // this into an oracle for guessing codes.
-      return c.json({ error: 'invalid code', message: 'That code does not work. Ask for a new one.' }, 400);
+      // A MISTYPED CODE DOES NOT COST THE NUMBER (the founder, 2026-09-29). The ticket was
+      // spent above, to protect the invite -- and here the invite was what was wrong, so
+      // the ticket goes back and the person types the code again. It used to stay spent:
+      // the retry said "That took too long. Ask for a new code." Guessing stays what it
+      // was: eight characters of 25 (about 1.5e11) at ten tries an hour (LIMITS.redeem).
+      if (phone && body.data.ticket) await phoneSession((db) => returnTicket(db, body.data.ticket!, phone!));
+      // One message for mistyped, expired, used and never-existed. Distinguishing them
+      // turns this into an oracle for guessing codes.
+      return c.json({ error: 'invalid code', message: "That code didn't work, try again." }, 400);
     }
 
     let provisioned;

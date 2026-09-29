@@ -107,7 +107,7 @@ export async function redeemInvite(
       body: JSON.stringify({ code, label, ...(ticket ? { ticket } : {}) }),
     });
     const body = (await res.json()) as { token?: string; note?: string; message?: string };
-    if (!res.ok || !body.token) return { error: body.message ?? 'That code does not work.' };
+    if (!res.ok || !body.token) return { error: body.message ?? "That code didn't work, try again." };
     return { token: body.token, note: body.note ?? '' };
   } catch {
     return null; // offline, which is not the same as a bad code

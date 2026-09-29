@@ -25,8 +25,8 @@ setup is finished on this phone
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Phone number | Normalised; a 6-digit code is made and "sent" | Code | `phone_challenges`: a hash of the number and a hash of the code, 5-minute expiry, caller's IP | Nobody reads it back; only the sign-in role touches this table | [server/src/api/auth.ts:427] `INSERT INTO phone_challenges (phone_hmac, code_hmac, expires_at, created_ip)` |
-| The code | Checked (5 tries); a known number signs in, an unknown one needs an invite | Code | The challenge becomes a 15-minute "ticket" | | [server/src/api/auth.ts:533] `SET verified_at = COALESCE(verified_at, now()),` |
+| Phone number | Normalised; a 6-digit code is made and "sent" | Code | `phone_challenges`: a hash of the number and a hash of the code, 5-minute expiry, caller's IP | Nobody reads it back; only the sign-in role touches this table | [server/src/api/auth.ts:445] `INSERT INTO phone_challenges (phone_hmac, code_hmac, expires_at, created_ip)` |
+| The code | Checked (5 tries); a known number signs in, an unknown one needs an invite | Code | The challenge becomes a 15-minute "ticket" | | [server/src/api/auth.ts:551] `SET verified_at = COALESCE(verified_at, now()),` |
 | Invite code | Checked; the account is created | Code | `tenants`, `app_users` (number hash, no number), `device_sessions` | The person | [server/src/api/auth.ts:77] `INSERT INTO app_users (id, tenant_id, email, tier, phone_hmac, phone_verified_at)` |
 | "I agree" | Three documents accepted | Code | `consents` rows, append-only | The person | [server/src/api/consent.ts:98] `INSERT INTO consents (tenant_id, user_id, document, version)` |
 
@@ -46,8 +46,13 @@ Nothing in sign-up differs by gender. Both see, in order:
    ([app/src/features/auth/verify-screen.tsx:149] `Check your texts`,
    [app/src/features/auth/verify-screen.tsx:182] `The server is echoing codes back (SMS_DEV_ECHO). Turn that off before anyone`).
 3. **"You need a code"**: "Your number is confirmed. Now someone has to let you in. If a friend
-   sent you eight characters, put them here." ([app/src/features/auth/invite-screen.tsx:73] `You need a code`).
-   In development, the reusable code KNOX-1010 works.
+   sent you eight characters, put them here." ([app/src/features/auth/invite-screen.tsx:77] `You need a code`).
+   In development, the reusable code KNOX-1010 works. A code that does not work says "That code didn't
+   work, try again." and the verified number stays good for another try; "Back" returns to the phone
+   screen (since 2026-09-29; before, a typo spent the number -- the retry said "That took too long. Ask
+   for a new code." -- and there was no way back)
+   ([server/src/api/auth.ts:262] `return c.json({ error: 'invalid code', message: "That code didn't work, try again." }, 400);`,
+   [app/src/features/auth/invite-screen.tsx:71] `<Button label="Back" variant="ghost"`).
 4. **"Before we start"**: three short documents and one button, "I agree". There is no decline
    button: "If you would rather not, close the app — nothing has been set up yet."
    ([app/src/features/consent/consent-screen.tsx:110] `Before we start`,
@@ -71,7 +76,7 @@ Nothing in sign-up differs by gender. Both see, in order:
   [server/src/sms.ts:51] `log.warn({ to, code }, 'SMS (console sender) -- this is the code');`).
   With `SMS_DEV_ECHO=true` the server would also return the code in its reply; it is off in the
   development setup since 2026-09-28
-  ([server/src/api/auth.ts:451] `...(env.SMS_DEV_ECHO ? { devCode: code, devEchoIsOn: true } : {}),`).
+  ([server/src/api/auth.ts:469] `...(env.SMS_DEV_ECHO ? { devCode: code, devEchoIsOn: true } : {}),`).
 - **Limits:** per IP 10 codes per 15 minutes; per number 3 per 15 minutes; 500 texts a day in
   total ([server/src/ratelimit.ts:204] `otpSend: { max: 10, windowMs: 15 * 60_000 },`,
   [server/src/ratelimit.ts:206] `otpSendPerPhone: { max: 3, windowMs: 15 * 60_000 },`,
@@ -79,8 +84,8 @@ Nothing in sign-up differs by gender. Both see, in order:
   the server's memory and reset when it restarts.
 - **Three outcomes** after a right code: a signed-in person adds the number to their account; a
   known number signs straight in (no invite, no consent screen); an unknown number gets a ticket
-  for the invite screen ([server/src/api/auth.ts:610] `return c.json({ status: 'signed_in', token: mintToken(sessionId), onboarded });`,
-  [server/src/api/auth.ts:615] `return c.json({ status: 'needs_invite', ticket: challengeId, expiresInSec: TICKET_TTL_SEC });`).
+  for the invite screen ([server/src/api/auth.ts:628] `return c.json({ status: 'signed_in', token: mintToken(sessionId), onboarded });`,
+  [server/src/api/auth.ts:633] `return c.json({ status: 'needs_invite', ticket: challengeId, expiresInSec: TICKET_TTL_SEC });`).
 
 ### 1.2 Invites
 
@@ -94,7 +99,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **KNOX-1010** is a reusable development code made by a script; it works only while
   `ALLOW_REUSABLE_INVITES=true` (on in development) and each use makes a new account
   ([server/scripts/dev-invite.ts:25] `VALUES ($1, 'reusable dev code', true, now() + interval '100 years')`,
-  [server/src/api/auth.ts:218] `if (env.ALLOW_REUSABLE_INVITES) {`).
+  [server/src/api/auth.ts:230] `if (env.ALLOW_REUSABLE_INVITES) {`).
 - **A production server refuses to start** with any development shortcut on: reusable invites,
   echoed codes, the console SMS sender, legacy tokens, unverified or device sign-up, practice
   profiles saying yes, or a development secret ([server/src/env.ts:374] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`,
@@ -152,13 +157,13 @@ Consent is also a condition for being sent out (stage 2).
 ### Docs vs code
 
 - The consent footer says "nothing has been set up yet"; by then the account, the number's hash and a
-  session already exist ([server/src/api/auth.ts:249] `provisioned = await provision(body.data.label ?? 'device', userId, phone ?? undefined`).
+  session already exist ([server/src/api/auth.ts:267] `provisioned = await provision(body.data.label ?? 'device', userId, phone ?? undefined`).
 - The phone screen promises the number is kept only in scrambled form; with the console sender (the
   development default) the full number is written to the server log
   ([app/src/features/auth/phone-screen.tsx:86] `scrambled version of it.`).
 - HOW-IT-WORKS.md §11 says every door checks bans "before spending anything"; at the invite step the
   phone ticket is spent before the ban check ([HOW-IT-WORKS.md:876] `before spending anything: a new SIM in a banned phone,`,
-  [server/src/api/auth.ts:194] `phone = await phoneSession((db) => spendTicket(db, body.data.ticket!));`).
+  [server/src/api/auth.ts:206] `phone = await phoneSession((db) => spendTicket(db, body.data.ticket!));`).
 - `app/README.md` still lists a "signin = dev token" route and says real sign-in and consent are
   "Not built" ([app/README.md:20] `expo-router screens (index = chat, signin = dev token)`).
 
