@@ -120,11 +120,23 @@ describe('practice profiles never decide first', () => {
   });
 
   it('0074 moves only open cards nobody has answered, from a practice profile to the real person', async () => {
-    const real = await person('r0', { gender: 'man', seeking_gender: ['woman'] });
-    const practice = await person('p0', { is_synthetic: true });
+    // OUT OF THE POOL. These cards are planted, so nobody here needs to be matchable -- and
+    // in the pool with no intent they matched anybody: other files' rounds met them and
+    // failed when this file removed them (seen 2026-09-29: an extra meeting in
+    // round-events, a foreign-key error in wants).
+    const out = { in_pool: false };
+    const real = await person('r0', { ...out, gender: 'man', seeking_gender: ['woman'] });
+    const practice = await person('p0', { ...out, is_synthetic: true });
     const stuck = await openCard(practice, real);
-    const answered = await openCard(await person('p1', { is_synthetic: true }), await person('r1', { gender: 'man' }), true);
-    const twoReal = await openCard(await person('r2', {}), await person('r3', { gender: 'man' }));
+    const p1 = await person('p1', { ...out, is_synthetic: true });
+    const r1 = await person('r1', { ...out, gender: 'man' });
+    const answered = await openCard(p1, r1, true);
+    const r2 = await person('r2', { ...out });
+    const r3 = await person('r3', { ...out, gender: 'man' });
+    const twoReal = await openCard(r2, r3);
+    const inPool = await owner.query('SELECT 1 FROM match_profile WHERE in_pool AND user_id = ANY($1::uuid[])',
+      [[real, practice, p1, r1, r2, r3].map((x) => x.userId)]);
+    expect(inPool.rows, 'a planted card\'s person is in the pool, where other tests meet them').toHaveLength(0);
     const before = { answered: await firstMover(answered), twoReal: await firstMover(twoReal) };
 
     // The migration's own statement, confined to this test's cards: other test files
