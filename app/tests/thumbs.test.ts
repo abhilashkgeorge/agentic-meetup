@@ -1,24 +1,24 @@
 /**
- * The picture of every piece, checked as a picture.
+ * The picture of every choice, checked as a picture.
  *
- * `scripts/build-thumbs.mjs` rasterises forty-one tiles by hand -- there is no GL in
- * Node -- and the first run of it wrote a perfectly valid PNG of forty-one EMPTY
+ * `scripts/build-thumbs.mts` rasterises sixty-nine tiles by hand -- there is no GL in
+ * Node -- and the first run of its ancestor wrote a perfectly valid PNG of EMPTY
  * SQUARES, because the z-buffer started at +Infinity and rejected every fragment. It
  * was a 3 KB file instead of 100 KB and nothing threw. So this does not check that the
  * sheet exists; it decodes it and checks that something was actually drawn in every
  * tile, and that what was drawn is where the manifest says it is.
  *
  * Negative controls, run by hand and recorded in the commit:
- *   - fill the z-buffer with +Infinity again -> "draws something in every tile" fails,
- *     all 41 tiles come back empty.
- *   - drop the bald tile -> "has a tile for every piece a person can wear" fails.
+ *   - fill the z-buffer in scripts/raster.mts with +Infinity -> "draws something in
+ *     every tile" fails, every tile comes back empty.
+ *   - leave the hats out of build-thumbs.mts -> "has a tile for every choice" fails.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { join } from 'node:path';
-import { BALD, LOOK_SIZES, SLOT_PARTS, WARDROBE } from '@clone/shared';
-import { LOOKS, baldBase } from '../src/features/world/character';
+import { EXTRA_PARTS, HAIRSTYLES, LOOK_SIZES, NOT_OFFERED, SHAVED } from '@clone/shared';
+import { LOOKS } from '../src/features/world/character';
 import { tileOf } from '../src/features/look/thumb-sheet';
 
 const ASSETS = join(import.meta.dirname, '..', 'assets', 'characters');
@@ -87,18 +87,17 @@ describe('the piece thumbnails', () => {
     expect(file.length, 'the sheet has got heavy').toBeLessThan(300 * 1024);
   });
 
-  it('has a tile for every piece a person can wear, and no spare ones', () => {
+  it('has a tile for every choice that has a picture, and no spare ones', () => {
     const want = new Set<string>();
-    for (const key of LOOKS) for (const slot of SLOT_PARTS) want.add(`${key}:${slot}`);
-    // Bald is not a set: it borrows a face and drops the hair, and WHOSE face depends
-    // on the person, so there is one of these per set.
-    for (const key of LOOKS) want.add(`${key}:bald`);
-    // Facial hair is not a set either -- it goes on whatever head you picked -- and is
-    // drawn on a face, because a beard alone in a circle is an unreadable smudge.
+    // Each set's face (no hair), its hairstyle (on a face), and its three clothes.
+    for (const key of LOOKS) for (const what of ['face', 'hair', 'top', 'legs', 'feet']) want.add(`${key}:${what}`);
+    // Facial hair is not a set -- it goes on whatever face you picked -- and is drawn on
+    // a face, because a beard alone in a circle is an unreadable smudge.
     for (const name of beards) want.add(`beard:${name}`);
+    // Everything worn on top, bar "None", which the builder says in words.
+    for (const part of EXTRA_PARTS) for (let i = 1; i < LOOK_SIZES[part]; i++) want.add(`${part}:${i}`);
     expect(new Set(Object.keys(index))).toEqual(want);
-    expect(Object.keys(index))
-      .toHaveLength(WARDROBE.length * (SLOT_PARTS.length + 1) + LOOK_SIZES.beard - 1);
+    expect(Object.keys(index)).toHaveLength(69);
     // Every tile is somewhere different, and inside the sheet.
     const used = Object.values(index);
     expect(new Set(used).size).toBe(used.length);
@@ -115,6 +114,13 @@ describe('the piece thumbnails', () => {
   });
 
   it('draws a different picture for every piece', () => {
+    const TWINS = new Set([
+      [`${LOOKS[3]}:feet`, `${LOOKS[9]}:feet`],
+      [`${LOOKS[1]}:hair`, `${LOOKS[9]}:hair`],
+    ].map((pair) => pair.sort().join(' ')));
+    // ...and the builder offers neither copy.
+    expect(NOT_OFFERED.feet).toEqual([9]);
+    expect(NOT_OFFERED.hair).toEqual([9]);
     // A picker whose forty pictures are the same picture is worse than words. The
     // signature is a coarse grid of what is drawn and roughly what colour: two pairs
     // of plain trousers have the SAME OUTLINE and differ only in being navy and
@@ -131,10 +137,11 @@ describe('the piece thumbnails', () => {
         }
       }
       const clash = shapes.get(sig);
-      // One pair is allowed to be identical, and says so: the workwear head is a hard
-      // hat with no hair under it, so taking the hair off changes nothing at all.
-      const twin = clash && [clash, key].sort().join(' ') === `${LOOKS[4]}:bald ${LOOKS[4]}:head`;
-      expect(twin || clash === undefined, `${key} looks exactly like ${clash}`).toBe(true);
+      // The pack ships two pieces twice, and the builder does not offer the copies
+      // (NOT_OFFERED): the trouser suit's shoes are the overalls' shoes, and Long
+      // (straight) is Long.
+      const twin = clash !== undefined && TWINS.has([clash, key].sort().join(' '));
+      if (!twin) expect(clash, `${key} looks exactly like ${clash}`).toBeUndefined();
       shapes.set(sig, key);
     }
   });
@@ -156,17 +163,23 @@ describe('the piece thumbnails', () => {
     }
   });
 
-  it('gives a man and a woman a different bald head', () => {
-    // THE BUG THIS EXISTS FOR: bald borrowed the first face in the file every time --
-    // a man's -- and the men in this pack are modelled with a darker patch over the
-    // jaw. With hair on that is a jawline. On a bald woman it is a beard.
-    expect(BALD).toBe(LOOKS.length);
-    const man = tileOf('head', BALD, 0);
-    const woman = tileOf('head', BALD, 1);
-    expect(man, 'a man has no bald head').not.toBeNull();
-    expect(woman, 'a woman has no bald head').not.toBeNull();
-    expect(woman, 'a bald woman is drawn as a bald man').not.toEqual(man);
-    expect(LOOKS[baldBase(0)]!.startsWith('m_'), 'a bald man borrows a woman\'s face').toBe(true);
-    expect(LOOKS[baldBase(1)]!.startsWith('w_'), 'a bald woman borrows a man\'s face').toBe(true);
+  it('pictures Shaved and Clean as the men\'s face, and every other hairstyle with its hair on', () => {
+    const face = tileOf('head', 0);
+    expect(face, 'the first face has no picture').not.toBeNull();
+    expect(tileOf('hair', SHAVED), 'Shaved is not a shaved head').toEqual(face);
+    expect(tileOf('beard', 0), 'Clean is not a clean face').toEqual(face);
+    for (let i = 0; i < HAIRSTYLES.length; i++) {
+      if (i === SHAVED) continue;
+      const at = tileOf('hair', i);
+      expect(at, `${HAIRSTYLES[i]} has no picture`).not.toBeNull();
+      expect(at, `${HAIRSTYLES[i]} is drawn as a face with no hair`).not.toEqual(tileOf('head', i));
+    }
+  });
+
+  it('has no picture for "None", and one for everything else worn on top', () => {
+    for (const part of EXTRA_PARTS) {
+      expect(tileOf(part, 0), `"None" of ${part} is drawn`).toBeNull();
+      for (let i = 1; i < LOOK_SIZES[part]; i++) expect(tileOf(part, i), `${part} ${i} has no picture`).not.toBeNull();
+    }
   });
 });

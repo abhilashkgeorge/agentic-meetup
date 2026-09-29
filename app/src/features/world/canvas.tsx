@@ -455,24 +455,24 @@ function poseAgent(set: PartSet, i: number, a: Posed, bob: number, dummy: THREE.
   else if (o === 'open') { place(set.trim, 0, a.x + fx * 0.29, 0.68 + bob, a.z + fz * 0.29, 0.5, 1, 1, 0, f, 0); tint(set.trim, 0, col.eye); }
   else hide(set.trim);
 
-  // extra
-  const x = look.accessory;
-  if (x === 1) {
+  // what they wear on top: the capsule has a shape for four of the extras
+  const n = col.outfit.length;
+  if (look.glasses > 0) {
     for (let k = 0; k < 2; k++) {
       const side = k === 0 ? -1 : 1;
       place(set.glasses, k, a.x + fx * 0.21 + rx * FACE.gap * 0.5 * side, headY + FACE.dy, a.z + fz * 0.21 + rz * FACE.gap * 0.5 * side, 1, 1, 1, 0, f, 0);
       tint(set.glasses, k, col.prop);
     }
   } else { hide(set.glasses, 0); hide(set.glasses, 1); }
-  if (x === 2) { place(set.hat, 0, a.x, headY + 0.22, a.z); tint(set.hat, 0, col.outfitDim[(look.outfitColor + 3) % 12]!); } else hide(set.hat);
-  if (x === 3) {
+  if (look.hat > 0) { place(set.hat, 0, a.x, headY + 0.22, a.z); tint(set.hat, 0, col.outfitDim[(look.outfitColor + 3) % n]!); } else hide(set.hat);
+  if (look.earrings > 0) {
     for (let k = 0; k < 2; k++) {
       const side = k === 0 ? -1 : 1;
       place(set.studs, k, a.x + rx * 0.22 * side, headY - 0.04, a.z + rz * 0.22 * side);
       tint(set.studs, k, col.warning);
     }
   } else { hide(set.studs, 0); hide(set.studs, 1); }
-  if (x === 4) { place(set.collar, 1, a.x, 0.88 + bob, a.z, 1.15, 1.15, 1.3, Math.PI / 2, f, 0); tint(set.collar, 1, col.outfit[(look.outfitColor + 6) % 12]!); }
+  if (look.neck === 1) { place(set.collar, 1, a.x, 0.88 + bob, a.z, 1.15, 1.15, 1.3, Math.PI / 2, f, 0); tint(set.collar, 1, col.outfit[(look.outfitColor + 6) % n]!); }
   else hide(set.collar, 1);
 }
 

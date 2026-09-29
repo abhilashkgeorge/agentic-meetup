@@ -8,7 +8,7 @@
  * session's transaction so two taps cannot both spend the same balance.
  */
 import type { PoolClient } from 'pg';
-import type { LookItem } from '@clone/shared';
+import { currentItem, type LookItem } from '@clone/shared';
 
 export const POINTS = { checkin: 50, met: 10, look: 20, photos_checked: 30 } as const;
 export type PointReason = keyof typeof POINTS;
@@ -35,7 +35,9 @@ export async function balance(db: PoolClient, userId: string): Promise<number> {
 
 export async function owned(db: PoolClient, userId: string): Promise<string[]> {
   const { rows } = await db.query<{ item: string }>('SELECT item FROM look_items WHERE user_id = $1', [userId]);
-  return rows.map((r) => r.item);
+  // By what each thing is called now: a cap bought as "accessory:2" before the one
+  // extra became five places to wear things is "hat:1" today (shared/look.ts).
+  return [...new Set(rows.map((r) => currentItem(r.item)))];
 }
 
 /**

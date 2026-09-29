@@ -41,19 +41,60 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneRig } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { BALD, HAIR_HEX, LOOK_PARTS, LOOK_SIZES, OUTFIT_HEX, SKIN_HEX, type Look } from '@clone/shared';
-import { LOOKS, SLOTS, buildScale, partsOf, type LookKey, type LookPieces, type Role } from './character';
-import { EXTRA_OWN_COLOUR, MODEL_SCALE, buildExtras, readModel, type Manifest } from './character-mesh';
+import { HARD_HAT, lookKey, type Look } from '@clone/shared';
+import {
+  EXTRA_OWN_COLOUR, FITTED_HAIR, HAT_INSIDE, HEAD_BIND, LOOKS, SCALP, SKULL_MIDDLE, buildScale, coloursOf, hardHatSet, partsOf, roleOf,
+  type ExtraKind, type LookKey, type LookPieces, type Role,
+} from './character';
+import {
+  MODEL_SCALE, buildBag, buildExtras, clothOf, readModel, type BagKind, type Bone, type Manifest, type SharedExtra,
+} from './character-mesh';
 
-/** Where each role takes its colour from (aMeta.x). */
-export const ROLE: Record<Role | 'extra', number> = { skin: 0, hair: 1, top: 2, plain: 3, extra: 4 };
-/** Which choice a vertex belongs to (aMeta.y): the four wardrobe slots, then these. */
-export const SLOT_ID = { head: 0, top: 1, legs: 2, feet: 3, beard: 4, extra: 5, outfit: 6 } as const;
-/** The accessories, in LOOK_LABELS.accessory order after "Nothing". */
-const EXTRA_KINDS = ['glasses', 'cap', 'earrings', 'scarf'] as const;
+/** Where each role takes its colour from (aMeta.x): see VERTEX_SELECT. */
+export const ROLE: Record<Role | 'neck' | 'bag', number> = {
+  skin: 0, hair: 1, top: 2, plain: 3, legs: 4, feet: 5, eyes: 6, brows: 7, hat: 8, neck: 9, bag: 10,
+};
+/** Which choice a vertex belongs to (aMeta.y); the shader reads each one's wanted variant. */
+export const SLOT_ID = {
+  face: 0, hair: 1, top: 2, legs: 3, feet: 4, beard: 5, hat: 6, glasses: 7, earrings: 8, neck: 9, bag: 10, outfit: 11,
+} as const;
+/** No variant is ever this: a slot wanting it draws nothing (no hair, no hat). */
+export const NONE = 99;
+/**
+ * The hair slot's other variants: a hairstyle grown to fit a bigger skull is FITTED
+ * plus its place in FITTED_HAIR, and a shaved head on a face that ends at the
+ * hairline is SCALP_VARIANT (the pack's own scalp, in skin).
+ */
+export const FITTED = 20;
+export const SCALP_VARIANT = 30;
+/**
+ * Each extra's slot and variant, in LOOK_LABELS order; the hard hat is a mesh, 4 and
+ * 6. A bag's variant also depends on the top it is made for (bagVariant).
+ */
+const EXTRA_SLOT: Record<ExtraKind, { slot: number; variant: number; role: number }> = {
+  cap: { slot: SLOT_ID.hat, variant: 1, role: ROLE.hat },
+  beanie: { slot: SLOT_ID.hat, variant: 2, role: ROLE.hat },
+  bucket: { slot: SLOT_ID.hat, variant: 3, role: ROLE.hat },
+  beret: { slot: SLOT_ID.hat, variant: 5, role: ROLE.hat },
+  round: { slot: SLOT_ID.glasses, variant: 1, role: ROLE.plain },
+  sunglasses: { slot: SLOT_ID.glasses, variant: 2, role: ROLE.plain },
+  square: { slot: SLOT_ID.glasses, variant: 3, role: ROLE.plain },
+  studs: { slot: SLOT_ID.earrings, variant: 1, role: ROLE.plain },
+  hoops: { slot: SLOT_ID.earrings, variant: 2, role: ROLE.plain },
+  scarf: { slot: SLOT_ID.neck, variant: 1, role: ROLE.neck },
+  necklace: { slot: SLOT_ID.neck, variant: 2, role: ROLE.plain },
+  bowtie: { slot: SLOT_ID.neck, variant: 3, role: ROLE.neck },
+  backpack: { slot: SLOT_ID.bag, variant: 1, role: ROLE.bag },
+  shoulderbag: { slot: SLOT_ID.bag, variant: 2, role: ROLE.plain },
+};
+/** The women's hard hat is its own mesh; the men's is HARD_HAT itself. */
+const HARD_HAT_W = 6;
+/** A bag is built for each top (character-mesh.ts buildBag): its variant says which. */
+export const bagVariant = (kind: BagKind, topSet: number): number => (kind === 'backpack' ? 1 : 1 + LOOKS.length) + topSet;
 
-/** Numbers per person in a level's buffer: eight vec4s (see the shader's attributes). */
-export const STRIDE = 32;
+/** Numbers per person in a level's buffer: eight vec4s, in this order (see fixedOf). */
+export const INSTANCE_ATTRIBUTES = ['aPos', 'aAnim', 'aShape', 'aCol1', 'aCol2', 'aSel1', 'aSel2', 'aSel3'] as const;
+export const STRIDE = INSTANCE_ATTRIBUTES.length * 4;
 /** The baked animation's frame rate. Nearest frame, so no blending between frames. */
 export const BAKE_FPS = 60;
 
@@ -260,13 +301,36 @@ function tagged(src: THREE.BufferGeometry, meta: { role: number; slot: number; v
 }
 
 /**
- * An accessory as a skinned piece: hung rigidly on the head bone, so it is carried
- * into the bone's bind space (the same space `HEAD` in character-mesh.ts measures in)
- * and weighted wholly to it.
+ * A piece grown by `fit` about the middle of the skull, in bind space (the model's
+ * bind matrix is the identity, which prepareSteps checks): a hairstyle on a bigger
+ * skull than it was modelled on. Normals are unchanged by a uniform scale.
  */
-function extraPiece(geo: THREE.BufferGeometry, head: number, headBind: THREE.Matrix4): THREE.BufferGeometry {
-  const g = geo.index ? geo.clone() : geo.clone();
-  g.applyMatrix4(headBind);
+function grown(src: THREE.BufferGeometry, fit: number): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal', 'skinIndex', 'skinWeight'] as const) {
+    const a = src.attributes[name];
+    if (a) g.setAttribute(name, own(a));
+  }
+  if (src.index) g.setIndex(new THREE.BufferAttribute(src.index.array.slice(), 1));
+  const p = g.attributes.position!.array;
+  if (!(p instanceof Float32Array)) throw new Error("a hairstyle to grow has positions that are not floats");
+  const [cx, cy, cz] = SKULL_MIDDLE;
+  for (let i = 0; i < p.length; i += 3) {
+    p[i] = cx + (p[i]! - cx) * fit;
+    p[i + 1] = cy + (p[i + 1]! - cy) * fit;
+    p[i + 2] = cz + (p[i + 2]! - cz) * fit;
+  }
+  return g;
+}
+
+/**
+ * An accessory as a skinned piece: hung rigidly on one bone, so it is carried into
+ * the model's bind space from that bone's (the space `HEAD`, `NECK` and `CHEST` in
+ * character-mesh.ts measure in) and weighted wholly to it.
+ */
+function extraPiece(geo: THREE.BufferGeometry, bone: number, bind: THREE.Matrix4): THREE.BufferGeometry {
+  const g = geo.clone();
+  g.applyMatrix4(bind);
   for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal') g.deleteAttribute(name);
   const n = g.attributes.position!.count;
   const normals = g.attributes.normal!;
@@ -275,7 +339,7 @@ function extraPiece(geo: THREE.BufferGeometry, head: number, headBind: THREE.Mat
   g.setAttribute('normal', new THREE.BufferAttribute(packed, 3, true));
   const idx = new Uint8Array(n * 4);
   const wgt = new Uint8Array(n * 4);
-  for (let i = 0; i < n; i++) { idx[i * 4] = head; wgt[i * 4] = 255; }
+  for (let i = 0; i < n; i++) { idx[i * 4] = bone; wgt[i * 4] = 255; }
   g.setAttribute('skinIndex', new THREE.BufferAttribute(idx, 4));
   g.setAttribute('skinWeight', new THREE.BufferAttribute(wgt, 4, true));
   if (!g.index) g.setIndex(Array.from({ length: n }, (_, i) => i));
@@ -345,16 +409,17 @@ export interface CrowdParts {
   colour: ReadonlyMap<string, THREE.Color>;
   pieces: (key: LookKey) => LookPieces | undefined;
   beards: readonly string[];
-  /** The Head bone's index, and the matrix that carries head-bone space into bind space. */
-  head: number;
-  headBind: THREE.Matrix4;
+  /** The bones accessories hang off: their index, and the matrix out of their bind space. */
+  bones: Readonly<Record<Bone, { index: number; bind: THREE.Matrix4 }>>;
 }
 
 /**
- * The four meshes' geometry: every slot of every outfit (and the beards and
- * accessories) for near and middle, one merged outfit per head for far and tiny.
+ * The four meshes' geometry. Near, middle and far: every choice there is -- each set's
+ * face, hair, top, trousers and shoes, the beards, the hard hats and everything worn on
+ * top -- merged harder at each level (far leaves the small things off). Tiny: one
+ * merged outfit per set, for people a few pixels tall.
  *
- * A LOOK AT A TIME. This is a generator that stops after each look, so the app can
+ * A LOOK AT A TIME. This is a generator that stops after each set, so the app can
  * build it between frames (loadGpuCrowd) and the tests all at once (buildLevels). In
  * node the whole build is about fifty milliseconds; a phone's JavaScript engine has no
  * compiler to speed it up, and done in one go it would freeze the town for a good
@@ -362,41 +427,91 @@ export interface CrowdParts {
  */
 export function* levelSteps(parts: CrowdParts): Generator<void, THREE.BufferGeometry[], void> {
   const white = new THREE.Color(1, 1, 1);
-  const colourOf = (mesh: string, role: Role) => (role === 'plain' ? parts.colour.get(mesh) ?? white : white);
+  // Only the artist's colour is kept in the vertices; every tinted role is painted by
+  // the shader, so its vertices carry white.
+  const colourOf = (mesh: string, role: Role) => (role === 'plain' || role === 'hat' ? parts.colour.get(mesh) ?? white : white);
   const extras = buildExtras();
-  function* slotPieces(merge: number): Generator<void, THREE.BufferGeometry[], void> {
+  // The bags, one of each for every top, laid over that top (buildBag), and hung off
+  // the chest like everything worn on the body.
+  const chest = parts.bones.Chest;
+  const toChest = chest.bind.clone().invert();
+  const bags: { geometry: THREE.BufferGeometry; meta: { role: number; slot: number; variant: number }; colour: THREE.Color }[] = [];
+  for (let set = 0; set < LOOKS.length; set++) {
+    const body = clothOf((parts.pieces(LOOKS[set]!)?.top ?? []).flatMap((p) => {
+      const geometry = parts.geometry.get(p.mesh);
+      return geometry ? [{ geometry, matrix: toChest }] : [];
+    }));
+    for (const kind of ['backpack', 'shoulderbag'] as const) {
+      const g = buildBag(kind, body);
+      if (!g) continue;
+      const at = EXTRA_SLOT[kind];
+      bags.push({
+        geometry: extraPiece(g, chest.index, chest.bind),
+        meta: { role: at.role, slot: SLOT_ID.bag, variant: bagVariant(kind, set) },
+        colour: new THREE.Color(at.role === ROLE.plain ? EXTRA_OWN_COLOUR[kind] : '#ffffff'),
+      });
+      g.dispose();
+    }
+    body.dispose();
+    yield;
+  }
+  const piece = (mesh: string, role: Role, slot: number, variant: number, merge: number) => {
+    const g = parts.geometry.get(mesh);
+    return g ? tagged(g, { role: ROLE[role], slot, variant }, colourOf(mesh, role), merge) : null;
+  };
+  function* everything(merge: number, small: boolean): Generator<void, THREE.BufferGeometry[], void> {
     const out: THREE.BufferGeometry[] = [];
+    const add = (g: THREE.BufferGeometry | null) => { if (g) out.push(g); };
     for (let variant = 0; variant < LOOKS.length; variant++) {
       const key = LOOKS[variant]!;
-      for (const slot of SLOTS) {
-        for (const p of parts.pieces(key)?.[slot] ?? []) {
-          const g = parts.geometry.get(p.mesh);
-          if (!g) continue;
-          out.push(tagged(g, { role: ROLE[p.role], slot: SLOT_ID[slot], variant }, colourOf(p.mesh, p.role), merge));
-        }
+      const set = parts.pieces(key);
+      for (const p of set?.head ?? []) {
+        const role = roleOf(p);
+        if (role === 'hat') continue;
+        add(piece(p.mesh, role, role === 'hair' ? SLOT_ID.hair : SLOT_ID.face, variant, merge));
+      }
+      for (const slot of ['top', 'legs', 'feet'] as const) {
+        for (const p of set?.[slot] ?? []) add(piece(p.mesh, roleOf(p), SLOT_ID[slot], variant, merge));
       }
       yield;
     }
-    parts.beards.forEach((mesh, i) => {
-      const g = parts.geometry.get(mesh);
-      if (g) out.push(tagged(g, { role: ROLE.hair, slot: SLOT_ID.beard, variant: i + 1 }, white, merge));
+    // The hairstyles grown to fit a whole skull, and the scalp.
+    FITTED_HAIR.forEach(({ hair, fit }, k) => {
+      for (const p of parts.pieces(LOOKS[hair]!)?.head ?? []) {
+        if (roleOf(p) !== 'hair') continue;
+        const g = parts.geometry.get(p.mesh);
+        if (g) out.push(tagged(grown(g, fit), { role: ROLE.hair, slot: SLOT_ID.hair, variant: FITTED + k }, white, merge));
+      }
     });
-    EXTRA_KINDS.forEach((kind, i) => {
-      out.push(tagged(extraPiece(extras[kind], parts.head, parts.headBind),
-        { role: ROLE.extra, slot: SLOT_ID.extra, variant: i + 1 }, white, 0));
-    });
+    add(piece(SCALP, 'skin', SLOT_ID.hair, SCALP_VARIANT, merge));
+    // The hard hats, one per figure's head.
+    for (const [key, variant] of [['m_worker', HARD_HAT], ['w_worker', HARD_HAT_W]] as const) {
+      for (const p of parts.pieces(key)?.head ?? []) if (roleOf(p) === 'hat') add(piece(p.mesh, 'hat', SLOT_ID.hat, variant, merge));
+    }
+    if (small) {
+      parts.beards.forEach((mesh, i) => add(piece(mesh, 'hair', SLOT_ID.beard, i + 1, merge)));
+      for (const kind of Object.keys(extras) as SharedExtra[]) {
+        const { geometry, bone } = extras[kind];
+        const b = parts.bones[bone];
+        const at = EXTRA_SLOT[kind];
+        const own = new THREE.Color(at.role === ROLE.plain ? EXTRA_OWN_COLOUR[kind] : '#ffffff');
+        out.push(tagged(extraPiece(geometry, b.index, b.bind), at, own, 0));
+      }
+      for (const bag of bags) out.push(tagged(bag.geometry, bag.meta, bag.colour, 0));
+    }
     yield;
     return out;
   }
   function* outfits(merge: number): Generator<void, THREE.BufferGeometry[], void> {
     const out: THREE.BufferGeometry[] = [];
     for (let variant = 0; variant < LOOKS.length; variant++) {
-      const key = LOOKS[variant]!;
-      for (const slot of SLOTS) {
-        for (const p of parts.pieces(key)?.[slot] ?? []) {
-          const g = parts.geometry.get(p.mesh);
-          if (!g) continue;
-          out.push(tagged(g, { role: ROLE[p.role], slot: SLOT_ID.outfit, variant }, colourOf(p.mesh, p.role), merge));
+      const set = parts.pieces(LOOKS[variant]!);
+      for (const slot of ['head', 'top', 'legs', 'feet'] as const) {
+        for (const p of set?.[slot] ?? []) {
+          const role = roleOf(p);
+          if (role === 'hat') continue;
+          const g = piece(p.mesh, role, SLOT_ID.outfit, variant, merge);
+          if (g) out.push(g);
         }
       }
       yield;
@@ -408,14 +523,15 @@ export function* levelSteps(parts: CrowdParts): Generator<void, THREE.BufferGeom
     for (const p of pieces) p.dispose();
     return g;
   };
-  const near = merged(yield* slotPieces(LEVELS[0].merge));
+  const near = merged(yield* everything(LEVELS[0].merge, true));
   yield;
-  const middle = merged(yield* slotPieces(LEVELS[1].merge));
+  const middle = merged(yield* everything(LEVELS[1].merge, true));
   yield;
-  const far = merged(yield* outfits(LEVELS[2].merge));
+  const far = merged(yield* everything(LEVELS[2].merge, false));
   yield;
   const tiny = merged(yield* outfits(LEVELS[3].merge));
-  for (const e of Object.values(extras)) e.dispose();
+  for (const e of Object.values(extras)) e.geometry.dispose();
+  for (const b of bags) b.geometry.dispose();
   return [near, middle, far, tiny];
 }
 
@@ -433,33 +549,52 @@ export function buildLevels(parts: CrowdParts): THREE.BufferGeometry[] {
 
 // ── one person, as numbers ───────────────────────────────────────────────────
 
-/** A look as one number, so its 24 fixed numbers are worked out once per look. */
-export const lookKey = (look: Look): number => {
-  let key = 0;
-  for (const part of LOOK_PARTS) key = key * LOOK_SIZES[part] + (look[part] ?? 0);
-  return key;
-};
+/**
+ * A colour as one number: 8-bit sRGB red, green and blue in the low 24 bits, which a
+ * 32-bit float holds exactly. -1 is "as made": the vertex keeps the artist's colour.
+ *
+ * WHY PACKED. A phone promises sixteen vertex attributes and the crowd already reads
+ * six per vertex; one vec4 per colour would have been nine more. Packed, a person's
+ * nine colours are three numbers each in two vec4s, and the shader unpacks the one a
+ * vertex needs.
+ */
+export const pack = (hex: string | null): number => (hex === null ? -1 : parseInt(hex.slice(1), 16));
+export const unpack = (v: number): [number, number, number] => [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
 
 /**
- * The 24 numbers of a person that do not move: their colours in linear space, their
- * build, and which variant of each slot they wear (the order of STRIDE's last six
- * vec4s). Everything here comes from `partsOf` and the catalogs it reads, so the GPU
- * dresses somebody exactly as the builder shows them.
+ * The 24 numbers of a person that do not move, in the order of STRIDE's last six
+ * vec4s: shape (build x, build z, height, bag colour), two vec4s of colours (skin,
+ * hair, top, trousers; shoes, eyes, hat, neck), and three of choices (face, hair,
+ * top, trousers; shoes, beard, hat, glasses; earrings, neck, bag, outfit). Everything
+ * here comes from `partsOf`, so the GPU dresses somebody exactly as the builder
+ * shows them.
  */
 export function fixedOf(look: Look, pieces: CrowdParts['pieces'], beards: readonly string[]): Float32Array {
   const who = partsOf(look, pieces, beards);
-  const c = new THREE.Color();
+  const colour = coloursOf(look);
   const out = new Float32Array(24);
-  const [bx, , bz] = buildScale(look);
-  c.set(SKIN_HEX[look.skin] ?? SKIN_HEX[3]!); out.set([c.r, c.g, c.b, bx], 0);
-  c.set(HAIR_HEX[look.hairColor] ?? HAIR_HEX[0]!); out.set([c.r, c.g, c.b, bz], 4);
-  c.set(OUTFIT_HEX[look.outfitColor] ?? OUTFIT_HEX[0]!); out.set([c.r, c.g, c.b, 0], 8);
-  const extra = who.extra === 'none' ? 0 : EXTRA_KINDS.indexOf(who.extra) + 1;
-  c.set(who.extra === 'none' ? '#ffffff' : (who.extraTint ?? EXTRA_OWN_COLOUR[who.extra]));
-  out.set([c.r, c.g, c.b, 0], 12);
-  const v = (k: LookKey) => LOOKS.indexOf(k);
-  out.set([v(who.wearing.head), v(who.wearing.top), v(who.wearing.legs), v(who.wearing.feet)], 16);
-  out.set([look.beard > 0 && beards[look.beard - 1] ? look.beard : 0, extra, look.head === BALD ? 1 : 0, 0], 20);
+  const [bx, height, bz] = buildScale(look);
+  const extra = (slot: number) => who.extras.find((e) => EXTRA_SLOT[e.kind].slot === slot) ?? null;
+  // A worn thing's colour multiplies what its vertices carry: white for a shape the
+  // person colours, the artist's yellow for the hard hat, which keeps it.
+  const tintOf = (slot: number) => extra(slot)?.tint ?? '#ffffff';
+  const chosen = (slot: number) => { const e = extra(slot); return e ? EXTRA_SLOT[e.kind].variant : 0; };
+  const bag = extra(SLOT_ID.bag);
+  const bagChosen = bag ? bagVariant(bag.kind as BagKind, LOOKS.indexOf(who.wearing.top)) : 0;
+  const set = (k: LookKey | null) => (k === null ? NONE : LOOKS.indexOf(k));
+  out.set([bx, bz, height, pack(tintOf(SLOT_ID.bag))], 0);
+  out.set([pack(colour.skin), pack(colour.hair), pack(colour.top), pack(colour.legs)], 4);
+  out.set([pack(colour.feet), pack(colour.eyes), pack(tintOf(SLOT_ID.hat)), pack(tintOf(SLOT_ID.neck))], 8);
+  // The hair slot: their hairstyle, grown or not, the scalp, or nothing (partsOf).
+  const hair = who.parts.find((p) => p.worn === 'hair');
+  const fitted = hair?.fit ? FITTED_HAIR.findIndex((f) => f.hair === look.hair && f.fit === hair.fit) : -1;
+  const hairVariant = !hair ? NONE : hair.role === 'skin' ? SCALP_VARIANT : fitted >= 0 ? FITTED + fitted : set(who.wearing.hair);
+  out.set([set(who.wearing.head), hairVariant, set(who.wearing.top), set(who.wearing.legs)], 12);
+  const hat = look.hat === HARD_HAT ? (hardHatSet(look.head) === 'w_worker' ? HARD_HAT_W : HARD_HAT) : chosen(SLOT_ID.hat);
+  const beard = who.parts.some((p) => p.worn === 'beard') ? look.beard : 0;
+  out.set([set(who.wearing.feet), beard, hat, chosen(SLOT_ID.glasses)], 16);
+  // Tiny: the outfit of their top's set, the biggest patch of colour a speck has.
+  out.set([chosen(SLOT_ID.earrings), chosen(SLOT_ID.neck), bagChosen, set(who.wearing.top)], 20);
   return out;
 }
 
@@ -469,11 +604,30 @@ export function fixedOf(look: Look, pieces: CrowdParts['pieces'], beards: readon
  * line for line, so a test can dress somebody with no GPU in the room.
  */
 export function wears(meta: readonly [number, number, number], f: Float32Array): boolean {
-  const [role, slot, variant] = meta;
-  const want = slot === SLOT_ID.head ? f[16]! : slot === SLOT_ID.top ? f[17]! : slot === SLOT_ID.legs ? f[18]!
-    : slot === SLOT_ID.feet ? f[19]! : slot === SLOT_ID.beard ? f[20]! : slot === SLOT_ID.extra ? f[21]! : f[16]!;
-  const bald = f[22]! > 0.5 && role === ROLE.hair && (slot === SLOT_ID.head || slot === SLOT_ID.outfit);
-  return Math.abs(variant - want) <= 0.5 && !bald;
+  const [, slot, variant] = meta;
+  return Math.abs(variant - f[12 + slot]!) <= 0.5;
+}
+
+/**
+ * The colour the shader paints a vertex of `role`, in JavaScript and sRGB: its
+ * artist colour `own` unless the role takes one from the person.
+ */
+export function paintOf(role: number, own: [number, number, number], f: Float32Array): [number, number, number] {
+  const col = (v: number) => (v < 0 ? own : unpack(v));
+  const times = (a: [number, number, number], b: [number, number, number]) => a.map((c, k) => c * b[k]!) as [number, number, number];
+  switch (role) {
+    case ROLE.skin: return unpack(f[4]!);
+    case ROLE.hair: return unpack(f[5]!);
+    case ROLE.top: return unpack(f[6]!);
+    case ROLE.legs: return col(f[7]!);
+    case ROLE.feet: return col(f[8]!);
+    case ROLE.eyes: return unpack(f[9]!);
+    case ROLE.brows: return unpack(f[5]!).map((c) => c * 0.55) as [number, number, number];
+    case ROLE.hat: return times(own, unpack(f[10]!));
+    case ROLE.neck: return times(own, unpack(f[11]!));
+    case ROLE.bag: return times(own, unpack(f[3]!));
+    default: return own;
+  }
 }
 
 // ── the shader ───────────────────────────────────────────────────────────────
@@ -483,17 +637,19 @@ uniform highp sampler2D uBake;
 uniform vec4 uClips;
 uniform float uFps;
 uniform float uTime;
+uniform vec4 uHat[8];
+uniform vec3 uHeadMid;
 attribute vec4 skinIndex;
 attribute vec4 skinWeight;
 attribute vec4 aMeta;
 attribute vec4 aPos;
 attribute vec4 aAnim;
-attribute vec4 aSkin;
-attribute vec4 aHair;
-attribute vec4 aTop;
-attribute vec4 aExtra;
-attribute vec4 aSel;
+attribute vec4 aShape;
+attribute vec4 aCol1;
+attribute vec4 aCol2;
+attribute vec4 aSel1;
 attribute vec4 aSel2;
+attribute vec4 aSel3;
 varying float vGhost;
 mat4 crowdBone(int row, float b) {
   int x = int(b + 0.5) * 4;
@@ -504,18 +660,36 @@ mat4 crowdPose(int row) {
   return crowdBone(row, skinIndex.x) * skinWeight.x + crowdBone(row, skinIndex.y) * skinWeight.y
        + crowdBone(row, skinIndex.z) * skinWeight.z + crowdBone(row, skinIndex.w) * skinWeight.w;
 }
+vec3 crowdUnpack(float v) {
+  float r = floor(v / 65536.0);
+  float g = floor((v - r * 65536.0) / 256.0);
+  float b = v - r * 65536.0 - g * 256.0;
+  vec3 c = vec3(r, g, b) / 255.0;
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}
 `;
 
 /** Pick this vertex's part or send it off screen; then its colour. Runs first in main. */
 const VERTEX_SELECT = /* glsl */`
 float crowdRole = aMeta.x;
 float crowdSlot = aMeta.y;
-float crowdWant = crowdSlot < 0.5 ? aSel.x : crowdSlot < 1.5 ? aSel.y : crowdSlot < 2.5 ? aSel.z
-  : crowdSlot < 3.5 ? aSel.w : crowdSlot < 4.5 ? aSel2.x : crowdSlot < 5.5 ? aSel2.y : aSel.x;
-bool crowdBald = aSel2.z > 0.5 && crowdRole > 0.5 && crowdRole < 1.5 && (crowdSlot < 0.5 || crowdSlot > 5.5);
-if (abs(aMeta.z - crowdWant) > 0.5 || crowdBald) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); vGhost = 0.0; return; }
-vColor = vec4(crowdRole < 0.5 ? aSkin.rgb : crowdRole < 1.5 ? aHair.rgb : crowdRole < 2.5 ? aTop.rgb
-  : crowdRole < 3.5 ? color : aExtra.rgb, 1.0);
+float crowdWant = crowdSlot < 0.5 ? aSel1.x : crowdSlot < 1.5 ? aSel1.y : crowdSlot < 2.5 ? aSel1.z : crowdSlot < 3.5 ? aSel1.w
+  : crowdSlot < 4.5 ? aSel2.x : crowdSlot < 5.5 ? aSel2.y : crowdSlot < 6.5 ? aSel2.z : crowdSlot < 7.5 ? aSel2.w
+  : crowdSlot < 8.5 ? aSel3.x : crowdSlot < 9.5 ? aSel3.y : crowdSlot < 10.5 ? aSel3.z : aSel3.w;
+if (abs(aMeta.z - crowdWant) > 0.5) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); vGhost = 0.0; return; }
+vec3 crowdPaint = color;
+if (crowdRole < 0.5) crowdPaint = crowdUnpack(aCol1.x);
+else if (crowdRole < 1.5) crowdPaint = crowdUnpack(aCol1.y);
+else if (crowdRole < 2.5) crowdPaint = crowdUnpack(aCol1.z);
+else if (crowdRole < 3.5) crowdPaint = color;
+else if (crowdRole < 4.5) crowdPaint = aCol1.w < 0.0 ? color : crowdUnpack(aCol1.w);
+else if (crowdRole < 5.5) crowdPaint = aCol2.x < 0.0 ? color : crowdUnpack(aCol2.x);
+else if (crowdRole < 6.5) crowdPaint = crowdUnpack(aCol2.y);
+else if (crowdRole < 7.5) crowdPaint = crowdUnpack(aCol1.y) * 0.27;
+else if (crowdRole < 8.5) crowdPaint = color * crowdUnpack(aCol2.z);
+else if (crowdRole < 9.5) crowdPaint = color * crowdUnpack(aCol2.w);
+else crowdPaint = color * crowdUnpack(aShape.w);
+vColor = vec4(crowdPaint, 1.0);
 vGhost = aAnim.w;
 `;
 
@@ -527,11 +701,28 @@ mat4 crowdSkin = aAnim.z > 0.995 ? crowdPose(crowdWalkRow) : aAnim.z < 0.005 ? c
   : crowdPose(crowdWalkRow) * aAnim.z + crowdPose(crowdIdleRow) * (1.0 - aAnim.z);
 float crowdC = cos(aPos.z);
 float crowdS = sin(aPos.z);
-mat4 crowdPlace = mat4(crowdC * aPos.w * aSkin.w, 0.0, -crowdS * aPos.w * aSkin.w, 0.0,
-                       0.0, aPos.w, 0.0, 0.0,
-                       crowdS * aPos.w * aHair.w, 0.0, crowdC * aPos.w * aHair.w, 0.0,
+mat4 crowdPlace = mat4(crowdC * aPos.w * aShape.x, 0.0, -crowdS * aPos.w * aShape.x, 0.0,
+                       0.0, aPos.w * aShape.z, 0.0, 0.0,
+                       crowdS * aPos.w * aShape.y, 0.0, crowdC * aPos.w * aShape.y, 0.0,
                        aPos.x, 0.0, aPos.y, 1.0);
 mat4 crowdWorld = crowdPlace * crowdSkin;
+`;
+
+/**
+ * Hat hair (character.ts HAT_INSIDE, underHat): a hair vertex above the rim of the hat
+ * they wear, outside the hat's inside, is pulled onto it. In bind space, before
+ * skinning; uHat is indexed by the hat slot's variant, (rim, radii) each.
+ */
+const VERTEX_HAT = /* glsl */`
+if (crowdSlot > 0.5 && crowdSlot < 1.5) {
+  vec4 crowdHat = uHat[int(aSel2.z + 0.5)];
+  vec3 crowdRim = uHeadMid + vec3(0.0, crowdHat.x, 0.0);
+  vec3 crowdD = transformed - crowdRim;
+  if (crowdD.y > 0.0) {
+    float crowdQ = length(crowdD / crowdHat.yzw);
+    if (crowdQ > 1.0) transformed = crowdRim + crowdD / crowdQ;
+  }
+}
 `;
 
 /** Every other pixel of a practice profile is left out: see-through with no blending. */
@@ -548,12 +739,12 @@ function crowdMaterial(uniforms: Record<string, THREE.IUniform>): THREE.MeshLamb
       .replace('#include <color_vertex>', VERTEX_SELECT)
       .replace('#include <skinbase_vertex>', VERTEX_SKIN)
       .replace('#include <skinnormal_vertex>', 'objectNormal = normalize(mat3(crowdWorld) * objectNormal);')
-      .replace('#include <skinning_vertex>', 'transformed = (crowdWorld * vec4(transformed, 1.0)).xyz;');
+      .replace('#include <skinning_vertex>', `${VERTEX_HAT}\ntransformed = (crowdWorld * vec4(transformed, 1.0)).xyz;`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <color_pars_fragment>', '#include <color_pars_fragment>\nvarying float vGhost;')
       .replace('#include <clipping_planes_fragment>', `${FRAGMENT_GHOST}\n#include <clipping_planes_fragment>`);
   };
-  m.customProgramCacheKey = () => 'crowd-gpu-1';
+  m.customProgramCacheKey = () => 'crowd-gpu-3';
   return m;
 }
 
@@ -646,20 +837,34 @@ export function* prepareSteps(
     colour.set(m.name, mat.color.clone());
     m.removeFromParent();
   }
-  const head = boneNames.indexOf('Head');
-  if (head < 0) throw new Error('the rig has no Head bone to hang anything off');
-  const headBind = boneInverses[head]!.clone().invert();
+  const bone = (name: Bone) => {
+    const index = boneNames.indexOf(name);
+    if (index < 0) throw new Error(`the rig has no ${name} bone to hang anything off`);
+    return { index, bind: boneInverses[index]!.clone().invert() };
+  };
+  const bones = { Head: bone('Head'), Neck: bone('Neck'), Chest: bone('Chest') };
   const pieces = (key: LookKey): LookPieces | undefined => manifest.looks[key];
   const beards = manifest.beards ?? [];
 
   const bake = bakeClips(gltf.scene, boneNames, boneInverses, new Map(gltf.animations.map((c) => [c.name, c])));
   yield;
-  const levels = yield* levelSteps({ geometry, colour, pieces, beards, head, headBind });
+  const levels = yield* levelSteps({ geometry, colour, pieces, beards, bones });
   return { bake, levels, pieces, beards };
 }
 
 export function prepareCrowd(gltf: { scene: THREE.Object3D; animations: THREE.AnimationClip[] }, manifest: Manifest): PreparedCrowd {
   return finish(prepareSteps(gltf, manifest));
+}
+
+/**
+ * HAT_INSIDE by the hat slot's variant, for the shader: (rim, radii). No hat is a rim
+ * nothing reaches; the women's hard hat is the men's size.
+ */
+export function hatUniform(): THREE.Vector4[] {
+  return Array.from({ length: 8 }, (_, v) => {
+    const h = HAT_INSIDE[v === HARD_HAT_W ? HARD_HAT : v];
+    return h ? new THREE.Vector4(h.rim, h.radii[0], h.radii[1], h.radii[2]) : new THREE.Vector4(99, 1, 1, 1);
+  });
 }
 
 /** One GL context's crowd, from the prepared parts. Disposing it leaves them reusable. */
@@ -675,6 +880,8 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
     uClips: { value: new THREE.Vector4(bake.walk.row, bake.walk.frames, bake.idle.row, bake.idle.frames) },
     uFps: { value: BAKE_FPS },
     uTime: { value: 0 },
+    uHat: { value: hatUniform() },
+    uHeadMid: { value: new THREE.Vector3(HEAD_BIND[0], HEAD_BIND[1], HEAD_BIND[2] + 0.014) },
   };
   const material = crowdMaterial(uniforms);
 
@@ -687,7 +894,7 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
     for (const [name, a] of Object.entries(g.attributes)) ig.setAttribute(name, a);
     const buffer = new THREE.InstancedInterleavedBuffer(new Float32Array(spec.max * STRIDE), STRIDE, 1);
     buffer.setUsage(THREE.DynamicDrawUsage);
-    ['aPos', 'aAnim', 'aSkin', 'aHair', 'aTop', 'aExtra', 'aSel', 'aSel2'].forEach((name, k) =>
+    INSTANCE_ATTRIBUTES.forEach((name, k) =>
       ig.setAttribute(name, new THREE.InterleavedBufferAttribute(buffer, 4, k * 4)));
     ig.instanceCount = 0;
     const mesh = new THREE.Mesh(ig, material);
@@ -704,7 +911,7 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
 
   const walkDur = bake.walk.frames / BAKE_FPS;
   const idleDur = bake.idle.frames / BAKE_FPS;
-  const fixed = new Map<number, Float32Array>();
+  const fixed = new Map<string, Float32Array>();
   /**
    * What a person's numbers were last frame: their look (as the object, so a changed
    * look is noticed), its fixed numbers, and how far into walking they are. One lookup

@@ -15,22 +15,22 @@
  *
  * NOTHING IS IMPORTED HERE BUT THE CATALOG. It is a lookup table with tests.
  */
-import { BALD, WARDROBE, type Look } from '@clone/shared';
+import { SHAVED, WARDROBE, type Look } from '@clone/shared';
 
-export type HairKind = 'short' | 'buzz' | 'curly' | 'long' | 'bun' | 'ponytail' | 'mohawk' | 'bald';
+export type HairKind = 'short' | 'buzz' | 'curly' | 'long' | 'bob' | 'bun' | 'ponytail' | 'mohawk' | 'bald';
 
-/** Roughly what each set's head has on it, in `WARDROBE` order. */
+/** Roughly what each hairstyle is, in `HAIRSTYLES` order (Shaved is 'bald'). */
 const HAIR: readonly HairKind[] = [
-  'short',      // Tee
-  'long',       // Casual
-  'short',      // Hoodie
-  'ponytail',   // Overalls
-  'short',      // Workwear
-  'curly',      // Beach
-  'long',       // Formal
-  'mohawk',     // Punk
-  'buzz',       // Suit
-  'bun',        // Trouser suit
+  'short',      // Swept back
+  'long',       // Long
+  'short',      // Tousled
+  'bob',        // Bob
+  'buzz',       // Crew cut
+  'curly',      // Spiky
+  'long',       // Wavy
+  'mohawk',     // Mohawk
+  'short',      // Side part
+  'long',       // Long (straight)
 ];
 
 export type TopKind = 'plain' | 'collar' | 'straps' | 'open';
@@ -59,7 +59,7 @@ const SKIRT_LEGS = WARDROBE.indexOf('Formal');
 export type BeardKind = 'none' | 'jaw' | 'moustache' | 'goatee' | 'full';
 const BEARD: readonly BeardKind[] = ['none', 'jaw', 'moustache', 'goatee', 'full'];
 
-export const hairOf = (look: Look): HairKind => (look.head === BALD ? 'bald' : HAIR[look.head] ?? 'short');
+export const hairOf = (look: Look): HairKind => (look.hair === SHAVED ? 'bald' : HAIR[look.hair] ?? 'short');
 export const beardOf = (look: Look): BeardKind => BEARD[look.beard] ?? 'none';
 export const topOf = (look: Look): TopKind => TOP[look.top] ?? 'plain';
 export const skirtOf = (look: Look): boolean => look.legs === SKIRT_LEGS;

@@ -3,14 +3,15 @@
  *
  * Every list in the app -- cards, the inbox, a chat header, the You tab -- shows a
  * character somewhere, and none of them should have to start a GL context to do it.
- * This is the look as plain Views: a head, a body, hair, two eyes, one extra, in the
- * same colours the 3D town uses (shared/look.ts), inside the same sunken well the
+ * This is the look as plain Views: a head, a body, hair, two eyes and what they wear
+ * on top, in the same colours the 3D town uses (shared/look.ts), inside the same
+ * sunken well the
  * photo Avatar falls back to. It is deliberately simple; the town is where the
  * character moves.
  */
 import { memo } from 'react';
 import { View } from 'react-native';
-import { HAIR_HEX, OUTFIT_HEX, SKIN_HEX, lookKey, type Look } from '@clone/shared';
+import { EYE_HEX, HAIR_HEX, OUTFIT_HEX, SKIN_HEX, lookKey, type Look } from '@clone/shared';
 import { beardOf, hairOf, skirtOf, topOf } from './silhouette';
 import { raised, sunk, usePalette } from '../../components/ui';
 
@@ -38,7 +39,13 @@ export const CharacterAvatar = memo(function CharacterAvatar({ look, size = 52, 
   const hair = HAIR_HEX[look.hairColor] ?? HAIR_HEX[0];
   const outfit = OUTFIT_HEX[look.outfitColor] ?? OUTFIT_HEX[2];
   const face = FACE;
-  const hairKind = hairOf(look);
+  // Under a hat the hair is pulled in under it, as it is in the town: nothing of it
+  // stands up out of the crown.
+  const worn = hairOf(look);
+  const hairKind = look.hat > 0 && (worn === 'mohawk' || worn === 'curly' || worn === 'bun') ? 'short' : worn;
+  const eyeColour = EYE_HEX[look.eyes] ?? EYE_HEX[0];
+  const n = OUTFIT_HEX.length;
+  const wheel = (off: number) => OUTFIT_HEX[(look.outfitColor + off) % n] ?? OUTFIT_HEX[0];
   const beard = beardOf(look);
   const top = topOf(look);
   const skirt = skirtOf(look);
@@ -81,8 +88,9 @@ export const CharacterAvatar = memo(function CharacterAvatar({ look, size = 52, 
         <View style={{ ...abs, left: cx - bodyW * 0.06, top: size * 0.62, width: bodyW * 0.12, height: size * 0.5, backgroundColor: darker(outfit, 0.6) }} />
       )}
       {/* long hair hangs behind the head */}
-      {(hairKind === 'long' || hairKind === 'ponytail') && (
-        <View style={{ ...abs, left: cx - head * 0.56, top: headTop + head * 0.3, width: head * 1.12, height: head * 0.95,
+      {(hairKind === 'long' || hairKind === 'ponytail' || hairKind === 'bob') && (
+        <View style={{ ...abs, left: cx - head * 0.56, top: headTop + head * 0.3, width: head * 1.12,
+                       height: head * (hairKind === 'bob' ? 0.6 : 0.95),
                        borderBottomLeftRadius: head * 0.3, borderBottomRightRadius: head * 0.3, backgroundColor: hair }} />
       )}
       {/* head */}
@@ -117,27 +125,50 @@ export const CharacterAvatar = memo(function CharacterAvatar({ look, size = 52, 
         }} />
       )}
       {/* eyes */}
-      <View style={{ ...abs, left: cx - gap / 2 - eye / 2, top: eyeY, width: eye, height: eye, borderRadius: eye / 2, backgroundColor: '#262626' }} />
-      <View style={{ ...abs, left: cx + gap / 2 - eye / 2, top: eyeY, width: eye, height: eye, borderRadius: eye / 2, backgroundColor: '#262626' }} />
-      {/* extras */}
-      {look.accessory === 1 && (
+      <View style={{ ...abs, left: cx - gap / 2 - eye / 2, top: eyeY, width: eye, height: eye, borderRadius: eye / 2, backgroundColor: eyeColour }} />
+      <View style={{ ...abs, left: cx + gap / 2 - eye / 2, top: eyeY, width: eye, height: eye, borderRadius: eye / 2, backgroundColor: eyeColour }} />
+      {/* what they wear on top: one simple shape each, in the town's colours */}
+      {look.glasses > 0 && (
         <>
-          <View style={{ ...abs, left: cx - gap / 2 - eye, top: eyeY - eye / 2, width: eye * 2, height: eye * 2, borderRadius: eye, borderWidth: 1.5, borderColor: p.text }} />
-          <View style={{ ...abs, left: cx + gap / 2 - eye, top: eyeY - eye / 2, width: eye * 2, height: eye * 2, borderRadius: eye, borderWidth: 1.5, borderColor: p.text }} />
+          <View style={{ ...abs, left: cx - gap / 2 - eye, top: eyeY - eye / 2, width: eye * 2, height: eye * 2,
+                         borderRadius: look.glasses === 3 ? eye * 0.3 : eye, borderWidth: 1.5, borderColor: '#2f333a',
+                         backgroundColor: look.glasses === 2 ? '#1c1f24' : 'transparent' }} />
+          <View style={{ ...abs, left: cx + gap / 2 - eye, top: eyeY - eye / 2, width: eye * 2, height: eye * 2,
+                         borderRadius: look.glasses === 3 ? eye * 0.3 : eye, borderWidth: 1.5, borderColor: '#2f333a',
+                         backgroundColor: look.glasses === 2 ? '#1c1f24' : 'transparent' }} />
         </>
       )}
-      {look.accessory === 2 && (
-        <View style={{ ...abs, left: cx - head * 0.56, top: headTop - head * 0.06, width: head * 1.12, height: head * 0.22,
-                       borderRadius: head * 0.08, backgroundColor: darker(outfit, 0.8) }} />
+      {look.hat === 5 && (
+        <View style={{ ...abs, left: cx - head * 0.6, top: headTop - head * 0.08, width: head * 1.2, height: head * 0.26,
+                       borderRadius: head * 0.13, backgroundColor: wheel(5), transform: [{ rotate: '-8deg' }] }} />
       )}
-      {look.accessory === 3 && (
+      {look.hat > 0 && look.hat !== 5 && (
+        <View style={{ ...abs, left: cx - head * (look.hat === 3 ? 0.66 : 0.56), top: headTop - head * 0.1, width: head * (look.hat === 3 ? 1.32 : 1.12),
+                       height: head * (look.hat === 2 ? 0.42 : 0.3),
+                       borderTopLeftRadius: head * 0.5, borderTopRightRadius: head * 0.5, borderRadius: head * 0.08,
+                       backgroundColor: look.hat === 4 ? '#e3b23c' : wheel(3) }} />
+      )}
+      {look.earrings > 0 && (
         <>
-          <View style={{ ...abs, left: cx - head / 2 - eye * 0.3, top: headTop + head * 0.62, width: eye, height: eye, borderRadius: eye / 2, backgroundColor: p.warning }} />
-          <View style={{ ...abs, left: cx + head / 2 - eye * 0.7, top: headTop + head * 0.62, width: eye, height: eye, borderRadius: eye / 2, backgroundColor: p.warning }} />
+          <View style={{ ...abs, left: cx - head / 2 - eye * 0.3, top: headTop + head * 0.62, width: eye, height: eye, borderRadius: eye / 2,
+                         backgroundColor: look.earrings === 1 ? '#d9a441' : 'transparent', borderWidth: look.earrings === 2 ? 1.5 : 0, borderColor: '#d9a441' }} />
+          <View style={{ ...abs, left: cx + head / 2 - eye * 0.7, top: headTop + head * 0.62, width: eye, height: eye, borderRadius: eye / 2,
+                         backgroundColor: look.earrings === 1 ? '#d9a441' : 'transparent', borderWidth: look.earrings === 2 ? 1.5 : 0, borderColor: '#d9a441' }} />
         </>
       )}
-      {look.accessory === 4 && (
-        <View style={{ ...abs, left: cx - bodyW * 0.5, top: size * 0.6, width: bodyW, height: size * 0.08, borderRadius: size * 0.04, backgroundColor: p.accent }} />
+      {look.neck === 1 && (
+        <View style={{ ...abs, left: cx - bodyW * 0.5, top: size * 0.6, width: bodyW, height: size * 0.08, borderRadius: size * 0.04, backgroundColor: wheel(6) }} />
+      )}
+      {look.neck === 2 && (
+        <View style={{ ...abs, left: cx - bodyW * 0.22, top: size * 0.6, width: bodyW * 0.44, height: size * 0.1,
+                       borderBottomLeftRadius: bodyW * 0.22, borderBottomRightRadius: bodyW * 0.22, borderWidth: 1, borderTopWidth: 0, borderColor: '#d9a441' }} />
+      )}
+      {look.neck === 3 && (
+        <View style={{ ...abs, left: cx - size * 0.06, top: size * 0.62, width: size * 0.12, height: size * 0.05, borderRadius: size * 0.01, backgroundColor: wheel(9) }} />
+      )}
+      {look.bag > 0 && (
+        <View style={{ ...abs, left: cx - bodyW * 0.3, top: size * 0.64, width: size * 0.035, height: size * 0.4,
+                       backgroundColor: look.bag === 1 ? wheel(4) : '#6b4a32', transform: [{ rotate: '-28deg' }] }} />
       )}
     </View>
   );

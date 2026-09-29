@@ -1,27 +1,34 @@
 /**
- * The rigged crowd, exercised with no phone in the room.
+ * The character model on disk, and the things people wear on top of it.
  *
- * This cannot check that a person LOOKS right -- that needs eyes on a device -- but it
- * can check the things that silently do not work and are invisible until somebody
- * looks: that the walk clip actually moves a bone, that a dressed person is one mesh
- * rather than seven, that only the nearest few get a body, and that changing what
- * somebody is wearing changes what is drawn.
+ * This cannot check that a person LOOKS right -- the contact sheets of
+ * scripts/render-looks.mts are for eyes -- but it can check the things that silently
+ * do not work and are invisible until somebody looks: that the rig lost only the bones
+ * it meant to, that no head is open at the back, and that every hat, pair of glasses,
+ * earring, scarf and bag is where it is worn -- ON the head, not inside it; above the
+ * collar, not over the chin; on the cloth, not buried in it.
  *
  * It loads the real `assets/characters/people.glb`, not a fixture, so it fails if the
  * build script ever writes something the renderer cannot use.
  *
+ * (The rigged crowd this file used to exercise is gone: everybody is drawn by the
+ * graphics chip, tests/crowd-gpu.test.ts.)
+ *
  * Negative controls, run by hand and recorded in the commit:
- *   - skip `mixer.update(dt)` in pose() -> "a walking person actually moves" fails,
- *     the ankle sits still.
- *   - sort `near` the other way round (furthest first) -> "gives a body to the nearest
- *     people" fails.
+ *   - hang the scarf off the head again, where it first was -> "hangs each thing where
+ *     it is worn" fails, the scarf is over the women's chins.
+ *   - give the beanie an inside as big as the cap's brim -> "keeps hair inside every
+ *     hat" fails.
+ *   - build the bags' straps at a fixed depth instead of on the cloth -> "lays every
+ *     bag's straps on the top it was made for" fails.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
-import type { Look } from '@clone/shared';
-import type { Crowd, CrowdAgent, Manifest } from '../src/features/world/character-mesh';
+import { LOOK_SIZES } from '@clone/shared';
+import { HAT_INSIDE, LOOKS, roleOf } from '../src/features/world/character';
+import type { Manifest } from '../src/features/world/character-mesh';
 
 // three's FileLoader resolves the model's data: URI through a browser event type that
 // Node does not have. The same two lines the build script needs, for the same reason.
@@ -33,19 +40,9 @@ type Ctor = { new (type: string, init?: Record<string, unknown>): Event };
 const ASSETS = join(import.meta.dirname, '..', 'assets', 'characters');
 const manifest = JSON.parse(readFileSync(join(ASSETS, 'people.json'), 'utf8')) as Manifest;
 
-const look = (over: Partial<Look> = {}): Look => ({
-  figure: 0, skin: 3, body: 1, head: 0, hairColor: 0, beard: 0,
-  top: 0, legs: 0, feet: 0, outfitColor: 0, accessory: 0, ...over,
-});
-
-const agent = (ref: string, x: number, z: number, over: Partial<CrowdAgent> = {}): CrowdAgent => ({
-  ref, x, z, facing: 0, look: look(), moving: true, ghost: false, seed: 1, ...over,
-});
-
-let makeCrowd: typeof import('../src/features/world/character-mesh').makeCrowd;
+let mesh: typeof import('../src/features/world/character-mesh');
 let gltf: { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
 
-/** A fresh model each time: `harvest` takes the meshes off the rig, so it is one-shot. */
 async function fresh() {
   const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
   const buf = readFileSync(join(ASSETS, 'people.glb'));
@@ -54,16 +51,24 @@ async function fresh() {
 }
 
 beforeAll(async () => {
-  ({ makeCrowd } = await import('../src/features/world/character-mesh'));
+  mesh = await import('../src/features/world/character-mesh');
   gltf = await fresh();
 });
 
-const boneNamed = (crowd: Crowd, name: string): THREE.Bone => {
-  let found: THREE.Bone | null = null;
-  crowd.group.traverse((o) => { if (!found && (o as THREE.Bone).isBone && o.name === name) found = o as THREE.Bone; });
-  if (!found) throw new Error(`no bone called ${name} in the crowd`);
-  return found;
-};
+/** Every skinned mesh by name, and the bind-space matrix into each bone's own space. */
+function model() {
+  const byName = new Map<string, THREE.SkinnedMesh>();
+  gltf.scene.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) byName.set(o.name, o as THREE.SkinnedMesh); });
+  const skeleton = byName.values().next().value!.skeleton;
+  const into = (bone: string) => skeleton.boneInverses[skeleton.bones.findIndex((b) => b.name === bone)]!;
+  const points = (name: string, bone: string) => {
+    const m = byName.get(name)!;
+    const pos = m.geometry.attributes.position as THREE.BufferAttribute;
+    return Array.from({ length: pos.count }, (_, i) =>
+      new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.bindMatrix).applyMatrix4(into(bone)));
+  };
+  return { byName, into, points };
+}
 
 /**
  * The head, measured the way the renderer measures it.
@@ -74,23 +79,18 @@ const boneNamed = (crowd: Crowd, name: string): THREE.Bone => {
  * measured off the scene pose, the glasses ended up inside the skull and nothing at
  * all appeared on the phone.
  */
-async function headEnvelope() {
-  const g = await fresh();
-  const meshes: THREE.SkinnedMesh[] = [];
-  g.scene.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(o as THREE.SkinnedMesh); });
-  g.scene.updateMatrixWorld(true);
-  const skeleton = meshes[0]!.skeleton;
+function headEnvelope() {
+  const { byName, into } = model();
+  const skeleton = byName.values().next().value!.skeleton;
   const head = skeleton.bones.findIndex((b) => b.name === 'Head');
-  const bind = skeleton.boneInverses[head]!;
-
+  const bind = into('Head');
   // Skin only. Hair hangs further forward and further up than the head it is on, and
   // a fringe in front of a lens is the hair doing its job.
   const role = new Map<string, string>();
-  for (const look of Object.values(manifest.looks)) for (const part of look.head) role.set(part.mesh, part.role);
-
+  for (const look of Object.values(manifest.looks)) for (const part of look.head) role.set(part.mesh, roleOf(part));
   const v = new THREE.Vector3();
   const skin: THREE.Vector3[] = [];
-  for (const m of meshes) {
+  for (const m of byName.values()) {
     if (role.get(m.name) !== 'skin') continue;
     const { position, skinIndex, skinWeight } = m.geometry.attributes;
     for (let i = 0; i < position!.count; i++) {
@@ -111,144 +111,20 @@ async function headEnvelope() {
   };
 }
 
-describe('the rigged crowd', () => {
-  it('keeps unused rigs out of the scene entirely, not merely hidden', async () => {
-    // Hiding a spare rig is not enough: three walks the whole graph every frame,
-    // visible or not, and a rig is 22 bones. Measured on a Pixel 6a, the park drew
-    // identical calls and triangles with a pool of 12 and of 24 -- 59.8 fps against
-    // 30.1 -- purely because of bones being walked for nothing.
-    const crowd = makeCrowd(await fresh(), manifest, 4);
-    const bodies = () => {
-      let n = 0;
-      crowd.group.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) n++; });
-      return n;
-    };
-    expect(crowd.drawn.size).toBe(0);
-    expect(bodies(), 'nothing should be in the scene before anybody needs a body').toBe(0);
-
-    crowd.pose([agent('a', 0, 0), agent('b', 1, 0)], new THREE.Vector3(), 1 / 30, 0.16);
-    expect(bodies(), 'one mesh per person in use, because a person is merged into one').toBe(2);
-    expect(crowd.stats.rigs).toBe(2);
-
-    // A quieter frame takes the spares straight back out again.
-    crowd.pose([agent('a', 0, 0)], new THREE.Vector3(), 1 / 30, 0.16);
-    expect(bodies()).toBe(1);
-    crowd.pose([], new THREE.Vector3(), 1 / 30, 0.16);
-    expect(bodies(), 'an empty crowd should leave nothing behind').toBe(0);
-    crowd.dispose();
-  });
-
-  it('dresses a person as ONE mesh, with colours in the vertices', async () => {
-    const crowd = makeCrowd(await fresh(), manifest, 2);
-    crowd.pose([agent('a', 0, 0)], new THREE.Vector3(), 1 / 30, 0.16);
-    let mesh: THREE.SkinnedMesh | null = null;
-    crowd.group.traverse((o) => {
-      const m = o as THREE.SkinnedMesh;
-      if (!mesh && m.isSkinnedMesh && m.parent?.visible) mesh = m;
-    });
-    const m = mesh as unknown as THREE.SkinnedMesh;
-    const g = m.geometry;
-    // The whole point of the merge: colour per vertex, one material, one draw call.
-    expect(g.attributes.color, 'no vertex colours, so every part would be grey').toBeDefined();
-    expect(g.attributes.skinIndex, 'lost the skinning, so the bones would not move it').toBeDefined();
-    expect(g.attributes.skinWeight).toBeDefined();
-    expect((m.material as THREE.MeshLambertMaterial).vertexColors).toBe(true);
-    const tris = (g.index ? g.index.count : g.attributes.position!.count) / 3;
-    expect(tris, 'a person should be a few thousand triangles').toBeGreaterThan(1500);
-    expect(tris).toBeLessThan(7000);
-    crowd.dispose();
-  });
-
-  it('a walking person actually moves', async () => {
-    const crowd = makeCrowd(await fresh(), manifest, 1);
-    const a = agent('a', 0, 0, { moving: true });
-    crowd.pose([a], new THREE.Vector3(), 1 / 30, 0.16);
-    const ankle = boneNamed(crowd, 'FootL');
-    crowd.group.updateMatrixWorld(true);
-    const before = ankle.getWorldPosition(new THREE.Vector3()).clone();
-    // Half a second of walking: the clip is 1.33s, so this is a real part of a stride.
-    for (let i = 0; i < 15; i++) crowd.pose([a], new THREE.Vector3(), 1 / 30, 0.16);
-    crowd.group.updateMatrixWorld(true);
-    const after = ankle.getWorldPosition(new THREE.Vector3());
-    expect(before.distanceTo(after), 'the foot never left the ground').toBeGreaterThan(0.001);
-    crowd.dispose();
-  });
-
-  it('gives a body to the nearest people and leaves the rest to the capsules', async () => {
-    const crowd = makeCrowd(await fresh(), manifest, 2);
-    const people = [agent('far', 40, 0), agent('near', 1, 0), agent('mid', 8, 0)];
-    crowd.pose(people, new THREE.Vector3(0, 0, 0), 1 / 30, 0.16);
-    expect(crowd.stats.rigs).toBe(2);
-    expect([...crowd.drawn].sort()).toEqual(['mid', 'near']);
-    expect(crowd.drawn.has('far'), 'the far one should have stayed a capsule').toBe(false);
-    // Move the camera and the choice follows it.
-    crowd.pose(people, new THREE.Vector3(40, 0, 0), 1 / 30, 0.16);
-    expect(crowd.drawn.has('far')).toBe(true);
-    expect(crowd.drawn.has('near')).toBe(false);
-    crowd.dispose();
-  });
-
-  it('re-dresses somebody only when their look changes', async () => {
-    const crowd = makeCrowd(await fresh(), manifest, 1);
-    const worn = () => {
-      let g: THREE.BufferGeometry | null = null;
-      crowd.group.traverse((o) => { const m = o as THREE.SkinnedMesh; if (!g && m.isSkinnedMesh) g = m.geometry; });
-      return g;
-    };
-    crowd.pose([agent('a', 0, 0, { look: look({ top: 0 }) })], new THREE.Vector3(), 1 / 30, 0.16);
-    const first = worn();
-    crowd.pose([agent('a', 0, 0, { look: look({ top: 0 }) })], new THREE.Vector3(), 1 / 30, 0.16);
-    expect(worn(), 'an unchanged person was re-dressed for nothing').toBe(first);
-    crowd.pose([agent('a', 0, 0, { look: look({ top: 8 }) })], new THREE.Vector3(), 1 / 30, 0.16);
-    expect(worn(), 'changing the top did not change the body').not.toBe(first);
-    crowd.dispose();
-  });
-
-  it('keeps the wardrobe from growing without limit', async () => {
-    const crowd = makeCrowd(await fresh(), manifest, 1);
-    for (let top = 0; top < 8; top++) {
-      for (let colour = 0; colour < 12; colour++) {
-        crowd.pose([agent('a', 0, 0, { look: look({ top, outfitColor: colour }) })], new THREE.Vector3(), 1 / 30, 0.16);
-      }
-    }
-    // 96 distinct looks went past; the cache must not be holding 96 bodies.
-    expect(crowd.stats.wardrobe).toBeLessThanOrEqual(24);
-    expect(crowd.stats.wardrobe).toBeGreaterThan(0);
-    crowd.dispose();
-  });
-
-  it('draws a practice profile see-through, and a real person solid', async () => {
-    // Forty of the forty-one people in the founder's town are practice profiles. An
-    // earlier version left them out of the crowd entirely, so only his own agent ever
-    // grew legs and the whole feature looked broken on the device.
-    const crowd = makeCrowd(await fresh(), manifest, 2);
-    crowd.pose([agent('real', 0, 0), agent('fake', 1, 0, { ghost: true })], new THREE.Vector3(), 1 / 30, 0.16);
-    expect(crowd.drawn.size, 'a practice profile still gets a body').toBe(2);
-    const mats: THREE.MeshLambertMaterial[] = [];
-    crowd.group.traverse((o) => {
-      const m = o as THREE.SkinnedMesh;
-      if (m.isSkinnedMesh && m.parent?.visible) mats.push(m.material as THREE.MeshLambertMaterial);
-    });
-    expect(mats).toHaveLength(2);
-    expect(mats.some((m) => m.transparent), 'the ghost is not see-through').toBe(true);
-    expect(mats.some((m) => !m.transparent), 'the real person is see-through').toBe(true);
-    crowd.dispose();
-  });
-
+describe('the model', () => {
   it('has no finger or toe bones left, and still has the ones that matter', async () => {
     // These are what the build welds away. 40 of the pack's 62 bones were knuckles.
-    const crowd = makeCrowd(await fresh(), manifest, 1);
-    crowd.pose([agent('a', 0, 0)], new THREE.Vector3(), 1 / 30, 0.16);
-    const names: string[] = [];
-    crowd.group.traverse((o) => { if ((o as THREE.Bone).isBone) names.push(o.name); });
+    const g = await fresh();
+    let skinned: THREE.SkinnedMesh | null = null;
+    g.scene.traverse((o) => { if (!skinned && (o as THREE.SkinnedMesh).isSkinnedMesh) skinned = o as THREE.SkinnedMesh; });
+    const names = (skinned as unknown as THREE.SkinnedMesh).skeleton.bones.map((b) => b.name);
     expect(names.length, 'a rig should be two dozen bones, not five dozen').toBeLessThanOrEqual(24);
     for (const finger of ['Index1L', 'Thumb2R', 'Pinky3L', 'PTL', 'PTR']) {
       expect(names, `${finger} survived the weld`).not.toContain(finger);
     }
-    for (const real of ['Hips', 'Chest', 'Head', 'WristL', 'FootR', 'UpperLegL']) {
+    for (const real of ['Hips', 'Chest', 'Neck', 'Head', 'WristL', 'FootR', 'UpperLegL']) {
       expect(names, `${real} is missing, so the walk cannot work`).toContain(real);
     }
-    crowd.dispose();
   });
 
   it('reweights every vertex cleanly when the finger bones are welded away', async () => {
@@ -301,159 +177,6 @@ describe('the rigged crowd', () => {
     const share = wrists / total;
     expect(share, 'the hands did not land on the wrists').toBeGreaterThan(0.2);
     expect(share, 'far more than the hands landed on the wrists').toBeLessThan(0.45);
-  });
-
-  it('lets you tap a person who has a rigged body', async () => {
-    // A rigged person has their capsule hidden, and the capsule is what the slot-
-    // indexed tap map is built from -- so the nearest people, the ones most likely to
-    // be tapped, were the only ones that could not be. The body carries its own ref.
-    const crowd = makeCrowd(await fresh(), manifest, 2);
-    crowd.pose([agent('alice', 0, 0), agent('bob', 1, 0)], new THREE.Vector3(), 1 / 30, 0.16);
-    const refs: (string | null | undefined)[] = [];
-    crowd.group.traverse((o) => {
-      const m = o as THREE.SkinnedMesh;
-      if (m.isSkinnedMesh && m.parent?.visible) refs.push(m.userData.ref as string | undefined);
-    });
-    expect(refs.filter(Boolean).sort()).toEqual(['alice', 'bob']);
-    // A rig that stops being used must not keep answering for somebody.
-    crowd.pose([agent('alice', 0, 0)], new THREE.Vector3(), 1 / 30, 0.16);
-    const live: (string | null | undefined)[] = [];
-    crowd.group.traverse((o) => {
-      const m = o as THREE.SkinnedMesh;
-      if (m.isSkinnedMesh) live.push(m.userData.ref as string | undefined);
-    });
-    expect(live.filter(Boolean)).toEqual(['alice']);
-    crowd.dispose();
-  });
-
-  it('survives being raycast before anybody is wearing it', async () => {
-    // THE CRASH THIS EXISTS FOR. Making the crowd tappable meant rays now enter the
-    // group, including rigs that have never been dressed and so hold an EMPTY
-    // geometry. three's SkinnedMesh.raycast measures itself on first use and reads
-    // `geometry.attributes.position.count`, which on an empty geometry is
-    // `undefined.count`. It took the whole Home screen down with
-    // "Cannot read property 'count' of undefined".
-    const crowd = makeCrowd(await fresh(), manifest, 3);
-    const ray = new THREE.Raycaster(new THREE.Vector3(0, 0.15, 5), new THREE.Vector3(0, 0, -1));
-    const before: THREE.Intersection[] = [];
-    expect(() => ray.intersectObject(crowd.group, true, before)).not.toThrow();
-    expect(before, 'an empty rig should not be hit by anything').toHaveLength(0);
-
-    // Once somebody is wearing it, the ray finds them and the body knows who it is.
-    crowd.pose([agent('alice', 0, 0)], new THREE.Vector3(), 1 / 30, 0.16);
-    crowd.group.updateMatrixWorld(true);
-    const after: THREE.Intersection[] = [];
-    expect(() => ray.intersectObject(crowd.group, true, after)).not.toThrow();
-    expect(after.length, 'a dressed person should be tappable').toBeGreaterThan(0);
-    expect(after[0]!.object.userData.ref).toBe('alice');
-
-    // And when they are dropped again, the rig goes quiet rather than answering.
-    crowd.pose([], new THREE.Vector3(), 1 / 30, 0.16);
-    const gone: THREE.Intersection[] = [];
-    expect(() => ray.intersectObject(crowd.group, true, gone)).not.toThrow();
-    expect(gone, 'a retired rig is still answering taps').toHaveLength(0);
-    crowd.dispose();
-  });
-
-  it('honours a per-frame limit, so the two worlds can spend differently', async () => {
-    // The city can afford 24 walking figures and the park only 12, because in the park
-    // far more of the crowd is genuinely in front of you and each one is 331 pixels
-    // tall rather than 13. One pool, two budgets, decided per frame.
-    const crowd = makeCrowd(await fresh(), manifest, 6);
-    const people = Array.from({ length: 6 }, (_, i) => agent(`p${i}`, i * 0.5, 0));
-    const focus = new THREE.Vector3();
-
-    crowd.pose(people, focus, 1 / 30, 0.16, 2);
-    expect(crowd.stats.rigs, 'asked for two bodies').toBe(2);
-    expect(crowd.drawn.size).toBe(2);
-
-    crowd.pose(people, focus, 1 / 30, 0.16, 5);
-    expect(crowd.stats.rigs, 'asked for five').toBe(5);
-
-    // No limit means the whole pool, and the pool is still the hard ceiling.
-    crowd.pose(people, focus, 1 / 30, 0.16);
-    expect(crowd.stats.rigs).toBe(6);
-    crowd.pose(people, focus, 1 / 30, 0.16, 99);
-    expect(crowd.stats.rigs, 'a limit cannot conjure rigs that were never built').toBe(6);
-    crowd.dispose();
-  });
-
-  it('puts glasses, a cap, earrings or a scarf on the head bone', async () => {
-    // THE REGRESSION THIS EXISTS FOR. Rigged bodies silently dropped everything from
-    // the Extra tab -- four items priced at 50 to 80 points that bought nothing --
-    // while the flat avatar and the capsules went on showing them.
-    const crowd = makeCrowd(await fresh(), manifest, 1);
-    const wornMesh = () => {
-      let found: THREE.Mesh | null = null;
-      crowd.group.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!found && m.isMesh && !(m as THREE.SkinnedMesh).isSkinnedMesh) found = m;
-      });
-      return found as THREE.Mesh | null;
-    };
-
-    crowd.pose([agent('a', 0, 0, { look: look({ accessory: 0 }) })], new THREE.Vector3(), 1 / 30, 0.16);
-    expect(wornMesh()?.visible, 'wearing nothing should show nothing').toBe(false);
-
-    const shapes = new Set<string>();
-    for (const [i, name] of [[1, 'glasses'], [2, 'cap'], [3, 'earrings'], [4, 'scarf']] as const) {
-      crowd.pose([agent('a', 0, 0, { look: look({ accessory: i }) })], new THREE.Vector3(), 1 / 30, 0.16);
-      const m = wornMesh();
-      expect(m?.visible, `${name} is not shown`).toBe(true);
-      expect(m!.geometry.attributes.position!.count, `${name} has no geometry`).toBeGreaterThan(10);
-      shapes.add(m!.geometry.uuid);
-      // It has to hang off the head, or it will not move when they walk.
-      let onHead = false;
-      for (let p = m!.parent; p; p = p.parent) if (p.name === 'Head') onHead = true;
-      expect(onHead, `${name} is not parented to the head bone`).toBe(true);
-    }
-    expect(shapes.size, 'the four items are not four different shapes').toBe(4);
-
-    // Back to nothing, and it goes away again.
-    crowd.pose([agent('a', 0, 0, { look: look({ accessory: 0 }) })], new THREE.Vector3(), 1 / 30, 0.16);
-    expect(wornMesh()?.visible).toBe(false);
-    crowd.dispose();
-  });
-
-  it('puts each extra ON the head rather than inside it', async () => {
-    // THE SECOND HALF OF THE SAME BUG. Hanging the things off the head bone was not
-    // enough: placed with numbers read off the armature's stored pose instead of its
-    // bind pose, the glasses sat 0.04 too high and 0.05 too far back -- first on the
-    // forehead, then buried in the skull, where they drew nothing at all. Nothing
-    // logged either time, because a mesh inside another mesh is not an error.
-    const head = await headEnvelope();
-    const crowd = makeCrowd(await fresh(), manifest, 1);
-    const boxOf = (accessory: number) => {
-      crowd.pose([agent('a', 0, 0, { look: look({ accessory }) })], new THREE.Vector3(), 1 / 30, 0.16);
-      let worn: THREE.Mesh | null = null;
-      crowd.group.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!worn && m.isMesh && !(m as THREE.SkinnedMesh).isSkinnedMesh && m.visible) worn = m;
-      });
-      const m = worn as THREE.Mesh | null;
-      expect(m, `nothing is worn for accessory ${accessory}`).not.toBeNull();
-      m!.geometry.computeBoundingBox();
-      return m!.geometry.boundingBox!;
-    };
-
-    const glasses = boxOf(1);
-    expect(glasses.min.z, 'the glasses are behind the face').toBeGreaterThan(head.faceAtEyes);
-    const eyeHeight = (glasses.min.y + glasses.max.y) / 2;
-    expect(eyeHeight, 'the glasses are not at eye height').toBeGreaterThan(0.10);
-    expect(eyeHeight, 'the glasses are not at eye height').toBeLessThan(0.14);
-
-    const cap = boxOf(2);
-    expect(cap.max.y, 'the cap does not cover the top of the head').toBeGreaterThan(head.skullTop);
-    expect(cap.min.y, 'the cap comes down over the eyes').toBeGreaterThan(0.13);
-    expect(Math.max(-cap.min.x, cap.max.x), 'the cap is narrower than the head').toBeGreaterThan(head.widest);
-
-    const earrings = boxOf(3);
-    expect(Math.max(-earrings.min.x, earrings.max.x), 'the earrings are not out at the ears')
-      .toBeGreaterThan(head.widest - 0.01);
-
-    const scarf = boxOf(4);
-    expect(scarf.max.y, 'the scarf is over the chin, not under it').toBeLessThan(head.chin);
-    crowd.dispose();
   });
 
   it('closes the back of every head, so Bald is not a look inside one', async () => {
@@ -513,17 +236,163 @@ describe('the rigged crowd', () => {
     g.scene.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) inModel.add(o.name); });
     for (const name of facial) expect(inModel, `${name} was thrown out of the model`).toContain(name);
   });
+});
 
-  it('scales to the town, not to human size', async () => {
-    const crowd = makeCrowd(await fresh(), manifest, 1);
-    crowd.pose([agent('a', 3, -4)], new THREE.Vector3(), 1 / 30, 0.16);
-    let holder: THREE.Object3D | null = null;
-    crowd.group.traverse((o) => { if (!holder && o.visible && o.parent === crowd.group) holder = o; });
-    const h = holder as unknown as THREE.Object3D;
-    expect(h.position.x).toBe(3);
-    expect(h.position.z).toBe(-4);
-    // 0.16 is PERSON in canvas.tsx, times the model's own correction.
-    expect(h.scale.y).toBeCloseTo(0.16 * 0.72, 5);
-    crowd.dispose();
+describe('what people wear on top', () => {
+  const boxOf = (g: THREE.BufferGeometry) => { g.computeBoundingBox(); return g.boundingBox!; };
+
+  it('hangs each thing where it is worn', () => {
+    // THE BUG THIS EXISTS FOR, twice: placed with numbers read off the armature's
+    // stored pose instead of its bind pose, the glasses sat first on the forehead and
+    // then inside the skull, where they drew nothing at all; and a scarf hung off the
+    // head rode up with every nod and sat on the women's chins.
+    const head = headEnvelope();
+    const x = mesh.buildExtras();
+    // The neck bone sits below the head's; the scarf is measured in the head's space.
+    const { into } = model();
+    const neckToHead = new THREE.Matrix4().multiplyMatrices(into('Head'), into('Neck').clone().invert());
+
+    for (const kind of ['round', 'sunglasses', 'square'] as const) {
+      const b = boxOf(x[kind].geometry);
+      expect(x[kind].bone).toBe('Head');
+      const eyes = (b.min.y + b.max.y) / 2;
+      expect(eyes, `the ${kind} are not at eye height`).toBeGreaterThan(0.10);
+      expect(eyes, `the ${kind} are not at eye height`).toBeLessThan(0.14);
+      // The lenses themselves are in front of the face (the arms go back to the ears).
+      expect(b.max.z, `the ${kind} are inside the face`).toBeGreaterThan(head.faceAtEyes);
+    }
+    for (const kind of ['cap', 'beanie', 'bucket', 'beret'] as const) {
+      const b = boxOf(x[kind].geometry);
+      expect(x[kind].bone).toBe('Head');
+      expect(b.max.y, `the ${kind} does not cover the top of the head`).toBeGreaterThan(head.skullTop);
+      expect(b.min.y, `the ${kind} comes down over the eyes`).toBeGreaterThan(0.13);
+      expect(Math.max(-b.min.x, b.max.x), `the ${kind} is narrower than the head`).toBeGreaterThan(head.widest);
+    }
+    for (const kind of ['studs', 'hoops'] as const) {
+      const b = boxOf(x[kind].geometry);
+      expect(Math.max(-b.min.x, b.max.x), `the ${kind} are not out at the ears`).toBeGreaterThan(head.widest - 0.01);
+    }
+    for (const kind of ['scarf', 'necklace', 'bowtie'] as const) {
+      expect(x[kind].bone, `the ${kind} does not hang off the neck`).toBe('Neck');
+      const b = boxOf(x[kind].geometry.clone().applyMatrix4(neckToHead));
+      expect(b.max.y, `the ${kind} is over the chin, not under it`).toBeLessThan(head.chin);
+    }
+  });
+
+  it('keeps what is worn on the head out of every head', () => {
+    // Every face's skin is a closed mesh (the build caps them: "closes the back of
+    // every head"), so a point is inside it when a ray from it crosses it an odd
+    // number of times. Glasses and hoops must be wholly outside every face -- a lens
+    // arm through a temple shows as an arm that stops. What sits ON the head may tuck
+    // in where it meets it, out of sight (the beanie's cuff, a stud in the ear, the
+    // cap's peak at the brow), but most of it must be outside, where it is seen.
+    const x = mesh.buildExtras();
+    const { points, byName } = model();
+    const ray = new THREE.Raycaster();
+    const faces = LOOKS.map((key) => {
+      const skin = manifest.looks[key]!.head.find((p) => roleOf(p) === 'skin')!.mesh;
+      const g = new THREE.BufferGeometry().setFromPoints(points(skin, 'Head'));
+      g.setIndex(byName.get(skin)!.geometry.index);
+      return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+    });
+    for (const kind of ['cap', 'beanie', 'bucket', 'beret', 'round', 'sunglasses', 'square', 'studs', 'hoops'] as const) {
+      const pos = x[kind].geometry.attributes.position as THREE.BufferAttribute;
+      const v = new THREE.Vector3();
+      faces.forEach((face, f) => {
+        let inside = 0;
+        for (let i = 0; i < pos.count; i++) {
+          ray.set(v.fromBufferAttribute(pos, i), new THREE.Vector3(0.577, 0.577, 0.577));
+          // Crossings, counted once per surface point (a ray through an edge is hit twice).
+          const hits = new Set(ray.intersectObject(face).map((h) => h.distance.toFixed(6)));
+          if (hits.size % 2 === 1) inside++;
+        }
+        const allowed = kind === 'round' || kind === 'sunglasses' || kind === 'square' || kind === 'hoops' ? 0 : 0.2;
+        expect(inside / pos.count, `${kind}: ${inside} of ${pos.count} points inside the ${LOOKS[f]} face`)
+          .toBeLessThanOrEqual(allowed);
+      });
+    }
+  });
+
+  it('keeps hair inside every hat: each hat\'s inside is inside the hat', () => {
+    // HAT_INSIDE is where hair is pulled to under a hat (character.ts). It must lie
+    // inside the hat everywhere, or the hair it pulls in shows through: from every
+    // point of its upper half, straight out from its middle, there is hat.
+    const x = mesh.buildExtras();
+    const { points, byName, into } = model();
+    const hatMesh = (hat: number): THREE.Mesh => {
+      if (hat === 4) {
+        const m = byName.get('m_worker_h3')!;
+        const g = new THREE.BufferGeometry().setFromPoints(points('m_worker_h3', 'Head'));
+        g.setIndex(m.geometry.index);
+        return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      }
+      const kind = (['cap', 'beanie', 'bucket', null, 'beret'] as const)[hat - 1]!;
+      return new THREE.Mesh(x[kind].geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+    };
+    void into;
+    const ray = new THREE.Raycaster();
+    for (let hat = 1; hat < LOOK_SIZES.hat; hat++) {
+      const inside = HAT_INSIDE[hat]!;
+      const hatAt = hatMesh(hat);
+      const centre = new THREE.Vector3(0, inside.rim, 0.014);
+      let missed = 0, tried = 0;
+      for (let a = 0; a < 16; a++) {
+        for (const up of [0.15, 0.4, 0.65, 0.9]) {
+          const dir = new THREE.Vector3(Math.cos((a / 16) * Math.PI * 2) * Math.cos(up * Math.PI / 2), Math.sin(up * Math.PI / 2),
+            Math.sin((a / 16) * Math.PI * 2) * Math.cos(up * Math.PI / 2));
+          // The point of the inside in that direction...
+          const q = Math.hypot(dir.x / inside.radii[0], dir.y / inside.radii[1], dir.z / inside.radii[2]);
+          const p = centre.clone().addScaledVector(dir, 1 / q);
+          // ...has hat further out along it.
+          ray.set(p, dir);
+          tried++;
+          if (!ray.intersectObject(hatAt).length) missed++;
+        }
+      }
+      expect(missed, `hat ${hat}: ${missed} of ${tried} points of its inside are outside it`).toBe(0);
+    }
+  });
+
+  it('lays every bag\'s straps on the top it was made for', () => {
+    // A bag is built per top so its straps follow that top's cloth (buildBag). One
+    // strap for everybody has to clear the fullest top, so it floats off the tee and
+    // cuts through the women's tops at the bust. Checked where it shows most: the
+    // backpack's straps down the chest and the shoulder bag's across it lie on the
+    // cloth -- neither sunk into it nor standing off it -- on every top. Both surfaces
+    // are found by a ray from in front, as the eye finds them.
+    const { byName, into } = model();
+    const ray = new THREE.Raycaster();
+    const frontOf = (g: THREE.BufferGeometry, x: number, y: number) => {
+      ray.set(new THREE.Vector3(x, y, 1), new THREE.Vector3(0, 0, -1));
+      return ray.intersectObject(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })))[0]?.point.z;
+    };
+    let checked = 0;
+    for (let set = 0; set < LOOKS.length; set++) {
+      const body = mesh.clothOf(manifest.looks[LOOKS[set]!]!.top.map((p) => {
+        const m = byName.get(p.mesh)!;
+        return { geometry: m.geometry, matrix: new THREE.Matrix4().multiplyMatrices(into('Chest'), m.bindMatrix) };
+      }));
+      for (const [kind, at] of [
+        ['backpack', [[0.085, 0.045], [0.085, 0.01], [-0.085, -0.025]]],
+        ['shoulderbag', [[0.02, -0.02], [-0.04, -0.11]]],
+      ] as const) {
+        const g = mesh.buildBag(kind, body)!;
+        expect(g, `no ${kind} for ${LOOKS[set]}`).not.toBeNull();
+        for (const [x, y] of at) {
+          const cloth = frontOf(body, x, y);
+          const strap = frontOf(g, x, y);
+          expect(cloth, `${LOOKS[set]} has no cloth at (${x}, ${y})`).toBeDefined();
+          expect(strap, `${kind} on ${LOOKS[set]} does not cross (${x}, ${y})`).toBeDefined();
+          // On the cloth: its lift and its own thickness in front of it, give or take.
+          const off = strap! - cloth!;
+          expect(off, `${kind} on ${LOOKS[set]} at (${x}, ${y}) is sunk into the cloth`).toBeGreaterThan(0);
+          expect(off, `${kind} on ${LOOKS[set]} at (${x}, ${y}) stands ${off.toFixed(3)} off it`).toBeLessThan(0.025);
+          checked++;
+        }
+        g.dispose();
+      }
+      body.dispose();
+    }
+    expect(checked, 'no strap was measured').toBe(LOOKS.length * 5);
   });
 });

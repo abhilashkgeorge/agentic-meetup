@@ -1,9 +1,9 @@
 /**
  * A picture of one piece, cropped out of one sheet.
  *
- * `scripts/build-thumbs.mjs` draws every head, top, pair of legs and pair of shoes
- * once, offline, into `assets/characters/thumbs.png`, and writes where each one landed
- * into the manifest. This crops a tile out of that sheet by moving the whole image
+ * `scripts/build-thumbs.mts` draws every face, hairstyle, top, pair of trousers, pair
+ * of shoes, beard and thing worn on top once, offline, into
+ * `assets/characters/thumbs.png`, and writes where each one landed into the manifest. This crops a tile out of that sheet by moving the whole image
  * behind a window, which costs one decode and one texture for the entire builder --
  * against forty GL contexts if each chip drew its own little 3D view.
  *
@@ -12,20 +12,17 @@
  */
 import { memo } from 'react';
 import { Image, View, type ViewStyle } from 'react-native';
-import type { SlotPart } from '@clone/shared';
-import { SHEET_COLS, SHEET_ROWS, tileOf } from './thumb-sheet';
+import { SHEET_COLS, SHEET_ROWS, tileOf, type PicturedPart } from './thumb-sheet';
 
 const SHEET = require('../../../assets/characters/thumbs.png');
 
-export const PieceThumb = memo(function PieceThumb({ slot, set, size, figure = 0, style }: {
-  slot: SlotPart | 'beard';
-  set: number;
+export const PieceThumb = memo(function PieceThumb({ part, index, size, style }: {
+  part: PicturedPart;
+  index: number;
   size: number;
-  /** Only read for Bald, which borrows a face from this figure's first set. */
-  figure?: number;
   style?: ViewStyle;
 }) {
-  const at = tileOf(slot, set, figure);
+  const at = tileOf(part, index);
   if (!at) return <View style={[{ width: size, height: size }, style]} />;
   return (
     <View style={[{ width: size, height: size, overflow: 'hidden' }, style]}>

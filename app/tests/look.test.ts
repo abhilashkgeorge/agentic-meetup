@@ -1,13 +1,27 @@
 /**
  * The catalog is the contract between the builder, the server and both renderers,
  * so its invariants are tested where no renderer is needed: every part has a free
- * item, a seed is one character for ever, and nothing the renderers read can throw.
+ * item, a seed is one character for ever, nothing the renderers read can throw, a look
+ * saved under an older catalog reads as it looked, and the rules that keep an outfit
+ * drawable (`fitted`) hold whatever is picked in whatever order.
+ *
+ * Negative controls, run by hand and recorded in the commit:
+ *   - drop the legacy branch of `clampLook` -> "reads a look saved before hair was its
+ *     own choice" fails: the workwear head loses its hard hat, a bald man gets hair.
+ *   - drop the face rule at the top of `fitted` -> "keeps Shaved and beards on the
+ *     men's faces" fails.
+ *   - drop the waist rule in `fitted` -> "keeps a top and its trousers on one figure"
+ *     fails.
  */
 import { describe, expect, it } from 'vitest';
 import {
-  BALD, CATALOG, LOOK_PARTS, LOOK_SIZES, Look, SLOT_PARTS, STARTER, WARDROBE_FIGURE, clampLook,
-  forFigure, itemAt, itemsOf, lockedIn, lookFor, lookKey, offeredFor, starterLookFor,
+  BARE_ANKLES, CATALOG, EXTRA_PARTS, HARD_HAT, LOOK_PARTS, LOOK_SIZES, Look, NOT_OFFERED, SHAVED, SLOT_PARTS, STARTER,
+  WARDROBE, WARDROBE_FIGURE, clampLook, currentItem, fitted, forFigure, itemAt, itemsOf, lockedIn, lookFor, lookKey,
+  offeredFor, starterLookFor,
 } from '@clone/shared';
+
+const fig = (set: number) => WARDROBE_FIGURE[set] ?? 0;
+const SETS = WARDROBE.map((_, i) => i);
 
 describe('the catalog', () => {
   it('has unique ids, one label per index, and a free item for every part', () => {
@@ -39,28 +53,71 @@ describe('the catalog', () => {
 
   it('refuses what is not in the catalog, and clamps what the renderers read', () => {
     expect(Look.safeParse({ ...STARTER, top: LOOK_SIZES.top }).success).toBe(false);
+    expect(Look.safeParse({ ...STARTER, hair: LOOK_SIZES.hair }).success).toBe(false);
     expect(Look.safeParse({ ...STARTER, skin: -1 }).success).toBe(false);
-    expect(Look.safeParse({ ...STARTER, hat: 1 }).success).toBe(false);
+    expect(Look.safeParse({ ...STARTER, accessory: 1 }).success, 'the old one "extra" is not a part').toBe(false);
     expect(Look.safeParse({ ...STARTER, skin: 1.5 }).success).toBe(false);
-    const c = clampLook({ top: 99, skin: -3, face: 'x' });
+    const c = clampLook({ top: 99, skin: -3, face: 'x', height: 2 });
     expect(Look.parse(c)).toEqual(c);
     expect(c.top).toBe(99 % LOOK_SIZES.top);
     expect(clampLook(null)).toEqual(STARTER);
   });
 
   it('dresses a row written before the wardrobe was split', () => {
-    // The migration, such as it is. `outfit` chose a whole body and `hair` chose a
-    // head; neither maps onto a slot without inventing what somebody picked, so both
-    // are dropped and that person is back in the starter set. What they BOUGHT is in
-    // another table and is not touched.
+    // `outfit` chose a whole body and `hair` chose a head; neither maps onto a slot
+    // without inventing what somebody picked, so both are dropped and that person is
+    // back in the starter set. What they BOUGHT is in another table and is not touched.
     const old = { skin: 5, body: 2, hair: 3, hairColor: 6, face: 1, outfit: 6, outfitColor: 9, accessory: 2 };
     const now = clampLook(old);
     expect(Look.parse(now)).toEqual(now);
     expect(now.skin, 'their skin is still theirs').toBe(5);
-    expect(now.accessory, 'and so are their glasses').toBe(2);
+    expect(now.hat, 'and so is their cap').toBe(1);
     expect(now.top).toBe(STARTER.top);
     expect(now.head).toBe(STARTER.head);
+    expect(now.hair, 'their hair is their head\'s own').toBe(STARTER.head);
     expect(now).not.toHaveProperty('outfit');
+    expect(now).not.toHaveProperty('accessory');
+  });
+
+  it('reads a look saved before hair was its own choice as it looked', () => {
+    const before = (over: Record<string, number>) =>
+      clampLook({ figure: 0, skin: 3, body: 1, head: 0, hairColor: 0, beard: 0, top: 0, outfitColor: 2, legs: 0, feet: 0, accessory: 0, ...over });
+    // Each head wore its own hair.
+    for (const head of SETS) expect(before({ head, figure: fig(head) }).hair).toBe(head);
+    // The workwear heads wore a hard hat, which is a hat now: it stays on...
+    expect(before({ head: 4 }).hat).toBe(HARD_HAT);
+    expect(before({ head: 3, figure: 1 }).hat).toBe(HARD_HAT);
+    // ...unless they had put a cap on, which is what they chose to wear.
+    expect(before({ head: 4, accessory: 2 }).hat).toBe(1);
+    // Bald was head 10: the first men's face, shaved.
+    const bald = before({ head: 10 });
+    expect(bald.head).toBe(WARDROBE_FIGURE.indexOf(0));
+    expect(bald.hair).toBe(SHAVED);
+    // The one extra goes to where it is worn now.
+    expect(before({ accessory: 1 })).toMatchObject({ glasses: 1, hat: 0, earrings: 0, neck: 0 });
+    expect(before({ accessory: 3 })).toMatchObject({ earrings: 1, glasses: 0 });
+    expect(before({ accessory: 4 })).toMatchObject({ neck: 1, glasses: 0 });
+    // Everything new starts where everybody looked before it existed.
+    expect(before({})).toMatchObject({ height: STARTER.height, eyes: 0, legsColor: 0, feetColor: 0, bag: 0 });
+    // A look saved since keeps its hair exactly.
+    const now = { ...STARTER, head: 4, hair: 7 };
+    expect(clampLook(now)).toEqual(now);
+  });
+
+  it('keeps what was bought under its old name', () => {
+    expect(currentItem('accessory:1')).toBe('glasses:1');
+    expect(currentItem('accessory:2')).toBe('hat:1');
+    expect(currentItem('accessory:3')).toBe('earrings:1');
+    expect(currentItem('accessory:4')).toBe('neck:1');
+    for (let h = 5; h < 10; h++) expect(currentItem(`head:${h}`)).toBe(`hair:${h}`);
+    expect(currentItem('top:8')).toBe('top:8');
+    // Everything anybody paid for is still something that costs, so a purchase is
+    // never quietly turned into a thing everybody has.
+    for (const old of ['accessory:1', 'accessory:2', 'accessory:3', 'accessory:4', 'head:5', 'head:6', 'head:7', 'head:8', 'head:9']) {
+      const item = CATALOG.find((i) => i.id === currentItem(old));
+      expect(item, `${old} maps to nothing`).toBeDefined();
+      expect(item!.cost, `${old} maps to a free item`).toBeGreaterThan(0);
+    }
   });
 
   it('offers a rail per figure, with both figures dressed for free', () => {
@@ -68,22 +125,21 @@ describe('the catalog', () => {
       for (const figure of [0, 1]) {
         const here = offeredFor(part, figure);
         expect(here.length, `${part} offers a ${figure ? 'woman' : 'man'} nothing`).toBeGreaterThan(2);
-        for (const i of here) {
-          if (i === BALD) continue;
-          expect(WARDROBE_FIGURE[i], `${part} ${i} is on the wrong rail`).toBe(figure);
-        }
-        // Bald is offered to the men only: the founder's call, and the reason is that
-        // a woman's head in this pack is a face with no skull behind it, so a bald one
-        // is invented rather than drawn.
-        if (part === 'head') {
-          expect(here.includes(BALD), `a ${figure ? 'woman' : 'man'} is offered the wrong bald rule`)
-            .toBe(figure === 0);
-        } else {
-          expect(here, `${part} offers Bald`).not.toContain(BALD);
-        }
-        const free = here.filter((i) => CATALOG.find((c) => c.part === part && c.index === i)!.cost === 0);
+        for (const i of here) expect(fig(i), `${part} ${i} is on the wrong rail`).toBe(figure);
+        for (const i of NOT_OFFERED[part] ?? []) expect(here, `${part} offers the copy ${i}`).not.toContain(i);
+        const free = here.filter((i) => itemAt(part, i).cost === 0);
         expect(free.length, `a ${figure ? 'woman' : 'man'} has no free ${part}`).toBeGreaterThan(0);
       }
+    }
+    // Hair is anybody's, own figure's first. Shaved is offered on the men's faces only:
+    // the founder's call, because a woman's head in this pack is a face with no skull
+    // behind it, so a shaved one is invented rather than drawn.
+    for (const figure of [0, 1]) {
+      const hairs = offeredFor('hair', figure);
+      expect(hairs.includes(SHAVED)).toBe(figure === 0);
+      expect(hairs).not.toContain(9);
+      expect(fig(hairs[0]!)).toBe(figure);
+      expect(new Set(hairs).size).toBe(hairs.length);
     }
   });
 
@@ -95,48 +151,81 @@ describe('the catalog', () => {
       expect(offeredFor(part, 1), `${part} stayed on the men's rail`).toContain(woman[part]);
       expect(lockedIn(woman, new Set()).some((i) => i.part === part), `${part} costs points now`).toBe(false);
     }
-    // Going back is not a round trip -- the suit was theirs, the starter is what a
-    // figure gives you -- but it must land somewhere legal either way.
     const back = forFigure(woman, 0);
     for (const part of SLOT_PARTS) expect(offeredFor(part, 0)).toContain(back[part]);
     // Anything already on the right rail is left exactly as it was.
     expect(forFigure(woman, 1)).toEqual(woman);
+    // What they wear on top, their colours, build and height are theirs either way.
+    const dressed = { ...man, hat: 2, glasses: 1, height: 4, outfitColor: 7 };
+    expect(forFigure(dressed, 1)).toMatchObject({ hat: 2, glasses: 1, height: 4, outfitColor: 7 });
   });
 
-  it('takes a bald head off somebody who says she is a woman', () => {
-    const bald = { ...STARTER, head: BALD };
-    expect(Look.parse(bald)).toEqual(bald);
-    const her = forFigure(bald, 1);
-    expect(her.head, 'she is still bald').not.toBe(BALD);
-    expect(offeredFor('head', 1), 'she can still pick it').toContain(her.head);
-    expect(itemAt('head', her.head).cost, 'she was moved onto something she has to buy').toBe(0);
-    // A man keeps it, and nobody is seeded with one who should not have it.
-    expect(forFigure(bald, 0).head).toBe(BALD);
-    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+  it('keeps Shaved and beards on the men\'s faces, whatever order things are picked in', () => {
+    // A woman's face ends at the hairline with nothing behind it, and a beard is cut
+    // from the men's jaw. A MAN may pick a woman's face too, so the rule is the face's.
+    const shavedBeard = { ...STARTER, hair: SHAVED, beard: 4 };
+    for (const face of SETS) {
+      const out = fitted({ ...shavedBeard, head: face }, 'head');
+      if (fig(face) === 0) {
+        expect(out.hair, `face ${face} lost its shave`).toBe(SHAVED);
+        expect(out.beard, `face ${face} lost its beard`).toBe(4);
+      } else {
+        expect(out.hair, `face ${face} is shaved`).not.toBe(SHAVED);
+        expect(itemAt('hair', out.hair).cost, `face ${face} was given hair that costs`).toBe(0);
+        expect(out.beard, `face ${face} has a beard`).toBe(0);
+      }
+    }
+    expect(forFigure(shavedBeard, 1)).toMatchObject({ beard: 0 });
+    expect(forFigure(shavedBeard, 1).hair).not.toBe(SHAVED);
+    for (let seed = 1; seed <= 40; seed++) {
       for (const made of [lookFor(seed), starterLookFor(seed)]) {
-        if (made.figure !== 0) expect(made.head, 'a woman was seeded bald').not.toBe(BALD);
+        if (fig(made.head) !== 0) {
+          expect(made.hair, `seed ${seed} made a shaved woman's face`).not.toBe(SHAVED);
+          expect(made.beard, `seed ${seed} made a bearded woman's face`).toBe(0);
+        }
       }
     }
   });
 
-  it('offers facial hair to the men and takes it off the women', () => {
-    // It is cut out of the MEN'S face in the build, so it is theirs. A woman with a
-    // beard is not a thing the renderer can draw, so the catalog does not allow it.
-    const bearded = { ...STARTER, beard: 4 };
-    expect(Look.parse(bearded)).toEqual(bearded);
-    expect(forFigure(bearded, 1).beard, 'a woman kept the beard').toBe(0);
-    expect(forFigure(bearded, 0).beard, 'a man lost his beard').toBe(4);
-    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
-      for (const made of [lookFor(seed), starterLookFor(seed)]) {
-        if (made.figure !== 0) expect(made.beard, 'a woman was seeded with a beard').toBe(0);
+  it('keeps a top and its trousers on one figure, and bare legs over their own shoes', () => {
+    // Measured, not guessed (render-looks.mts top-legs and legs-feet): every
+    // cross-figure top and trousers left a gap or a shirt through the waistband, and
+    // other-figure shoes under bare legs step at the ankle.
+    for (const top of SETS) {
+      for (const legs of SETS) {
+        for (const feet of SETS) {
+          for (const changed of ['top', 'legs', 'feet'] as const) {
+            const out = fitted({ ...STARTER, top, legs, feet }, changed);
+            expect(fig(out.top), `${top}/${legs}/${feet} ${changed}`).toBe(fig(out.legs));
+            if (BARE_ANKLES.has(out.legs)) expect(fig(out.feet)).toBe(fig(out.legs));
+            // What was just picked stays picked.
+            expect(out[changed]).toBe({ top, legs, feet }[changed]);
+          }
+        }
       }
     }
-    expect(Look.safeParse({ ...STARTER, beard: LOOK_SIZES.beard }).success).toBe(false);
+  });
+
+  it('puts one in four practice people in each extra, and nobody in all five', () => {
+    let worn = 0, all = 0;
+    for (let seed = 1; seed <= 400; seed++) {
+      const l = lookFor(seed);
+      const n = EXTRA_PARTS.filter((p) => l[p] > 0).length;
+      worn += n;
+      if (n === EXTRA_PARTS.length) all++;
+    }
+    // Each extra is on one in four and then the "none" index can come up too, so the
+    // mean is a little under 5 * 0.25 * (1 - 1/size).
+    expect(worn / 400).toBeGreaterThan(0.6);
+    expect(worn / 400).toBeLessThan(1.3);
+    expect(all).toBeLessThan(4);
   });
 
   it('keys a look stably for memoisation', () => {
     expect(lookKey(STARTER)).toBe(lookKey({ ...STARTER }));
-    expect(lookKey({ ...STARTER, top: 1 })).not.toBe(lookKey(STARTER));
-    expect(lookKey({ ...STARTER, feet: 1 })).not.toBe(lookKey(STARTER));
+    for (const part of LOOK_PARTS) {
+      const other = { ...STARTER, [part]: (STARTER[part] + 1) % LOOK_SIZES[part] };
+      expect(lookKey(other), `${part} is not in the key`).not.toBe(lookKey(STARTER));
+    }
   });
 });

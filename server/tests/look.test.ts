@@ -7,13 +7,19 @@
  * person with no row still has a whole, stable character; the match role may read
  * looks (the roster) but not what anybody bought.
  *
+ * Since 2026-09-29 the catalog has more parts (hair apart from the face, five places
+ * to wear things instead of one "extra"), so two more things are guarded: a look
+ * saved before then reads as it looked, and anything bought then is still owned
+ * under what it is called now.
+ *
  * Negative controls, run by hand and recorded in the commit: drop the `lockedIn`
  * check in PUT -> the 402 test saves a paid hat for free; return the whole row from
- * GET -> the "one key per part" test fails.
+ * GET -> the "one key per part" test fails; drop `currentItem` in `owned` -> the cap
+ * bought as an "accessory" is locked again (402).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import { Look, LOOK_PARTS, STARTER, lockedIn } from '@clone/shared';
+import { HARD_HAT, Look, LOOK_PARTS, SHAVED, STARTER, lockedIn } from '@clone/shared';
 import { pool, closeMatchPool, matchSession } from '../src/db/client.js';
 import { env } from '../src/env.js';
 import { lookRoutes } from '../src/api/look.js';
@@ -88,9 +94,37 @@ describe('a character', () => {
 
   it('refuses what the catalog does not have', async () => {
     expect((await call(me, 'PUT', { look: { ...STARTER, top: 10 } })).status).toBe(400);
-    expect((await call(me, 'PUT', { look: { ...STARTER, hat: 1 } })).status).toBe(400);
+    expect((await call(me, 'PUT', { look: { ...STARTER, hair: 11 } })).status).toBe(400);
+    // The one "extra" is five parts now; the old field is not one of them.
+    expect((await call(me, 'PUT', { look: { ...STARTER, accessory: 1 } })).status).toBe(400);
     expect((await call(me, 'PUT', { look: { ...STARTER, skin: 1.5 } })).status).toBe(400);
     expect((await call(me, 'PUT', { nope: true })).status).toBe(400);
+  });
+
+  it('keeps what was bought before the catalog changed, under what it is called now', async () => {
+    const buyer = await person('bought-early');
+    // A cap, bought as the second "extra"; and the punk head, whose price is its hair's now.
+    await owner.query(
+      `INSERT INTO look_items (user_id, tenant_id, item) VALUES ($1, $2, 'accessory:2'), ($1, $2, 'head:7')`,
+      [buyer.userId, buyer.tenantId]);
+    const got = await (await call(buyer, 'GET')).json() as { owned: string[] };
+    expect(got.owned.sort()).toEqual(['hair:7', 'hat:1']);
+    const res = await call(buyer, 'PUT', { look: { ...STARTER, hat: 1, hair: 7 } });
+    expect(res.status, 'what they paid for is locked again').toBe(200);
+  });
+
+  it('reads a look saved before hair was its own choice as it looked then', async () => {
+    const old = await person('saved-early');
+    // The workwear head (it wore its hard hat), and a bald man with a cap on.
+    await owner.query('INSERT INTO looks (user_id, tenant_id, look) VALUES ($1, $2, $3)', [old.userId, old.tenantId,
+      { figure: 0, skin: 3, body: 1, head: 4, hairColor: 2, beard: 0, top: 4, outfitColor: 2, legs: 4, feet: 4, accessory: 0 }]);
+    const a = await (await call(old, 'GET')).json() as { look: Look };
+    expect(a.look).toMatchObject({ head: 4, hair: 4, hat: HARD_HAT, hairColor: 2, top: 4 });
+    await owner.query('UPDATE looks SET look = $2 WHERE user_id = $1', [old.userId,
+      { figure: 0, skin: 3, body: 1, head: 10, hairColor: 0, beard: 1, top: 0, outfitColor: 2, legs: 0, feet: 0, accessory: 2 }]);
+    const b = await (await call(old, 'GET')).json() as { look: Look };
+    expect(b.look).toMatchObject({ head: 0, hair: SHAVED, hat: 1, beard: 1 });
+    expect(Look.parse(b.look)).toEqual(b.look);
   });
 
   it('is readable by the match role for the roster, while purchases are not', async () => {

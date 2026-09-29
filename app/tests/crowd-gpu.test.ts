@@ -10,9 +10,12 @@
  *   - the baked animation is three's own skinning: a vertex skinned from the bake lands
  *     where three's CPU skinning of the same clip at the same time puts it;
  *   - a person wears exactly the parts `partsOf` gives them -- no more, no fewer -- at
- *     the near level, and at the middle level the same parts, merged smaller;
- *   - the far level is one outfit per head, and far fewer triangles than near; the
- *     tiny level the same outfit merged hardest, for people a few pixels tall;
+ *     the near level, and at the middle level the same parts, merged smaller; what
+ *     they wear on top is there, one of each, and a bag is the one made for their top;
+ *   - a hairstyle grown for a bigger skull is drawn grown, and hair under a hat is
+ *     pulled in by the same numbers the builder uses;
+ *   - the far level is the same choices merged harder, without the small things; the
+ *     tiny level one outfit per top, merged hardest, for people a few pixels tall;
  *   - the frame's buffers hold exactly what update() was given, nearest first, per
  *     level, and a person keeps no body in two levels at once;
  *   - only the people written are sent to the GPU, not each buffer's whole capacity;
@@ -23,9 +26,11 @@
  * The shader cannot run in node: `wears` and `skinFromBake` are the shader's rules in
  * JavaScript, and the last test holds the shader text to them (SOURCE SHAPE).
  *
- * Negative controls, run 2026-09-28, each restored byte-identical:
+ * Negative controls, run 2026-09-28 (and 2026-09-29 for the new options), each
+ * restored byte-identical:
  *   - the bake without each bone's inverse bind matrix -> "lands where three puts it" fails
- *   - wears() ignoring the bald flag                   -> "exactly the parts" fails
+ *   - fixedOf() choosing the plain hair where it is grown -> "grows the hair" fails
+ *   - fixedOf() choosing the bag made for the Tee for everybody -> "a bag made for their top" fails
  *   - update() not moving past a full level            -> "per level" fails
  *   - update() without its update range                -> "only the people written" fails
  *   - levelSteps() without its yield per look          -> "comes in steps" fails
@@ -36,7 +41,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
-import { BALD, type Look } from '@clone/shared';
+import { EXTRA_PARTS, HARD_HAT, LOOK_SIZES, SHAVED, STARTER, type Look } from '@clone/shared';
 import type { Manifest } from '../src/features/world/character-mesh';
 import type * as Gpu from '../src/features/world/crowd-gpu';
 
@@ -47,10 +52,7 @@ type Ctor = { new (type: string, init?: Record<string, unknown>): Event };
 
 const ASSETS = join(import.meta.dirname, '..', 'assets', 'characters');
 const manifest = JSON.parse(readFileSync(join(ASSETS, 'people.json'), 'utf8')) as Manifest;
-const look = (over: Partial<Look> = {}): Look => ({
-  figure: 0, skin: 3, body: 1, head: 0, hairColor: 0, beard: 0,
-  top: 0, legs: 0, feet: 0, outfitColor: 0, accessory: 0, ...over,
-});
+const look = (over: Partial<Look> = {}): Look => ({ ...STARTER, outfitColor: 0, ...over });
 type Gltf = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
 async function fresh(): Promise<Gltf> {
   const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
@@ -114,12 +116,28 @@ describe('the levels', () => {
     gltf.scene.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(o as THREE.SkinnedMesh); });
     byName = new Map(meshes.map((m) => [m.name, m.geometry]));
     const colour = new Map(meshes.map((m) => [m.name, ((m.material as THREE.MeshStandardMaterial).color).clone()]));
-    const bones = meshes[0]!.skeleton;
-    const head = bones.bones.findIndex((b) => b.name === 'Head');
+    const skeleton = meshes[0]!.skeleton;
+    const bone = (name: string) => {
+      const index = skeleton.bones.findIndex((b) => b.name === name);
+      return { index, bind: skeleton.boneInverses[index]!.clone().invert() };
+    };
     levels = gpu.buildLevels({
-      geometry: byName, colour, pieces, beards, head, headBind: bones.boneInverses[head]!.clone().invert(),
+      geometry: byName, colour, pieces, beards, bones: { Head: bone('Head'), Neck: bone('Neck'), Chest: bone('Chest') },
     });
   });
+
+  /** The kept vertices of one slot at a level, for a person: where they are in bind space. */
+  const keptIn = (g: THREE.BufferGeometry, f: Float32Array, slot: number): THREE.Box3 => {
+    const meta = g.attributes.aMeta!;
+    const pos = g.attributes.position!;
+    const box = new THREE.Box3();
+    const v = new THREE.Vector3();
+    for (let i = 0; i < meta.count; i++) {
+      if (meta.getY(i) !== slot || !gpu.wears([meta.getX(i), meta.getY(i), meta.getZ(i)], f)) continue;
+      box.expandByPoint(v.fromBufferAttribute(pos, i));
+    }
+    return box;
+  };
 
   /** Triangles a person keeps at a level: the shader's choice, vertex by vertex. */
   const kept = (g: THREE.BufferGeometry, f: Float32Array): number => {
@@ -136,23 +154,110 @@ describe('the levels', () => {
 
   it('dresses a person in exactly the parts partsOf gives them, near and middle', () => {
     const looks: Look[] = [
-      look(), look({ head: 3, top: 5, legs: 7, feet: 9, beard: 2, accessory: 2 }),
-      look({ head: BALD, figure: 1, top: 1, legs: 6, feet: 3, accessory: 4 }),
-      look({ head: 8, top: 8, legs: 8, feet: 8, beard: 4, accessory: 1 }),
+      look(),
+      look({ head: 3, hair: 5, top: 5, legs: 7, feet: 9, beard: 2 }),
+      // A shaved head on a face that ends at the hairline: the scalp is a part.
+      look({ head: 4, hair: SHAVED, figure: 0, top: 4, legs: 4, feet: 4 }),
+      // A grown hairstyle, and the pack's hard hat.
+      look({ head: 0, hair: 3, hat: HARD_HAT }),
+      look({ head: 8, hair: 8, top: 8, legs: 8, feet: 8, beard: 4 }),
     ];
     for (const l of looks) {
       const f = gpu.fixedOf(l, pieces, beards);
       const who = character.partsOf(l, pieces, beards);
+      expect(who.extras, 'these looks wear nothing on top').toEqual([]);
       const want = who.parts.reduce((n, p) => n + trisOf(p.mesh), 0);
-      const extra = who.extra === 'none' ? 0 : 1;
       const near = kept(levels[0]!, f);
-      // Every body triangle partsOf names, plus the accessory's own few.
-      expect(near - want, `look ${JSON.stringify(l)}`).toBeGreaterThanOrEqual(0);
-      expect(near - want).toBeLessThanOrEqual(extra ? 400 : 0);
-      if (!extra) expect(near).toBe(want);
+      expect(near, `look ${JSON.stringify(l)}`).toBe(want);
       const middle = kept(levels[1]!, f);
       expect(middle).toBeGreaterThan(0);
       expect(middle, 'the middle level is not smaller').toBeLessThan(near * 0.75);
+    }
+  });
+
+  it('wears what goes on top, one of each, near and middle', () => {
+    const bare = look({ head: 1, hair: 1, figure: 1, top: 1, legs: 1, feet: 1 });
+    const base = kept(levels[0]!, gpu.fixedOf(bare, pieces, beards));
+    for (const part of EXTRA_PARTS) {
+      for (let i = 1; i < LOOK_SIZES[part]; i++) {
+        const l = { ...bare, [part]: i };
+        const f = gpu.fixedOf(l, pieces, beards);
+        const more = kept(levels[0]!, f) - base;
+        // The hard hat is a mesh of the pack's and is counted with the parts.
+        const hard = part === 'hat' && i === HARD_HAT
+          ? character.partsOf(l, pieces, beards).parts.filter((p) => p.worn === 'hat').reduce((n, p) => n + trisOf(p.mesh), 0) : 0;
+        expect(more, `${part} ${i} drew nothing`).toBeGreaterThan(hard > 0 ? hard - 1 : 3);
+        expect(more, `${part} ${i} drew more than one thing`).toBeLessThan(hard + 2500);
+        expect(kept(levels[1]!, f) - kept(levels[1]!, gpu.fixedOf(bare, pieces, beards)), `${part} ${i} is gone in the middle`)
+          .toBeGreaterThan(0);
+      }
+    }
+    // Everything at once is the sum of each on its own.
+    const all = { ...bare, hat: 1, glasses: 2, earrings: 1, neck: 3, bag: 2 };
+    const each = EXTRA_PARTS.reduce((n, part) => n + kept(levels[0]!, gpu.fixedOf({ ...bare, [part]: all[part] }, pieces, beards)) - base, 0);
+    expect(kept(levels[0]!, gpu.fixedOf(all, pieces, beards)) - base).toBe(each);
+  });
+
+  it('hangs a bag made for their top, on every top', () => {
+    // Each bag is built to lie on one top's surface (buildBag); somebody in the hoodie
+    // wears the hoodie's backpack, not the tee's.
+    for (let top = 0; top < 10; top++) {
+      const l = look({ top, legs: top, bag: 1 });
+      const f = gpu.fixedOf(l, pieces, beards);
+      expect(f[22], `top ${top}`).toBe(gpu.bagVariant('backpack', top));
+      const box = keptIn(levels[0]!, f, gpu.SLOT_ID.bag);
+      expect(box.isEmpty(), `top ${top} has no bag`).toBe(false);
+      const other = keptIn(levels[0]!, gpu.fixedOf({ ...l, top: (top + 1) % 10, legs: (top + 1) % 10 }, pieces, beards), gpu.SLOT_ID.bag);
+      expect(box.equals(other), `tops ${top} and ${(top + 1) % 10} share a bag`).toBe(false);
+    }
+  });
+
+  it('grows the hair the builder grows, and only there', () => {
+    // The Bob on a whole skull is drawn 1.12 times its size about the middle of the
+    // skull; on its own face it is drawn as it is.
+    const grown = keptIn(levels[0]!, gpu.fixedOf(look({ head: 0, hair: 3 }), pieces, beards), gpu.SLOT_ID.hair);
+    const plain = keptIn(levels[0]!, gpu.fixedOf(look({ head: 3, hair: 3, figure: 1 }), pieces, beards), gpu.SLOT_ID.hair);
+    const size = (b: THREE.Box3) => b.getSize(new THREE.Vector3());
+    const ratio = size(grown).x / size(plain).x;
+    expect(ratio).toBeCloseTo(character.HAIR_FIT[3]![0]!, 3);
+    // The scalp is the crew cut's shell, in skin, and nothing else in the hair slot.
+    const scalp = gpu.fixedOf(look({ head: 4, hair: SHAVED }), pieces, beards);
+    expect(scalp[13]).toBe(gpu.SCALP_VARIANT);
+    expect(gpu.fixedOf(look({ head: 0, hair: SHAVED }), pieces, beards)[13]).toBe(gpu.NONE);
+  });
+
+  it('pulls hair in under a hat by the builder\'s own numbers', () => {
+    const u = gpu.hatUniform();
+    for (let v = 0; v < u.length; v++) {
+      const h = character.HAT_INSIDE[v === 6 ? HARD_HAT : v];
+      if (!h) { expect(u[v]!.x, `variant ${v} pulls hair in with no hat`).toBeGreaterThan(10); continue; }
+      expect(u[v]!.toArray()).toEqual([h.rim, ...h.radii]);
+    }
+    // The women's hard hat is its own variant, and pulls in like the men's.
+    expect(gpu.fixedOf(look({ head: 1, figure: 1, hat: HARD_HAT }), pieces, beards)[18]).toBe(6);
+    expect(gpu.fixedOf(look({ head: 0, hat: HARD_HAT }), pieces, beards)[18]).toBe(HARD_HAT);
+  });
+
+  it('paints every part the colour partsOf gives it', () => {
+    const l = look({ skin: 7, hairColor: 11, eyes: 3, outfitColor: 9, legsColor: 4, feetColor: 17, head: 2, hair: 2, hat: 2, neck: 1, bag: 1 });
+    const f = gpu.fixedOf(l, pieces, beards);
+    const who = character.partsOf(l, pieces, beards);
+    const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+    for (const p of who.parts) {
+      if (!p.tint) continue;
+      const got = gpu.paintOf(gpu.ROLE[p.role], [1, 1, 1], f);
+      const want = hex(p.tint);
+      // Brows are a shade of the hair in both, by the same factor.
+      for (let k = 0; k < 3; k++) expect(got[k], `${p.mesh} (${p.role})`).toBeCloseTo(want[k]!, 1);
+    }
+    for (const e of who.extras) {
+      // This look wears a beanie, a scarf and a backpack: the three worn things that
+      // take their colour from the person.
+      const role = e.kind === 'scarf' ? gpu.ROLE.neck : e.kind === 'backpack' ? gpu.ROLE.bag : gpu.ROLE.hat;
+      expect(['beanie', 'scarf', 'backpack']).toContain(e.kind);
+      const got = gpu.paintOf(role, [1, 1, 1], f);
+      const want = hex(e.tint);
+      for (let k = 0; k < 3; k++) expect(got[k], e.kind).toBeCloseTo(want[k]!, 5);
     }
   });
 
@@ -198,8 +303,8 @@ describe('the levels', () => {
     expect(() => gpu.mergePieces([sample[0]!, new THREE.BoxGeometry()])).toThrow(/did not merge/);
   });
 
-  it('the far level is one merged outfit per head, much lighter than near', () => {
-    const f = gpu.fixedOf(look({ head: 4, top: 1, legs: 2, feet: 3 }), pieces, beards);
+  it('the far level is the same choices merged harder, without the small things', () => {
+    const f = gpu.fixedOf(look({ head: 4, hair: 7, top: 1, legs: 1, feet: 3, glasses: 1, bag: 1 }), pieces, beards);
     const near = kept(levels[0]!, f);
     const far = kept(levels[2]!, f);
     expect(far).toBeGreaterThan(100);
@@ -207,12 +312,13 @@ describe('the levels', () => {
     const slots = new Set<number>();
     const meta = levels[2]!.attributes.aMeta!;
     for (let i = 0; i < meta.count; i++) slots.add(meta.getY(i));
-    expect([...slots]).toEqual([gpu.SLOT_ID.outfit]);
+    const { face, hair, top, legs, feet, hat } = gpu.SLOT_ID;
+    expect([...slots].sort((a, b) => a - b)).toEqual([face, hair, top, legs, feet, hat]);
   });
 
   it('the tiny level is the same outfit, a small fraction of the far one', () => {
     // For people a few pixels tall: the whole city zoomed out. 55 vertices an outfit.
-    const f = gpu.fixedOf(look({ head: 4, top: 1, legs: 2, feet: 3 }), pieces, beards);
+    const f = gpu.fixedOf(look({ head: 4, top: 1, legs: 1, feet: 3 }), pieces, beards);
     const far = kept(levels[2]!, f);
     const tiny = kept(levels[3]!, f);
     expect(tiny).toBeGreaterThan(20);
@@ -318,10 +424,18 @@ describe('a frame', () => {
     crowd.dispose();
   });
 
-  it('the shader says what wears() and skinFromBake() say', () => {
+  it('the shader says what wears(), paintOf(), underHat() and skinFromBake() say', () => {
     const src = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'crowd-gpu.ts'), 'utf8');
-    expect(src).toContain('if (abs(aMeta.z - crowdWant) > 0.5 || crowdBald)');
-    expect(src).toContain('bool crowdBald = aSel2.z > 0.5 && crowdRole > 0.5 && crowdRole < 1.5 && (crowdSlot < 0.5 || crowdSlot > 5.5);');
+    // wears(): a vertex is kept when its variant is the one its slot wants.
+    expect(src).toContain('if (abs(aMeta.z - crowdWant) > 0.5) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); vGhost = 0.0; return; }');
+    // ...and each slot reads its own lane, in fixedOf's order.
+    expect(src).toContain('float crowdWant = crowdSlot < 0.5 ? aSel1.x : crowdSlot < 1.5 ? aSel1.y : crowdSlot < 2.5 ? aSel1.z : crowdSlot < 3.5 ? aSel1.w');
+    // paintOf(): worn things multiply the colour their vertices carry.
+    expect(src).toContain('else if (crowdRole < 8.5) crowdPaint = color * crowdUnpack(aCol2.z);');
+    expect(src).toContain('else if (crowdRole < 4.5) crowdPaint = aCol1.w < 0.0 ? color : crowdUnpack(aCol1.w);');
+    // underHat(): onto the shape, above the rim, for the hair slot only.
+    expect(src).toContain('if (crowdSlot > 0.5 && crowdSlot < 1.5) {');
+    expect(src).toContain('if (crowdQ > 1.0) transformed = crowdRim + crowdD / crowdQ;');
     expect(src).toContain('mat4 crowdWorld = crowdPlace * crowdSkin;');
   });
 });

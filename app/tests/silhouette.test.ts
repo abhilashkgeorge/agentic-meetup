@@ -6,46 +6,50 @@
  * whole catalog -- a set added to the wardrobe with no entry here would fall back to
  * 'short' and 'plain' and quietly dress everybody the same -- and that the shapes come
  * off the RIGHT SLOT now that they are different answers: a collar off the top, a
- * skirt off the legs, hair off the head.
+ * skirt off the legs, hair off the hairstyle (its own choice since 2026-09-29, not the
+ * head's).
  *
- * Negative control, run by hand and recorded in the commit: read `look.top` in
- * `hairOf` -> "each shape comes off its own slot" fails, the hair follows the shirt.
+ * Negative control, run by hand and recorded in the commit: read `look.head` in
+ * `hairOf` -> "each shape comes off its own slot" fails, the hair follows the face.
  */
 import { describe, expect, it } from 'vitest';
-import { BALD, LOOK_LABELS, LOOK_SIZES, STARTER, WARDROBE, type Look } from '@clone/shared';
+import { HAIRSTYLES, LOOK_LABELS, LOOK_SIZES, SHAVED, STARTER, WARDROBE, type Look } from '@clone/shared';
 import { beardOf, hairOf, skirtOf, topOf } from '../src/features/look/silhouette';
 
 const look = (over: Partial<Look> = {}): Look => ({ ...STARTER, ...over });
 
 describe('the flat silhouette', () => {
-  it('has a shape for every set in the wardrobe, and for bald', () => {
+  it('has a shape for every hairstyle and every top, and Shaved is bald', () => {
     const hairs = new Set<string>();
     const tops = new Set<string>();
-    for (let i = 0; i < WARDROBE.length; i++) {
-      const h = hairOf(look({ head: i }));
-      const t = topOf(look({ top: i }));
-      expect(h, `${WARDROBE[i]} has no hair shape`).toBeTruthy();
-      expect(h, 'only Bald is bald').not.toBe('bald');
-      expect(['plain', 'collar', 'straps', 'open'], `${WARDROBE[i]} has a strange top`).toContain(t);
-      hairs.add(h); tops.add(t);
+    for (let i = 0; i < HAIRSTYLES.length; i++) {
+      const h = hairOf(look({ hair: i }));
+      expect(h, `${HAIRSTYLES[i]} has no hair shape`).toBeTruthy();
+      if (i !== SHAVED) expect(h, 'only Shaved is bald').not.toBe('bald');
+      hairs.add(h);
     }
-    expect(hairOf(look({ head: BALD }))).toBe('bald');
+    for (let i = 0; i < WARDROBE.length; i++) {
+      const t = topOf(look({ top: i }));
+      expect(['plain', 'collar', 'straps', 'open'], `${WARDROBE[i]} has a strange top`).toContain(t);
+      tops.add(t);
+    }
+    expect(hairOf(look({ hair: SHAVED }))).toBe('bald');
     // If everything came out the same the table would be useless and the test blind.
-    expect(hairs.size, 'every head has the same hair').toBeGreaterThan(3);
+    expect(hairs.size, 'every hairstyle has the same shape').toBeGreaterThan(4);
     expect(tops.size, 'every top looks the same').toBeGreaterThan(2);
   });
 
   it('takes each shape off its own slot', () => {
-    // A person in the punk jacket with the trouser suit's head and the formal skirt is
-    // three different answers, which is exactly what the split is for.
-    const mixed = look({ head: 9, top: 7, legs: 6 });
-    expect(hairOf(mixed)).toBe('bun');        // from the head
+    // The trouser suit's face with the mohawk, the punk jacket and the formal skirt is
+    // four different answers, which is exactly what the split is for.
+    const mixed = look({ head: 9, hair: 7, top: 7, legs: 6 });
+    expect(hairOf(mixed)).toBe('mohawk');     // from the hairstyle
     expect(topOf(mixed)).toBe('open');        // from the top
     expect(skirtOf(mixed)).toBe(true);        // from the legs
     // ...and changing one slot moves nothing else.
-    expect(hairOf(look({ ...mixed, top: 0, legs: 0 }))).toBe('bun');
-    expect(topOf(look({ ...mixed, head: 0, legs: 0 }))).toBe('open');
-    expect(skirtOf(look({ ...mixed, head: 0, top: 0 }))).toBe(true);
+    expect(hairOf(look({ ...mixed, head: 0, top: 0, legs: 0 }))).toBe('mohawk');
+    expect(topOf(look({ ...mixed, head: 0, hair: 0, legs: 0 }))).toBe('open');
+    expect(skirtOf(look({ ...mixed, head: 0, hair: 0, top: 0 }))).toBe(true);
   });
 
   it('has a shape for every facial hair in the catalog', () => {
@@ -60,8 +64,8 @@ describe('the flat silhouette', () => {
   });
 
   it('never throws on an index it has not heard of', () => {
-    for (let i = 0; i < LOOK_SIZES.head + 4; i++) {
-      expect(() => hairOf(look({ head: i }))).not.toThrow();
+    for (let i = 0; i < LOOK_SIZES.hair + 4; i++) {
+      expect(() => hairOf(look({ hair: i }))).not.toThrow();
       expect(() => beardOf(look({ beard: i }))).not.toThrow();
       expect(() => topOf(look({ top: i }))).not.toThrow();
       expect(() => skirtOf(look({ legs: i }))).not.toThrow();

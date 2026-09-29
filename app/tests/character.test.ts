@@ -9,18 +9,24 @@
  *
  * Negative controls, run by hand and recorded in the commit:
  *   - drop the `_2` from 'm_casual_2' in LOOKS -> "every mesh it can ask for is really
- *     in the model" fails: nothing named `m_casual_*` is in the file.
- *   - make Bald fall through to the normal branch -> "a bald head has no hair" fails.
- *   - take every slot from `look.top` -> "wears four sets at once" fails.
+ *     in the model" fails (the Tee has no face, top, trousers or shoes) and so does
+ *     "knows about exactly the sets the build wrote".
+ *   - take every slot from `look.top` -> "wears five sets at once" fails.
+ *   - drop the scalp in `partsOf` -> "a shaved head" fails: the workwear face has no
+ *     back to its head.
+ *   - drop `fit` in `partsOf` -> "grows a hairstyle only where the face needs it" fails.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  BALD, HAIR_HEX, LOOK_SIZES, OUTFIT_HEX, SKIN_HEX, SLOT_PARTS, WARDROBE, WARDROBE_FIGURE,
-  type Look,
+  EYE_HEX, EXTRA_PARTS, HAIR_HEX, HARD_HAT, HEIGHT_SCALE, LOOK_SIZES, OUTFIT_HEX, SHAVED, SKIN_HEX, SLOT_PARTS, STARTER,
+  WARDROBE, WARDROBE_FIGURE, type Look,
 } from '@clone/shared';
-import { LOOKS, SLOTS, buildScale, clipFor, partsOf, type LookKey, type LookPieces } from '../src/features/world/character';
+import {
+  CLASS, FITTED_HAIR, FULL_SKULL, HAIR_FIT, HAT_INSIDE, HEAD_BIND, LOOKS, SCALP, SLOTS, buildScale, clipFor, partsOf,
+  roleOf, underHat, type LookKey, type LookPieces,
+} from '../src/features/world/character';
 
 const ASSETS = join(import.meta.dirname, '..', 'assets', 'characters');
 
@@ -49,10 +55,8 @@ const inFile = meshNames(join(ASSETS, 'people.glb'));
 const pieces = (key: LookKey): LookPieces | undefined => manifest.looks[key];
 const every = (v: { tris: number } & LookPieces) => SLOTS.flatMap((s) => v[s]);
 
-const look = (over: Partial<Look> = {}): Look => ({
-  figure: 0, skin: 3, body: 1, head: 0, hairColor: 0, beard: 0,
-  top: 0, legs: 0, feet: 0, outfitColor: 0, accessory: 0, ...over,
-});
+const look = (over: Partial<Look> = {}): Look => ({ ...STARTER, outfitColor: 0, ...over });
+const beards = (manifest as unknown as { beards: string[] }).beards;
 
 /**
  * Every choice the builder can make, one slot at a time.
@@ -64,9 +68,10 @@ const look = (over: Partial<Look> = {}): Look => ({
  * by "wears four sets at once".
  */
 const everyChoice = function* () {
-  for (const part of SLOT_PARTS) {
+  for (const part of [...SLOT_PARTS, 'hair', 'beard', ...EXTRA_PARTS] as const) {
     for (let i = 0; i < LOOK_SIZES[part]; i++) {
-      for (let skin = 0; skin < LOOK_SIZES.skin; skin++) yield look({ [part]: i, skin });
+      // Every face with it, because what goes on a head depends on the face.
+      for (let head = 0; head < LOOK_SIZES.head; head++) yield look({ [part]: i, ...(part === 'head' ? {} : { head }) });
     }
   }
 };
@@ -75,9 +80,15 @@ describe('dressing a person', () => {
   it('every mesh it can ask for is really in the model', () => {
     let checked = 0;
     for (const l of everyChoice()) {
-      for (const p of partsOf(l, pieces).parts) {
+      const { parts } = partsOf(l, pieces, beards);
+      for (const p of parts) {
         expect(inFile.has(p.mesh), `head ${l.head} top ${l.top}: ${p.mesh} is not in people.glb`).toBe(true);
         checked++;
+      }
+      // A set the model does not have gives no pieces at all, which the names alone
+      // would never notice: everybody has a face, a top, trousers and shoes.
+      for (const worn of ['head', 'top', 'legs', 'feet'] as const) {
+        expect(parts.some((p) => p.worn === worn), `${JSON.stringify(l)} has no ${worn}`).toBe(true);
       }
     }
     // Guard the guard: if the loop above ever iterates nothing, it proves nothing.
@@ -115,13 +126,30 @@ describe('dressing a person', () => {
     }
   });
 
-  it('gives every head hair to colour, bar the one wearing a hard hat', () => {
-    // The workwear head is modelled with a helmet on and nothing the build can call
-    // hair, so hair colour does nothing to it. That is the art, not a bug -- but it
-    // is named here so that a head QUIETLY losing its hair is still caught.
-    const bare = LOOKS.filter((key) => !manifest.looks[key]!.head.some((p) => p.role === 'hair'));
-    expect(bare, 'a head lost its hair').toEqual(['m_worker']);
-    expect(BALD, 'Bald is not the last head').toBe(LOOKS.length);
+  it('knows what every classed piece is, and every name is a real mesh in the right slot', () => {
+    const slotOf = new Map<string, string>();
+    for (const [key, v] of Object.entries(manifest.looks)) for (const slot of SLOTS) for (const p of v[slot]) slotOf.set(p.mesh, `${key}:${slot}`);
+    for (const [mesh, what] of Object.entries(CLASS)) {
+      expect(inFile.has(mesh), `${mesh} is not in people.glb`).toBe(true);
+      const slot = slotOf.get(mesh)?.split(':')[1];
+      const want = what === 'legs' ? 'legs' : what === 'feet' ? 'feet' : 'head';
+      expect(slot, `${mesh} (${what}) is on the ${slot}`).toBe(want);
+    }
+    // Every set: a face with eyes, hair, one fabric for its trousers and one for its
+    // shoes -- or picking a colour for them would do nothing on that set.
+    for (const key of LOOKS) {
+      const v = manifest.looks[key]!;
+      const roles = (slot: 'head' | 'legs' | 'feet') => v[slot].map((p) => roleOf(p));
+      expect(roles('head').filter((r) => r === 'eyes'), `${key} has no eyes to colour`).toHaveLength(1);
+      expect(roles('head').includes('hair'), `${key} has no hair`).toBe(true);
+      expect(roles('legs').filter((r) => r === 'legs'), `${key}'s trousers have no fabric`).toHaveLength(1);
+      expect(roles('feet').filter((r) => r === 'feet'), `${key}'s shoes have no fabric`).toHaveLength(1);
+    }
+    // The two hard hats are the only hats in the pack, on the two workwear heads.
+    const hats = Object.entries(CLASS).filter(([, w]) => w === 'hat').map(([m]) => m).sort();
+    expect(hats).toEqual(['m_worker_h3', 'w_worker_h4']);
+    expect(inFile.has(SCALP), 'the scalp is not in the model').toBe(true);
+    expect(CLASS[SCALP], 'the scalp is not the crew cut').toBe('hair');
   });
 
   it('ships nobody carrying a weapon', () => {
@@ -151,26 +179,26 @@ describe('dressing a person', () => {
     expect(c.parts.length, 'a dressed person is not four meshes').toBeGreaterThan(5);
   });
 
-  it('wears four sets at once, one per slot', () => {
+  it('wears five sets at once, one per choice', () => {
     // THE WHOLE FEATURE. The pack models every set in four pieces on one shared
-    // skeleton, and until this landed a person could only wear a set whole: picking
-    // "Suit" bought the suit's shoes whether or not they wanted them.
-    const c = partsOf(look({ head: 1, top: 8, legs: 7, feet: 3 }), pieces);
-    expect(c.wearing).toEqual({ head: 'w_casual', top: 'm_suit', legs: 'm_punk', feet: 'w_worker' });
-    const from = (key: string) => c.parts.filter((p) => p.mesh.startsWith(`${key}_`)).length;
-    for (const key of ['w_casual', 'm_suit', 'm_punk', 'w_worker']) {
-      expect(from(key), `nothing came from ${key}`).toBeGreaterThan(0);
-    }
-    // ...and nothing came from anywhere else.
-    expect(c.parts.every((p) => ['w_casual', 'm_suit', 'm_punk', 'w_worker'].some((k) => p.mesh.startsWith(`${k}_`))))
-      .toBe(true);
-    // Each slot contributes exactly the pieces the manifest lists for it.
-    expect(c.parts.filter((p) => p.mesh.startsWith('m_suit_')).length)
-      .toBe(manifest.looks['m_suit']!.top.length);
+    // skeleton, and the head's face and hair are separate meshes: a person wears the
+    // casual woman's face, the punk's mohawk, the suit jacket, the punk's jeans and
+    // the overalls' shoes, and nothing else of any of them.
+    const c = partsOf(look({ head: 1, hair: 7, top: 8, legs: 7, feet: 3 }), pieces, beards);
+    expect(c.wearing).toEqual({ head: 'w_casual', hair: 'm_punk', top: 'm_suit', legs: 'm_punk', feet: 'w_worker' });
+    const of = (worn: string) => c.parts.filter((p) => p.worn === worn).map((p) => p.mesh);
+    expect(of('head').every((m) => m.startsWith('w_casual_'))).toBe(true);
+    expect(of('hair').every((m) => m.startsWith('m_punk_'))).toBe(true);
+    expect(of('top')).toEqual(manifest.looks['m_suit']!.top.map((p) => p.mesh));
+    expect(of('legs')).toEqual(manifest.looks['m_punk']!.legs.map((p) => p.mesh));
+    expect(of('feet')).toEqual(manifest.looks['w_worker']!.feet.map((p) => p.mesh));
+    // The face is its set's head without the hair; the hair is the other set's hair.
+    expect(of('head').length + manifest.looks['w_casual']!.head.filter((p) => roleOf(p) === 'hair').length)
+      .toBe(manifest.looks['w_casual']!.head.length);
+    expect(of('hair')).toEqual(manifest.looks['m_punk']!.head.filter((p) => roleOf(p) === 'hair').map((p) => p.mesh));
   });
 
   it('wears facial hair as one more mesh, in their hair colour', () => {
-    const beards = (manifest as unknown as { beards: string[] }).beards;
     expect(beards.length, 'the build wrote no beards').toBeGreaterThan(2);
     const clean = partsOf(look({ beard: 0 }), pieces, beards);
     for (let i = 1; i <= beards.length; i++) {
@@ -184,37 +212,104 @@ describe('dressing a person', () => {
     expect(clean.parts.some((p) => beards.includes(p.mesh))).toBe(false);
   });
 
-  it('a bald head has no hair on it, and still has eyes', () => {
-    // THE BUG THIS EXISTS FOR: bald used to drop everything on the head that was not
-    // skin. That is not just the hair -- it is the eyes and the eyebrows, which are
-    // their own little meshes -- so picking Bald gave you a smooth skull with a blank
-    // face. Invisible at town size, which is why it shipped; unmissable in the
-    // builder, where the head fills a third of the screen.
-    const bald = partsOf(look({ head: BALD }), pieces);
-    const onHead = bald.parts.filter((p) => /_h\d+$/.test(p.mesh));
-    expect(bald.parts.some((p) => p.role === 'hair')).toBe(false);
-    expect(onHead.some((p) => p.role === 'skin'), 'a bald person still has a face').toBe(true);
-    expect(onHead.filter((p) => p.role === 'plain').length, 'a bald person has no eyes or brows')
-      .toBeGreaterThanOrEqual(2);
-    expect(bald.parts.some((p) => p.role === 'top'), 'and is still dressed').toBe(true);
-    // Everything the head had, bar the hair itself.
-    const head = manifest.looks[LOOKS[0]!]!.head;
-    expect(onHead).toHaveLength(head.filter((x) => x.role !== 'hair').length);
-    // ...and a head that is not bald does have some.
-    expect(partsOf(look({ head: 0 }), pieces).parts.some((p) => p.role === 'hair')).toBe(true);
+  it('a shaved head has no hair on it, still has eyes, and always has a back', () => {
+    // Bald once dropped everything on the head that was not skin -- the eyes and brows
+    // too -- and gave a smooth skull with a blank face.
+    for (let head = 0; head < LOOK_SIZES.head; head++) {
+      const c = partsOf(look({ head, hair: SHAVED }), pieces, beards);
+      expect(c.parts.some((p) => p.role === 'hair'), `face ${head} kept hair`).toBe(false);
+      expect(c.parts.filter((p) => p.role === 'eyes'), `face ${head} has no eyes`).toHaveLength(1);
+      // The faces that end at the hairline -- whose hair was the back of their head --
+      // get the pack's own scalp, in their skin; the whole skulls need nothing.
+      const scalp = c.parts.filter((p) => p.mesh === SCALP);
+      if (FULL_SKULL.has(head)) expect(scalp, `face ${head} has a second skull`).toHaveLength(0);
+      else {
+        expect(scalp, `face ${head} has no back to its head`).toHaveLength(1);
+        expect(scalp[0]).toMatchObject({ role: 'skin', worn: 'hair', tint: SKIN_HEX[STARTER.skin] });
+      }
+    }
+    // ...and hair on, no scalp at all: the hair is the back of the head.
+    expect(partsOf(look({ head: 4, hair: 0 }), pieces).parts.some((p) => p.mesh === SCALP)).toBe(false);
   });
 
-  it('paints skin, hair and the top from the look, and leaves the rest alone', () => {
-    const c = partsOf(look({ skin: 5, hairColor: 6, outfitColor: 2, top: 8, head: 1 }), pieces);
+  it('grows a hairstyle only where the face needs it', () => {
+    for (let head = 0; head < LOOK_SIZES.head; head++) {
+      for (let hair = 0; hair < LOOK_SIZES.hair; hair++) {
+        const c = partsOf(look({ head, hair }), pieces);
+        const fits = new Set(c.parts.filter((p) => p.worn === 'hair' && p.role === 'hair').map((p) => p.fit));
+        const want = HAIR_FIT[hair]?.[head];
+        if (hair === SHAVED) { expect(fits.size).toBe(0); continue; }
+        expect([...fits], `hair ${hair} on face ${head}`).toEqual([want]);
+        if (want !== undefined) expect(FITTED_HAIR.some((f) => f.hair === hair && f.fit === want)).toBe(true);
+      }
+    }
+    // Every fit is a few percent, never a shrink: the hair is made to cover more.
+    for (const { fit } of FITTED_HAIR) { expect(fit).toBeGreaterThan(1); expect(fit).toBeLessThan(1.15); }
+    expect(new Set(FITTED_HAIR.map((f) => `${f.hair}:${f.fit}`)).size).toBe(FITTED_HAIR.length);
+  });
+
+  it('pulls hair in under a hat, above its rim and nowhere else', () => {
+    for (const [hat, inside] of Object.entries(HAT_INSIDE)) {
+      const rimY = HEAD_BIND[1] + inside.rim;
+      const midZ = HEAD_BIND[2] + 0.014;
+      // Far out above the rim: onto the shape.
+      const up = underHat(0, rimY + 0.3, midZ, Number(hat))!;
+      expect(up, `hat ${hat} left a crest standing`).not.toBeNull();
+      expect(up[1] - rimY).toBeCloseTo(inside.radii[1], 6);
+      const side = underHat(HEAD_BIND[0] + 0.3, rimY + 0.01, midZ, Number(hat))!;
+      expect(side[0] - HEAD_BIND[0]).toBeLessThanOrEqual(inside.radii[0] + 1e-9);
+      // Inside it, and below the rim: where it was.
+      expect(underHat(HEAD_BIND[0], rimY + 0.01, midZ, Number(hat))).toBeNull();
+      expect(underHat(HEAD_BIND[0] + 0.3, rimY - 0.001, midZ, Number(hat))).toBeNull();
+    }
+    // No hat: nothing moves. Every hat the catalog has is covered.
+    expect(underHat(0, 3, 0, 0)).toBeNull();
+    for (let hat = 1; hat < LOOK_SIZES.hat; hat++) expect(HAT_INSIDE[hat], `hat ${hat} has no inside`).toBeDefined();
+    // The hard hat is the pack's own mesh, off the workwear head of the face's figure.
+    const hard = partsOf(look({ head: 1, hat: HARD_HAT }), pieces).parts.filter((p) => p.worn === 'hat');
+    expect(hard.map((p) => p.mesh)).toEqual(['w_worker_h4']);
+    expect(partsOf(look({ head: 0, hat: HARD_HAT }), pieces).parts.filter((p) => p.worn === 'hat').map((p) => p.mesh))
+      .toEqual(['m_worker_h3']);
+  });
+
+  it('paints everything a person chose, and leaves the rest as the artist made it', () => {
+    const c = partsOf(look({ skin: 5, hairColor: 6, eyes: 4, outfitColor: 2, top: 8, head: 1, hair: 1 }), pieces);
     const of = (role: string) => c.parts.filter((p) => p.role === role);
     expect(of('skin').every((p) => p.tint === SKIN_HEX[5])).toBe(true);
     expect(of('hair').every((p) => p.tint === HAIR_HEX[6])).toBe(true);
+    expect(of('eyes').every((p) => p.tint === EYE_HEX[4])).toBe(true);
+    // Brows follow the hair, a shade darker.
+    for (const b of of('brows')) {
+      const [h, t] = [HAIR_HEX[6]!, b.tint!].map((x) => parseInt(x.slice(1), 16));
+      expect(t! >> 16).toBeLessThan(h! >> 16);
+    }
     expect(of('top')).toHaveLength(1);
     expect(of('top')[0]!.tint).toBe(OUTFIT_HEX[2]);
-    // Trousers and shoes keep the artist's colours; one flat colour head to toe is
-    // what made the old capsules look like skittles.
+    // Trousers and shoes are "as made" unless a colour is chosen for each...
+    expect(of('legs').every((p) => p.tint === null)).toBe(true);
+    expect(of('feet').every((p) => p.tint === null)).toBe(true);
+    const coloured = partsOf(look({ legsColor: 3, feetColor: 13 }), pieces);
+    expect(coloured.parts.filter((p) => p.role === 'legs').map((p) => p.tint)).toEqual([OUTFIT_HEX[2]]);
+    expect(coloured.parts.filter((p) => p.role === 'feet').map((p) => p.tint)).toEqual([OUTFIT_HEX[12]]);
+    // ...and soles, stripes and belts are always the artist's.
     expect(of('plain').length, 'a person is more than a top and a face').toBeGreaterThan(2);
     expect(of('plain').every((p) => p.tint === null)).toBe(true);
+  });
+
+  it('wears what goes on top in its own place, several at once', () => {
+    const all = partsOf(look({ hat: 1, glasses: 2, earrings: 1, neck: 3, bag: 1 }), pieces);
+    expect(all.extras.map((e) => e.kind).sort()).toEqual(['backpack', 'bowtie', 'cap', 'studs', 'sunglasses']);
+    expect(partsOf(look(), pieces).extras).toEqual([]);
+    // Every choice of every place is something, bar "None" -- and the hard hat, which
+    // is a mesh of the pack's, not a shape.
+    for (const part of EXTRA_PARTS) {
+      for (let i = 1; i < LOOK_SIZES[part]; i++) {
+        const e = partsOf(look({ [part]: i }), pieces).extras;
+        if (part === 'hat' && i === HARD_HAT) { expect(e).toEqual([]); continue; }
+        expect(e, `${part} ${i}`).toHaveLength(1);
+        expect(e[0]!.tint).toMatch(/^#[0-9a-f]{6}$/);
+      }
+    }
   });
 
   it('is the same person every time, and a different one when one slot changes', () => {
@@ -222,16 +317,25 @@ describe('dressing a person', () => {
     expect(partsOf(look({ top: 2, head: 4 }), pieces)).toEqual(a);
     expect(partsOf(look({ top: 3, head: 4 }), pieces)).not.toEqual(a);
     expect(partsOf(look({ top: 2, head: 4, feet: 5 }), pieces)).not.toEqual(a);
+    expect(partsOf(look({ top: 2, head: 4, hair: 6 }), pieces)).not.toEqual(a);
   });
 
-  it('scales by build without changing anybody\'s height', () => {
+  it('scales by build and by height, each on its own', () => {
     for (let b = 0; b < LOOK_SIZES.body; b++) {
       const [x, y, z] = buildScale(look({ body: b }));
-      expect(y, 'height must not vary, or people read as being further away').toBe(1);
+      expect(y, 'build changed their height').toBe(1);
       expect(x).toBeGreaterThan(0.5);
       expect(z).toBeGreaterThan(0.5);
     }
     expect(buildScale(look({ body: 0 }))[0]).toBeLessThan(buildScale(look({ body: 2 }))[0]);
+    // A few percent either way, no more: people who differ more at this scale read as
+    // standing at different distances.
+    for (let h = 0; h < LOOK_SIZES.height; h++) {
+      const [x, y] = buildScale(look({ height: h }));
+      expect(y).toBe(HEIGHT_SCALE[h]);
+      expect(Math.abs(y - 1)).toBeLessThan(0.061);
+      expect(x, 'height changed their build').toBe(1);
+    }
   });
 
   it('walks when moving and idles when not, and the model has both clips', () => {

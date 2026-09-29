@@ -31,7 +31,7 @@ export default function CharacterStep() {
           This is you in the square, and all anyone sees of you until you share your profile with them. Photos come next.
         </Text>
       </View>
-      <CharacterBuilder preview={<Preview height={330} />} onSaved={next} onSkip={next} />
+      <CharacterBuilder preview={(focus) => <Preview height={340} focus={focus} />} onSaved={next} onSkip={next} />
     </Screen>
   );
 }

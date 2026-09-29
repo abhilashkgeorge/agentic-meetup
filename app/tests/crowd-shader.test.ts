@@ -24,6 +24,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as THREE from 'three';
+import { STARTER } from '@clone/shared';
 import type { Manifest } from '../src/features/world/character-mesh';
 
 type Ctor = { new (type: string, init?: Record<string, unknown>): Event };
@@ -101,7 +102,8 @@ async function crowdShaders(): Promise<[string, string]> {
   scene.add(crowd.group);
   crowd.update([{
     ref: 'a', x: 0, z: -3, facing: 0, seed: 1, ghost: true, state: 'walking',
-    look: { figure: 0, skin: 3, body: 1, head: 0, hairColor: 0, beard: 0, top: 0, legs: 0, feet: 0, outfitColor: 0, accessory: 0 },
+    // A hat on, so the hat-hair branch is in the program that is compiled.
+    look: { ...STARTER, hat: 2, bag: 1 },
   }], 1, { eyeX: 0, eyeZ: 0, flat: 0, time: 1, dt: 1 / 60, scale: 0.16 });
   renderer.render(scene, new THREE.PerspectiveCamera(62, 0.5, 0.08, 51));
   const vertex = sources.find((s) => s.includes('crowdWorld'));
