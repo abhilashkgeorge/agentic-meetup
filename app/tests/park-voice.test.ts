@@ -176,6 +176,10 @@ describe('voice-room.ts (source shape: only a voice server sees what it does)', 
     expect(src).toMatch(/room\.connect\([^)]*autoSubscribe:\s*false/);
   });
 
+  it('keeps LiveKit to warnings, not a statistics dump every half minute', () => {
+    expect(src).toMatch(/lk\.setLogLevel\('warn'\);/);
+  });
+
   it('says who may listen first, then opens the mic, and only when the pass allows speech', () => {
     const perms = apply.indexOf('setTrackSubscriptionPermissions(');
     const mic = apply.indexOf('setMicrophoneEnabled(');

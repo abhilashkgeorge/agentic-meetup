@@ -2649,7 +2649,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     the laptop with LiveKit's public development keys, which a production server refuses to start with; a real host
     and keys are the founder's. A mic ban is automatic, with nobody reviewing it first
     (`server/src/env.ts:422`,
-    `app/src/features/world/voice-room.ts:197`).
+    `app/src/features/world/voice-room.ts:200`).
 
 ---
 

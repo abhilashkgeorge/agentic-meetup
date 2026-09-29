@@ -27,6 +27,9 @@ function load(): Promise<Lib | null> {
       // Before livekit-client is touched: WebRTC's globals, the phone's audio session.
       rn.registerGlobals();
       const lk = await import('livekit-client');
+      // At its default, "info", it prints the connection's statistics every half minute,
+      // forty lines at a time (seen on the Seeker, 2026-09-29): warnings and errors only.
+      lk.setLogLevel('warn');
       return { rn, lk };
     } catch (err) {
       console.warn('[voice] not in this build', (err as Error).message);
