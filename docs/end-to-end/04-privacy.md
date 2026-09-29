@@ -26,7 +26,7 @@ details), and **database roles** that limit what each part of the server can rea
   they are within about 20 m. Nothing said is written anywhere; a line holding a phone number, email,
   handle or link is not sent; people blocked either way never see or hear each other there
   ([shared/src/events.ts:82] `export const PARK_EARSHOT = 2.5;`,
-  [server/src/park/room.ts:135] `if (contactDetail(text)) return { ok: false, reason: 'contact' };`).
+  [server/src/park/room.ts:137] `if (contactDetail(text)) return { ok: false, reason: 'contact' };`).
   "Find someone to talk to" ranks the free people there by what they have in common, with matching's
   own reading of both files, but tells the one asked only one thing both of them made public ("You both
   like climbing"), never a word from a fact only matching may use. On a bench the two of them see and
