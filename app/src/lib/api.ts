@@ -921,8 +921,26 @@ export interface ConversationRow {
   quiet?: boolean;
 }
 
+/**
+ * A chat whose other person deleted their account (server 0082): held hidden for 30 days
+ * so you can still report them. Never the words -- only that they left.
+ */
+export interface LeftChatRow {
+  id: string;
+  /** The name you knew them by. */
+  name: string;
+  leftAt: string;
+  lastAt: string | null;
+  /** You reported it already; once is all. */
+  reported: boolean;
+}
+
 export const getConversations = (token: string) =>
-  get<{ me: string; conversations: ConversationRow[] }>('/v1/conversations', token);
+  get<{ me: string; conversations: ConversationRow[]; left?: LeftChatRow[] }>('/v1/conversations', token);
+
+/** Report somebody who left, from the chat held for you (server 0082). Once, within 30 days. */
+export const reportLeftChat = (token: string, id: string, args: { reason: string; detail?: string }) =>
+  post<{ ok: boolean }>(`/v1/left/${id}/report`, token, args);
 
 export interface HistoryMessage {
   id: string;

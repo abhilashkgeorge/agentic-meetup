@@ -13,7 +13,7 @@
  */
 import { useState } from 'react';
 import { Alert, Linking, Modal, Pressable, Text, View } from 'react-native';
-import { blockInPark, blockMatch, blockUser, reportInPark, reportMatch, reportUser } from '../../lib/api';
+import { blockInPark, blockMatch, blockUser, reportInPark, reportLeftChat, reportMatch, reportUser } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
   Button, Chip, ChipGroup, Field, Surface, radius, space, type, usePalette,
@@ -22,10 +22,12 @@ import { REPORT_REASONS, SUPPORT_EMAIL, supportMailto, type ReportReason } from 
 
 export function SafetySheet({ target, name, aboutVoice, onClose, onDone }: {
   /**
-   * A match (from a card or a profile), a person with their match (from a chat), or
-   * somebody in the park, who is only the ref the park gave them.
+   * A match (from a card or a profile), a person with their match (from a chat),
+   * somebody in the park, who is only the ref the park gave them, or somebody who deleted
+   * their account, by the chat held for you (server 0082) -- report only: there is nobody
+   * left to block.
    */
-  target: { rendezvousId: string; userId?: string } | { parkRef: string };
+  target: { rendezvousId: string; userId?: string } | { parkRef: string } | { leftChatId: string };
   /** How to call them in the sheet: a first name, or "them". */
   name?: string;
   /**
@@ -45,6 +47,7 @@ export function SafetySheet({ target, name, aboutVoice, onClose, onDone }: {
   const [thanks, setThanks] = useState(false);
   const [outLoud, setOutLoud] = useState(aboutVoice === true);
   const who = name ?? 'them';
+  const gone = 'leftChatId' in target;
 
   const block = () => {
     Alert.alert(
@@ -55,7 +58,7 @@ export function SafetySheet({ target, name, aboutVoice, onClose, onDone }: {
         {
           text: 'Block', style: 'destructive',
           onPress: () => {
-            if (!token) return;
+            if (!token || 'leftChatId' in target) return;
             const done = 'parkRef' in target ? blockInPark(token, target.parkRef)
               : target.userId ? blockUser(token, target.userId) : blockMatch(token, target.rendezvousId);
             void done.then(() => { onClose(); onDone(); });
@@ -71,6 +74,8 @@ export function SafetySheet({ target, name, aboutVoice, onClose, onDone }: {
     let ok;
     if ('parkRef' in target) {
       ok = await reportInPark(token, { ref: target.parkRef, reason, detail: detail.trim(), voice: outLoud });
+    } else if ('leftChatId' in target) {
+      ok = await reportLeftChat(token, target.leftChatId, { reason, detail: detail.trim() });
     } else {
       const args = { rendezvousId: target.rendezvousId, reason, detail: detail.trim() };
       ok = target.userId ? await reportUser(token, { ...args, userId: target.userId }) : await reportMatch(token, args);
@@ -87,14 +92,14 @@ export function SafetySheet({ target, name, aboutVoice, onClose, onDone }: {
           <>
             <Text style={[type.title, { color: p.text }]}>Thank you</Text>
             <Text style={[type.body, { color: p.textSecondary }]}>
-              {who === 'them' ? 'They' : who} can't reach you any more, and somebody will look at this.
+              {gone ? 'Somebody will look at this.' : `${who === 'them' ? 'They' : who} can't reach you any more, and somebody will look at this.`}
             </Text>
             <Button label="Done" variant="primary" onPress={() => { onClose(); onDone(); }} />
           </>
         ) : (
           <>
-            <Text style={[type.title, { color: p.text }]}>Block or report</Text>
-            <Button label={`Block ${who}`} variant="secondary" onPress={block} />
+            <Text style={[type.title, { color: p.text }]}>{gone ? `Report ${who}` : 'Block or report'}</Text>
+            {!gone && <Button label={`Block ${who}`} variant="secondary" onPress={block} />}
             <Text style={[type.label, { color: p.textSecondary }]}>REPORT -- WHAT HAPPENED?</Text>
             <ChipGroup>
               {REPORT_REASONS.map((r) => (
@@ -109,10 +114,16 @@ export function SafetySheet({ target, name, aboutVoice, onClose, onDone }: {
             )}
             <Field value={detail} onChangeText={setDetail} placeholder="Anything else we should know (optional)"
                    multiline minHeight={60} maxLength={2000} />
-            <Text style={[type.callout, { color: p.textTertiary }]}>
-              If you have messages with {who} in Chats, the reviewer can read them.
-            </Text>
-            <Button label="Report and block" variant="primary" disabled={!reason} loading={busy} onPress={() => void report()} />
+            {gone ? (
+              <Text style={[type.callout, { color: p.textTertiary }]}>
+                Your chat with them was kept hidden when they left. The reviewer can read it.
+              </Text>
+            ) : (
+              <Text style={[type.callout, { color: p.textTertiary }]}>
+                If you have messages with {who} in Chats, the reviewer can read them.
+              </Text>
+            )}
+            <Button label={gone ? 'Report' : 'Report and block'} variant="primary" disabled={!reason} loading={busy} onPress={() => void report()} />
             <Pressable onPress={() => void Linking.openURL(supportMailto('Report'))} accessibilityRole="link">
               <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
                 Something urgent? Write to {SUPPORT_EMAIL}

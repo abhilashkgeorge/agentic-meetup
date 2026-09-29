@@ -134,6 +134,13 @@ export const messageRoutes = new Hono()
       }
     });
 
+    // Chats held after the other person deleted their account (0082): "They left", with
+    // the name this person knew them by -- never the words -- for the thirty days a report
+    // can still be made. Only this person's, and only unexpired: the policy says so.
+    const left = await tenantSession(ctx, async (db) => (await db.query<{
+      id: string; left_name: string | null; last_at: Date | null; left_at: Date; reported_at: Date | null;
+    }>('SELECT id, left_name, last_at, left_at, reported_at FROM left_chats ORDER BY left_at DESC')).rows);
+
     return c.json({
       // The caller's own id, so the phone can tell its own messages from theirs on a
       // pushed event. It used to have no way to know, and guessed from `mine` on
@@ -150,6 +157,13 @@ export const messageRoutes = new Hono()
         lastFromMe: r.last_sender === ctx.userId,
         unread: Number(r.unread),
         quiet: r.quiet === true,
+      })),
+      left: left.map((l) => ({
+        id: l.id,
+        name: l.left_name ?? 'Someone',
+        leftAt: l.left_at.toISOString(),
+        lastAt: l.last_at ? l.last_at.toISOString() : null,
+        reported: l.reported_at !== null,
       })),
     });
   })

@@ -28,7 +28,7 @@ words are the date idea, written earlier (stage 7).
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
    [server/src/matching/orchestrator.ts:617] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
-   [app/src/features/dm/conversations-screen.tsx:94] `: 'Say something'`). If her app is closed,
+   [app/src/features/dm/conversations-screen.tsx:107] `: 'Say something'`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
    ([server/src/api/chat.ts:281] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,
@@ -128,21 +128,28 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   person's sheet in the town, and the check-in's "felt unsafe" step
   ([app/src/features/dm/thread-screen.tsx:226] `right={{ glyph: '⋯', label: 'Block or report', onPress: stop }}`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
-  are not told." ([app/src/features/safety/safety-sheet.tsx:52] `'You will never see each other again, anywhere in the app. They are not told.',`).
+  are not told." ([app/src/features/safety/safety-sheet.tsx:55] `'You will never see each other again, anywhere in the app. They are not told.',`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
   "Inappropriate messages or photos", "Fake profile", "Seems under 18", "Spam or a scam", "Made
   me feel unsafe", "Something else"; an optional note (up to 2,000 characters); the button
   "Report and block"; and "Something urgent? Write to" the support address
   ([app/src/features/safety/reasons.ts:17] `{ id: 'harassment', label: 'Harassment or threats' },`,
   [app/src/features/safety/reasons.ts:23] `{ id: 'other', label: 'Something else' },`,
-  [app/src/features/safety/safety-sheet.tsx:118] `Something urgent? Write to {SUPPORT_EMAIL}`).
+  [app/src/features/safety/safety-sheet.tsx:129] `Something urgent? Write to {SUPPORT_EMAIL}`).
   A report always blocks too ([server/src/messaging/store.ts:220] `await block(c, args.reporterId, args.reportedId);`).
   Above the button: "If you have messages with Meera in Chats, the reviewer can read them." Since
   2026-09-29 the report takes a copy of their chat when it is made -- the last 200 messages, each
   marked "Them" or "Reporter", no names -- and the copy outlives both accounts, so deleting yours
   does not delete what you said to the person who reported you
-  ([app/src/features/safety/safety-sheet.tsx:113] `If you have messages with {who} in Chats, the reviewer can read them.`,
+  ([app/src/features/safety/safety-sheet.tsx:123] `If you have messages with {who} in Chats, the reviewer can read them.`,
   [server/migrations/0080_reported_chat_kept.sql:73] `CREATE TRIGGER reports_keep_chat AFTER INSERT ON reports`).
+- **If the other person deletes their account** (since 2026-09-29): the chat no longer just vanishes.
+  It stays in Chats for 30 days under their name, with "They left"; tapping it says "They deleted their
+  account. Your chat is kept hidden for 30 days, only in case you want to report something. Then it is
+  deleted." and offers Report, once. The report sheet then has no Block (there is nobody to block) and
+  says "Your chat with them was kept hidden when they left. The reviewer can read it." The words are never
+  shown to the person who stayed ([app/src/features/dm/left.ts:11] `export const LEFT_LINE = 'They left';`,
+  [server/src/api/messages.ts:315] `.post('/v1/left/:id/report', async (c) => {`).
 - **Effect, both ways:** the card, reveal, chat, town seat, photos and date idea disappear for
   both; sends are refused; they are never matched again
   ([server/migrations/0064_bans_and_apart.sql:54] `SELECT block_exists(me, other) OR is_banned(other)`).

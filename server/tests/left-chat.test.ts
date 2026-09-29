@@ -15,6 +15,8 @@
  *     reviewer, who reads them as "them" and "reporter", and it is keyed to the phone of
  *     the one who left, so it points at them again if they come back;
  *   - nobody else can report it;
+ *   - their chat list says they left -- the name they knew, never the words -- and says
+ *     so once they reported it; nobody else's list shows it;
  *   - thirty days on it is invisible and unreportable at once, and the sweep deletes it;
  *   - a chat the two had blocked their way out of is not held;
  *   - the person who stayed deleting their own account takes their holds with them.
@@ -23,7 +25,8 @@
  *   - erasure without the hold                      -> "held for the person who stayed" fails;
  *   - report_left_chat without copying the words    -> "can report it, once" fails;
  *   - the policy without its expiry                 -> "invisible and unreportable" fails;
- *   - the sweep deleting nothing                    -> "the sweep deletes it" fails.
+ *   - the sweep deleting nothing                    -> "the sweep deletes it" fails;
+ *   - the chat list without the holds               -> "their chat list says they left" fails.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
@@ -75,6 +78,10 @@ const reportLeft = (who: P, id: string) => messageRoutes.request(`/v1/left/${id}
   method: 'POST', headers: { Authorization: `Bearer ${who.token}`, 'Content-Type': 'application/json' },
   body: JSON.stringify({ reason: 'harassment', detail: 'threats, then he deleted his account' }),
 });
+/** `who`'s chat list, as the phone reads it. */
+const list = async (who: P) => (await (await messageRoutes.request('/v1/conversations', {
+  headers: { Authorization: `Bearer ${who.token}` },
+})).json()) as { conversations: { id: string }[]; left: { id: string; name: string; reported: boolean }[] };
 const can = async (role: string, table: string, priv: string) => (await owner.query<{ ok: boolean }>(
   'SELECT has_table_privilege($1, $2, $3) AS ok', [role, table, priv])).rows[0]!.ok;
 
@@ -123,12 +130,23 @@ describe('a chat, after one of the two deletes their account', () => {
       .rejects.toThrow(/permission denied/);
   });
 
+  it('shows in their chat list that he left -- his name, never the words -- and in nobody else\'s', async () => {
+    const mine = await list(asha);
+    expect(mine.left, 'her chat with him vanished from her list').toEqual([
+      expect.objectContaining({ id: holdId, name: 'Ravi', reported: false })]);
+    expect(JSON.stringify(mine), 'the held words reached her list').not.toMatch(/regret|please stop|where you work/);
+    expect(mine.conversations).toEqual([]);
+    const onlooker = await person('Onlooker');
+    expect((await list(onlooker)).left).toEqual([]);
+  });
+
   it('can be reported by the person who stayed, once: the words reach the reviewer, keyed to his phone', async () => {
     const someone = await person('Someone');
     expect((await reportLeft(someone, holdId)).status, 'somebody else reported a chat held for her').toBe(404);
 
     expect((await reportLeft(asha, holdId)).status).toBe(200);
     expect((await reportLeft(asha, holdId)).status, 'reported twice').toBe(404);
+    expect((await list(asha)).left.find((l) => l.id === holdId)?.reported, 'her list did not say she reported it').toBe(true);
     const { rows } = await owner.query<{ id: string; reported_id: string | null; reported_phone_hmac: string | null; reason: string }>(
       'SELECT id, reported_id, reported_phone_hmac, reason FROM reports WHERE reporter_id = $1', [asha.userId]);
     expect(rows).toHaveLength(1);

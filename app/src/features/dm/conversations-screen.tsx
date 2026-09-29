@@ -10,13 +10,15 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Text, View } from 'react-native';
-import { getConversations, getMatches } from '../../lib/api';
+import { Alert, Text, View } from 'react-native';
+import { getConversations, getMatches, type LeftChatRow } from '../../lib/api';
 import { PersonAvatar } from '../look/person-avatar';
 import { ago } from '../../lib/ago';
 import { useSession } from '../../store/session';
 import { useDm } from '../../store/dm';
 import { QUIET_LINE } from './date-idea';
+import { LEFT_LINE, leftNotice } from './left';
+import { SafetySheet } from '../safety/safety-sheet';
 import {
   Crease, Empty, Row, Screen, ScreenTitle, Surface,
   radius, space, type, usePalette,
@@ -29,6 +31,9 @@ export default function ConversationsScreen() {
   const setConversations = useDm((s) => s.setConversations);
   const setMe = useDm((s) => s.setMe);
   const [waiting, setWaiting] = useState(0);
+  // Chats whose other person deleted their account (server 0082): "They left".
+  const [left, setLeft] = useState<LeftChatRow[]>([]);
+  const [reporting, setReporting] = useState<LeftChatRow | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -37,12 +42,20 @@ export default function ConversationsScreen() {
     // rows carry `mine`; live events carry only a sender.
     if (list?.me) setMe(list.me);
     setConversations(list?.conversations ?? []);
+    setLeft(list?.left ?? []);
     setWaiting((matches?.matches ?? []).filter((m) => m.waitingOnYou).length);
   }, [token, setConversations, setMe]);
 
   // Re-read on every focus, not once on mount. Coming back from a conversation with
   // unread counts that have not moved is the classic stale-inbox bug.
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  const openLeft = (l: LeftChatRow) => {
+    const said = leftNotice(l);
+    Alert.alert(said.title, said.body, said.canReport
+      ? [{ text: 'Not now', style: 'cancel' }, { text: 'Report', onPress: () => setReporting(l) }]
+      : [{ text: 'OK' }]);
+  };
 
   return (
     <Screen onRefresh={() => void load()} padded={false}>
@@ -63,7 +76,7 @@ export default function ConversationsScreen() {
           </Surface>
         )}
 
-        {conversations.length === 0 ? (
+        {conversations.length === 0 && left.length === 0 ? (
           <Empty
             title="No conversations yet"
             body="When you and someone else both say yes, the conversation opens here. Nobody can message you before that."
@@ -99,7 +112,28 @@ export default function ConversationsScreen() {
                 />
               </View>
             ))}
+            {left.map((l, i) => (
+              <View key={l.id}>
+                {(i > 0 || conversations.length > 0) && <Crease />}
+                <Row
+                  left={<PersonAvatar photoId={null} name={l.name} />}
+                  title={l.name}
+                  subtitle={LEFT_LINE}
+                  value={ago(l.leftAt)}
+                  onPress={() => openLeft(l)}
+                  last
+                />
+              </View>
+            ))}
           </Surface>
+        )}
+        {reporting && (
+          <SafetySheet
+            target={{ leftChatId: reporting.id }}
+            name={reporting.name}
+            onClose={() => setReporting(null)}
+            onDone={() => void load()}
+          />
         )}
       </View>
     </Screen>
