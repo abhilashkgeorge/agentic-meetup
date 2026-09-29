@@ -33,11 +33,11 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 4. **Closed on 2026-09-29: "Matches" on a situation want.** A want tied to a situation question shows only
     "A private topic. Their answer is never shown.", whatever the check found, and the after-date check-in no
     longer asks about it ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
-5. **The square itself can still be probed** (read, not run). Strangers in the square are people who pass your
-    rules, so flipping a must-have and reopening the town shows whether a stranger you recognise by their character
-    is still there; the sample is 40 nearest plus 24 recent and refreshes every 30 seconds
-    ([server/src/api/world.ts:177] `const near = await candidateIdsNear(db, me, 40);`,
-    [server/src/api/world.ts:94] `const SAMPLE_TTL_MS = 30_000;`).
+5. **Closed on 2026-09-29: probing the square.** The square's strangers are picked once a day with both people's
+    rules as they stand then, so flipping a must-have (or your own answer) changes nothing there until tomorrow;
+    a block, a ban or leaving the pool still takes somebody out at once
+    ([server/src/api/world.ts:180] `let ids = hit?.day === today ? hit.ids : null;`,
+    [server/src/matching/candidates.ts:127] `export async function stillThere(c: PoolClient, userId: string, ids: readonly string[]): Promise<string[]> {`).
 6. **Word lists have gaps.** The private-topic list is finite ("family", "wedding", "Diwali" are not on it), and the
     talk and answer sheets also use "goal" and "dislikes" sentences, which the card's own rule leaves out as the place
     "where faith, politics and children are said in prose"

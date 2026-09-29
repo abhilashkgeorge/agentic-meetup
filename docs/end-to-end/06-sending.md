@@ -11,7 +11,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 |---|---|---|---|---|---|
 | Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe {AI:sheet} | `rounds` row (queued) | Arjun | [server/src/api/dating.ts:956] `.post('/v1/matches/run', async (c) => {` |
 | The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | [server/src/matching/rounds.ts:161] `ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED)` |
-| The candidate list | Real people first, then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | [server/src/matching/candidates.ts:132] `ORDER BY b.is_synthetic ASC, b.last_active_at DESC` |
+| The candidate list | Real people first, then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | [server/src/matching/candidates.ts:147] `ORDER BY b.is_synthetic ASC, b.last_active_at DESC` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | {AI:wants} + code | Want results kept for the cards | Arjun (on his cards) | [server/src/matching/orchestrator.ts:217] `const order = pre && !target ? demote(shortlist.order, notMetCounts(pre.byId)) : shortlist.order;` |
 | The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | [server/src/matching/orchestrator.ts:238] `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, rank_score)` |
 | Each pair | The agents' exchange and the two cards (stages 7 and 8) | {AI:talk} + code | Two card rows per pair | Each person, their own card | [server/src/matching/brief.ts:644] `(rendezvous_id, for_user, headline, overlap_quotes, concern, questions)` |
@@ -64,7 +64,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
   ([app/src/features/world/agent-sheet.tsx:42] `One of the people your agent could meet.`,
   [app/src/features/world/agent-sheet.tsx:64] `Around {areaName(agent.area)}`).
   The 40 strangers in the square are chosen by the preference score, not real-first
-  ([server/src/api/world.ts:180] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
+  ([server/src/api/world.ts:187] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
 
 ### 6.2 Limits
 
@@ -119,8 +119,8 @@ After the SQL, three more steps remove people:
   [server/migrations/0022_rendezvous.sql:44] `CREATE UNIQUE INDEX rendezvous_pair ON rendezvous (user_a, user_b);`).
 - **Weekly exposure cap.** A real person already met by 5 other real people's rounds in the
   last 7 days is skipped. Practice profiles are never capped
-  ([server/src/matching/candidates.ts:151] `Number(process.env.WEEKLY_REAL_EXPOSURE ?? 5)`,
-  [server/src/matching/candidates.ts:167] `WHERE r.requested_at > now() - interval '7 days'`).
+  ([server/src/matching/candidates.ts:166] `Number(process.env.WEEKLY_REAL_EXPOSURE ?? 5)`,
+  [server/src/matching/candidates.ts:182] `WHERE r.requested_at > now() - interval '7 days'`).
 - **Claims.** Two rounds running at once cannot claim the same pair
   ([server/src/matching/orchestrator.ts:240] `ON CONFLICT (user_a, user_b) DO NOTHING`).
 

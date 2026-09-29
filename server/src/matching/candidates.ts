@@ -116,6 +116,21 @@ export const ALL_CLAUSES = ['gender', 'age', 'distance', 'intent', 'dealbreakers
 const build = (active: readonly string[]) =>
   `SELECT b.user_id ${BASE} ${active.map((k) => CLAUSES[k] ?? '').join('\n')}`;
 
+/**
+ * Of `ids`, the ones this person could still meet on the SAFETY clauses alone -- both in
+ * the pool, the practice rule, no block either way -- and none of either person's wants
+ * or rules. The square checks its day's sample with this on every look (api/world.ts):
+ * a block, a ban or leaving the pool takes somebody out at once, while a rule flipped
+ * today changes nothing there until tomorrow -- or flipping one would show whether a
+ * stranger you recognise passes it.
+ */
+export async function stillThere(c: PoolClient, userId: string, ids: readonly string[]): Promise<string[]> {
+  if (!ids.length) return [];
+  const { rows } = await c.query<{ user_id: string }>(`${build([])} AND b.user_id = ANY($2::uuid[])`, [userId, ids]);
+  const ok = new Set(rows.map((r) => r.user_id));
+  return ids.filter((id) => ok.has(id));
+}
+
 export async function candidateIds(
   c: PoolClient,
   userId: string,

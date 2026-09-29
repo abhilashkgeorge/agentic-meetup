@@ -182,15 +182,15 @@ three shapes:
   recorded on each pair but **no longer decides who a round meets**
   ([server/src/matching/score.ts:25] `dealbreaker: 0, // already enforced by the filter; counting it again double-dips`,
   [server/src/matching/orchestrator.ts:168] `it just no longer decides who is met.`). The one place the
-  score still orders people is the town's square, where the 40 strangers shown are the top
-  of the score ([server/src/api/world.ts:180] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
+  score still orders people is the town's square, where the 40 strangers shown, picked once a day, are the top
+  of the score ([server/src/api/world.ts:187] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
   In a round, what moves a person later is the want check: each "not met" want pushes that
   candidate later within their group (real people stay ahead of practice profiles),
   whatever the strength ([server/src/matching/wants.ts:284] `rs.filter((r) => r.status === 'not_met').length`).
 - **The pool count.** "Who your agent can reach" shows how many people pass every filter,
   rounded to the nearest 10; below 20 it says "Under 20" and a warning such as "Very few
   people fit. Turn a must-have into a want to reach more."
-  ([server/src/matching/candidates.ts:226] `export const SHOWN_FLOOR = 20;`,
+  ([server/src/matching/candidates.ts:241] `export const SHOWN_FLOOR = 20;`,
   [app/src/lib/counts.ts:12] `return n === null || n === undefined ? 'Under 20' : n.toLocaleString();`,
   [app/src/features/preferences/preferences-screen.tsx:98] `Very few people fit. Turn a must-have into a want to reach more.`).
 

@@ -36,11 +36,11 @@
  * in the caller's own tile (2026-09-28).
  */
 import { Hono } from 'hono';
-import { CENTRAL_AREA, nearestArea } from '@clone/shared';
+import { CENTRAL_AREA, nearestArea, parkDay } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { matchSession, matchmakerSession, tenantSession } from '../db/client.js';
 import { currentState } from '../memory/facts.js';
-import { candidateCount, candidateIds, candidateIdsNear, shownCount } from '../matching/candidates.js';
+import { candidateCount, candidateIds, candidateIdsNear, shownCount, stillThere } from '../matching/candidates.js';
 import { poolNow, shouldAskArea, shouldAskName, touchActive } from '../matching/profile.js';
 import { rank } from '../matching/score.js';
 import { latestRound } from '../matching/rounds.js';
@@ -84,15 +84,21 @@ const areaOf = (lat: number | null, lon: number | null): string =>
   (lat !== null && lon !== null ? nearestArea(lat, lon)?.id : undefined) ?? CENTRAL_AREA;
 
 /**
- * The stranger sample, cached briefly per person.
+ * The stranger sample: picked ONCE A DAY per person (the Bengaluru day), with both
+ * people's rules as they stand at that first look.
  *
- * Ranking 64 candidates is ~150 small queries; the square is refetched every eight
- * seconds while a round runs. Thirty seconds is short enough that a newly met person
- * leaves the sample by the next round, and the round itself forgets the entry.
+ * WHY A DAY (the founder's (c), 2026-09-29; docs/END-TO-END.md 15.2 item 5). The sample
+ * was picked again every thirty seconds, from the round's own candidate query -- both
+ * people's rules. So flipping one of your must-haves and reopening the town showed
+ * whether a stranger you recognised by their character still passed it: their answer,
+ * one flip at a time. And changing your own answers did the same for their rules. Now a
+ * rule or an answer changed today reaches the square tomorrow, among a new day's
+ * sample, where somebody missing could be anybody not active today. Safety is not
+ * frozen: every look re-checks the day's sample (stillThere) -- a block, a ban or
+ * leaving the pool takes somebody out at once -- and a person already met is shown as
+ * a seat, not a stranger (metIds, below).
  */
-const sample = new Map<string, { at: number; ids: string[] }>();
-const SAMPLE_TTL_MS = 30_000;
-export function forgetSample(userId: string): void { sample.delete(userId); }
+const sample = new Map<string, { day: string; ids: string[] }>();
 
 export const worldRoutes = new Hono()
   .get('/v1/world', async (c) => {
@@ -169,8 +175,9 @@ export const worldRoutes = new Hono()
     const strangers = own.state.inPool
       ? await matchSession(async (db) => {
           const total = await candidateCount(db, me);
+          const today = parkDay(Date.now());
           const hit = sample.get(me);
-          let ids = hit && Date.now() - hit.at < SAMPLE_TTL_MS ? hit.ids : null;
+          let ids = hit?.day === today ? hit.ids : null;
           if (!ids) {
             // The neighbours first, then the recently active, once each: sixty-four
             // at most, the same count the ranker was sized for.
@@ -178,8 +185,10 @@ export const worldRoutes = new Hono()
             const recent = await candidateIds(db, me, 24);
             const fresh = [...new Set([...near, ...recent])].filter((id) => !metIds.has(id));
             ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);
-            sample.set(me, { at: Date.now(), ids });
+            sample.set(me, { day: today, ids });
           }
+          // Safety on every look, never the rules: see the sample's note above.
+          ids = await stillThere(db, me, ids);
           const synthetic = new Set<string>();
           const areas = new Map<string, string>();
           if (ids.length) {
