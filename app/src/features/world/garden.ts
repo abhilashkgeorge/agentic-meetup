@@ -103,6 +103,8 @@ export const PATH_WIDTH = 0.95;
 const TREE_R = 0.55;
 /** The trunk: the only part of a tree that is in the way. ~0.5 m of bark. */
 const TRUNK_R = 0.06;
+/** How wide a trunk is drawn at the ground, times the tree's scale (garden-mesh.ts). */
+export const TRUNK_BASE = 0.085;
 /** A lamp post is a post. */
 const PROP_R = 0.07;
 /**
@@ -134,6 +136,60 @@ const lcg = (seed: number) => {
     return s / 4294967296;
   };
 };
+
+/**
+ * How far a point is from the nearest path's SURFACE -- its edge, not its middle line --
+ * over every path, each at its own width. Negative on a path.
+ *
+ * For keeping solid things off the paths, so a bicycle can ride every one of them
+ * (the founder, 2026-09-29: "the road to ride the bicycle should be fine"). Bucketed
+ * by a grid like cubbon.ts's pathIndex, because the park has 185 paths and this is
+ * asked about every bench, lamp and bin in it.
+ */
+export function pathSurface(paths: readonly { line: readonly Pt[]; width: number }[], cell = 4) {
+  const grid = new Map<string, number[]>();
+  const key = (x: number, z: number) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
+  paths.forEach(({ line }, i) => {
+    for (let k = 0; k + 1 < line.length; k++) {
+      const a = line[k]!, b = line[k + 1]!;
+      const steps = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / cell));
+      for (let s = 0; s <= steps; s++) {
+        const kk = key(a[0] + ((b[0] - a[0]) * s) / steps, a[1] + ((b[1] - a[1]) * s) / steps);
+        const at = grid.get(kk);
+        if (at) { if (!at.includes(i)) at.push(i); } else grid.set(kk, [i]);
+      }
+    }
+  });
+  /**
+   * The distance to the nearest path surface within `reach` (Infinity past it), the
+   * nearest point on that path's middle line, and the path's width.
+   */
+  return (p: Pt, reach = 2): { edge: number; at: Pt; width: number } => {
+    const span = Math.ceil(reach / cell) + 1;
+    const cx = Math.floor(p[0] / cell), cz = Math.floor(p[1] / cell);
+    let best = { edge: Infinity, at: p, width: 0 };
+    const seen = new Set<number>();
+    for (let dx = -span; dx <= span; dx++) {
+      for (let dz = -span; dz <= span; dz++) {
+        for (const i of grid.get(`${cx + dx},${cz + dz}`) ?? []) {
+          if (seen.has(i)) continue;
+          seen.add(i);
+          const { line, width } = paths[i]!;
+          for (let k = 0; k + 1 < line.length; k++) {
+            const a = line[k]!, b = line[k + 1]!;
+            const ex = b[0] - a[0], ez = b[1] - a[1];
+            const len2 = ex * ex + ez * ez;
+            const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ez) / len2));
+            const q: Pt = [a[0] + ex * t, a[1] + ez * t];
+            const edge = Math.hypot(p[0] - q[0], p[1] - q[1]) - width / 2;
+            if (edge < best.edge) best = { edge, at: q, width };
+          }
+        }
+      }
+    }
+    return best;
+  };
+}
 
 /** A stable number for a neighbourhood id, so one place always grows one garden. */
 export function seedOfId(id: string): number {
@@ -482,21 +538,21 @@ export function gardenSpots(g: Garden): MapSpots {
     // A canopy begins about ten metres up and was never in anybody's way. The trunk
     // is, for your feet -- but not for your eyes, which is what `seeThrough` says.
     ...g.trees.map((t) => ({
-      x: t.x, z: t.z, r: TRUNK_R * t.scale, h: 2.4 * t.scale,
+      x: t.x, z: t.z, r: TRUNK_R * t.scale, h: 2.4 * t.scale, kind: 'tree' as const,
       // You can see past a tree. Without this the camera treats every trunk as a wall
       // and rears up over your head the moment you touch one -- which only became
       // reachable when the canopy stopped stopping you six metres out.
       seeThrough: true,
     })),
-    ...g.props.map((p) => ({ x: p.x, z: p.z, r: PROP_R, h: p.kind === 'lantern' ? 0.35 : 0.15 })),
+    ...g.props.map((p) => ({ x: p.x, z: p.z, r: PROP_R, h: p.kind === 'lantern' ? 0.35 : 0.15, kind: 'prop' as const })),
     // You walk round a bench, not through it, but the camera sees over both it and
     // the hedges -- which is what the height on each of these is for.
     ...g.benches.flatMap((b) => BENCH_ALONG.map((d) => ({
       // Along the bench's own length, which is its x: (cos rot, -sin rot) in the world.
-      x: b.x + Math.cos(b.rot) * d, z: b.z - Math.sin(b.rot) * d, r: BENCH_R, h: 0.1,
+      x: b.x + Math.cos(b.rot) * d, z: b.z - Math.sin(b.rot) * d, r: BENCH_R, h: 0.1, kind: 'bench' as const,
     }))),
-    ...g.bushes.map((b) => ({ x: b.x, z: b.z, r: BUSH_R * b.scale, h: 0.14 * b.scale })),
-    { x: g.fountain.x, z: g.fountain.z, r: g.fountain.radius, h: 0.5 },
+    ...g.bushes.map((b) => ({ x: b.x, z: b.z, r: BUSH_R * b.scale, h: 0.14 * b.scale, kind: 'bush' as const })),
+    { x: g.fountain.x, z: g.fountain.z, r: g.fountain.radius, h: 0.5, kind: 'fountain' },
   ];
   // A BUILDING IS A WALL, AND A WALL IS ITS EDGES, NOT ITS CORNERS.
   //
@@ -520,44 +576,18 @@ export function gardenSpots(g: Garden): MapSpots {
         solids.push({
           x: a[0] + (c[0] - a[0]) * t,
           z: a[1] + (c[1] - a[1]) * t,
-          r: 0.12, h: b.height,
+          r: 0.12, h: b.height, kind: 'wall',
         });
       }
     }
   }
 
-  // THE EDGE OF THE WORLD FOLLOWS THE OUTLINE, whatever shape it is. A ring of solids
-  // just outside it, spaced closely enough that nobody slips between two of them --
-  // which is what a long straight boundary would do if the solids were only placed at
-  // its corners.
-  const step = 1.6;
-  for (let i = 0; i < g.outline.length; i++) {
-    const a = g.outline[i]!;
-    const b = g.outline[(i + 1) % g.outline.length]!;
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    const n = Math.max(1, Math.round(len / step));
-    for (let k = 0; k < n; k++) {
-      const t = k / n;
-      // Pushed OUT along the edge's normal, so the wall stands outside the ground
-      // rather than on top of the last metre of it.
-      const dx = (b[0] - a[0]) / (len || 1);
-      const dz = (b[1] - a[1]) / (len || 1);
-      solids.push({
-        x: a[0] + (b[0] - a[0]) * t + dz * 0.9,
-        z: a[1] + (b[1] - a[1]) * t - dx * 0.9,
-        // KNEE HIGH, NOT FOUR UNITS TALL, and the difference is the whole feel of
-        // walking near the edge. Walking is blocked by ANY solid at all -- the
-        // collision asks `h > 0` -- so height buys nothing there. What it costs is the
-        // CAMERA: `seeThrough` ignores anything shorter than the lens (0.95), and at
-        // four units the wall was a building standing behind you. The camera pulled
-        // itself in against it and rose to look over the top, which is right for a
-        // city street and, in a park, turns into a plan view of your own head the
-        // moment you approach the boundary. It did exactly that (on the phone,
-        // 2026-09-23) and the park read as broken.
-        r: 1.1, h: 0.9,
-      });
-    }
-  }
+  // THE EDGE OF THE WORLD IS THE OUTLINE, whatever shape it is: the park's fence
+  // (MapSpots.bounds), which stops you at the line itself. It was a ring of wide
+  // circles just outside it, and circles along a line are a scalloped wall: a metre
+  // and a half short of the edge at one step, a metre past it at the next, and a metre
+  // into the park wherever the boundary turned in -- across the paths that run along
+  // it (tests/park-roads.test.ts, 2026-09-29).
   return {
     central: g.id,
     areas: {
@@ -566,5 +596,6 @@ export function gardenSpots(g: Garden): MapSpots {
     solids,
     lakes: [...g.ponds, g.river].filter((w) => w.length > 2),
     bridges: g.bridge ? [{ x: g.bridge.x, z: g.bridge.z, r: g.bridge.span * 0.6, h: 0 }] : [],
+    bounds: g.outline,
   };
 }

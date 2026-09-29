@@ -65,6 +65,8 @@ export interface Solid {
    * Undefined means opaque, because everything that was here before this field was.
    */
   seeThrough?: boolean;
+  /** What it is, where anybody asks: the park's tests keep some kinds off the paths. */
+  kind?: 'tree' | 'prop' | 'bench' | 'bush' | 'wall' | 'fountain';
 }
 
 export interface MapSpots {
@@ -79,6 +81,18 @@ export interface MapSpots {
    * Checked before the water is, so a river can run right through a path.
    */
   bridges?: readonly Solid[];
+  /**
+   * The ring nobody walks out of: a park's fence. Whoever is inside stays inside, and
+   * stops BOUND_INSET short of the line itself. Feet only: a camera looks over a fence.
+   *
+   * WHY NOT SOLIDS, which is what the edge was: a ring of circles 1.1 units wide just
+   * outside the outline. Circles along a line leave a scalloped edge -- you stopped a
+   * metre and a half inside it at one step and could walk a metre past it at the next
+   * -- and wherever the boundary turned in on itself they reached a metre into the
+   * park, across the paths running along it (tests/park-roads.test.ts, 2026-09-29). A
+   * fence drawn on the line has to stop you at the line.
+   */
+  bounds?: readonly Pt[];
 }
 
 /**
@@ -96,15 +110,61 @@ const cellKey = (x: number, z: number): number =>
 
 interface Lake { ring: readonly Pt[]; minX: number; maxX: number; minZ: number; maxZ: number }
 
+/** How far short of a fence (MapSpots.bounds) somebody stops, beyond their own width. */
+export const BOUND_INSET = 0.015;
+/** The widest `pad` the bound's cells are filed for: a person's FOOT, and room to spare. */
+const BOUND_PAD = 0.25;
+
+/** How far (x, z) is from the segment a-b, and the nearest point on it. */
+function toSegment(x: number, z: number, a: Pt, b: Pt): { d: number; qx: number; qz: number } {
+  const ex = b[0] - a[0], ez = b[1] - a[1];
+  const l2 = ex * ex + ez * ez;
+  const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / l2));
+  const qx = a[0] + ex * t, qz = a[1] + ez * t;
+  return { d: Math.hypot(x - qx, z - qz), qx, qz };
+}
+
 class Ground {
   private readonly solids = new Map<number, Solid[]>();
   private readonly lakes = new Map<number, Lake[]>();
   private readonly bridges = new Map<number, Solid[]>();
+  /** The fence (MapSpots.bounds), its edges filed by the cells they pass near. */
+  private readonly bound: readonly Pt[] | null;
+  private readonly boundEdges = new Map<number, number[]>();
+  /** Every other cell within the fence's box: wholly inside it, or wholly outside. */
+  private readonly boundInside = new Map<number, boolean>();
   readonly empty: boolean;
 
   constructor(map: MapSpots | null) {
-    this.empty = !map || (!map.solids?.length && !map.lakes?.length && !map.bridges?.length);
+    this.empty = !map || (!map.solids?.length && !map.lakes?.length && !map.bridges?.length && !map.bounds?.length);
+    this.bound = map?.bounds && map.bounds.length > 2 ? map.bounds : null;
     if (!map) return;
+    if (this.bound) {
+      const ring = this.bound;
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i]!, b = ring[(i + 1) % ring.length]!;
+        minX = Math.min(minX, a[0]); maxX = Math.max(maxX, a[0]); minZ = Math.min(minZ, a[1]); maxZ = Math.max(maxZ, a[1]);
+        const x0 = Math.floor((Math.min(a[0], b[0]) - BOUND_PAD) / CELL), x1 = Math.floor((Math.max(a[0], b[0]) + BOUND_PAD) / CELL);
+        const z0 = Math.floor((Math.min(a[1], b[1]) - BOUND_PAD) / CELL), z1 = Math.floor((Math.max(a[1], b[1]) + BOUND_PAD) / CELL);
+        for (let cx = x0; cx <= x1; cx++) {
+          for (let cz = z0; cz <= z1; cz++) {
+            // Only the cells this edge actually comes near, not its whole box.
+            const mid = toSegment((cx + 0.5) * CELL, (cz + 0.5) * CELL, a, b).d;
+            if (mid > CELL * 0.71 + BOUND_PAD) continue;
+            const k = (cx + 512) * 1024 + (cz + 512);
+            const at = this.boundEdges.get(k);
+            if (at) at.push(i); else this.boundEdges.set(k, [i]);
+          }
+        }
+      }
+      for (let cx = Math.floor(minX / CELL) - 1; cx <= Math.floor(maxX / CELL) + 1; cx++) {
+        for (let cz = Math.floor(minZ / CELL) - 1; cz <= Math.floor(maxZ / CELL) + 1; cz++) {
+          const k = (cx + 512) * 1024 + (cz + 512);
+          if (!this.boundEdges.has(k)) this.boundInside.set(k, pointInPolygon([(cx + 0.5) * CELL, (cz + 0.5) * CELL], ring));
+        }
+      }
+    }
     const file = <T>(into: Map<number, T[]>, item: T, minX: number, maxX: number, minZ: number, maxZ: number) => {
       for (let cx = Math.floor(minX / CELL); cx <= Math.floor(maxX / CELL); cx++) {
         for (let cz = Math.floor(minZ / CELL); cz <= Math.floor(maxZ / CELL); cz++) {
@@ -135,6 +195,20 @@ class Ground {
   escape(x: number, z: number, pad: number): [number, number] | null {
     if (this.empty) return null;
     const k = cellKey(x, z);
+    // Out past the fence, or pressed into it: back in, straight at the nearest bit of it.
+    if (this.bound && this.outOfBounds(x, z, pad)) {
+      const ring = this.bound;
+      const edges = this.boundEdges.get(k) ?? ring.map((_, i) => i);
+      let best = { d: Infinity, qx: x, qz: z };
+      for (const i of edges) {
+        const s = toSegment(x, z, ring[i]!, ring[(i + 1) % ring.length]!);
+        if (s.d < best.d) best = s;
+      }
+      const inside = pointInPolygon([x, z], ring);
+      const dx = (best.qx - x) * (inside ? -1 : 1), dz = (best.qz - z) * (inside ? -1 : 1);
+      const len = Math.hypot(dx, dz);
+      return len < 1e-9 ? null : [dx / len, dz / len];
+    }
     for (const s of this.solids.get(k) ?? []) {
       const d = s.r + pad;
       const dx = x - s.x; const dz = z - s.z;
@@ -152,6 +226,21 @@ class Ground {
   }
 
   /**
+   * Outside the fence, or closer to it than `pad` and BOUND_INSET: one lookup away
+   * from the fence, a few segments beside it.
+   */
+  private outOfBounds(x: number, z: number, pad: number): boolean {
+    const ring = this.bound!;
+    const k = cellKey(x, z);
+    const edges = this.boundEdges.get(k);
+    if (!edges) return !(this.boundInside.get(k) ?? false);
+    for (const i of edges) {
+      if (toSegment(x, z, ring[i]!, ring[(i + 1) % ring.length]!).d < pad + BOUND_INSET) return true;
+    }
+    return !pointInPolygon([x, z], ring);
+  }
+
+  /**
    * Is this a place a person cannot stand? `pad` is how wide they are.
    *
    * `above` is how high off the ground the question is being asked: a person asks at
@@ -161,6 +250,8 @@ class Ground {
    */
   blocked(x: number, z: number, pad: number, above = 0, wet = true): boolean {
     if (this.empty) return false;
+    // A fence stops feet, never a lens (`wet` is false for the camera).
+    if (wet && this.bound && this.outOfBounds(x, z, pad)) return true;
     const k = cellKey(x, z);
     for (const s of this.solids.get(k) ?? []) {
       if (s.h <= above) continue;

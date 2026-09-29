@@ -31,7 +31,7 @@
  */
 import park from '../../../assets/venues/cubbon-park/park.json';
 import {
-  PATH_WIDTH, type Bench, type Building, type Bush, type Flower, type Garden,
+  PATH_WIDTH, TRUNK_BASE, pathSurface, type Bench, type Building, type Bush, type Flower, type Garden,
   type Landmark, type Prop, type Reed, type Tree, type Tuft,
 } from './garden';
 import type { Pt } from './sim';
@@ -53,6 +53,12 @@ export const CUBBON_PATH_W = 0.42;
 export const CUBBON_ROAD_W = 0.75;
 
 const TREE_R = 0.55;
+/** How far a path's edge keeps from a building's wall: a pavement's width. */
+const WALL_CLEAR = 0.05;
+/** How far off a path's edge a bench's middle must be: half its length, and a hair. */
+const BENCH_CLEAR = 0.1;
+/** The same for a lamp post or a rock (a rock is the wider, 0.115). */
+const PROP_CLEAR = 0.12;
 /** People stand anywhere within this of the bandstand, and thin out beyond it. */
 const CROWD_CORE = 34;
 
@@ -107,6 +113,57 @@ function toLine(p: Pt, line: readonly Pt[]): number {
     best = Math.min(best, Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dz)));
   }
   return best;
+}
+
+/** The nearest point of a closed ring's edges to p, and how far it is. */
+function nearestOnRing(p: Pt, ring: readonly Pt[]): { d: number; q: Pt } {
+  let best = { d: Infinity, q: p };
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]!, b = ring[(i + 1) % ring.length]!;
+    const ex = b[0] - a[0], ez = b[1] - a[1];
+    const l2 = ex * ex + ez * ez;
+    const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ez) / l2));
+    const q: Pt = [a[0] + ex * t, a[1] + ez * t];
+    const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+    if (d < best.d) best = { d, q };
+  }
+  return best;
+}
+
+/**
+ * A path moved clear of the walls: every point nearer a building than `clear` goes
+ * straight out from the nearest wall to `clear`. Where a path runs beside a building
+ * it is walked in steps of 0.1, so it bends round a corner rather than cutting it.
+ */
+function clearOf(line: readonly Pt[], rings: readonly (readonly Pt[])[], clear: number): Pt[] {
+  const push = (p: Pt): Pt => {
+    let at = p;
+    for (const ring of rings) {
+      if (inRing(at, ring)) continue;
+      const { d, q } = nearestOnRing(at, ring);
+      if (d >= clear || d < 1e-9) continue;
+      at = [q[0] + ((at[0] - q[0]) / d) * clear, q[1] + ((at[1] - q[1]) / d) * clear];
+    }
+    return at;
+  };
+  const near = (a: Pt, b: Pt) => rings.some((ring) => nearestOnRing(a, ring).d < clear + dist(a, b) || nearestOnRing(b, ring).d < clear + dist(a, b));
+  const out: Pt[] = [];
+  for (let k = 0; k + 1 < line.length; k++) {
+    const a = line[k]!, b = line[k + 1]!;
+    const n = near(a, b) ? Math.max(1, Math.ceil(dist(a, b) / 0.1)) : 1;
+    for (let s = 0; s < n; s++) out.push(push([a[0] + ((b[0] - a[0]) * s) / n, a[1] + ((b[1] - a[1]) * s) / n]));
+  }
+  if (line.length) out.push(push(line[line.length - 1]!));
+  // Round a corner, points pushed out from it fan apart, and the straight line between
+  // two of them cuts back in towards the wall: fill the gaps, pushed too.
+  const round: Pt[] = out.slice(0, 1);
+  for (let i = 1; i < out.length; i++) {
+    const a = round[round.length - 1]!, b = out[i]!;
+    const n = near(a, b) ? Math.ceil(dist(a, b) / 0.1) : 1;
+    for (let s = 1; s < n; s++) round.push(push([a[0] + ((b[0] - a[0]) * s) / n, a[1] + ((b[1] - a[1]) * s) / n]));
+    round.push(b);
+  }
+  return round;
 }
 
 /**
@@ -198,7 +255,6 @@ export function makeCubbon(): Garden {
   const outline = asset.outline.map(scale);
   const lines: Pt[][] = asset.paths.map((p) => p.line.map(scale));
   const roads = new Set(asset.paths.map((p, i) => (p.kind === 'road' ? i : -1)).filter((i) => i >= 0));
-  const paths = lines.map((line, i) => ({ line, width: roads.has(i) ? CUBBON_ROAD_W : CUBBON_PATH_W }));
   const ponds: Pt[][] = asset.water.map((w) => w.ring.map(scale));
 
   // THE BAND STAND IS NOT BUILT. It stood where you arrive -- the middle of the real
@@ -221,6 +277,24 @@ export function makeCubbon(): Garden {
     // has no heights for these.
     height: b.name === 'State Central Library' ? 2.2 : 0.7,
   }));
+
+  // PATHS KEEP OFF THE WALLS. In the survey the road past the State Central Library
+  // runs 37 cm from its wall -- half the road under the building -- and a footpath 80 cm
+  // from the Fern House: a metre or two either way is nothing on a map. Drawn, the
+  // library stood on the road; ridden, the wall's own collider (a metre out) stopped a
+  // bicycle dead half way along it (the founder, 2026-09-29: "the road to ride the
+  // bicycle should be fine"). So a path runs its own half-width and a little from any
+  // wall, bent round the building where it passes one.
+  //
+  // PLACING things still reads the survey's own lines (`lines`), as it always has: the
+  // seeded choices of where every tree, bench and blade of grass goes are made in one
+  // long random sequence, and asking about different lines would reshuffle the park.
+  const walls = buildings.map((b) => b.ring);
+  const paths = asset.paths.map((p) => {
+    const width = p.kind === 'road' ? CUBBON_ROAD_W : CUBBON_PATH_W;
+    return { line: clearOf(p.line.map(scale), walls, width / 2 + WALL_CLEAR), width };
+  });
+  const surface = pathSurface(paths);
 
   const landmarks: Landmark[] = asset.features
     .filter((f) => f.name && f.kind !== 'toilets' && f.kind !== 'drinking_water')
@@ -272,10 +346,39 @@ export function makeCubbon(): Garden {
   // enough invented ones to read as a park. Cubbon has something like 6,800; this
   // draws 700, which at a phone's draw distance is the same picture.
   const treeGrid = pointIndex(2);
-  const trees: Tree[] = asset.trees.map((t) => {
+  /**
+   * A point moved off every path surface, `clear` beyond its edge, to whichever side
+   * is still park -- or null if neither is. For the SURVEYED trees: OSM puts an
+   * avenue's trees on the line of the avenue, a few metres being nothing on a map, and
+   * eighteen of them stood on the paths themselves -- a trunk in the middle of a
+   * road, for a bicycle to hit (2026-09-29). Moved to its side, which is where an
+   * avenue's trees are.
+   */
+  const offPath = (p: Pt, clear: number): Pt | null => {
+    let at = p;
+    for (let tries = 0; tries < 4; tries++) {
+      const s = surface(at);
+      if (s.edge >= clear) return at;
+      const dx = at[0] - s.at[0], dz = at[1] - s.at[1];
+      const len = Math.hypot(dx, dz);
+      const dir: Pt = len > 1e-6 ? [dx / len, dz / len] : [1, 0];
+      const reach = s.width / 2 + clear + 0.001;
+      const next = ([1, -1] as const)
+        .map((side): Pt => [s.at[0] + dir[0] * reach * side, s.at[1] + dir[1] * reach * side])
+        .find((q) => inPark(q) && !inWater(q, 0.1) && !inBuilding(q, 0.1));
+      if (!next) return null;
+      at = next;
+    }
+    return surface(at).edge >= clear ? at : null;
+  };
+  // Where they were surveyed goes in the planting grid, as it always has: the seeded
+  // planting around them is decided against it (see `lines` above).
+  const trees: Tree[] = asset.trees.flatMap((t) => {
     const p = scale(t);
     treeGrid.add(p[0], p[1], 0.42);
-    return { x: p[0], z: p[1], scale: 1.1 + rnd() * 0.5, lean: (rnd() - 0.5) * 0.12, kind: Math.floor(rnd() * 3) };
+    const tree = { x: p[0], z: p[1], scale: 1.1 + rnd() * 0.5, lean: (rnd() - 0.5) * 0.12, kind: Math.floor(rnd() * 3) };
+    const at = offPath(p, TRUNK_BASE * tree.scale + 0.02);
+    return at ? [{ ...tree, x: at[0], z: at[1] }] : [];
   });
   for (let i = 0; i < 9000 && trees.length < 700; i++) {
     const p = openGround(0.5, 1);
@@ -313,12 +416,20 @@ export function makeCubbon(): Garden {
         const off = (roads.has(i) ? CUBBON_ROAD_W : CUBBON_PATH_W) * 0.5 + 0.22;
         const p: Pt = [at[0] - dz * off * side, at[1] + dx * off * side];
         if (!inPark(p) || inWater(p, 0.2) || inBuilding(p, 0.2)) continue;
+        // OFF EVERY PATH, not only the one it was placed beside: where two paths run
+        // close, a bench set back from one stood on the other -- fifteen benches and
+        // twenty lamps and rocks did, in the way of anybody riding it (2026-09-29).
+        // Asked after the random draws, so the rest of the park is where it was.
         if (rnd() < 0.45) {
           if (benches.some((x) => dist([x.x, x.z], p) < 1.2)) continue;
+          if (surface(p).edge < BENCH_CLEAR) continue;
           benches.push({ x: p[0], z: p[1], rot: Math.atan2(dx, dz) + (side > 0 ? 0 : Math.PI) });
         } else {
           if (props.some((x) => dist([x.x, x.z], p) < 1.2)) continue;
-          props.push({ x: p[0], z: p[1], rot: rnd() * Math.PI, kind: rnd() < 0.7 ? 'lantern' : 'rock' });
+          const rot = rnd() * Math.PI;
+          const kind = rnd() < 0.7 ? 'lantern' as const : 'rock' as const;
+          if (surface(p).edge < PROP_CLEAR) continue;
+          props.push({ x: p[0], z: p[1], rot, kind });
         }
       }
     }

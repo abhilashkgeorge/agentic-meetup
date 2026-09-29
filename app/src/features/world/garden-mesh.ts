@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { VIEW } from './camera';
-import { PATH_WIDTH, type Garden } from './garden';
+import { PATH_WIDTH, TRUNK_BASE, type Garden } from './garden';
 import type { Pt } from './sim';
 
 export interface GardenColors {
@@ -539,7 +539,7 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
 
   // Trees: a trunk and three canopy blobs, two draw calls for the lot.
   const trunks = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(0.055, 0.085, TRUNK_H, 5),
+    new THREE.CylinderGeometry(0.055, TRUNK_BASE, TRUNK_H, 5),
     new THREE.MeshLambertMaterial({ color: P.trunk }), Math.max(1, g.trees.length));
   // WHITE MATERIAL, COLOUR PER INSTANCE. An instance colour MULTIPLIES the material's,
   // so tinting both with the same green squares it: the canopies and the grass came

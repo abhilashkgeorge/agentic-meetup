@@ -173,18 +173,14 @@ describe('Cubbon Park', () => {
     const FOOT = 0.09;
     const REACH = 0.21;
     for (const s of solids) {
-      if (s.h === 0.9 && s.r === 1.1) continue;        // the edge of the world
       expect((s.r + FOOT) / REACH,
         `something ${((s.r + FOOT) / REACH).toFixed(1)} body-heights across stops you`)
         .toBeLessThan(2.2);
     }
 
-    // ...and the edge still stops you. A point just outside the ring is blocked.
-    const edge = g.outline[0]!;
-    const centre: Pt = [0, 0];
-    const out: Pt = [edge[0] + (edge[0] - centre[0]) * 0.02, edge[1] + (edge[1] - centre[1]) * 0.02];
-    const near = solids.some((s) => Math.hypot(s.x - out[0], s.z - out[1]) < s.r + 0.3);
-    expect(near, 'you can walk straight out of the park').toBe(true);
+    // ...and the edge still stops you: it is the outline itself (MapSpots.bounds),
+    // which tests/park-roads.test.ts walks all the way round.
+    expect(gardenSpots(g).bounds, 'you can walk straight out of the park').toBe(g.outline);
   });
 
   it('puts the crowd where the crowd is, and still fills the far half', () => {
