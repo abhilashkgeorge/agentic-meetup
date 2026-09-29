@@ -125,7 +125,7 @@ setup is finished on this phone
 | Phone number | Normalised; a 6-digit code is made and "sent" | Code | `phone_challenges`: a hash of the number and a hash of the code, 5-minute expiry, caller's IP | Nobody reads it back; only the sign-in role touches this table | `server/src/api/auth.ts:427` |
 | The code | Checked (5 tries); a known number signs in, an unknown one needs an invite | Code | The challenge becomes a 15-minute "ticket" | | `server/src/api/auth.ts:533` |
 | Invite code | Checked; the account is created | Code | `tenants`, `app_users` (number hash, no number), `device_sessions` | The person | `server/src/api/auth.ts:77` |
-| "I agree" | Three documents accepted | Code | `consents` rows, append-only | The person | `server/src/api/consent.ts:96` |
+| "I agree" | Three documents accepted | Code | `consents` rows, append-only | The person | `server/src/api/consent.ts:98` |
 
 ### Arjun and Meera
 
@@ -147,8 +147,8 @@ Nothing in sign-up differs by gender. Both see, in order:
    In development, the reusable code KNOX-1010 works.
 4. **"Before we start"**: three short documents and one button, "I agree". There is no decline
    button: "If you would rather not, close the app — nothing has been set up yet."
-   (`app/src/features/consent/consent-screen.tsx:108`,
-   `app/src/features/consent/consent-screen.tsx:101`).
+   (`app/src/features/consent/consent-screen.tsx:110`,
+   `app/src/features/consent/consent-screen.tsx:103`).
 5. Then setup (stage 2).
 
 ### 1.1 Phone and SMS code
@@ -203,23 +203,25 @@ Nothing in sign-up differs by gender. Both see, in order:
 Three documents, shown in plain words and accepted with one "I agree"
 (`server/src/api/consent.ts:32`,
 `server/src/api/consent.ts:33`,
-`server/src/api/consent.ts:37`):
+`server/src/api/consent.ts:39`):
 
 - **Age:** "You have to be 18 or older to use this." "We keep the year you were born. Other people
   only ever see your age." (`app/src/features/consent/consent-screen.tsx:37`)
 - **Terms:** "Be a person. No harassment, no pretending to be somebody else, no pictures that are not
   of you." "Your agent talks to other agents for you. You always make the final call about who you
   meet" (`app/src/features/consent/consent-screen.tsx:42`)
-- **Privacy** (version 2 since 2026-09-29, so everybody reads it again): "Your clone uses what you tell
+- **Privacy** (version 3 since 2026-09-29, so everybody reads it again): "Your clone uses what you tell
   it to represent you to other agents." "Someone your agent meets sees what you mark public, your age,
   your part of town and what you are here for, and whether you fit what they asked for about work,
   exercise, sleep or moving cities." "Your answers to private questions, like faith, drinking or kids,
   help decide who you meet. They are never shown." "Your photos and first name reach a person only after
   you say yes to sharing your profile with them." "In Settings you can read everything it knows about you,
-  say what is wrong, and delete the whole account." "What you type and your messages go to AI providers,
+  say what is wrong, and delete the whole account." "If you delete your account, your chats are kept hidden
+  for 30 days so the people you talked to can still report you. Only a reviewer reads them, and only after a
+  report. Then they are deleted." "What you type and your messages go to AI providers,
   to run your clone and to search what it remembers. We do not sell anything to anybody."
   (`app/src/features/consent/consent-screen.tsx:50`,
-  `server/src/api/consent.ts:37`)
+  `server/src/api/consent.ts:39`)
 
 Stored as append-only rows; the app role cannot change or delete them
 (`server/migrations/0042_consents_append_only.sql:25`).
@@ -508,7 +510,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   chat connection; the server stores it, and the clone replies. No fact is written yet
   (`server/src/api/chat.ts:315`).
 - **About five minutes after he stops**, a background sweep runs the extractor over the whole
-  session ([AI-1](#ai-1)) (`server/src/index.ts:149`).
+  session ([AI-1](#ai-1)) (`server/src/index.ts:150`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
   mornings". Both are fields a must-have can depend on, so both are **held**
   (`server/src/onboarding/questions.ts:415`).
@@ -617,10 +619,10 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 
 | Job | When | What it does | Model? | Code |
 |---|---|---|---|---|
-| Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:147` |
+| Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:148` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | `server/src/memory/consolidate.ts:26` |
 | Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:470` |
-| Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:155` |
+| Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:156` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs
 (`server/src/llm/index.ts:32`, `server/src/llm/index.ts:34`).
@@ -858,7 +860,13 @@ Row-level security is the boundary. Each part of the server connects as its own 
 
 - **Settings → "Delete everything"** ("Cannot be undone. The clone and all of its memory go.") deletes the
   person's rows from 23 tables, their photo folder and every pair they were in (including **both** sides of
-  their conversations); then it counts what is left and deletes the account last. A chat somebody
+  their conversations); then it counts what is left and deletes the account last. First, each chat is held
+  for the other person, hidden, for 30 days (since 2026-09-29): nobody can read it -- not the app, the
+  reviewer, or the role that wrote it -- unless that person reports the one who left, once, within the 30
+  days; then it goes to the reviewer with the report, keyed to the leaver's phone and handsets. After 30
+  days it is deleted. A chat either had blocked is not held. The delete dialog and the privacy notice
+  (version 3) say so (`server/migrations/0082_left_chats_held.sql:84`,
+  `server/src/memory/erasure.ts:290`). A chat somebody
   **reported** is kept all the same (since 2026-09-29): the report took a copy when it was made -- the last
   200 messages, each marked only as said by the reported person or by the reporter -- and the copy stays
   with the report whoever deletes their account
@@ -872,9 +880,10 @@ Row-level security is the boundary. Each part of the server connects as its own 
   touching anything (`app/src/features/settings/delete-outcome.ts:12`)
   (`app/src/features/settings/settings-screen.tsx:292`,
   `server/src/memory/erasure.ts:35`,
-  `server/src/memory/erasure.ts:224`).
+  `server/src/memory/erasure.ts:267`).
 - **It leaves:** a receipt with counts, invites, reports they filed (without their name), reports about
-  them (with their phone and device hashes), the copy of any chat of theirs somebody reported, bans and the phone and device hashes of a ban, the account's
+  them (with their phone and device hashes), the copy of any chat of theirs somebody reported, each of
+  their chats held hidden for 30 days for the other person to report, bans and the phone and device hashes of a ban, the account's
   device name, and anything already sent to AI providers
   or written to server logs (`server/migrations/0007_erasure.sql:12`).
 - **"Download everything"** exports their facts, all their messages with their clone, their profile,
@@ -924,7 +933,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately (`ARCHITECTURE.md:391`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
-  (`server/src/memory/erasure.ts:189`).
+  (`server/src/memory/erasure.ts:232`).
 
 ### Unverified
 
@@ -1927,7 +1936,7 @@ tap opens the card, their profile or the chat
   (`server/src/push/index.ts:78`).
 - **The sweeper** runs every 10 minutes and whenever the Matches list or a decision is
   loaded; it marks overdue pairs `expired` and writes no answer
-  (`server/src/index.ts:202`,
+  (`server/src/index.ts:205`,
   `server/src/matching/expiry.ts:27`).
 - **Expired is not no:** a no is `lapsed` plus a recorded "no"; an expiry is its own status and
   is left out of the yes/no measurement; the founder's numbers count it separately
@@ -2624,9 +2633,8 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 7. **Deleting an account deletes both halves of their chats**, the other person's messages with them
     (`server/src/memory/erasure.ts:83`). (Reports
     against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5. Since 2026-09-29 a
-    chat somebody reported is kept with the report, both halves, whoever deletes: section 10.5.) Still open: a chat
-    nobody has reported yet goes with either account, so somebody who deletes their account straight after harassing
-    a person leaves them nothing to report.
+    chat somebody reported is kept with the report, both halves, whoever deletes: section 10.5. And since 2026-09-29
+    every chat of somebody who deletes is held hidden for 30 days, for the other person to report: section 4.5.)
 8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
     again by everybody) and the Settings line now say what the code does
     (`app/src/features/settings/settings-screen.tsx:299`).

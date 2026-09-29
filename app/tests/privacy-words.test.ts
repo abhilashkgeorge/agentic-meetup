@@ -41,6 +41,14 @@ describe('the privacy words', () => {
     expect(settings).toMatch(/Nobody sees your photos or first name until you say yes to them\./);
   });
 
+  // Server 0082 (the founder, 2026-09-29): a deleted account's chats are held hidden for
+  // thirty days for a report. Said where a person agrees, and where they delete.
+  it('say that a deleted account\'s chats are held hidden for 30 days, for a report only', () => {
+    expect(consent).toMatch(/If you delete your account, your chats are kept hidden for 30 days so the people you talked to can still report you\. Only a reviewer reads them, and only after a report\. Then they are deleted\./);
+    expect(settings).toMatch(/Your chats are kept hidden for 30 days in case someone reports them, then deleted\./);
+    expect(read('../../server/migrations/0082_left_chats_held.sql')).toMatch(/expires_at\s+timestamptz NOT NULL DEFAULT now\(\) \+ interval '30 days'/);
+  });
+
   it('say that messages go to AI providers for search as well as chat', () => {
     expect(consent).toMatch(/go to AI providers, to run your clone and to search what it remembers/);
   });

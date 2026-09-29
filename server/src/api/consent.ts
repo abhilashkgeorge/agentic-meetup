@@ -34,7 +34,9 @@ export const REQUIRED = [
   // 2 (2026-09-29): its words now match what the code does -- who sees what, what can be
   // changed, and that messages go to AI providers for search as well as chat (the
   // founder's (f, h)). What a person agreed to changed, so everybody reads it again.
-  { document: 'privacy', version: '2', title: 'How your data is used' },
+  // 3 (2026-09-29): a deleted account's chats are held hidden for thirty days, for a
+  // report by the people it talked to (0082). Kept data is a change to agree to.
+  { document: 'privacy', version: '3', title: 'How your data is used' },
 ] as const;
 
 const Body = z.object({

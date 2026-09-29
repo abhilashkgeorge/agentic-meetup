@@ -289,4 +289,29 @@ export const messageRoutes = new Hono()
       ok: true,
       message: 'Thanks. They cannot contact you any more, and somebody will look at this.',
     });
+  })
+
+  /**
+   * Report somebody who has deleted their account, from the chat held for you (0082).
+   *
+   * Their chat with you is kept hidden for thirty days after they leave; this is the only
+   * way it is read, and only by the reviewer. Once per chat, in time, and only yours: a
+   * hold that is not, or no longer, is the same 404.
+   */
+  .post('/v1/left/:id/report', async (c) => {
+    const { ctx, res } = await ctxOr401(c);
+    if (!ctx) return c.json({ error: res }, 401);
+
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
+    const body = z
+      .object({ reason: z.enum(REPORT_REASONS), detail: z.string().max(2000).default('') })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: 'bad request' }, 400);
+
+    const report = await tenantSession(ctx, async (db) => (await db.query<{ id: string | null }>(
+      'SELECT report_left_chat($1, $2, $3) AS id', [id, body.data.reason, body.data.detail])).rows[0]?.id ?? null);
+    if (!report) return c.json({ error: 'not found' }, 404);
+    log.warn({ reason: body.data.reason }, 'report filed about somebody who left');
+    return c.json({ ok: true, message: 'Thanks. Somebody will look at this.' });
   });

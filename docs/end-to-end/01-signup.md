@@ -28,7 +28,7 @@ setup is finished on this phone
 | Phone number | Normalised; a 6-digit code is made and "sent" | Code | `phone_challenges`: a hash of the number and a hash of the code, 5-minute expiry, caller's IP | Nobody reads it back; only the sign-in role touches this table | [server/src/api/auth.ts:427] `INSERT INTO phone_challenges (phone_hmac, code_hmac, expires_at, created_ip)` |
 | The code | Checked (5 tries); a known number signs in, an unknown one needs an invite | Code | The challenge becomes a 15-minute "ticket" | | [server/src/api/auth.ts:533] `SET verified_at = COALESCE(verified_at, now()),` |
 | Invite code | Checked; the account is created | Code | `tenants`, `app_users` (number hash, no number), `device_sessions` | The person | [server/src/api/auth.ts:77] `INSERT INTO app_users (id, tenant_id, email, tier, phone_hmac, phone_verified_at)` |
-| "I agree" | Three documents accepted | Code | `consents` rows, append-only | The person | [server/src/api/consent.ts:96] `INSERT INTO consents (tenant_id, user_id, document, version)` |
+| "I agree" | Three documents accepted | Code | `consents` rows, append-only | The person | [server/src/api/consent.ts:98] `INSERT INTO consents (tenant_id, user_id, document, version)` |
 
 ### Arjun and Meera
 
@@ -50,8 +50,8 @@ Nothing in sign-up differs by gender. Both see, in order:
    In development, the reusable code KNOX-1010 works.
 4. **"Before we start"**: three short documents and one button, "I agree". There is no decline
    button: "If you would rather not, close the app — nothing has been set up yet."
-   ([app/src/features/consent/consent-screen.tsx:108] `Before we start`,
-   [app/src/features/consent/consent-screen.tsx:101] `If you would rather not, close the app — nothing has been set up yet.`).
+   ([app/src/features/consent/consent-screen.tsx:110] `Before we start`,
+   [app/src/features/consent/consent-screen.tsx:103] `If you would rather not, close the app — nothing has been set up yet.`).
 5. Then setup (stage 2).
 
 ### 1.1 Phone and SMS code
@@ -106,23 +106,25 @@ Nothing in sign-up differs by gender. Both see, in order:
 Three documents, shown in plain words and accepted with one "I agree"
 ([server/src/api/consent.ts:32] `{ document: 'age', version: '1', title: 'You are 18 or older' },`,
 [server/src/api/consent.ts:33] `{ document: 'terms', version: '1', title: 'Terms of use' },`,
-[server/src/api/consent.ts:37] `{ document: 'privacy', version: '2', title: 'How your data is used' },`):
+[server/src/api/consent.ts:39] `{ document: 'privacy', version: '3', title: 'How your data is used' },`):
 
 - **Age:** "You have to be 18 or older to use this." "We keep the year you were born. Other people
   only ever see your age." ([app/src/features/consent/consent-screen.tsx:37] `'You have to be 18 or older to use this.',`)
 - **Terms:** "Be a person. No harassment, no pretending to be somebody else, no pictures that are not
   of you." "Your agent talks to other agents for you. You always make the final call about who you
   meet" ([app/src/features/consent/consent-screen.tsx:42] `Your agent talks to other agents for you. You always make the final call about who you meet`)
-- **Privacy** (version 2 since 2026-09-29, so everybody reads it again): "Your clone uses what you tell
+- **Privacy** (version 3 since 2026-09-29, so everybody reads it again): "Your clone uses what you tell
   it to represent you to other agents." "Someone your agent meets sees what you mark public, your age,
   your part of town and what you are here for, and whether you fit what they asked for about work,
   exercise, sleep or moving cities." "Your answers to private questions, like faith, drinking or kids,
   help decide who you meet. They are never shown." "Your photos and first name reach a person only after
   you say yes to sharing your profile with them." "In Settings you can read everything it knows about you,
-  say what is wrong, and delete the whole account." "What you type and your messages go to AI providers,
+  say what is wrong, and delete the whole account." "If you delete your account, your chats are kept hidden
+  for 30 days so the people you talked to can still report you. Only a reviewer reads them, and only after a
+  report. Then they are deleted." "What you type and your messages go to AI providers,
   to run your clone and to search what it remembers. We do not sell anything to anybody."
   ([app/src/features/consent/consent-screen.tsx:50] `'Someone your agent meets sees what you mark public, your age, your part of town and what you are here for, and whether you fit what they asked for about work, exercise, sleep or moving cities.',`,
-  [server/src/api/consent.ts:37] `{ document: 'privacy', version: '2', title: 'How your data is used' },`)
+  [server/src/api/consent.ts:39] `{ document: 'privacy', version: '3', title: 'How your data is used' },`)
 
 Stored as append-only rows; the app role cannot change or delete them
 ([server/migrations/0042_consents_append_only.sql:25] `REVOKE UPDATE, DELETE ON consents FROM clone_app;`).

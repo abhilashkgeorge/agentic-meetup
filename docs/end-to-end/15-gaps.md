@@ -46,9 +46,8 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 7. **Deleting an account deletes both halves of their chats**, the other person's messages with them
     ([server/src/memory/erasure.ts:83] `{ table: 'rendezvous', columns: ['user_a', 'user_b'] },`). (Reports
     against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5. Since 2026-09-29 a
-    chat somebody reported is kept with the report, both halves, whoever deletes: section 10.5.) Still open: a chat
-    nobody has reported yet goes with either account, so somebody who deletes their account straight after harassing
-    a person leaves them nothing to report.
+    chat somebody reported is kept with the report, both halves, whoever deletes: section 10.5. And since 2026-09-29
+    every chat of somebody who deletes is held hidden for 30 days, for the other person to report: section 4.5.)
 8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
     again by everybody) and the Settings line now say what the code does
     ([app/src/features/settings/settings-screen.tsx:299] `Nobody sees your photos or first name until you say yes to them.`).

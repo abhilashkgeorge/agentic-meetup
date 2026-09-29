@@ -38,6 +38,7 @@ import { log } from './log.js';
 import { LIMITS, callerIp, take } from './ratelimit.js';
 import { SESSION_IDLE_MS, sweepOnce } from './memory/session.js';
 import { expireMatches } from './matching/expiry.js';
+import { forgetLeftChats } from './memory/erasure.js';
 import { warnFading } from './push/index.js';
 import { consolidateAll } from './memory/consolidate.js';
 
@@ -199,6 +200,8 @@ const expirer = setInterval(() => {
   void expireMatches().catch((err: unknown) => log.error({ err }, 'match expiry failed'));
   // And the day before: "A card fades today", once per card per person (push/index.ts).
   void warnFading().catch((err: unknown) => log.error({ err }, 'fade warning failed'));
+  // Chats held after somebody left, once their thirty days are up (0082).
+  void forgetLeftChats().catch((err: unknown) => log.error({ err }, 'held chat sweep failed'));
 }, 10 * 60 * 1000);
 expirer.unref();
 

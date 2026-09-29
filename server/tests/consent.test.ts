@@ -131,7 +131,7 @@ describe('the record', () => {
     await req('POST', { accept: REQUIRED.filter((r) => r.document !== 'privacy').map((r) => ({ document: r.document, version: r.version })) });
     const body = await (await req('GET')).json() as { outstanding: { document: string; version: string }[]; settled: boolean };
     expect(body.settled, 'the old privacy notice still counted').toBe(false);
-    expect(body.outstanding).toEqual([expect.objectContaining({ document: 'privacy', version: '2' })]);
+    expect(body.outstanding).toEqual([expect.objectContaining({ document: 'privacy', version: '3' })]);
   });
 
   it('refuses a document this server never asked for', async () => {

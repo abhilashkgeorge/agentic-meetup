@@ -51,6 +51,8 @@ const SAYS: Record<string, string[]> = {
     'Your answers to private questions, like faith, drinking or kids, help decide who you meet. They are never shown.',
     'Your photos and first name reach a person only after you say yes to sharing your profile with them.',
     'In Settings you can read everything it knows about you, say what is wrong, and delete the whole account.',
+    // Server 0082, privacy v3: a deleted account's chats are held, hidden, for a report.
+    'If you delete your account, your chats are kept hidden for 30 days so the people you talked to can still report you. Only a reviewer reads them, and only after a report. Then they are deleted.',
     'What you type and your messages go to AI providers, to run your clone and to search what it remembers. We do not sell anything to anybody.',
   ],
 };

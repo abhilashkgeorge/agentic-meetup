@@ -124,7 +124,7 @@ export default function SettingsScreen() {
   const deleteAll = useCallback(() => {
     Alert.alert(
       'Delete everything?',
-      'Your clone, every fact it holds, and every message. This cannot be undone.',
+      'Your clone, every fact it holds, and your messages. Your chats are kept hidden for 30 days in case someone reports them, then deleted. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

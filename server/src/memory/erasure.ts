@@ -85,6 +85,9 @@ const SHARED_TABLES = [
   // it is this person's words and it goes.
   { table: 'messages', columns: ['sender_id'] },
   { table: 'blocks', columns: ['blocker_id', 'blocked_id'] },
+  // Chats held for them after somebody ELSE left (0082): theirs to report, and nobody
+  // else's, so they go with them.
+  { table: 'left_chats', columns: ['survivor_id'] },
   // Reports are not here at all. Those FILED BY them lose their name; those AGAINST them
   // are kept, keyed to their phone and handsets as a ban is (0079). See eraseUser. Nor is
   // the copy of the chat a report was about (0080): it carries no user id, only who of
@@ -141,6 +144,46 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
       [ctx.userId],
     );
     deleted['reports against them (kept)'] = kept.rowCount ?? 0;
+  });
+
+  // THEIR CHATS ARE HELD FOR THIRTY DAYS, HIDDEN (the founder, 2026-09-29; 0082). Each
+  // chat they were in is copied for the person who stayed, before the pair goes below,
+  // so somebody who deletes their account straight after harassing a person does not
+  // take the evidence with them. Nobody reads the copy: the person who stayed may report
+  // it, once, within the thirty days, and only then does it reach the reviewer. Kept with
+  // it, as a ban and a kept report do (0079), the keys that know them again, and the name
+  // the other person knew them by. A chat either had blocked is not held: neither could
+  // see it. First, like the reports above, while their handsets and profile still exist.
+  await eraseSession(async (c) => {
+    const { rows: chats } = await c.query<{ id: string; survivor: string; last_at: Date | null }>(
+      `SELECT r.id, CASE WHEN r.user_a = $1 THEN r.user_b ELSE r.user_a END AS survivor,
+              (SELECT max(m.sent_at) FROM messages m WHERE m.rendezvous_id = r.id) AS last_at
+         FROM rendezvous r
+        WHERE (r.user_a = $1 OR r.user_b = $1) AND r.status = 'introduced'
+          AND NOT EXISTS (SELECT 1 FROM blocks b
+                           WHERE (b.blocker_id = r.user_a AND b.blocked_id = r.user_b)
+                              OR (b.blocker_id = r.user_b AND b.blocked_id = r.user_a))`,
+      [ctx.userId],
+    );
+    for (const chat of chats) {
+      const { rows } = await c.query<{ id: string }>(
+        `INSERT INTO left_chats (survivor_id, left_name, left_phone_hmac, left_device_hmacs, last_at)
+         SELECT $2, (SELECT mp.display_name FROM match_profile mp WHERE mp.user_id = u.id), u.phone_hmac,
+                COALESCE((SELECT array_agg(DISTINCT s.device_hmac) FROM device_sessions s
+                           WHERE s.user_id = u.id AND s.device_hmac IS NOT NULL), '{}'),
+                $3
+           FROM app_users u WHERE u.id = $1
+         RETURNING id`,
+        [ctx.userId, chat.survivor, chat.last_at],
+      );
+      await c.query(
+        `INSERT INTO left_chat_messages (left_chat_id, seq, from_left, kind, body, sent_at, redacted_at)
+         SELECT $1, m.seq, m.sender_id = $2, m.kind, m.body, m.sent_at, m.redacted_at
+           FROM messages m WHERE m.rendezvous_id = $3`,
+        [rows[0]!.id, ctx.userId, chat.id],
+      );
+    }
+    deleted['chats held 30 days for the other person'] = chats.length;
   });
 
   await tenantSession(ctx, async (c) => {
@@ -237,6 +280,18 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
 
   if (!verified) log.error({ userId: ctx.userId, remaining }, 'ERASURE INCOMPLETE');
   return { deleted, verified, remaining };
+}
+
+/**
+ * Holds past their thirty days, gone (0082). Run every ten minutes; a hold is invisible
+ * and unreportable from the moment it expires in any case, so the sweep's timing decides
+ * only how long the rows sit, never who can reach them.
+ */
+export async function forgetLeftChats(): Promise<number> {
+  const { rowCount } = await eraseSession((c) =>
+    c.query('DELETE FROM left_chats WHERE expires_at <= now()'));
+  if (rowCount) log.info({ forgotten: rowCount }, 'held chats deleted after thirty days');
+  return rowCount ?? 0;
 }
 
 /**

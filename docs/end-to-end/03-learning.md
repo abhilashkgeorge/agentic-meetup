@@ -26,7 +26,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   chat connection; the server stores it, and the clone replies. No fact is written yet
   ([server/src/api/chat.ts:315] `const stored = await episodes.append(c, {`).
 - **About five minutes after he stops**, a background sweep runs the extractor over the whole
-  session ({AI:extract}) ([server/src/index.ts:149] `}, Math.min(SESSION_IDLE_MS, 60_000));`).
+  session ({AI:extract}) ([server/src/index.ts:150] `}, Math.min(SESSION_IDLE_MS, 60_000));`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
   mornings". Both are fields a must-have can depend on, so both are **held**
   ([server/src/onboarding/questions.ts:415] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
@@ -135,10 +135,10 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 
 | Job | When | What it does | Model? | Code |
 |---|---|---|---|---|
-| Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | {AI:extract}, {AI:resolve}, {AI:profile}, {AI:sheet} | [server/src/index.ts:147] `const sweeper = setInterval(() => {` |
+| Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | {AI:extract}, {AI:resolve}, {AI:profile}, {AI:sheet} | [server/src/index.ts:148] `const sweeper = setInterval(() => {` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | [server/src/memory/consolidate.ts:26] `Deliberately deterministic: every step here is SQL.` |
 | Embeddings | After each chat reply | Turns both messages into vectors for recall | {AI:embed} (not metered) | [server/src/api/chat.ts:470] `void embedPair(ctx, [` |
-| Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | [server/src/index.ts:155] `const rounds = setInterval(() => {` |
+| Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | [server/src/index.ts:156] `const rounds = setInterval(() => {` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs
 ([server/src/llm/index.ts:32] `reflect: env.REFLECT_MODEL,`, [server/src/llm/index.ts:34] `canon: env.CANON_MODEL,`).
