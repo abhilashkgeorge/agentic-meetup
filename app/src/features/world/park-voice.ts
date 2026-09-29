@@ -39,7 +39,8 @@ export function volumeAt(d: number): number {
 
 /**
  * Whom to listen to, by voice id, and how loud. `'all'` on a bench: the room is the two
- * of you. Nobody while the speaker is off, and never anybody muted.
+ * of you -- unless you muted the other one, and then nobody. Nobody while the speaker is
+ * off, and never anybody muted.
  */
 export function voicesToHear(
   pass: VoicePass | null,
@@ -47,9 +48,11 @@ export function voicesToHear(
   me: { x: number; z: number } | null,
   muted: ReadonlySet<string>,
   hearing: boolean,
+  partner: string | null = null,
 ): Map<string, number> | 'all' {
   if (!pass || !hearing) return new Map();
-  if (pass.bench) return 'all';
+  // On a bench the only other voice is your partner's: muted, the room is silent to you.
+  if (pass.bench) return partner && muted.has(partner) ? new Map() : 'all';
   const out = new Map<string, number>();
   if (!me) return out;
   for (const p of people.values()) {

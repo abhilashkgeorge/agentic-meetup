@@ -220,15 +220,17 @@ export function VoicesSheet({ venueSim, onClose }: { venueSim: WorldSim; onClose
   const speaking = useParkVoice((s) => s.speaking);
   const people = useParkLive((s) => s.people);
   const onBench = useParkLive((s) => s.bench !== null);
+  const partner = useParkLive((s) => s.partner?.ref ?? null);
   const [reporting, setReporting] = useState<string | null>(null);
   const rows = useMemo(() => {
     const me = venueSim.get('you');
+    // On a bench, the one person you can hear: to mute, or report.
     return [...people.values()]
-      .filter((x) => x.voice || muted.includes(x.ref))
+      .filter((x) => (onBench ? x.ref === partner : x.voice || muted.includes(x.ref)))
       .map((x) => ({ person: x, metres: me ? Math.round((Math.hypot(x.x - me.x, x.z - me.z) * 8.1) / 5) * 5 : null }))
       .sort((a, b) => Number(speaking.has(b.person.ref)) - Number(speaking.has(a.person.ref)) || (a.metres ?? 0) - (b.metres ?? 0))
       .slice(0, 8);
-  }, [people, muted, speaking, venueSim]);
+  }, [people, muted, speaking, venueSim, onBench, partner]);
   return (
     <Pressable onPress={onClose} style={{ position: 'absolute', inset: 0 }} accessibilityLabel="Close">
       <Pressable onPress={() => {}} style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
@@ -243,11 +245,12 @@ export function VoicesSheet({ venueSim, onClose }: { venueSim: WorldSim; onClose
               <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: p.bg }} />
             </View>
           </Pressable>
-          {onBench ? (
+          {onBench && (
             <Text style={[type.body, { color: p.textSecondary }]}>
               On the bench it is just the two of you: nobody else can hear you, or you them.
             </Text>
-          ) : rows.length === 0 ? (
+          )}
+          {rows.length === 0 && !onBench ? (
             <Text style={[type.body, { color: p.textSecondary }]}>Nobody is near enough to hear.</Text>
           ) : rows.map(({ person, metres }) => {
             const isMuted = muted.includes(person.ref);

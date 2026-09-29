@@ -27,7 +27,8 @@
  *   - gotPass keeping the mic on under a ban      -> "a pass without speech" fails;
  *   - autoSubscribe left on in voice-room         -> "asks for no voice" fails;
  *   - the mic opened before who may listen is set -> "says who may listen first" fails;
- *   - park-presence without the mic-prompt guard  -> "does not walk you out" fails.
+ *   - park-presence without the mic-prompt guard  -> "does not walk you out" fails;
+ *   - the bench ignoring a muted partner          -> "muting the one you sit with" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -79,6 +80,15 @@ describe('whom the phone listens to', () => {
   it('on a bench, the whole room: the two of you', () => {
     expect(voicesToHear(pass({ bench: true, room: 'bench-x' }), people(), me, new Set(), true)).toBe('all');
     expect((voicesToHear(pass({ bench: true }), people(), me, new Set(), false) as Map<string, number>).size).toBe(0);
+  });
+
+  it('on a bench, muting the one you sit with silences them (the button did nothing there)', () => {
+    const bench = pass({ bench: true, room: 'bench-x' });
+    const muted = voicesToHear(bench, people(), me, new Set([REF(9)]), true, REF(9));
+    expect(muted, 'a muted partner still heard on the bench').not.toBe('all');
+    expect((muted as Map<string, number>).size).toBe(0);
+    // Somebody else muted, from before: the partner is still heard.
+    expect(voicesToHear(bench, people(), me, new Set([REF(3)]), true, REF(9))).toBe('all');
   });
 
   it('takes the voice id from the server\'s frame', () => {

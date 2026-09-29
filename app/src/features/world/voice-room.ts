@@ -138,7 +138,7 @@ export function startVoice(venueSim: WorldSim): () => void {
     const v = useParkVoice.getState();
     const live = useParkLive.getState();
     const me = venueSim.get('you');
-    const hear = voicesToHear(l.pass, live.people, me ? { x: me.x, z: me.z } : null, new Set(v.muted), v.hearing);
+    const hear = voicesToHear(l.pass, live.people, me ? { x: me.x, z: me.z } : null, new Set(v.muted), v.hearing, live.partner?.ref ?? null);
     for (const p of l.room.remoteParticipants.values()) {
       const volume = hear === 'all' ? 1 : hear.get(p.identity) ?? 0;
       for (const pub of p.audioTrackPublications.values()) {
