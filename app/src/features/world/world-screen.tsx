@@ -46,7 +46,7 @@ import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
 import { useParkPresence } from './park-presence';
-import { LiveSheet, ParkChat, SpeechBubbles } from './park-hud';
+import { InviteCard, LiveSheet, ParkActions, ParkChat, SpeechBubbles } from './park-hud';
 import { useParkLive } from './park-live';
 import { gardenSpots } from './garden';
 import { MAP, spotsFrom } from './map';
@@ -324,7 +324,7 @@ export default function WorldScreen() {
   const transitioning = realm.phase === 'entering' || realm.phase === 'leaving';
 
   // In the park, live: while it is on screen, you are in it for everybody else too.
-  useParkPresence(realm.phase === 'venue' && focused, venueSim);
+  useParkPresence(realm.phase === 'venue' && focused, venueSim, control, venueLayout.benches);
 
   const enterVenue = useCallback(() => {
     if (realm.phase !== 'city' || !world) return;
@@ -420,6 +420,8 @@ export default function WorldScreen() {
         <>
           <SpeechBubbles control={control} />
           <ParkChat bottom={Math.max(insets.bottom, 20) + 24} />
+          <ParkActions venueSim={venueSim} benches={venueLayout.benches} bottom={Math.max(insets.bottom, 20) + 24 + 58} />
+          <InviteCard />
         </>
       )}
       {/* Over everything, including the HUD, and under nothing. Debug builds only. */}

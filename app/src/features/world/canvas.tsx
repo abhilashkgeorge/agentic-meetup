@@ -54,6 +54,8 @@ import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
 import { Viewport, nearestFirst, pickAlong, visible } from './visible';
+import { buildCar } from './car-mesh';
+import { besideThem, rideAt, type Ride } from './ride';
 import { CUBBON_PARK, venueGarden, type Venue } from './venue';
 import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
 
@@ -266,6 +268,8 @@ interface CamState {
   lastDx: number; lastDy: number; pinchDist: number | null;
   /** The camera being drawn through, set by the frame loop: what `headOnScreen` projects with. */
   camera?: THREE.Camera;
+  /** A car ride in the park under way (ride.ts), and whom to tell when it is over. */
+  ride?: { ride: Ride; done: () => void } | null;
 }
 
 function startFly(cam: CamState, to: Pose, followAfter: boolean): void {
@@ -624,6 +628,11 @@ export function WorldCanvas(props: WorldCanvasProps) {
         startFly(c, { tx: hx, tz: hz, zoom: ZOOM_START }, true);
       },
       flyCity: () => { c.walking = false; sim.drive('you', 0, 0); startFly(c, c.city, false); },
+      ride: (to, done) => {
+        const me = venueSim?.get('you');
+        if (!venueSim || !me || c.ride) return;
+        c.ride = { ride: { from: [me.x, me.z], to: besideThem([me.x, me.z], to), start: c.clock }, done };
+      },
       headOnScreen: (ref) => {
         const a = (c.walking ? venueSim ?? sim : sim).get(ref);
         if (!a || !c.camera) return null;
@@ -757,6 +766,14 @@ function Town({
   // the camera, plain stand-ins further out (venue-mesh.ts). If the bundle ever fails,
   // terrain and people remain usable; only the benches, lamps and bins are absent.
   const furnitureHolder = useMemo(() => new THREE.Group(), []);
+  // The car that drives you to somebody who said yes (ride.ts), in the accent colour.
+  const car = useMemo(() => {
+    const m = new THREE.Mesh(buildCar(colors.accent), new THREE.MeshLambertMaterial({ vertexColors: true }));
+    m.visible = false;
+    m.name = 'car';
+    return m;
+  }, [colors.accent]);
+  useEffect(() => () => { car.geometry.dispose(); (car.material as THREE.Material).dispose(); }, [car]);
   const furniture = useRef<BuiltVenueFurniture | null>(null);
   useEffect(() => {
     let alive = true;
@@ -970,7 +987,27 @@ function Town({
 
     // The stick, if a thumb is on it: it steers in the camera's bearing, not the
     // agent's, so "up" always means away from you however they are facing.
-    if (cam.walking && stick) {
+    // THE CAR (ride.ts): while it takes you to somebody, it is where you are, you are
+    // inside it, and the stick does nothing.
+    const riding = walking && cam.ride ? rideAt(cam.ride.ride, t) : null;
+    if (riding && cam.ride) {
+      live.place('you', riding.you.x, riding.you.z, riding.phase === 'driving' ? riding.car.heading : undefined);
+      const me = live.get('you');
+      if (me) me.hidden = !riding.you.visible;
+      car.visible = riding.car.visible;
+      car.position.set(riding.car.x, 0, riding.car.z);
+      car.rotation.y = riding.car.heading;
+      if (riding.phase === 'done') {
+        // Out, facing them, the camera behind you, and the car gone.
+        const done = cam.ride.done;
+        cam.ride = null;
+        car.visible = false;
+        if (me) { me.hidden = false; me.facing = riding.car.heading; }
+        cam.yaw = riding.car.heading;
+        done();
+      }
+    } else if (car.visible) car.visible = false;
+    if (cam.walking && stick && !riding) {
       const { x: jx, y: jy } = stick.current;
       const push = Math.min(1, Math.hypot(jx, jy));
       if (push > 0.08) {
@@ -1104,7 +1141,7 @@ function Town({
       radius: SEEN_R,
       fx: focus.x,
       fz: focus.z,
-      keep: (a) => a.state !== 'gone' && (a.x - ex) ** 2 + (a.z - ez) ** 2 <= reach,
+      keep: (a) => a.state !== 'gone' && !a.hidden && (a.x - ex) ** 2 + (a.z - ez) ** 2 <= reach,
     });
     // NEAREST FIRST. The crowd gives the nearest the most detail: nearest the camera
     // on foot, nearest the middle of the screen on the map, where the camera is far
@@ -1306,6 +1343,7 @@ function Town({
       <primitive object={map.group} onClick={tapTile} />
       <primitive object={garden.group} />
       <primitive object={furnitureHolder} />
+      <primitive object={car} />
       <primitive object={crowdHolder} />
       <primitive object={picker} onClick={tapPerson} />
       {meshes.capsules?.solid.all.map((p, i) => <primitive key={`s${i}`} object={p.mesh} />)}

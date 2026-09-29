@@ -77,7 +77,7 @@ describe('the baked animation', () => {
     const names = sample.skeleton.bones.map((b) => b.name);
     const bake = gpu.bakeClips(gltf.scene, names, sample.skeleton.boneInverses,
       new Map(gltf.animations.map((c) => [c.name, c])));
-    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames);
+    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames);
 
     // three's own answer: the same clip on the model's own skeleton, at the same time.
     const mixer = new THREE.AnimationMixer(gltf.scene);
@@ -101,6 +101,45 @@ describe('the baked animation', () => {
       }
       action.stop();
     }
+  });
+});
+
+describe('sitting', () => {
+  it('sits: lower, thighs forward, feet on the ground and still on the legs', async () => {
+    // The pack has no sitting clip; sitPose makes one from idle. The rig's feet hang
+    // off the root, not the shins -- moved with the legs, or the shoes stay behind.
+    const gltf = await fresh();
+    const meshes = new Map<string, THREE.SkinnedMesh>();
+    gltf.scene.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) meshes.set(o.name, o as THREE.SkinnedMesh); });
+    const any = [...meshes.values()][0]!;
+    const bake = gpu.bakeClips(gltf.scene, any.skeleton.bones.map((b) => b.name), any.skeleton.boneInverses,
+      new Map(gltf.animations.map((c) => [c.name, c])));
+    const points = (name: string, row: number) => {
+      const m = meshes.get(name)!;
+      const pos = m.geometry.attributes.position!, si = m.geometry.attributes.skinIndex!, sw = m.geometry.attributes.skinWeight!;
+      return Array.from({ length: pos.count }, (_, v) => gpu.skinFromBake(bake, row,
+        [si.getX(v), si.getY(v), si.getZ(v), si.getW(v)], [sw.getX(v), sw.getY(v), sw.getZ(v), sw.getW(v)],
+        new THREE.Vector3().fromBufferAttribute(pos, v)));
+    };
+    const box = (name: string, row: number) => new THREE.Box3().setFromPoints(points(name, row));
+    /** How far forward the soles are: the lowest few centimetres of the shoes. */
+    const soles = (row: number) => {
+      const ps = points('m_casual_2_b1', row);
+      const low = Math.min(...ps.map((q) => q.y));
+      const sole = ps.filter((q) => q.y < low + 0.03);
+      return sole.reduce((n, q) => n + q.z, 0) / sole.length;
+    };
+    const idle = bake.idle.row, sit = bake.sit.row;
+    const legs = { idle: box('m_casual_2_b3', idle), sit: box('m_casual_2_b3', sit) };
+    const feet = { idle: box('m_casual_2_b1', idle), sit: box('m_casual_2_b1', sit) };
+    expect(legs.idle.max.y - legs.sit.max.y, 'the body did not come down').toBeGreaterThan(0.3);
+    expect(legs.sit.max.z - legs.idle.max.z, 'the thighs are not forward').toBeGreaterThan(0.3);
+    expect(Math.abs(feet.sit.min.y - feet.idle.min.y), 'the feet left the ground').toBeLessThan(0.06);
+    // The SOLES, not the whole shoe: a high-top's upper follows the shin wherever the
+    // foot is, so only the soles say whether the feet came with the legs.
+    expect(soles(sit) - soles(idle), 'the feet stayed where the standing feet were').toBeGreaterThan(0.25);
+    // Shoes on the legs: the trousers reach down to the top of the shoes, as standing.
+    expect(legs.sit.min.y - feet.sit.max.y, 'a gap between the trousers and the shoes').toBeLessThan(legs.idle.min.y - feet.idle.max.y + 0.05);
   });
 });
 

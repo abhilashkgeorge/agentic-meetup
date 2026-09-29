@@ -11,12 +11,14 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'rea
 import { Animated, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PARK_SAY_MAX } from '@clone/shared';
-import { parkSay } from '../../lib/socket';
+import { parkAnswer, parkFind, parkPart, parkSay, parkSit, parkStand } from '../../lib/socket';
 import { useKeyboardHeight } from '../../lib/keyboard';
 import { Button, Surface, radius, raised, space, type, usePalette } from '../../components/ui';
 import { SafetySheet } from '../safety/safety-sheet';
 import type { WorldControl } from './camera';
-import { BUBBLE_MS, REFUSAL_TEXT, bubbles, useParkLive, type Line } from './park-live';
+import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, useParkLive, type Line } from './park-live';
+import { benchFor } from './ride';
+import type { WorldSim } from './sim';
 
 /** How many people are here in person, you not counted. */
 export function useLiveCount(): number {
@@ -99,6 +101,7 @@ export function ParkChat({ bottom }: { bottom: number }) {
   const refused = useParkLive((s) => s.refused);
   const clearRefused = useParkLive((s) => s.clearRefused);
   const count = useLiveCount();
+  const onBench = useParkLive((s) => s.bench !== null);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -128,7 +131,9 @@ export function ParkChat({ bottom }: { bottom: number }) {
           {recent.map((l) => (
             <Text key={l.id} numberOfLines={2}
                   style={[type.callout, { color: p.text, backgroundColor: p.bg, opacity: 0.92, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden' }]}>
-              <Text style={{ fontFamily: type.bodyStrong.fontFamily }}>{l.ref === 'you' ? 'You: ' : 'Someone nearby: '}</Text>
+              <Text style={{ fontFamily: type.bodyStrong.fontFamily }}>
+                {l.ref === 'you' ? 'You: ' : l.private ? 'Them: ' : 'Someone nearby: '}
+              </Text>
               {l.text}
             </Text>
           ))}
@@ -144,7 +149,8 @@ export function ParkChat({ bottom }: { bottom: number }) {
           <TextInput
             value={text}
             onChangeText={setText}
-            placeholder={count > 0 ? 'Say something to people near you' : 'Nobody is near enough to hear yet'}
+            placeholder={onBench ? 'Just the two of you: nobody else can hear'
+              : count > 0 ? 'Say something to people near you' : 'Nobody is near enough to hear yet'}
             placeholderTextColor={p.textTertiary}
             style={[type.body, { flex: 1, color: p.text, paddingVertical: 8 }]}
             maxLength={PARK_SAY_MAX}
@@ -209,5 +215,125 @@ export function LiveSheet({ parkRef, onClose }: { parkRef: string; onClose: () =
         <SafetySheet target={{ parkRef }} onClose={() => setSafety(false)} onDone={onClose} />
       )}
     </Pressable>
+  );
+}
+
+/**
+ * Finding somebody to talk to, and being with them: "Find someone to talk to" while you
+ * are free, how the asking is going while it goes, and once somebody says yes, a bar
+ * with the bench and the way out.
+ */
+export function ParkActions({ venueSim, benches, bottom }: {
+  venueSim: WorldSim;
+  benches: readonly { x: number; z: number; rot: number }[];
+  /** Where the column starts, from the bottom: above "Say something", right of the stick. */
+  bottom: number;
+}) {
+  const p = usePalette();
+  const keyboard = useKeyboardHeight();
+  const finding = useParkLive((s) => s.finding);
+  const partner = useParkLive((s) => s.partner);
+  const bench = useParkLive((s) => s.bench);
+  const people = useParkLive((s) => s.people);
+  const setFinding = useParkLive((s) => s.setFinding);
+  const [taken] = useState(() => new Set<number>());
+  const refused = useParkLive((s) => s.refused);
+  // A bench somebody else took is remembered for the next try.
+  const lastAsked = useRef<number | null>(null);
+  useEffect(() => { if (refused === 'bench_taken' && lastAsked.current !== null) taken.add(lastAsked.current); }, [refused, taken]);
+  // An outcome is said for a few seconds, then the button is back.
+  useEffect(() => {
+    if (!finding || finding.status === 'searching' || finding.status === 'asking') return;
+    const t = setTimeout(() => setFinding(null), 4500);
+    return () => clearTimeout(t);
+  }, [finding, setFinding]);
+
+  const sit = () => {
+    const me = venueSim.get('you');
+    const them = partner ? people.get(partner.ref) : undefined;
+    if (!me || !them) return;
+    const b = benchFor(benches, [me.x, me.z], [them.x, them.z], taken);
+    if (b === null) return;
+    lastAsked.current = b;
+    parkSit(b);
+  };
+
+  const card = { paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, backgroundColor: p.bg, boxShadow: raised(p, 4), gap: space.sm, maxWidth: 250 };
+  // Out of the way while typing: the keyboard has the bottom of the screen.
+  if (keyboard > 0) return null;
+  return (
+    <View pointerEvents="box-none" style={{ position: 'absolute', bottom, right: space.screen, alignItems: 'flex-end', gap: space.sm }}>
+      {partner ? (
+        <View style={card}>
+          <Text style={[type.bodyStrong, { color: p.text }]}>
+            {partner.rideTo ? 'On your way to them…' : bench !== null ? 'On a bench, just the two of you' : 'You are talking with someone'}
+          </Text>
+          <Text style={[type.callout, { color: p.textSecondary }]}>
+            {bench !== null ? 'Nobody else can hear you, however close they stand.'
+              : 'People near you can hear you both. Sit on a bench to talk privately.'}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+            {bench === null ? (
+              <Pill label="Sit on a bench" primary onPress={sit} disabled={!!partner.rideTo} />
+            ) : (
+              <Pill label="Get up" onPress={parkStand} />
+            )}
+            <Pill label="End" onPress={parkPart} />
+          </View>
+        </View>
+      ) : finding ? (
+        <View style={card}>
+          <Text style={[type.callout, { color: p.text }]}>
+            {finding.status === 'asking' && finding.why ? `Asking someone who also likes ${finding.why}…` : FIND_TEXT[finding.status]}
+          </Text>
+          {(finding.status === 'searching' || finding.status === 'asking') && <Pill label="Stop" onPress={parkPart} />}
+        </View>
+      ) : (
+        <Pill label="Find someone to talk to" primary onPress={parkFind} />
+      )}
+    </View>
+  );
+}
+
+function Pill({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
+  const p = usePalette();
+  return (
+    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label}
+               style={{ paddingHorizontal: space.lg, paddingVertical: space.sm + 2, borderRadius: radius.pill,
+                        backgroundColor: primary ? p.accent : p.bg, boxShadow: primary ? undefined : raised(p, 3), opacity: disabled ? 0.5 : 1 }}>
+      <Text style={[type.callout, { color: primary ? p.accentText : p.text, fontFamily: type.bodyStrong.fontFamily }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Somebody here would like to talk: what you share, if you share something you both
+ * made public, and yes or not now. Not now is not told as a no to anybody but them,
+ * and they are not asked again by the same person for a while (server pairs.ts).
+ */
+export function InviteCard() {
+  const p = usePalette();
+  const asked = useParkLive((s) => s.asked);
+  const rise = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(rise, { toValue: asked ? 1 : 0, useNativeDriver: true, speed: 14, bounciness: 6 }).start();
+  }, [asked, rise]);
+  if (!asked) return null;
+  return (
+    <Animated.View style={{
+      position: 'absolute', left: space.screen, right: space.screen, top: '32%',
+      opacity: rise, transform: [{ scale: rise.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
+    }}>
+      <Surface radius={radius.xl} style={{ padding: space.screen, gap: space.md }}>
+        <Text style={[type.title, { color: p.text }]}>Someone here would like to talk</Text>
+        <Text style={[type.body, { color: p.textSecondary }]}>
+          {asked.why ? `You both like ${asked.why}. ` : ''}Are you free? If you say yes, they come over to you.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: space.sm }}>
+          <View style={{ flex: 1 }}><Button label="Not now" variant="ghost" onPress={() => parkAnswer(false)} /></View>
+          <View style={{ flex: 1.3 }}><Button label="Yes, let's talk" variant="primary" onPress={() => parkAnswer(true)} /></View>
+        </View>
+      </Surface>
+    </Animated.View>
   );
 }

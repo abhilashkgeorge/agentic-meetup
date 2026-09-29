@@ -1,13 +1,15 @@
 /**
  * A practice person who walks in Cubbon Park live, for trying the park with one phone.
  *
- *     npx tsx scripts/park-bot.ts [minutes=10] [x=12] [z=-29]
+ *     npx tsx scripts/park-bot.ts [minutes=10] [x=12] [z=-29] [--ask]
  *
  * It signs in as one of the practice profiles (a session row of its own, removed when
  * it goes), walks into the park at (x, z) -- by default a few steps from where you
  * arrive -- walks up to the nearest real person it can see, says hello, and answers
- * whatever is said near it from a short list. NO MODEL: every line is written here.
- * Development only: it refuses to run with NODE_ENV=production.
+ * whatever is said near it from a short list. Asked to talk ("Find someone"), it says
+ * yes and stands still for you to arrive; with --ask it asks you, a few seconds after
+ * it walks in. NO MODEL: every line is written here. Development only: it refuses to
+ * run with NODE_ENV=production.
  */
 import { Pool } from 'pg';
 import WebSocket from 'ws';
@@ -16,9 +18,12 @@ import { mintToken, newSessionId } from '../src/tokens.js';
 
 if (process.env.NODE_ENV === 'production') throw new Error('park-bot is for development');
 
-const minutes = Number(process.argv[2] ?? 10);
-let x = Number(process.argv[3] ?? 12);
-let z = Number(process.argv[4] ?? -29);
+const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const minutes = Number(args[0] ?? 10);
+let x = Number(args[1] ?? 12);
+let z = Number(args[2] ?? -29);
+const ask = process.argv.includes('--ask');
+let paired = false;
 
 const HELLO = 'Hi! Nice evening for a walk.';
 const REPLIES = [
@@ -48,9 +53,10 @@ let replyAt = 0;
 let reply = 0;
 
 ws.on('open', () => {
-  console.log(`park-bot: in as a practice profile at (${x}, ${z}) for ${minutes} min`);
+  console.log(`park-bot: in as a practice profile at (${x}, ${z}) for ${minutes} min${ask ? ', and asking' : ''}`);
   send({ type: 'park.enter' });
   send({ type: 'park.move', x, z, facing: 0, moving: false });
+  if (ask) setTimeout(() => send({ type: 'park.find' }), 5000);
 });
 ws.on('message', (data) => {
   const ev = JSON.parse(String(data)) as { type: string; people?: { ref: string; x: number; z: number }[]; ref?: string; text?: string; reason?: string };
@@ -61,11 +67,21 @@ ws.on('message', (data) => {
   }
   if (ev.type === 'park.said' && ev.ref === 'you') console.log(`park-bot said: ${ev.text}`);
   if (ev.type === 'park.refused') console.log(`park-bot: refused (${ev.reason})`);
+  if (ev.type === 'park.asked') {
+    console.log(`park-bot: asked to talk${(ev as { why?: string }).why ? ` (both like ${(ev as { why?: string }).why})` : ''}; saying yes`);
+    setTimeout(() => send({ type: 'park.answer', yes: true }), 1500);
+  }
+  if (ev.type === 'park.finding') console.log(`park-bot: finding -> ${(ev as { status?: string }).status}`);
+  if (ev.type === 'park.paired') { paired = true; console.log('park-bot: talking with someone'); }
+  if (ev.type === 'park.parted') { paired = false; console.log('park-bot: parted'); }
+  if (ev.type === 'park.sat') console.log(`park-bot: on bench ${(ev as { bench?: number }).bench} -- private now`);
+  if (ev.type === 'park.stood') console.log('park-bot: up off the bench');
 });
 ws.on('close', (code) => console.log(`park-bot: socket closed (${code})`));
 
 const walk = setInterval(() => {
-  const target = people[0];
+  // Talking with somebody: stand still, they come to it.
+  const target = paired ? undefined : people[0];
   let moving = false;
   let facing = 0;
   if (target) {

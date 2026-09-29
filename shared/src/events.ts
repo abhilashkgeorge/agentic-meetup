@@ -96,9 +96,26 @@ export const ClientParkSay = z.object({
   text: z.string().trim().min(1).max(PARK_SAY_MAX),
 });
 
+/**
+ * Two people in the park who agree to talk (server park/pairs.ts). "Find someone"
+ * asks the server for the best free person here -- most in common first -- who is
+ * asked, and says yes or no. Nobody is asked while they are busy: talking with
+ * somebody, asking, or being asked. A pair may take a bench: while they sit, what
+ * they say goes to each other and to nobody else, and nothing said near them reaches
+ * them.
+ */
+export const ClientParkFind = z.object({ type: z.literal('park.find') });
+export const ClientParkAnswer = z.object({ type: z.literal('park.answer'), yes: z.boolean() });
+/** Stop asking, or stop talking: whichever you are doing. */
+export const ClientParkPart = z.object({ type: z.literal('park.part') });
+/** A bench by its number in the park's own list (garden benches, the same on every phone). */
+export const ClientParkSit = z.object({ type: z.literal('park.sit'), bench: z.number().int().min(0).max(10_000) });
+export const ClientParkStand = z.object({ type: z.literal('park.stand') });
+
 export const ClientMessage = z.discriminatedUnion('type', [
   ClientHello, ClientTurn, ClientDm, ClientDmRead, ClientTyping,
   ClientParkEnter, ClientParkLeave, ClientParkMove, ClientParkSay,
+  ClientParkFind, ClientParkAnswer, ClientParkPart, ClientParkSit, ClientParkStand,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -134,6 +151,8 @@ export const ParkPerson = z.object({
   /** Sent the first time you are sent them, and when it changes: four times a second
    *  over a slow tunnel, a whole look per person per frame was most of the bytes. */
   look: Look.optional(),
+  /** On a bench with somebody, and not walking to it: drawn sitting. */
+  sitting: z.boolean().optional(),
 });
 export type ParkPerson = z.infer<typeof ParkPerson>;
 
@@ -212,12 +231,38 @@ export const ServerEvent = z.discriminatedUnion('type', [
   /** Something said within earshot. `you` when it was you, so it shows over your head. */
   z.object({
     type: z.literal('park.said'), ref: z.union([AgentRef, z.literal('you')]), text: z.string(), at: z.number(),
+    /** Said on a bench: to the two of you and nobody else. */
+    private: z.boolean().optional(),
   }),
   /** What you said was not sent, and why: to you, only. */
   z.object({
     type: z.literal('park.refused'),
     reason: z.enum(['contact', 'too_fast', 'not_in_park']),
   }),
+  /**
+   * How "Find someone" is going, to the person looking. `asking` names who (their ref)
+   * and what you share, when you share something either of you made public.
+   */
+  z.object({
+    type: z.literal('park.finding'),
+    status: z.enum(['asking', 'nobody', 'declined', 'no_answer', 'busy', 'gone']),
+    ref: AgentRef.optional(),
+    why: z.string().optional(),
+  }),
+  /** Somebody here would like to talk to you. Answer with park.answer. */
+  z.object({ type: z.literal('park.asked'), ref: AgentRef, why: z.string().optional() }),
+  /** They stopped asking, or the time ran out. */
+  z.object({ type: z.literal('park.unasked') }),
+  /** You are talking with them now: where they stand, for the ride over. */
+  z.object({ type: z.literal('park.paired'), ref: AgentRef, x: z.number(), z: z.number(), asked: z.boolean() }),
+  /** It ended: either of you, or one of you left the park. */
+  z.object({ type: z.literal('park.parted') }),
+  /** The bench is yours: walk there and sit. Private from now on. */
+  z.object({ type: z.literal('park.sat'), bench: z.number().int() }),
+  /** Up off the bench: what you say is heard nearby again. */
+  z.object({ type: z.literal('park.stood') }),
+  /** That bench is taken. */
+  z.object({ type: z.literal('park.bench_taken'), bench: z.number().int() }),
 
   z.object({ type: z.literal('heartbeat') }),
   z.object({

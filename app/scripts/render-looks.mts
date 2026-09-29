@@ -22,7 +22,8 @@ import { writeFileSync } from 'node:fs';
 import { HAIRSTYLES, HATS, LOOK_SIZES, SHAVED, STARTER, WARDROBE, WARDROBE_FIGURE, type Look } from '@clone/shared';
 import { dressed, draw, loadPeople, png, sheetOf, view, type Frame } from './raster.mts';
 
-const people = await loadPeople('idle');
+// --sit: sitting on a bench (sitPose), to see that the pose sits.
+const people = await loadPeople(process.argv.includes('--sit') ? 'sit' : 'idle');
 const SETS = WARDROBE.map((_, i) => i);
 const HAIRS = HAIRSTYLES.map((_, i) => i);
 const look = (over: Partial<Look>): Look => ({ ...STARTER, skin: 2, hairColor: 2, outfitColor: 2, ...over });
@@ -49,6 +50,8 @@ const SHEETS: Record<string, () => Look[][]> = {
   // necklace, the bow tie and the two bags.
   body: () => SETS.map((t) => [0, 1, 2, 3].map((n) => look({ figure: fig(t), head: t, hair: t, top: t, legs: t, feet: t, neck: n }))
     .concat([1, 2].map((b) => look({ figure: fig(t), head: t, hair: t, top: t, legs: t, feet: t, bag: b })))),
+  // A few people, big, to look at a pose (with --sit and --side).
+  few: () => [[look({}), look({ figure: 1, head: 1, hair: 1, top: 1, legs: 6, feet: 6 }), look({ top: 8, legs: 8, feet: 8, head: 8, hair: 8 })]],
   beards: () => SETS.filter((f) => fig(f) === 0).map((f) =>
     Array.from({ length: LOOK_SIZES.beard }, (_, b) => look({ head: f, hair: SHAVED, beard: b }))),
 };
@@ -66,10 +69,13 @@ if (!name || !out || !SHEETS[name] || !band) {
 }
 const rows = SHEETS[name]!();
 const TH = regionName === 'body' ? 260 : 150;
-const TW = 150;
+const TW = rest.includes('--side') || name === 'few' ? 260 : 150;
 const cols = Math.max(...rows.map((r) => r.length));
 // --back: from behind and a little to the side, where a haircut meets the neck.
-const frame: Frame = { fit: { band }, background: [0.93, 0.93, 0.95], view: rest.includes('--back') ? view(Math.PI - 0.5) : view() };
+const frame: Frame = {
+  fit: { band }, background: [0.93, 0.93, 0.95],
+  view: rest.includes('--back') ? view(Math.PI - 0.5) : rest.includes('--side') ? view(-Math.PI / 2) : view(),
+};
 const tiles = rows.flatMap((row) => Array.from({ length: cols }, (_, c) =>
   row[c] ? draw(dressed(people, row[c]!), TW, TH, frame) : new Float32Array(TW * TH * 4)));
 const sheet = sheetOf(tiles, cols, TW, TH, true);

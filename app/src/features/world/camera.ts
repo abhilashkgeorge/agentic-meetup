@@ -128,6 +128,11 @@ export interface WorldControl {
    * park's speech bubbles a few dozen times a second.
    */
   headOnScreen(ref: string): [number, number] | null;
+  /**
+   * Take you by car to beside `to` in the park (ride.ts). `done` is called once you
+   * are out of the car. A second call while riding is ignored.
+   */
+  ride(to: readonly [number, number], done: () => void): void;
 }
 
 const SQ2 = Math.SQRT2;

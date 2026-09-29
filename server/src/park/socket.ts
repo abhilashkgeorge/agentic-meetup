@@ -13,15 +13,20 @@
  */
 import type { WebSocket } from 'ws';
 import { ClientMessage, lookKey, type ParkPerson, type ServerEvent } from '@clone/shared';
-import { matchSession, type TenantCtx } from '../db/client.js';
+import { matchSession, matchmakerSession, type TenantCtx } from '../db/client.js';
 import { lookOf } from '../looks/store.js';
+import { LIKED, tagWords } from '../matching/brief.js';
+import { publicTags } from '../matching/rendezvous.js';
+import { rank } from '../matching/score.js';
 import { agentRef } from '../matching/world.js';
 import * as hub from '../messaging/hub.js';
 import { log } from '../log.js';
 import { take } from '../ratelimit.js';
+import { ParkPairs } from './pairs.js';
 import { ParkRoom } from './room.js';
 
-export const park = new ParkRoom(agentRef);
+export const pairs = new ParkPairs();
+export const park = new ParkRoom(agentRef, Date.now, pairs);
 
 /** A walk is at most a few frames a second; anything faster is dropped, not answered. */
 export const MOVE_LIMIT = { max: 30, windowMs: 3_000 };
@@ -29,6 +34,10 @@ export const MOVE_LIMIT = { max: 30, windowMs: 3_000 };
 export const SAY_LIMIT = { max: 8, windowMs: 30_000 };
 /** Every other park frame (enter, leave): a reconnect loop is the failure this catches. */
 export const OTHER_LIMIT = { max: 20, windowMs: 60_000 };
+/** "Find someone" is a question to a stranger: a few a minute at most. */
+export const FIND_LIMIT = { max: 6, windowMs: 60_000 };
+/** Answering, parting, sitting and standing. */
+export const PAIR_LIMIT = { max: 30, windowMs: 60_000 };
 
 /** Cheap enough to run on every frame before parsing: the app writes `type` first. */
 export const isParkFrame = (raw: string): boolean => raw.startsWith('{"type":"park.');
@@ -56,7 +65,55 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       const r = park.say(me, msg.text);
       if (!r.ok) { send(ws, { type: 'park.refused', reason: r.reason }); return; }
       const at = Date.now();
-      for (const { userId, ref } of r.to) hub.pushTo(userId, { type: 'park.said', ref, text: msg.text, at } satisfies ServerEvent);
+      const priv = r.private ? { private: true } : {};
+      for (const { userId, ref } of r.to) hub.pushTo(userId, { type: 'park.said', ref, text: msg.text, at, ...priv } satisfies ServerEvent);
+      return;
+    }
+    case 'park.find': {
+      if (!take(`park-find:${me}`, FIND_LIMIT).ok) { send(ws, { type: 'park.refused', reason: 'too_fast' }); return; }
+      if (!park.members.has(me)) { send(ws, { type: 'park.refused', reason: 'not_in_park' }); return; }
+      if (pairs.busy(me)) { send(ws, { type: 'park.finding', status: 'busy' }); return; }
+      const found = await findFor(me);
+      // Asked for between the search and now by somebody quicker: nobody, this time.
+      if (!found || !pairs.ask(me, found.to)) { send(ws, { type: 'park.finding', status: 'nobody' }); return; }
+      const why = found.why ? { why: found.why } : {};
+      hub.pushTo(found.to, { type: 'park.asked', ref: agentRef(found.to, me), ...why } satisfies ServerEvent);
+      send(ws, { type: 'park.finding', status: 'asking', ref: agentRef(me, found.to), ...why });
+      log.info({ userId: me }, 'park: asking someone');
+      return;
+    }
+    case 'park.answer': {
+      if (!take(`park-pair:${me}`, PAIR_LIMIT).ok) return;
+      const from = pairs.answer(me, msg.yes);
+      if (!from) { send(ws, { type: 'park.unasked' }); return; }
+      if (!msg.yes) { hub.pushTo(from, { type: 'park.finding', status: 'declined' } satisfies ServerEvent); return; }
+      const asker = park.members.get(from);
+      const asked = park.members.get(me);
+      if (!asker || !asked) { endPair(me); return; }
+      // The one who asked rides over to the one who said yes (the app's car).
+      hub.pushTo(from, { type: 'park.paired', ref: agentRef(from, me), x: asked.x, z: asked.z, asked: false } satisfies ServerEvent);
+      send(ws, { type: 'park.paired', ref: agentRef(me, from), x: asker.x, z: asker.z, asked: true });
+      log.info({ userId: me }, 'park: paired');
+      return;
+    }
+    case 'park.part': {
+      if (!take(`park-pair:${me}`, PAIR_LIMIT).ok) return;
+      const was = pairs.withdraw(me);
+      if (was) { hub.pushTo(was, { type: 'park.unasked' } satisfies ServerEvent); send(ws, { type: 'park.finding', status: 'gone' }); }
+      endPair(me);
+      return;
+    }
+    case 'park.sit': {
+      if (!take(`park-pair:${me}`, PAIR_LIMIT).ok) return;
+      const other = pairs.sit(me, msg.bench);
+      if (!other) { send(ws, { type: 'park.bench_taken', bench: msg.bench }); return; }
+      for (const u of [me, other]) hub.pushTo(u, { type: 'park.sat', bench: msg.bench } satisfies ServerEvent);
+      return;
+    }
+    case 'park.stand': {
+      if (!take(`park-pair:${me}`, PAIR_LIMIT).ok) return;
+      const other = pairs.stand(me);
+      if (other) for (const u of [me, other]) hub.pushTo(u, { type: 'park.stood' } satisfies ServerEvent);
       return;
     }
     case 'park.enter': {
@@ -93,7 +150,53 @@ export function leavePark(userId: string): void {
   if (!park.members.has(userId)) return;
   park.leave(userId);
   sentLooks.delete(userId);
+  unpair(userId);
   log.info({ userId, here: park.members.size }, 'park: left');
+}
+
+/** Everything of theirs ends when they go, and whoever it touched is told. */
+function unpair(userId: string): void {
+  const r = pairs.leave(userId);
+  if (r.partner) hub.pushTo(r.partner, { type: 'park.parted' } satisfies ServerEvent);
+  if (r.wasAsking) hub.pushTo(r.wasAsking, { type: 'park.unasked' } satisfies ServerEvent);
+  if (r.wasAskedBy) hub.pushTo(r.wasAskedBy, { type: 'park.finding', status: 'gone' } satisfies ServerEvent);
+}
+
+function endPair(userId: string): void {
+  const other = pairs.part(userId);
+  if (!other) return;
+  for (const u of [userId, other]) hub.pushTo(u, { type: 'park.parted' } satisfies ServerEvent);
+}
+
+/**
+ * The best free person here for `me` to talk to: first the square's own ranking, both
+ * people's wants both ways (matching/score.ts rank); then how many of their tags they
+ * share -- the ranker scores nothing for anybody who has stated no wants, which in a
+ * park is most people -- then the nearest. And one thing they share, if both made it
+ * public: never a word from a fact only matching may use (publicTags).
+ */
+async function findFor(me: string): Promise<{ to: string; why: string | null } | null> {
+  const free = [...park.members.keys()].filter((id) => id !== me && !park.isApart(me, id) && pairs.mayAsk(me, id));
+  if (!free.length) return null;
+  const { ranked, tags } = await matchSession(async (c) => {
+    const ranked = await rank(c, me, free, free.length);
+    const { rows } = await c.query<{ user_id: string; attribute_tags: string[] }>(
+      'SELECT user_id, attribute_tags FROM match_profile WHERE user_id = ANY($1::uuid[])', [[me, ...free]]);
+    return { ranked, tags: new Map(rows.map((r) => [r.user_id, r.attribute_tags])) };
+  });
+  const score = new Map(ranked.map((r) => [r.userId, r.score]));
+  const myTags = new Set(tags.get(me) ?? []);
+  const shared = (id: string) => (tags.get(id) ?? []).filter((t) => myTags.has(t)).length;
+  const mine = park.members.get(me)!;
+  const dist = (id: string) => { const m = park.members.get(id)!; return Math.hypot(m.x - mine.x, m.z - mine.z); };
+  const to = [...free].sort((a, b) =>
+    (score.get(b) ?? 0) - (score.get(a) ?? 0) || shared(b) - shared(a) || dist(a) - dist(b))[0];
+  if (!to) return null;
+  const why = await matchmakerSession(async (c) => {
+    const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];
+    return a.find((w) => b.includes(w)) ?? null;
+  });
+  return { to, why };
 }
 
 /** A socket closed: if it was their last, they have left the park too. */
@@ -123,7 +226,11 @@ function pushPeople(viewerId: string): void {
 
 /** Every person in the park, the people near them. And the silent ones leave. */
 export function tick(): void {
-  for (const gone of park.sweep()) { sentLooks.delete(gone); log.info({ userId: gone }, 'park: timed out'); }
+  for (const gone of park.sweep()) { sentLooks.delete(gone); unpair(gone); log.info({ userId: gone }, 'park: timed out'); }
+  for (const { from, to } of pairs.expire()) {
+    hub.pushTo(from, { type: 'park.finding', status: 'no_answer' } satisfies ServerEvent);
+    hub.pushTo(to, { type: 'park.unasked' } satisfies ServerEvent);
+  }
   for (const id of park.members.keys()) pushPeople(id);
 }
 

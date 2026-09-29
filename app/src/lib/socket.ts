@@ -135,10 +135,35 @@ function connect(): void {
         useParkLive.getState().gotPeople(ev.people);
         break;
       case 'park.said':
-        useParkLive.getState().gotLine(ev.ref, ev.text, ev.at);
+        useParkLive.getState().gotLine(ev.ref, ev.text, ev.at, ev.private);
         break;
       case 'park.refused':
         useParkLive.getState().gotRefused(ev.reason);
+        break;
+      case 'park.finding':
+        useParkLive.getState().setFinding({ status: ev.status, ...(ev.ref ? { ref: ev.ref } : {}), ...(ev.why ? { why: ev.why } : {}) });
+        break;
+      case 'park.asked':
+        useParkLive.getState().gotAsked(ev.ref, ev.why);
+        break;
+      case 'park.unasked':
+        useParkLive.getState().gotUnasked();
+        break;
+      case 'park.paired':
+        // The one who asked rides over (the car); the one who said yes stays put.
+        useParkLive.getState().gotPaired(ev.ref, ev.asked ? null : [ev.x, ev.z]);
+        break;
+      case 'park.parted':
+        useParkLive.getState().gotParted();
+        break;
+      case 'park.sat':
+        useParkLive.getState().gotBench(ev.bench);
+        break;
+      case 'park.stood':
+        useParkLive.getState().gotBench(null);
+        break;
+      case 'park.bench_taken':
+        useParkLive.getState().gotRefused('bench_taken');
         break;
 
       case 'heartbeat':
@@ -235,6 +260,31 @@ export function parkLeave(): void {
 
 export function parkMove(x: number, z: number, facing: number, moving: boolean): void {
   push({ type: 'park.move', x, z, facing, moving });
+}
+
+/** Find someone free to talk to: the server picks and asks them. */
+export function parkFind(): void {
+  useParkLive.getState().setFinding({ status: 'searching' });
+  if (!push({ type: 'park.find' })) useParkLive.getState().setFinding(null);
+}
+
+export function parkAnswer(yes: boolean): void {
+  useParkLive.getState().gotUnasked();
+  push({ type: 'park.answer', yes });
+}
+
+/** Stop asking, or stop talking. */
+export function parkPart(): void {
+  useParkLive.getState().setFinding(null);
+  push({ type: 'park.part' });
+}
+
+export function parkSit(bench: number): void {
+  push({ type: 'park.sit', bench });
+}
+
+export function parkStand(): void {
+  push({ type: 'park.stand' });
 }
 
 export function parkSay(text: string): boolean {

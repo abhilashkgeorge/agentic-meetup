@@ -130,6 +130,51 @@ export interface Bake {
   /** First row and frame count of each clip. */
   walk: { row: number; frames: number };
   idle: { row: number; frames: number };
+  /** One still frame: sitting on a bench (sitPose). */
+  sit: { row: number; frames: number };
+}
+
+/**
+ * Sitting, made from the idle pose: the pack has no sitting clip, only walking, idling
+ * and fighting. The body drops by what it takes to bring the ankles down to the ground
+ * with the thighs level and the shins upright, the thighs point forward, the shins
+ * down, and the feet -- which in this rig hang off the root, not the shins -- are moved
+ * to where the ankles now are. Pointed by aim, from where each bone's child is to where
+ * it should be, so it does not matter which way each bone's own axes run.
+ */
+export function sitPose(root: THREE.Object3D, bone: (name: string) => THREE.Bone): void {
+  root.updateMatrixWorld(true);
+  const at = (b: THREE.Bone) => b.getWorldPosition(new THREE.Vector3());
+  /** Turn `b` about its own joint so that `from` (world) comes to lie along `to`. */
+  const aim = (b: THREE.Bone, from: THREE.Vector3, to: THREE.Vector3) => {
+    const pivot = at(b);
+    const q = new THREE.Quaternion().setFromUnitVectors(from.clone().sub(pivot).normalize(), to.clone().sub(pivot).normalize());
+    const parentQ = b.parent!.getWorldQuaternion(new THREE.Quaternion());
+    const worldQ = b.getWorldQuaternion(new THREE.Quaternion());
+    b.quaternion.copy(parentQ.invert().multiply(q.multiply(worldQ)));
+    b.updateMatrixWorld(true);
+  };
+  const body = bone('Body');
+  const legs = (['L', 'R'] as const).map((s) => ({ upper: bone(`UpperLeg${s}`), lower: bone(`LowerLeg${s}`), foot: bone(`Foot${s}`) }));
+  const L = legs[0]!;
+  const thigh = at(L.upper).distanceTo(at(L.lower));
+  const shin = at(L.lower).distanceTo(at(L.foot));
+  const ground = at(L.foot).y;
+  // Down, so a level thigh and an upright shin put the ankle on the ground.
+  const drop = at(L.upper).y - (ground + shin);
+  const bodyAt = at(body).sub(new THREE.Vector3(0, drop, 0));
+  body.position.copy(body.parent!.worldToLocal(bodyAt));
+  root.updateMatrixWorld(true);
+  for (const { upper, lower, foot } of legs) {
+    const hip = at(upper);
+    const knee = hip.clone().add(new THREE.Vector3((hip.x > 0 ? 1 : -1) * 0.015, -0.03, thigh));
+    aim(upper, at(lower), knee);
+    const ankle = at(lower).clone().setY(ground);
+    aim(lower, at(foot), ankle);
+    foot.position.copy(foot.parent!.worldToLocal(ankle.clone()));
+    foot.updateMatrixWorld(true);
+  }
+  root.updateMatrixWorld(true);
 }
 
 /**
@@ -158,7 +203,7 @@ export function bakeClips(
   const w = framesOf(walk);
   const i = framesOf(idle);
   const width = bones.length * 4;
-  const data = new Float32Array(width * (w + i) * 4);
+  const data = new Float32Array(width * (w + i + 1) * 4);
   const mixer = new THREE.AnimationMixer(root);
   const m = new THREE.Matrix4();
   let row = 0;
@@ -175,8 +220,22 @@ export function bakeClips(
     }
     action.stop();
   }
+  // Sitting: the idle's first frame, sat down. A stopped action leaves its last pose on
+  // the bones, which is what sitPose starts from.
+  const still = mixer.clipAction(idle);
+  still.reset().play();
+  mixer.setTime(0);
   mixer.stopAllAction();
-  return { data, width, rows: w + i, walk: { row: 0, frames: w }, idle: { row: w, frames: i } };
+  sitPose(root, (n) => {
+    const b = found.get(n);
+    if (!b) throw new Error(`sitting needs bone "${n}"`);
+    return b;
+  });
+  for (let b = 0; b < bones.length; b++) {
+    m.multiplyMatrices(bones[b]!.matrixWorld, boneInverses[b]!);
+    data.set(m.elements, (row * width + b * 4) * 4);
+  }
+  return { data, width, rows: w + i + 1, walk: { row: 0, frames: w }, idle: { row: w, frames: i }, sit: { row: w + i, frames: 1 } };
 }
 
 /**
@@ -638,6 +697,7 @@ export function paintOf(role: number, own: [number, number, number], f: Float32A
 const VERTEX_PARS = /* glsl */`
 uniform highp sampler2D uBake;
 uniform vec4 uClips;
+uniform float uSit;
 uniform float uFps;
 uniform float uTime;
 uniform vec4 uHat[8];
@@ -693,14 +753,16 @@ else if (crowdRole < 8.5) crowdPaint = color * crowdUnpack(aCol2.z);
 else if (crowdRole < 9.5) crowdPaint = color * crowdUnpack(aCol2.w);
 else crowdPaint = color * crowdUnpack(aShape.w);
 vColor = vec4(crowdPaint, 1.0);
-vGhost = aAnim.w;
+// aAnim.w: 1 for see-through, plus 2 for sitting.
+vGhost = mod(aAnim.w, 2.0);
 `;
 
 /** Where in their walk (or idle) they are, and where they stand: one matrix. */
 const VERTEX_SKIN = /* glsl */`
 int crowdWalkRow = int(uClips.x + mod(floor((uTime + aAnim.x) * uFps), uClips.y));
 int crowdIdleRow = int(uClips.z + mod(floor((uTime + aAnim.y) * uFps), uClips.w));
-mat4 crowdSkin = aAnim.z > 0.995 ? crowdPose(crowdWalkRow) : aAnim.z < 0.005 ? crowdPose(crowdIdleRow)
+mat4 crowdSkin = aAnim.w > 1.5 ? crowdPose(int(uSit))
+  : aAnim.z > 0.995 ? crowdPose(crowdWalkRow) : aAnim.z < 0.005 ? crowdPose(crowdIdleRow)
   : crowdPose(crowdWalkRow) * aAnim.z + crowdPose(crowdIdleRow) * (1.0 - aAnim.z);
 float crowdC = cos(aPos.z);
 float crowdS = sin(aPos.z);
@@ -747,7 +809,7 @@ function crowdMaterial(uniforms: Record<string, THREE.IUniform>): THREE.MeshLamb
       .replace('#include <color_pars_fragment>', '#include <color_pars_fragment>\nvarying float vGhost;')
       .replace('#include <clipping_planes_fragment>', `${FRAGMENT_GHOST}\n#include <clipping_planes_fragment>`);
   };
-  m.customProgramCacheKey = () => 'crowd-gpu-3';
+  m.customProgramCacheKey = () => 'crowd-gpu-4';
   return m;
 }
 
@@ -762,7 +824,7 @@ export interface CrowdPerson {
   readonly look: Look;
   readonly seed: number;
   readonly ghost: boolean;
-  /** 'walking', 'approaching' and 'leaving' walk; every other state stands. */
+  /** 'walking', 'approaching' and 'leaving' walk; 'sitting' sits; every other state stands. */
   readonly state: string;
 }
 
@@ -881,6 +943,7 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
   const uniforms: Record<string, THREE.IUniform> = {
     uBake: { value: bakeTex },
     uClips: { value: new THREE.Vector4(bake.walk.row, bake.walk.frames, bake.idle.row, bake.idle.frames) },
+    uSit: { value: bake.sit.row },
     uFps: { value: BAKE_FPS },
     uTime: { value: 0 },
     uHat: { value: hatUniform() },
@@ -961,7 +1024,8 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
         const arr = l.buffer.array as Float32Array;
         const at = l.n * STRIDE;
         arr[at] = a.x; arr[at + 1] = a.z; arr[at + 2] = a.facing; arr[at + 3] = s;
-        arr[at + 4] = offset * walkDur; arr[at + 5] = offset * idleDur; arr[at + 6] = w; arr[at + 7] = a.ghost ? 1 : 0;
+        arr[at + 4] = offset * walkDur; arr[at + 5] = offset * idleDur; arr[at + 6] = w;
+        arr[at + 7] = (a.ghost ? 1 : 0) + (a.state === 'sitting' ? 2 : 0);
         arr.set(f, at + 8);
         l.n++;
         drawn++;

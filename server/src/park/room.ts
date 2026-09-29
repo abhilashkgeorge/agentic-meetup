@@ -38,8 +38,17 @@ export interface Member {
 }
 
 export type Said =
-  | { ok: true; to: { userId: string; ref: string | 'you' }[] }
+  | { ok: true; to: { userId: string; ref: string | 'you' }[]; private: boolean }
   | { ok: false; reason: 'contact' | 'not_in_park' };
+
+/**
+ * Who is sitting privately with whom (pairs.ts). Somebody on a bench talks only to
+ * their partner, and hears nobody else.
+ */
+export interface Seats {
+  benchOf(userId: string): number | null;
+  partnerOf(userId: string): string | null;
+}
 
 const pair = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
@@ -51,6 +60,8 @@ export class ParkRoom {
     /** The square's per-viewer ref: matching/world.ts agentRef. */
     private readonly refOf: (viewerId: string, otherId: string) => string,
     private readonly now: () => number = Date.now,
+    /** Private benches; none by default. */
+    private readonly seats: Seats | null = null,
   ) {}
 
   /**
@@ -109,6 +120,9 @@ export class ParkRoom {
     return this.near(viewerId, PARK_VIEW).map((m) => ({
       ref: this.refOf(viewerId, m.userId),
       x: round(m.x), z: round(m.z), facing: round(m.facing), moving: m.moving, look: m.look,
+      // Seen sitting once they have walked to it: what they say there is theirs, that
+      // they are sitting there is not a secret.
+      ...(this.seats?.benchOf(m.userId) != null && !m.moving ? { sitting: true } : {}),
     }));
   }
 
@@ -120,13 +134,17 @@ export class ParkRoom {
     if (!this.members.has(userId)) return { ok: false, reason: 'not_in_park' };
     if (contactDetail(text)) return { ok: false, reason: 'contact' };
     this.members.get(userId)!.seen = this.now();
-    return {
-      ok: true,
-      to: [
-        { userId, ref: 'you' },
-        ...this.near(userId, PARK_EARSHOT).map((m) => ({ userId: m.userId, ref: this.refOf(m.userId, userId) })),
-      ],
-    };
+    const me = { userId, ref: 'you' as const };
+    // On a bench: to the partner beside you, and nobody else however close.
+    if (this.seats?.benchOf(userId) != null) {
+      const partner = this.seats.partnerOf(userId);
+      const to = partner && this.members.has(partner) && !this.isApart(userId, partner)
+        ? [me, { userId: partner, ref: this.refOf(partner, userId) }] : [me];
+      return { ok: true, to, private: true };
+    }
+    // Anywhere else: earshot -- bar anybody sitting on a bench, who hears nothing of it.
+    const heard = this.near(userId, PARK_EARSHOT).filter((m) => this.seats?.benchOf(m.userId) == null);
+    return { ok: true, to: [me, ...heard.map((m) => ({ userId: m.userId, ref: this.refOf(m.userId, userId) }))], private: false };
   }
 
   /** The person behind a ref `viewer` was given, if they are here and visible to them. */

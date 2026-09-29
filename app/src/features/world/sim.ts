@@ -27,7 +27,9 @@ import { lookFor, pointInPolygon, type Look } from '@clone/shared';
  */
 export type AgentKind = 'you' | 'stranger' | 'practice' | 'met' | 'live';
 export type AgentState =
-  | 'idle' | 'walking' | 'approaching' | 'talking' | 'parting' | 'leaving' | 'introduced' | 'gone';
+  | 'idle' | 'walking' | 'approaching' | 'talking' | 'parting' | 'leaving' | 'introduced' | 'gone'
+  /** On a bench in the park, with somebody (park-hud.tsx): until they get up. */
+  | 'sitting';
 /**
  * What floats over a head. `dots` while two agents are together; `met` for a moment
  * after, the same mark for every pair. There is no verdict to draw: the tick, the
@@ -215,9 +217,14 @@ export interface SimAgent {
   partner: string | null;
   bubble: Bubble;
   ring: boolean;
-  /** A live person's facing and walking, as their own phone last said (`live`). */
+  /** A live person's facing, walking and sitting, as the server last said (`live`). */
   liveFacing?: number;
   liveMoving?: boolean;
+  liveSitting?: boolean;
+  /** Not drawn: you, inside the car that is taking you to somebody (ride.ts). */
+  hidden?: boolean;
+  /** The bench seat they are walking to, or sitting on (`sitOn`). */
+  seat?: { x: number; z: number; facing: number };
 }
 
 export interface AgentInput {
@@ -253,6 +260,9 @@ const WALK = 0.2;
 export const LIVE_CATCH_UP = 0.25;
 /** Further than this and they are put there: a gap that size is a lost connection, not a walk. */
 export const LIVE_JUMP = 3;
+/** The spot in front of a bench seat, where somebody stands to sit down or on getting up. */
+const frontOf = (seat: { x: number; z: number; facing: number }): [number, number] =>
+  [seat.x + Math.sin(seat.facing) * 0.13, seat.z + Math.cos(seat.facing) * 0.13];
 /** A seed from a ref, so the same person walks in the same step on every phone. */
 const seedOf = (ref: string): number => (parseInt(ref.slice(0, 8), 16) >>> 0) || 1;
 const HURRY = 0.38;
@@ -473,14 +483,14 @@ export class WorldSim {
    * a few times a second, and a jump each time would look like a stutter. Somebody the
    * square was drawing as an agent becomes the person: one body each, never two.
    */
-  live(ref: string, look: Look, x: number, z: number, facing: number, moving: boolean): void {
+  live(ref: string, look: Look, x: number, z: number, facing: number, moving: boolean, sitting = false): void {
     const have = this.byRef.get(ref);
     if (have) {
       if (have.kind !== 'live') {
         have.kind = 'live'; have.ghost = false; have.partner = null; have.bubble = null; have.ring = false;
         this.visits.delete(ref);
       }
-      have.look = look; have.tx = x; have.tz = z; have.liveFacing = facing; have.liveMoving = moving;
+      have.look = look; have.tx = x; have.tz = z; have.liveFacing = facing; have.liveMoving = moving; have.liveSitting = sitting;
       // One steady pace per word from the server, set to arrive as the next one does:
       // closing a share of the gap each frame instead eased in, and was always late.
       have.speed = Math.max(WALK, Math.hypot(x - have.x, z - have.z) / LIVE_CATCH_UP);
@@ -490,9 +500,49 @@ export class WorldSim {
       ref, kind: 'live', seed: seedOf(ref), ghost: false, look, area: null, x, z, tx: x, tz: z, speed: WALK,
       facing, state: moving ? 'walking' : 'idle', wait: 0, stuck: 0, dodge: 1, dodgeFor: 0,
       driveX: 0, driveZ: 0, partner: null, bubble: null, ring: false, liveFacing: facing, liveMoving: moving,
+      liveSitting: sitting,
     });
     this.order.push(ref);
     this.list = null;
+  }
+
+  /**
+   * Put somebody down here, now, standing: the car's ride moves you this way (ride.ts),
+   * and nothing else may walk you while it does.
+   */
+  place(ref: string, x: number, z: number, facing?: number): void {
+    const a = this.byRef.get(ref);
+    if (!a) return;
+    a.x = x; a.z = z; a.tx = x; a.tz = z; a.driveX = 0; a.driveZ = 0; a.stuck = 0;
+    if (facing !== undefined) a.facing = facing;
+    if (a.state === 'walking') a.state = 'idle';
+  }
+
+  /**
+   * Walk to a bench and sit on it: to the spot in front of the seat at a walk -- the
+   * bench itself is solid, nobody walks into it -- then onto the seat, facing out.
+   */
+  sitOn(ref: string, seat: { x: number; z: number; facing: number }): void {
+    const a = this.byRef.get(ref);
+    if (!a) return;
+    const [fx, fz] = frontOf(seat);
+    a.driveX = 0; a.driveZ = 0;
+    this.setTarget(a, fx, fz, WALK);
+    a.state = 'walking';
+    a.seat = seat;
+  }
+
+  /** Up off the bench, and a step forward off it, standing. */
+  standUp(ref: string): void {
+    const a = this.byRef.get(ref);
+    if (!a?.seat) return;
+    const seat = a.seat;
+    a.seat = undefined;
+    if (a.state === 'sitting') {
+      const [fx, fz] = frontOf(seat);
+      a.x = fx; a.z = fz; a.tx = fx; a.tz = fz;
+      a.state = 'idle'; a.wait = 2;
+    }
   }
 
   /** Gone from the park: the person goes (the roster may bring their agent back). */
@@ -674,6 +724,8 @@ export class WorldSim {
     // Somebody is driving: their hand beats the state machine. They still face where
     // they push even when a wall stops them, which is what tells you it is a wall.
     if (a.driveX !== 0 || a.driveZ !== 0) {
+      // The stick on a bench: up first, then walk.
+      if (a.seat) this.standUp(a.ref);
       a.facing = Math.atan2(a.driveX, a.driveZ);
       this.push(a, a.driveX * dt, a.driveZ * dt);
       a.state = 'walking'; a.tx = a.x; a.tz = a.z; a.stuck = 0;
@@ -688,7 +740,13 @@ export class WorldSim {
         if (a.wait <= 0) { this.wander(a); a.state = 'walking'; }
         break;
       case 'walking':
-        if (this.moveToward(a, dt)) { a.state = 'idle'; a.wait = 4 + this.rnd() * 5; }
+        if (this.moveToward(a, dt)) {
+          // In front of their bench: onto the seat, facing out from it.
+          if (a.seat) { a.x = a.seat.x; a.z = a.seat.z; a.tx = a.x; a.tz = a.z; a.facing = a.seat.facing; a.state = 'sitting'; }
+          else { a.state = 'idle'; a.wait = 4 + this.rnd() * 5; }
+        }
+        break;
+      case 'sitting':
         break;
       case 'approaching': {
         const p = a.partner ? this.byRef.get(a.partner) : undefined;
@@ -750,7 +808,8 @@ export class WorldSim {
       a.x += (dx / d) * step; a.z += (dz / d) * step;
     }
     const moving = a.liveMoving === true || d > 0.01;
-    a.state = moving ? 'walking' : 'idle';
+    // Sat down once they are there: on a bench beside somebody.
+    a.state = a.liveSitting && d <= 0.01 ? 'sitting' : moving ? 'walking' : 'idle';
     // Facing where they are going while they go; where their own phone says, stood still.
     a.facing = moving && d > 0.01 ? Math.atan2(dx, dz) : a.liveFacing ?? a.facing;
   }

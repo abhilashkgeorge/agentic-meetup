@@ -19,6 +19,7 @@ export interface LivePerson {
   facing: number;
   moving: boolean;
   look: Look;
+  sitting: boolean;
 }
 
 export interface Line {
@@ -27,18 +28,33 @@ export interface Line {
   ref: string;
   text: string;
   at: number;
+  /** Said on a bench, to the two of you only. */
+  private?: boolean;
 }
+
+/** How "Find someone" is going (server park/socket.ts). */
+export type FindStatus = 'searching' | 'asking' | 'nobody' | 'declined' | 'no_answer' | 'busy' | 'gone';
+export const FIND_TEXT: Record<FindStatus, string> = {
+  searching: 'Looking for someone free…',
+  asking: 'Asking someone if they are free to talk…',
+  nobody: 'Nobody here is free to talk right now. Try again in a bit.',
+  declined: 'They are not free right now. Try someone else in a moment.',
+  no_answer: 'No answer. They may have put their phone down.',
+  busy: 'You are already talking with someone.',
+  gone: 'They left the park.',
+};
 
 /** How long something said stays over the speaker's head. */
 export const BUBBLE_MS = 6500;
 /** How many lines the chat keeps. */
 export const LINES = 30;
 
-export type Refusal = 'contact' | 'too_fast' | 'not_in_park';
+export type Refusal = 'contact' | 'too_fast' | 'not_in_park' | 'bench_taken';
 export const REFUSAL_TEXT: Record<Refusal, string> = {
   contact: 'Not sent: numbers, handles and links are swapped after you both say yes.',
   too_fast: 'Not sent: slow down a little.',
   not_in_park: 'Not sent: you are not in the park.',
+  bench_taken: 'Somebody just took that bench. Try again for another.',
 };
 
 /** This frame's people, their looks carried over from the last. Nobody without a look yet. */
@@ -47,7 +63,7 @@ export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readon
   for (const p of frame) {
     const look = p.look ?? prev.get(p.ref)?.look;
     if (!look) continue;
-    out.set(p.ref, { ref: p.ref, x: p.x, z: p.z, facing: p.facing, moving: p.moving, look });
+    out.set(p.ref, { ref: p.ref, x: p.x, z: p.z, facing: p.facing, moving: p.moving, look, sitting: p.sitting === true });
   }
   return out;
 }
@@ -65,11 +81,30 @@ interface ParkLive {
   people: ReadonlyMap<string, LivePerson>;
   lines: readonly Line[];
   refused: Refusal | null;
+  /** Your "Find someone": where it is, and who and what you share once asking. */
+  finding: { status: FindStatus; ref?: string; why?: string } | null;
+  /** Somebody asking you: who, what you share, and when they asked. */
+  asked: { ref: string; why?: string; at: number } | null;
+  /**
+   * Who you are talking with: `rideTo` is where to be taken (beside them) when you were
+   * the one who asked -- the car -- and null when they are coming to you.
+   */
+  partner: { ref: string; rideTo: readonly [number, number] | null; asker: boolean } | null;
+  /** The bench the two of you took, while you sit on it. */
+  bench: number | null;
   setIn: (on: boolean) => void;
   gotPeople: (frame: readonly ParkPerson[]) => void;
-  gotLine: (ref: string, text: string, at: number) => void;
+  gotLine: (ref: string, text: string, at: number, priv?: boolean) => void;
   gotRefused: (reason: Refusal) => void;
   clearRefused: () => void;
+  setFinding: (f: ParkLive['finding']) => void;
+  gotAsked: (ref: string, why?: string) => void;
+  gotUnasked: () => void;
+  gotPaired: (ref: string, rideTo: readonly [number, number] | null) => void;
+  /** The ride is over: nothing left to drive to. */
+  rode: () => void;
+  gotParted: () => void;
+  gotBench: (bench: number | null) => void;
 }
 
 let nextId = 1;
@@ -79,12 +114,28 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   people: new Map(),
   lines: [],
   refused: null,
-  // Leaving forgets everybody: the next visit starts from what the server sends.
-  setIn: (on) => set(on ? { inPark: true } : { inPark: false, people: new Map(), lines: [], refused: null }),
+  finding: null,
+  asked: null,
+  partner: null,
+  bench: null,
+  // Leaving forgets everybody -- and ends whatever you were in the middle of, which the
+  // server ends too: the next visit starts from what it sends.
+  setIn: (on) => set(on ? { inPark: true } : {
+    inPark: false, people: new Map(), lines: [], refused: null, finding: null, asked: null, partner: null, bench: null,
+  }),
   gotPeople: (frame) => { if (get().inPark) set({ people: mergePeople(get().people, frame) }); },
   // Timed by the phone's own clock, not the server's: a bubble is how long something
   // stays on THIS screen, and the two clocks need not agree.
-  gotLine: (ref, text) => set({ lines: [...get().lines, { id: nextId++, ref, text, at: Date.now() }].slice(-LINES) }),
+  gotLine: (ref, text, _at, priv) => set({
+    lines: [...get().lines, { id: nextId++, ref, text, at: Date.now(), ...(priv ? { private: true } : {}) }].slice(-LINES),
+  }),
   gotRefused: (reason) => set({ refused: reason }),
   clearRefused: () => set({ refused: null }),
+  setFinding: (finding) => set({ finding }),
+  gotAsked: (ref, why) => set({ asked: { ref, ...(why ? { why } : {}), at: Date.now() } }),
+  gotUnasked: () => set({ asked: null }),
+  gotPaired: (ref, rideTo) => set({ partner: { ref, rideTo, asker: rideTo !== null }, finding: null, asked: null }),
+  rode: () => { const p = get().partner; if (p) set({ partner: { ...p, rideTo: null } }); },
+  gotParted: () => set({ partner: null, bench: null }),
+  gotBench: (bench) => set({ bench }),
 }));
