@@ -237,12 +237,18 @@ export function startVoice(venueSim: WorldSim): () => void {
     if (state === 'background' && !askingForMic()) useParkVoice.getState().left();
   });
 
+  // Stopping lets go of this room, and only that. Walking out of the park (parkLeave) and
+  // putting the phone away (above) are what forget the pass: a restart of this -- a new
+  // sim, a hot reload while developing -- takes it straight back up rather than leaving
+  // voice off until the next walk in.
   return () => {
     stopped = true;
     gen++;
     noRetry();
     unVoice(); unLive(); clearInterval(tick); app.remove();
-    useParkVoice.getState().left();
+    const v = useParkVoice.getState();
+    v.setSpeaking(new Set());
+    if (v.link !== 'unavailable') v.setLink('off');
     void leave();
   };
 }

@@ -12,10 +12,13 @@
  *     (RETRY_MS), again and again while it cannot connect -- never faster than the steps;
  *   - a fresh pass brings it back, "on", and the asking stops;
  *   - a disconnect it asked for itself (leaving, a new room) is not a loss;
- *   - stopped, it asks for nothing more.
+ *   - stopped, it asks for nothing more -- and started again (a new sim, a hot reload),
+ *     it takes the pass it has straight back up, rather than voice staying off until the
+ *     next walk into the park (seen on the Seeker after a hot reload, 2026-09-29).
  *
- * Negative control, run by hand and recorded in the commit: retryLater() taken out of the
- * Disconnected handler -> "asks the park for a fresh pass" fails.
+ * Negative controls, run by hand and recorded in the commit: retryLater() taken out of the
+ * Disconnected handler -> "asks the park for a fresh pass" fails; stopping that forgets the
+ * pass (left()) -> "takes the pass straight back up" fails.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -118,6 +121,19 @@ describe('voice after the voice server was lost', () => {
       await settle();
       expect(useParkVoice.getState().link).toBe('failed');
     }
+  });
+
+  it('takes the pass straight back up when started again, rather than waiting for the next walk in', async () => {
+    stop = startVoice(sim);
+    useParkVoice.getState().gotPass(pass('t1'));
+    await settle();
+    stop();
+    expect(fake.FakeRoom.made.at(-1)!.state, 'the room kept after stopping').toBe('disconnected');
+    expect(useParkVoice.getState().link).toBe('off');
+    stop = startVoice(sim);
+    await settle();
+    expect(fake.FakeRoom.made, 'no new connect on starting again').toHaveLength(2);
+    expect(useParkVoice.getState().link).toBe('on');
   });
 
   it('does not count its own disconnects as a loss, and asks for nothing once stopped', async () => {
