@@ -48,6 +48,21 @@ export const FIND_TEXT: Record<FindStatus, string> = {
   gone: 'They left the park.',
 };
 
+/** The screen's side margin (components/ui space.screen). */
+const EDGE = 20;
+/** Half a person's width on screen at the walking camera, and a little over, in dp. */
+export const PLAYER_CLEAR = 18;
+
+/**
+ * How wide the park's right-hand column may be -- what was just said, the card of what you
+ * are doing with somebody, the voice line: never across the middle of the screen, where
+ * the walking camera keeps you. At a fixed 228 it covered your own character on the Seeker
+ * (470 dp wide), the card over your head as you walked (2026-09-29).
+ */
+export function dockWidth(screenWidth: number): number {
+  return Math.max(120, Math.min(228, Math.floor(screenWidth / 2 - PLAYER_CLEAR - EDGE)));
+}
+
 /** How long something said stays over the speaker's head. */
 export const BUBBLE_MS = 6500;
 /** How many lines the chat keeps. */

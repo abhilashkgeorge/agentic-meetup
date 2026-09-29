@@ -8,7 +8,7 @@
  * are anonymous -- "Someone nearby" -- because a stranger in the park is only a ref.
  */
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Animated, Pressable, Text, TextInput, View } from 'react-native';
+import { Animated, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PARK_QUESTS, PARK_SAY_MAX, PARK_SIGHTS, type ParkQuestId } from '@clone/shared';
 import { parkAnswer, parkFind, parkPart, parkSay, parkSit, parkStand } from '../../lib/socket';
@@ -16,15 +16,13 @@ import { useKeyboardHeight } from '../../lib/keyboard';
 import { Button, Surface, radius, raised, space, type, usePalette } from '../../components/ui';
 import { SafetySheet } from '../safety/safety-sheet';
 import type { WorldControl } from './camera';
-import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, nearestSight, nextQuest, questProgress, sightsToMark, useParkLive, type Line } from './park-live';
+import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, dockWidth, nearestSight, nextQuest, questProgress, sightsToMark, useParkLive, type Line } from './park-live';
 import { STICK_RING } from './stick';
 import { benchFor } from './ride';
 import type { WorldSim } from './sim';
 import { useParkVoice } from './park-voice';
 import { VoiceButtons, useVoiceHere, wearing } from './park-voice-hud';
 
-/** How wide the right-hand column is: clear of the stick, which has the bottom left. */
-const DOCK_W = 228;
 
 /** How many people are here in person, you not counted. */
 export function useLiveCount(): number {
@@ -117,6 +115,7 @@ export function ParkChat({ bottom, onVoices, children }: {
   const count = useLiveCount();
   const onBench = useParkLive((s) => s.bench !== null);
   const voice = useVoiceHere();
+  const dock = dockWidth(useWindowDimensions().width);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -151,7 +150,7 @@ export function ParkChat({ bottom, onVoices, children }: {
       left: open ? (keyboard > 0 ? space.screen : space.screen + STICK_RING + space.sm) : undefined,
     }}>
       {recent.length > 0 && (
-        <View pointerEvents="none" style={{ gap: 4, maxWidth: open ? undefined : DOCK_W, alignSelf: open ? 'stretch' : 'flex-end' }}>
+        <View pointerEvents="none" style={{ gap: 4, maxWidth: open ? undefined : dock, alignSelf: open ? 'stretch' : 'flex-end' }}>
           {recent.map((l) => (
             <Text key={l.id} numberOfLines={2}
                   style={[type.callout, { color: p.text, backgroundColor: p.bg, opacity: 0.92, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden' }]}>
@@ -164,7 +163,7 @@ export function ParkChat({ bottom, onVoices, children }: {
         </View>
       )}
       {refused && (
-        <Text style={[type.callout, { color: p.danger, backgroundColor: p.bg, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden', maxWidth: open ? undefined : DOCK_W }]}>
+        <Text style={[type.callout, { color: p.danger, backgroundColor: p.bg, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden', maxWidth: open ? undefined : dock }]}>
           {REFUSAL_TEXT[refused]}
         </Text>
       )}
@@ -311,7 +310,8 @@ export function ParkActions({ venueSim, benches }: {
     const t = setInterval(look, 2000);
     return () => clearInterval(t);
   }, [next?.id, partner, venueSim]);
-  const card = { paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, backgroundColor: p.bg, boxShadow: raised(p, 4), gap: space.sm, maxWidth: DOCK_W };
+  const dock = dockWidth(useWindowDimensions().width);
+  const card = { paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, backgroundColor: p.bg, boxShadow: raised(p, 4), gap: space.sm, maxWidth: dock };
   return (
     <View pointerEvents="box-none" style={{ alignItems: 'flex-end', gap: space.sm }}>
       {partner ? (

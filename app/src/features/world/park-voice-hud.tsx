@@ -14,13 +14,13 @@
  * voice-room.ts. This only shows it.
  */
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Animated, Linking, Pressable, Text, View } from 'react-native';
+import { Animated, Linking, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LOOK_LABELS, OUTFIT_HEX } from '@clone/shared';
 import { Button, Surface, radius, raised, space, type, usePalette } from '../../components/ui';
 import { SafetySheet } from '../safety/safety-sheet';
 import type { WorldControl } from './camera';
-import { useParkLive, type LivePerson } from './park-live';
+import { dockWidth, useParkLive, type LivePerson } from './park-live';
 import { banEnds, mayHearMe, micState, useParkVoice } from './park-voice';
 import type { WorldSim } from './sim';
 import { askForMic } from './voice-room';
@@ -48,6 +48,8 @@ export function VoiceButtons({ onType, onVoices }: { onType: () => void; onVoice
   const talking = useParkVoice((s) => s.speaking.has('you'));
   const people = useParkLive((s) => s.people);
   const onBench = useParkLive((s) => s.bench !== null);
+  const link = useParkVoice((s) => s.link);
+  const dock = dockWidth(useWindowDimensions().width);
   const [hint, setHint] = useState<string | null>(null);
   useEffect(() => {
     if (!hint) return;
@@ -90,6 +92,8 @@ export function VoiceButtons({ onType, onVoices }: { onType: () => void; onVoice
 
   const status = state === 'banned' ? `Mic off until ${banEnds(pass?.until)}`
     : state === 'denied' ? 'Mic not allowed'
+      // Lost the voice server: voice-room.ts is trying again by itself.
+      : link === 'failed' ? 'Voice lost. Trying again…'
       : onBench ? (state === 'off' ? 'Tap the mic: only they will hear you' : 'Just the two of you can hear this')
         : state === 'on' ? (listeners > 0 ? `Mic on · ${listeners} near enough to hear` : 'Mic on · nobody near enough yet')
           : state === 'connecting' ? 'Connecting your mic…' : null;
@@ -100,7 +104,7 @@ export function VoiceButtons({ onType, onVoices }: { onType: () => void; onVoice
       {(hint || status) && (
         <Text numberOfLines={3} style={[type.callout, {
           color: hint || state === 'banned' || state === 'denied' ? p.danger : p.text, backgroundColor: p.bg, opacity: 0.94,
-          paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden', maxWidth: 228,
+          paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden', maxWidth: dock,
         }]}>
           {hint ?? status}
         </Text>

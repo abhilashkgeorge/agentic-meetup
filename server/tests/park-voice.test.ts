@@ -15,7 +15,8 @@
  *     never to or from anybody on a bench (the bench talks in its own room);
  *   - over the socket, against the real database: walking in brings a pass to the park's
  *     room; sitting brings both a pass to the same bench room; getting up, the park's
- *     again;
+ *     again; a phone that lost the voice server gets a fresh pass for the same room, as
+ *     the same voice, when it asks -- and a few a minute at most;
  *   - VOICE_BAN.reporters different people reporting somebody's voice within the hours
  *     takes their mic until the latest report is that old; fewer, older, not about voice,
  *     or one person three times, does not.
@@ -25,6 +26,7 @@
  *   - a sitter's voice id sent to the park       -> "never to or from a bench" fails
  *   - the ban counting reports, not reporters    -> "one person three times" fails
  *   - the pass granting speech whatever the ban  -> "takes their mic" fails
+ *   - park.voice_again not answered              -> "hands a fresh pass" fails
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
@@ -41,7 +43,7 @@ process.env.LIVEKIT_API_SECRET = 'test-secret-that-is-long-enough-for-hs256';
 const { pool, closeMatchPool } = await import('../src/db/client.js');
 const { env } = await import('../src/env.js');
 const hub = await import('../src/messaging/hub.js');
-const { handleParkFrame, pairs, socketClosed } = await import('../src/park/socket.js');
+const { VOICE_AGAIN_LIMIT, handleParkFrame, pairs, socketClosed } = await import('../src/park/socket.js');
 const { ParkRoom } = await import('../src/park/room.js');
 const { ParkPairs } = await import('../src/park/pairs.js');
 const { PARK_ROOM, VOICE_BAN, VOICE_REPORT, benchRoom, voiceBannedUntil, voicePass } = await import('../src/park/voice.js');
@@ -149,6 +151,19 @@ describe('voice over the socket', () => {
     await frame(two, { type: 'park.stand' });
     expect(lastVoice(one)!.room).toBe(PARK_ROOM);
     expect(lastVoice(two)!.room).toBe(PARK_ROOM);
+  });
+
+  it('hands a fresh pass to a phone that lost the voice server, for the same room as the same voice, a few a minute at most', async () => {
+    const was = lastVoice(two)!;
+    two.frames.length = 0;
+    await frame(two, { type: 'park.voice_again' });
+    const again = lastVoice(two)!;
+    expect(again, 'no fresh pass').toBeDefined();
+    expect(again).toMatchObject({ room: was.room, identity: was.identity, canTalk: true });
+    // A phone stuck retrying is slowed down, not answered for ever.
+    two.frames.length = 0;
+    for (let i = 0; i < VOICE_AGAIN_LIMIT.max + 5; i++) await frame(two, { type: 'park.voice_again' });
+    expect(two.frames.filter((f) => f.type === 'park.voice').length).toBeLessThanOrEqual(VOICE_AGAIN_LIMIT.max);
   });
 
   it('takes the mic of somebody the moment enough people near them report their voice, and says until when', async () => {

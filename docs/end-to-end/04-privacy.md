@@ -33,7 +33,7 @@ details), and **database roles** that limit what each part of the server can rea
   hear only each other; people near see that they sit, never what they say. For "Sit and talk" the
   server counts how many things each says there -- a number, never the words
   ([server/src/park/quests.ts:90] `said(userId: string, partner: string | null, onBench: boolean): Done[] {`,
-  [server/src/park/socket.ts:294] `const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];`).
+  [server/src/park/socket.ts:300] `const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];`).
   Voice (since 2026-09-29) keeps the same rule. Each phone listens only to the people the server says are
   within earshot, and lets only them listen to it -- and the voice server holds a speaker to that list,
   whatever a listener's phone asks for; a bench's two have a room of their own that nobody else is given a
@@ -42,7 +42,7 @@ details), and **database roles** that limit what each part of the server can rea
   marked "said out loud" counts towards a mic ban: three different people within 24 hours
   ([server/src/park/room.ts:140] `const heard = me && m.voice && !benched(viewerId) && !benched(m.userId)`,
   [server/src/park/voice.ts:82] `at.addGrant({ roomJoin: true, room, canPublish: canTalk, canSubscribe: true, canPublishData: false });`,
-  [server/src/park/socket.ts:166] `park.enter(ctx.userId, look, apart, undefined, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'));`).
+  [server/src/park/socket.ts:172] `park.enter(ctx.userId, look, apart, undefined, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'));`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
   ([server/src/matching/orchestrator.ts:366] `loadQuotes(pair.b, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`).

@@ -269,6 +269,15 @@ export function parkEnter(): void {
   push({ type: 'park.enter' });
 }
 
+/**
+ * Ask for a fresh voice pass: the phone lost the voice server and LiveKit's own retries
+ * gave up (features/world/voice-room.ts). False when the park's socket is down too --
+ * its reconnect walks back in, which brings a pass anyway.
+ */
+export function parkVoiceAgain(): boolean {
+  return push({ type: 'park.voice_again' });
+}
+
 export function parkLeave(): void {
   if (!useParkLive.getState().inPark) return;
   useParkLive.getState().setIn(false);

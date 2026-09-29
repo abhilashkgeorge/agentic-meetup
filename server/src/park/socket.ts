@@ -45,6 +45,8 @@ export const OTHER_LIMIT = { max: 20, windowMs: 60_000 };
 export const FIND_LIMIT = { max: 6, windowMs: 60_000 };
 /** Answering, parting, sitting and standing. */
 export const PAIR_LIMIT = { max: 30, windowMs: 60_000 };
+/** A fresh voice pass after the phone lost the voice server: its retries are seconds apart. */
+export const VOICE_AGAIN_LIMIT = { max: 12, windowMs: 60_000 };
 
 /** Cheap enough to run on every frame before parsing: the app writes `type` first. */
 export const isParkFrame = (raw: string): boolean => raw.startsWith('{"type":"park.');
@@ -144,6 +146,10 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
     case 'park.leave':
       if (!take(`park:${me}`, OTHER_LIMIT).ok) return;
       leavePark(me);
+      return;
+    case 'park.voice_again':
+      if (!take(`park-voice:${me}`, VOICE_AGAIN_LIMIT).ok) return;
+      await refreshVoice(me);
       return;
     default:
       return;

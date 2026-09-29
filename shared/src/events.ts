@@ -113,11 +113,16 @@ export const ClientParkPart = z.object({ type: z.literal('park.part') });
 /** A bench by its number in the park's own list (garden benches, the same on every phone). */
 export const ClientParkSit = z.object({ type: z.literal('park.sit'), bench: z.number().int().min(0).max(10_000) });
 export const ClientParkStand = z.object({ type: z.literal('park.stand') });
+/**
+ * The phone lost the voice server and its own retries gave up: a fresh voice pass, please,
+ * for where it is now (server park/voice.ts). The old one may have run out.
+ */
+export const ClientParkVoiceAgain = z.object({ type: z.literal('park.voice_again') });
 
 export const ClientMessage = z.discriminatedUnion('type', [
   ClientHello, ClientTurn, ClientDm, ClientDmRead, ClientTyping,
   ClientParkEnter, ClientParkLeave, ClientParkMove, ClientParkSay,
-  ClientParkFind, ClientParkAnswer, ClientParkPart, ClientParkSit, ClientParkStand,
+  ClientParkFind, ClientParkAnswer, ClientParkPart, ClientParkSit, ClientParkStand, ClientParkVoiceAgain,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 

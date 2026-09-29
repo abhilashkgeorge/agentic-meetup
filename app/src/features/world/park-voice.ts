@@ -132,7 +132,10 @@ interface ParkVoice {
   muted: readonly string[];
   /** Who is talking now, as refs, `you` included. */
   speaking: ReadonlySet<string>;
-  /** The connection to the voice server: `unavailable` when this build has no voice. */
+  /**
+   * The connection to the voice server: `failed` once lost, until it is back (voice-room.ts
+   * keeps trying); `unavailable` when this build has no voice.
+   */
   link: 'off' | 'connecting' | 'on' | 'failed' | 'unavailable';
   /** The phone said no to the mic. */
   micDenied: boolean;

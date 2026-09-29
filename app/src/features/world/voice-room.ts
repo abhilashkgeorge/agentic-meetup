@@ -10,14 +10,18 @@
  * phone to its room; the people frame (four a second), your switches and your mutes are
  * applied as they change, and your distance to everybody every quarter second.
  */
-import { AppState, PermissionsAndroid, Platform } from 'react-native';
+import { AppState, LogBox, PermissionsAndroid, Platform } from 'react-native';
 import type { WorldSim } from './sim';
+import { parkVoiceAgain } from '../../lib/socket';
 import { getParkMuted, setParkMuted } from '../../lib/storage';
 import { useParkLive } from './park-live';
 import { mayHearMe, speakingRefs, useParkVoice, voicesToHear, type VoicePass } from './park-voice';
 
 type Lib = { rn: typeof import('@livekit/react-native'); lk: typeof import('livekit-client') };
 type Room = import('livekit-client').Room;
+
+/** How long to wait before each fresh try after losing the voice server; the last repeats. */
+export const RETRY_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
 let lib: Promise<Lib | null> | null = null;
 
 function load(): Promise<Lib | null> {
@@ -30,6 +34,10 @@ function load(): Promise<Lib | null> {
       // At its default, "info", it prints the connection's statistics every half minute,
       // forty lines at a time (seen on the Seeker, 2026-09-29): warnings and errors only.
       lk.setLogLevel('warn');
+      // The voice server out of reach -- a phone off its cable, off the Wi-Fi -- is
+      // handled below (a fresh pass, again and again, and "Voice lost. Trying again" on
+      // screen); LiveKit also calls it an error, which a debug build turns into red boxes.
+      LogBox.ignoreLogs(['fetch failed: java.net.ConnectException', 'error reading from signal stream', 'could not establish signal connection']);
       return { rn, lk };
     } catch (err) {
       console.warn('[voice] not in this build', (err as Error).message);
@@ -92,6 +100,26 @@ export function startVoice(venueSim: WorldSim): () => void {
   // Each connect is numbered: a pass that came while one was connecting wins.
   let gen = 0;
   let stopped = false;
+  // Lost the voice server (LiveKit's own reconnecting gave up, or a connect failed): ask
+  // the park for a fresh pass -- the old one may have run out -- sooner first, then every
+  // half minute, for as long as there is a pass to be had.
+  let retries = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  const retryLater = () => {
+    if (stopped || !wanted || retryTimer) return;
+    const wait = RETRY_MS[Math.min(retries, RETRY_MS.length - 1)]!;
+    retries++;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      if (stopped || !wanted || link) return;
+      if (!parkVoiceAgain()) retryLater();
+    }, wait);
+  };
+  const noRetry = () => {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+    retries = 0;
+  };
 
   const apply = () => {
     const l = link;
@@ -142,7 +170,8 @@ export function startVoice(venueSim: WorldSim): () => void {
     await leave();
     if (my !== gen || stopped) return;
     const { rn, lk } = loaded;
-    useParkVoice.getState().setLink('connecting');
+    // Lost and trying again, it stays "failed" -- and says so -- until it is back.
+    if (useParkVoice.getState().link !== 'failed') useParkVoice.getState().setLink('connecting');
     await rn.AudioSession.startAudioSession().catch(() => {});
     const room = new lk.Room({ adaptiveStream: false, dynacast: false, disconnectOnPageLeave: false });
     const l: Link = { room, pass, allowed: '', mic: false, volumes: new Map() };
@@ -158,20 +187,23 @@ export function startVoice(venueSim: WorldSim): () => void {
       .on(lk.RoomEvent.Reconnecting, () => useParkVoice.getState().setLink('connecting'))
       .on(lk.RoomEvent.Reconnected, () => { useParkVoice.getState().setLink('on'); l.allowed = ''; l.volumes.clear(); apply(); })
       .on(lk.RoomEvent.Disconnected, () => {
+        // Not one this code asked for (leave() lets go of the link first): lost.
         if (link?.room !== room) return;
         link = null;
-        useParkVoice.getState().setLink('off');
+        useParkVoice.getState().setLink('failed');
         useParkVoice.getState().setSpeaking(new Set());
+        retryLater();
       });
     try {
       await room.connect(pass.url, pass.token, { autoSubscribe: false });
     } catch (err) {
       console.warn('[voice] could not connect', (err as Error).message);
-      if (my === gen) useParkVoice.getState().setLink('failed');
+      if (my === gen) { useParkVoice.getState().setLink('failed'); retryLater(); }
       return;
     }
     if (my !== gen || stopped) { await room.disconnect().catch(() => {}); return; }
     link = l;
+    noRetry();
     useParkVoice.getState().setLink('on');
     apply();
   };
@@ -179,7 +211,7 @@ export function startVoice(venueSim: WorldSim): () => void {
   // A new pass: a new room, or the same room as somebody who may or may not speak. The
   // same pass again (a reconnect of the park socket) changes nothing.
   const onPass = (pass: VoicePass | null) => {
-    if (!pass) { wanted = null; gen++; void leave().then(() => { if (!stopped) useParkVoice.getState().setSpeaking(new Set()); }); return; }
+    if (!pass) { wanted = null; gen++; noRetry(); void leave().then(() => { if (!stopped) useParkVoice.getState().setSpeaking(new Set()); }); return; }
     if (wanted && wanted.room === pass.room && wanted.identity === pass.identity && wanted.canTalk === pass.canTalk && link) {
       wanted = pass;
       return;
@@ -208,6 +240,7 @@ export function startVoice(venueSim: WorldSim): () => void {
   return () => {
     stopped = true;
     gen++;
+    noRetry();
     unVoice(); unLive(); clearInterval(tick); app.remove();
     useParkVoice.getState().left();
     void leave();
