@@ -12,8 +12,8 @@
  * viewer, and again only when it changes.
  */
 import type { WebSocket } from 'ws';
-import { ClientMessage, lookKey, type ParkPerson, type ServerEvent } from '@clone/shared';
-import { matchSession, matchmakerSession, type TenantCtx } from '../db/client.js';
+import { ClientMessage, lookKey, parkDay, type ParkPerson, type ParkQuestId, type ServerEvent } from '@clone/shared';
+import { matchSession, matchmakerSession, tenantSession, type TenantCtx } from '../db/client.js';
 import { lookOf } from '../looks/store.js';
 import { LIKED, tagWords } from '../matching/brief.js';
 import { publicTags } from '../matching/rendezvous.js';
@@ -22,11 +22,16 @@ import { agentRef } from '../matching/world.js';
 import * as hub from '../messaging/hub.js';
 import { log } from '../log.js';
 import { take } from '../ratelimit.js';
+import { award, balance, type PointReason } from '../points/ledger.js';
 import { ParkPairs } from './pairs.js';
+import { ParkQuests, type Done } from './quests.js';
 import { ParkRoom } from './room.js';
 
 export const pairs = new ParkPairs();
 export const park = new ParkRoom(agentRef, Date.now, pairs);
+/** Things done together (quests.ts), and each person's tenant, to pay them in. */
+export const quests = new ParkQuests();
+const tenantOf = new Map<string, string>();
 
 /** A walk is at most a few frames a second; anything faster is dropped, not answered. */
 export const MOVE_LIMIT = { max: 30, windowMs: 3_000 };
@@ -67,6 +72,8 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       const at = Date.now();
       const priv = r.private ? { private: true } : {};
       for (const { userId, ref } of r.to) hub.pushTo(userId, { type: 'park.said', ref, text: msg.text, at, ...priv } satisfies ServerEvent);
+      // Said on a bench, to a partner: one more towards sitting and talking. Counted only.
+      if (r.private) await pay(quests.said(me, pairs.partnerOf(me), true));
       return;
     }
     case 'park.find': {
@@ -94,6 +101,11 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       hub.pushTo(from, { type: 'park.paired', ref: agentRef(from, me), x: asked.x, z: asked.z, asked: false } satisfies ServerEvent);
       send(ws, { type: 'park.paired', ref: agentRef(me, from), x: asker.x, z: asker.z, asked: true });
       log.info({ userId: me }, 'park: paired');
+      // Both have met somebody here; and each is sent what there is to do together --
+      // with the payment, or on its own if meeting somebody was already paid today.
+      const done = quests.paired(from, me);
+      await pay(done);
+      for (const u of [from, me]) if (!done.some((d) => d.userId === u)) pushQuests(u);
       return;
     }
     case 'park.part': {
@@ -143,7 +155,47 @@ async function enter(ctx: TenantCtx): Promise<void> {
     return { look, apart: rows.map((r) => r.other) };
   });
   park.enter(ctx.userId, look, apart);
+  // What they have already been paid for today: the ledger's word, on their own session.
+  tenantOf.set(ctx.userId, ctx.tenantId);
+  const day = parkDay(Date.now());
+  const done = await tenantSession(ctx, async (c) => {
+    const { rows } = await c.query<{ reason: string }>(
+      `SELECT reason FROM points_ledger WHERE user_id = $1 AND ref = $2 AND reason LIKE 'park\\_%'`, [ctx.userId, day]);
+    return rows.map((r) => r.reason.slice('park_'.length) as ParkQuestId);
+  });
+  quests.enter(ctx.userId, done);
+  pushQuests(ctx.userId);
   log.info({ userId: ctx.userId, here: park.members.size }, 'park: entered');
+}
+
+/**
+ * Pay whoever just did something together: once a day each, by the ledger's own
+ * uniqueness (the ref is the day), on their own tenant session. Each is told what they
+ * did, what it paid -- nothing, if it was already paid today -- and their balance.
+ */
+async function pay(done: readonly Done[]): Promise<void> {
+  for (const { userId, quest } of done) {
+    const tenantId = tenantOf.get(userId);
+    if (!tenantId) continue;
+    const who = { tenantId, userId };
+    try {
+      const { points, total } = await tenantSession(who, async (c) => {
+        const points = await award(c, who, `park_${quest}` as PointReason, parkDay(Date.now()));
+        return { points, total: await balance(c, userId) };
+      });
+      pushQuests(userId, { quest, points, balance: total });
+      log.info({ userId, quest, points }, 'park: done together');
+    } catch (err) {
+      log.warn({ err, userId, quest }, 'park: could not pay');
+    }
+  }
+}
+
+/** Somebody's quests, sent to them: what is done today and how far along the rest are. */
+function pushQuests(userId: string, just?: { quest: ParkQuestId; points: number; balance: number }): void {
+  const state = quests.stateOf(userId, pairs.partnerOf(userId));
+  if (!state) return;
+  hub.pushTo(userId, { type: 'park.quests', ...state, ...(just ? { just } : {}) } satisfies ServerEvent);
 }
 
 export function leavePark(userId: string): void {
@@ -151,13 +203,15 @@ export function leavePark(userId: string): void {
   park.leave(userId);
   sentLooks.delete(userId);
   unpair(userId);
+  quests.leave(userId);
+  tenantOf.delete(userId);
   log.info({ userId, here: park.members.size }, 'park: left');
 }
 
 /** Everything of theirs ends when they go, and whoever it touched is told. */
 function unpair(userId: string): void {
   const r = pairs.leave(userId);
-  if (r.partner) hub.pushTo(r.partner, { type: 'park.parted' } satisfies ServerEvent);
+  if (r.partner) { quests.parted(userId, r.partner); hub.pushTo(r.partner, { type: 'park.parted' } satisfies ServerEvent); }
   if (r.wasAsking) hub.pushTo(r.wasAsking, { type: 'park.unasked' } satisfies ServerEvent);
   if (r.wasAskedBy) hub.pushTo(r.wasAskedBy, { type: 'park.finding', status: 'gone' } satisfies ServerEvent);
 }
@@ -165,6 +219,7 @@ function unpair(userId: string): void {
 function endPair(userId: string): void {
   const other = pairs.part(userId);
   if (!other) return;
+  quests.parted(userId, other);
   for (const u of [userId, other]) hub.pushTo(u, { type: 'park.parted' } satisfies ServerEvent);
 }
 
@@ -225,18 +280,29 @@ function pushPeople(viewerId: string): void {
 }
 
 /** Every person in the park, the people near them. And the silent ones leave. */
+let ticks = 0;
 export function tick(): void {
-  for (const gone of park.sweep()) { sentLooks.delete(gone); unpair(gone); log.info({ userId: gone }, 'park: timed out'); }
+  for (const gone of park.sweep()) {
+    sentLooks.delete(gone); unpair(gone); quests.leave(gone); tenantOf.delete(gone);
+    log.info({ userId: gone }, 'park: timed out');
+  }
   for (const { from, to } of pairs.expire()) {
     hub.pushTo(from, { type: 'park.finding', status: 'no_answer' } satisfies ServerEvent);
     hub.pushTo(to, { type: 'park.unasked' } satisfies ServerEvent);
   }
   for (const id of park.members.keys()) pushPeople(id);
+  // Things done together, noticed as they happen; how far along, once a second, to
+  // whoever is doing them with somebody.
+  void pay(quests.step(TICK_MS / 1000, park.members, (u) => pairs.partnerOf(u)));
+  if (++ticks % 4 === 0) for (const id of park.members.keys()) if (pairs.partnerOf(id)) pushQuests(id);
 }
+
+/** How often the park ticks. */
+const TICK_MS = 250;
 
 let loop: ReturnType<typeof setInterval> | null = null;
 export function startPark(): void {
-  loop ??= setInterval(tick, 250);
+  loop ??= setInterval(tick, TICK_MS);
   loop.unref();
 }
 export function stopPark(): void {

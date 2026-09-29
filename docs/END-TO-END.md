@@ -418,7 +418,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 `server/src/matching/profile.ts:76`,
 `server/src/api/dating.ts:166`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
-("First name") (`app/src/features/world/hud.tsx:181`,
+("First name") (`app/src/features/world/hud.tsx:189`,
 `app/src/features/profile/profile-screen.tsx:244`).
 
 ### 2.3 Required vs optional, and "ready to send"
@@ -443,7 +443,7 @@ is a separate notion and gates nothing (`app/src/features/onboarding/self-test-s
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
-(`app/src/features/world/hud.tsx:215`,
+(`app/src/features/world/hud.tsx:223`,
 `app/src/features/matches/matches-screen.tsx:229`).
 
 ### 2.4 Model calls during setup
@@ -707,8 +707,10 @@ details), and **database roles** that limit what each part of the server can rea
   "Find someone to talk to" ranks the free people there by what they have in common, with matching's
   own reading of both files, but tells the one asked only one thing both of them made public ("You both
   like climbing"), never a word from a fact only matching may use. On a bench the two of them see and
-  hear only each other; people near see that they sit, never what they say
-  (`server/src/park/socket.ts:196`).
+  hear only each other; people near see that they sit, never what they say. For "Sit and talk" the
+  server counts how many things each says there -- a number, never the words
+  (`server/src/park/quests.ts:90`,
+  `server/src/park/socket.ts:251`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
   (`server/src/matching/orchestrator.ts:366`).
@@ -961,7 +963,7 @@ three shapes:
 - **What Meera sees** later, if it is her most-asked gap: a "A question for you" chip in
   the town; the screen says "MONEY", the question, and "Other agents needed this once
   lately to check who fits, and yours could not say. One tap. Nobody ever sees your
-  answer." (`app/src/features/world/hud.tsx:183`,
+  answer." (`app/src/features/world/hud.tsx:191`,
   `app/src/features/question/question-state.ts:45`).
   She is never told whose want it was, or what the want said.
 - **If Meera had answered** "Saved or invested", Arjun's card says "Matches"; if she
@@ -1251,7 +1253,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") (`app/src/app/(tabs)/index.tsx:1`,
-   `app/src/features/world/hud.tsx:217`).
+   `app/src/features/world/hud.tsx:225`).
    The same button is on the Matches tab (`app/src/features/matches/matches-screen.tsx:273`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
@@ -1259,7 +1261,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    `server/src/api/dating.ts:968`,
    `server/src/api/dating.ts:1011`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
-   heading out…" (`app/src/features/world/hud.tsx:135`).
+   heading out…" (`app/src/features/world/hud.tsx:139`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
    all of them (`server/src/matching/rounds.ts:158`).
@@ -1267,7 +1269,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
    start this (`server/src/matching/orchestrator.ts:276`,
-   `app/src/features/world/hud.tsx:137`,
+   `app/src/features/world/hud.tsx:141`,
    `app/src/features/world/agent-sheet.tsx:43`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
@@ -2475,11 +2477,11 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 
 | Feature | What it does | Who can reach it | Code |
 |---|---|---|---|
-| **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about as full 3D bodies; tap your own agent to talk to it. Development builds add a "Test: add 1000 people" chip that spreads a test crowd over all 30 neighbourhoods (since 2026-09-29) | Everyone | `app/src/features/world/map.ts:4`, `server/src/matching/world.ts:50`, `app/src/features/world/hud.tsx:192` |
-| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search. Everybody is a full walking body drawn by the graphics chip, in less detail further away (since 2026-09-28; before, the nearest 12 had bodies and everyone else was a capsule). A mist ends the view at about 365 m: past it no person, tree, bench or lamp is drawn, and people out of sight are moved less often. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Since 2026-09-29 each is sized against the people using it: a bench's seat is where a sitting person's seat is (it was 28 cm higher, so people sat inside benches), and grass is ankle to knee high, bushes waist to shoulder. Every path can be walked or ridden end to end: no tree, bench, lamp or rock stands on one, the paths keep clear of the buildings' walls, and the park's edge stops you at its real boundary (since 2026-09-29; before, it was a ring of invisible circles that stopped you up to a metre and a half short of it, or let you a metre past it). An iron railing you can see through runs all the way round that boundary, with a gate wherever a path meets it; beyond it is a road with Bengaluru's traffic -- two-wheelers, autos, cars and BMTC buses, keeping left -- and buildings, none of which anybody can reach (since 2026-09-29; before, the park ran into a green plain). "Ride a bike", above the stick, puts you on a bicycle anywhere in the park: twice as fast as walking, pedalling as you go, and everybody near sees you on it; you get off to sit on a bench, and for the car. Development builds add a "Test: add 1000 people" chip, to watch the frame rate. Since 2026-09-29 the park is live: real people in it at the same time see each other ("3 here now"), each in place of their agent, and "Say something" reaches whoever is within about 20 m, over their heads and in a short log, stored nowhere; tapping one of them offers "Block or report". "Find someone to talk to" asks the free person here with most in common (never anybody talking, asking or being asked); they get "Someone here would like to talk" ("You both like …" only for something both made public) and say yes or not now; on a yes a small car drives the one who asked over. The two can then "Sit on a bench": they walk to the nearest free bench and sit, and from then on what they say reaches only each other, and nothing said near them reaches them | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/crowd-gpu.ts:117`, `app/src/features/world/camera.ts:77`, `app/src/features/world/venue-mesh.ts:55`, `app/src/features/world/venue-mesh.ts:94`, `app/src/features/world/hud.tsx:175`, `app/src/features/world/park-hud.tsx:164`, `app/src/features/world/park-hud.tsx:365`, `server/src/park/pairs.ts:65`, `app/src/features/world/garden.ts:605`, `app/src/features/world/fence-mesh.ts:23`, `app/src/features/world/city-plan.ts:28`, `app/src/features/world/traffic.ts:26`, `app/src/features/world/bike.ts:55` |
+| **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about as full 3D bodies; tap your own agent to talk to it. Development builds add a "Test: add 1000 people" chip that spreads a test crowd over all 30 neighbourhoods (since 2026-09-29) | Everyone | `app/src/features/world/map.ts:4`, `server/src/matching/world.ts:50`, `app/src/features/world/hud.tsx:200` |
+| **Cubbon Park** | A walkable version of the real park; up to 32 agents; "Directions" opens a Google Maps search. Everybody is a full walking body drawn by the graphics chip, in less detail further away (since 2026-09-28; before, the nearest 12 had bodies and everyone else was a capsule). A mist ends the view at about 365 m: past it no person, tree, bench or lamp is drawn, and people out of sight are moved less often. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Since 2026-09-29 each is sized against the people using it: a bench's seat is where a sitting person's seat is (it was 28 cm higher, so people sat inside benches), and grass is ankle to knee high, bushes waist to shoulder. Every path can be walked or ridden end to end: no tree, bench, lamp or rock stands on one, the paths keep clear of the buildings' walls, and the park's edge stops you at its real boundary (since 2026-09-29; before, it was a ring of invisible circles that stopped you up to a metre and a half short of it, or let you a metre past it). An iron railing you can see through runs all the way round that boundary, with a gate wherever a path meets it; beyond it is a road with Bengaluru's traffic -- two-wheelers, autos, cars and BMTC buses, keeping left -- and buildings, none of which anybody can reach (since 2026-09-29; before, the park ran into a green plain). "Ride a bike", above the stick, puts you on a bicycle anywhere in the park: twice as fast as walking, pedalling as you go, and everybody near sees you on it; you get off to sit on a bench, and for the car. Talking with someone, "Things to do" lists what the two can do together -- walk side by side 250 m, ride side by side 500 m, sit on a bench and each say three things, stand at three of the park's sights -- and each done pays both of them points (10 to 30) once a day, to spend on their look; the server decides from where they are, never from what they say, and the one you are with wears a ring at their feet. Development builds add a "Test: add 1000 people" chip, to watch the frame rate. Since 2026-09-29 the park is live: real people in it at the same time see each other ("3 here now"), each in place of their agent, and "Say something" reaches whoever is within about 20 m, over their heads and in a short log, stored nowhere; tapping one of them offers "Block or report". "Find someone to talk to" asks the free person here with most in common (never anybody talking, asking or being asked); they get "Someone here would like to talk" ("You both like …" only for something both made public) and say yes or not now; on a yes a small car drives the one who asked over. The two can then "Sit on a bench": they walk to the nearest free bench and sit, and from then on what they say reaches only each other, and nothing said near them reaches them | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/crowd-gpu.ts:117`, `app/src/features/world/camera.ts:77`, `app/src/features/world/venue-mesh.ts:55`, `app/src/features/world/venue-mesh.ts:94`, `app/src/features/world/hud.tsx:183`, `app/src/features/world/park-hud.tsx:171`, `app/src/features/world/park-hud.tsx:379`, `server/src/park/pairs.ts:65`, `app/src/features/world/garden.ts:605`, `app/src/features/world/fence-mesh.ts:23`, `app/src/features/world/city-plan.ts:28`, `app/src/features/world/traffic.ts:26`, `app/src/features/world/bike.ts:55`, `shared/src/park-quests.ts:29`, `server/migrations/0078_park_points.sql:22` |
 | **"Who's here"** | A list of the same people as the town, practice profiles marked "Not a real person" | Everyone | `app/src/features/world/people.ts:52` |
 | **Character builder** | The 3D figure others see in the town and on cards until you share your profile with them; items bought with points. Seven tabs (Body, Face, Hair, Top, Bottoms, Shoes, Extras), each a few titled rows, every colour named for what it colours ("Top colour"); the camera goes to what is being changed, and a line says when a pick changed something else ("Your bottoms changed to fit."). Since 2026-09-29: hairstyle apart from the face (11, one of them Shaved, men's faces only), eye colour, height, colours for trousers and shoes ("As made" first), more skin tones, hair and cloth colours, and five places to wear things instead of one "extra": hat (cap, beanie, bucket hat, hard hat, beret), glasses, earrings, round the neck, bag. Anything bought before keeps its meaning | Everyone | `app/src/features/look/builder-screen.tsx:32`, `shared/src/look.ts:70`, `app/src/features/look/builder-model.ts:64` |
-| **Points** | +50 for a check-in, +10 for "did you meet", +20 first look, +30 photos checked; only the person sees the balance | Everyone | `server/src/points/ledger.ts:13` |
+| **Points** | +50 for a check-in, +10 for "did you meet", +20 first look, +30 photos checked; in Cubbon Park, +10 to +30 for each thing done together, once a day (since 2026-09-29); only the person sees the balance | Everyone | `server/src/points/ledger.ts:14`, `server/src/points/ledger.ts:18` |
 | **Round recap** | "WHAT YOUR AGENT DID" after your own round: template sentences, up to two of your own sentences it used, topics, and what it had to say "I don't know" to | The round's sender | `server/src/matching/recap.ts:36` |
 | **Live updates** | One connection carries clone chat, messages and town events (queued, met, talking, decided, done, your turn, introduced) | Everyone | `shared/src/events.ts:198` |
 | **Push notifications** | A closed app is woken for a new card, "they shared their profile", "you can talk now", a message, and "a card fades today"; no names or words on the lock screen. Needs the founder's Expo setup before it reaches phones (stage 9.5) | Everyone, once allowed | `server/src/push/index.ts:34` |
@@ -2494,7 +2496,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:39` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
-| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:377` |
+| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:378` |
 
 Also present in the code but not visible anywhere: a "how well it knows you" score that the YOU tab fetches but
 never draws (`server/src/memory/completion.ts:83`),

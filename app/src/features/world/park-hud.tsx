@@ -10,13 +10,14 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Animated, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PARK_SAY_MAX } from '@clone/shared';
+import { PARK_QUESTS, PARK_SAY_MAX, PARK_SIGHTS, type ParkQuestId } from '@clone/shared';
 import { parkAnswer, parkFind, parkPart, parkSay, parkSit, parkStand } from '../../lib/socket';
 import { useKeyboardHeight } from '../../lib/keyboard';
 import { Button, Surface, radius, raised, space, type, usePalette } from '../../components/ui';
 import { SafetySheet } from '../safety/safety-sheet';
 import type { WorldControl } from './camera';
-import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, useParkLive, type Line } from './park-live';
+import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, nextQuest, questProgress, useParkLive, type Line } from './park-live';
+import { STICK_RING } from './stick';
 import { benchFor } from './ride';
 import type { WorldSim } from './sim';
 
@@ -135,7 +136,13 @@ export function ParkChat({ bottom, children }: {
   // somebody, what was just said. Kept narrower than the screen less the stick, which
   // has the bottom left; typing, the line takes the whole width over the keyboard.
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', right: space.screen, left: open ? space.screen : undefined, bottom: lift, gap: space.sm, alignItems: 'flex-end' }}>
+    // Open with no keyboard, the line to type in stays right of the stick: full width it
+    // lay over the bottom of the stick (on the phone, 2026-09-29). Typing, the keyboard
+    // has the bottom of the screen and the line takes the whole width above it.
+    <View pointerEvents="box-none" style={{
+      position: 'absolute', right: space.screen, bottom: lift, gap: space.sm, alignItems: 'flex-end',
+      left: open ? (keyboard > 0 ? space.screen : space.screen + STICK_RING + space.sm) : undefined,
+    }}>
       {recent.length > 0 && (
         <View pointerEvents="none" style={{ gap: 4, maxWidth: open ? undefined : DOCK_W, alignSelf: open ? 'stretch' : 'flex-end' }}>
           {recent.map((l) => (
@@ -266,18 +273,25 @@ export function ParkActions({ venueSim, benches }: {
     parkSit(b);
   };
 
+  const quests = useParkLive((s) => s.quests);
+  const next = nextQuest(quests);
   const card = { paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, backgroundColor: p.bg, boxShadow: raised(p, 4), gap: space.sm, maxWidth: DOCK_W };
   return (
     <View pointerEvents="box-none" style={{ alignItems: 'flex-end', gap: space.sm }}>
       {partner ? (
         <View style={card}>
+          {/* SHORT, because it sits over the park beside you: who you are with, the next
+              thing to do together, and the buttons. Who can hear you is said where you
+              type (the line's own placeholder). */}
           <Text style={[type.bodyStrong, { color: p.text }]}>
-            {partner.rideTo ? 'On your way to them…' : bench !== null ? 'On a bench, just the two of you' : 'You are talking with someone'}
+            {partner.rideTo ? 'On your way to them…' : bench !== null ? 'On a bench, just you two' : 'Talking with someone'}
           </Text>
-          <Text style={[type.callout, { color: p.textSecondary }]}>
-            {bench !== null ? 'Nobody else can hear you, however close they stand.'
-              : 'People near you can hear you both. Sit on a bench to talk privately.'}
-          </Text>
+          {next && !partner.rideTo && (
+            <Text style={[type.callout, { color: p.accent }]} numberOfLines={2}>
+              {`Next: ${next.title} · +${next.points}`}
+              {(quests?.progress[next.id] ?? 0) > 0 ? ` · ${questProgress(next.id, quests!.progress[next.id]!)}` : ''}
+            </Text>
+          )}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
             {bench === null ? (
               <Pill label="Sit on a bench" primary onPress={sit} disabled={!!partner.rideTo} />
@@ -371,6 +385,106 @@ export function InviteCard() {
           <View style={{ flex: 1.3 }}><Button label="Yes, let's talk" variant="primary" onPress={() => parkAnswer(true)} /></View>
         </View>
       </Surface>
+    </Animated.View>
+  );
+}
+
+
+const QUEST_ICON: Record<ParkQuestId, string> = { hello: '👋', walk: '🚶', ride: '🚲', talk: '🪑', sights: '🗿' };
+
+/**
+ * Things to do together in the park today (shared/park-quests.ts): each, how to do it,
+ * how far along you are, and the points it pays -- once a day, to both of you. The
+ * server decides when each is done (park/quests.ts); this only shows it.
+ */
+export function QuestsSheet({ onClose }: { onClose: () => void }) {
+  const p = usePalette();
+  const insets = useSafeAreaInsets();
+  const quests = useParkLive((s) => s.quests);
+  const partner = useParkLive((s) => s.partner);
+  const cheer = useParkLive((s) => s.cheer);
+  const done = new Set(quests?.done ?? []);
+  return (
+    <Pressable onPress={onClose} style={{ position: 'absolute', inset: 0 }} accessibilityLabel="Close">
+      <Pressable onPress={() => {}} style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
+        <Surface radius={radius.xl} style={{ padding: space.screen, paddingBottom: Math.max(insets.bottom, space.lg), gap: space.md,
+                                              borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
+          <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: p.dark }} />
+          <Text style={[type.title, { color: p.text }]}>Things to do together</Text>
+          <Text style={[type.body, { color: p.textSecondary }]}>
+            {partner ? 'Do these with the person you are talking to. ' : 'Find someone to talk to first, then do these together. '}
+            Each pays you both points once a day, to spend on your look.
+            {cheer ? ` You have ${cheer.balance} points.` : ''}
+          </Text>
+          {PARK_QUESTS.map((q) => {
+            const n = quests?.progress[q.id] ?? 0;
+            const finished = done.has(q.id);
+            const sights = q.id === 'sights' && quests?.sights.length
+              ? PARK_SIGHTS.filter((s) => quests.sights.includes(s.id)).map((s) => s.name).join(', ') : '';
+            return (
+              <View key={q.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+                <Text style={{ fontSize: 22, opacity: finished ? 0.5 : 1 }}>{QUEST_ICON[q.id]}</Text>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={[type.bodyStrong, { color: finished ? p.textSecondary : p.text }]}>{q.title}</Text>
+                  <Text style={[type.callout, { color: p.textSecondary }]}>
+                    {finished ? 'Done today.' : q.how}{sights ? ` Seen: ${sights}.` : ''}
+                  </Text>
+                  {!finished && n > 0 && (
+                    <View style={{ height: 6, borderRadius: 3, backgroundColor: p.sunken, overflow: 'hidden' }}>
+                      <View style={{ width: `${Math.min(100, (n / q.goal) * 100)}%`, height: 6, backgroundColor: p.accent }} />
+                    </View>
+                  )}
+                  {!finished && n > 0 && <Text style={[type.label, { color: p.textTertiary }]}>{questProgress(q.id, n)}</Text>}
+                </View>
+                <Text style={[type.bodyStrong, { color: finished ? p.success : p.accent }]}>{finished ? '✓' : `+${q.points}`}</Text>
+              </View>
+            );
+          })}
+          <Button label="Close" variant="ghost" onPress={onClose} />
+        </Surface>
+      </Pressable>
+    </Pressable>
+  );
+}
+
+/** How many of today's things to do are done, of how many. */
+export function useQuestsDone(): [number, number] {
+  const done = useParkLive((s) => s.quests?.done.length ?? 0);
+  return [done, PARK_QUESTS.length];
+}
+
+const CHEER: Record<ParkQuestId, string> = {
+  hello: 'You met someone here',
+  walk: 'You walked together',
+  ride: 'You rode together',
+  talk: 'You sat and talked',
+  sights: 'You saw the sights together',
+};
+
+/** Something just done together, and what it paid: a moment at the top of the screen. */
+export function CheerToast({ top }: { top: number }) {
+  const p = usePalette();
+  const cheer = useParkLive((s) => s.cheer);
+  const clear = useParkLive((s) => s.clearCheer);
+  const drop = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!cheer) return;
+    drop.setValue(0);
+    Animated.spring(drop, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 8 }).start();
+    const t = setTimeout(() => Animated.timing(drop, { toValue: 0, duration: 260, useNativeDriver: true }).start(() => clear()), 3200);
+    return () => clearTimeout(t);
+  }, [cheer, drop, clear]);
+  if (!cheer) return null;
+  return (
+    <Animated.View pointerEvents="none" style={{
+      position: 'absolute', top, left: space.screen, right: space.screen, alignItems: 'center', opacity: drop,
+      transform: [{ translateY: drop.interpolate({ inputRange: [0, 1], outputRange: [-24, 0] }) }, { scale: drop.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.md,
+                     borderRadius: radius.pill, backgroundColor: p.accent, boxShadow: raised(p, 6) }}>
+        <Text style={{ fontSize: 18 }}>{QUEST_ICON[cheer.quest]}</Text>
+        <Text style={[type.bodyStrong, { color: p.accentText }]}>{`${CHEER[cheer.quest]} · +${cheer.points} points`}</Text>
+      </View>
     </Animated.View>
   );
 }

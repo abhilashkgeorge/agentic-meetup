@@ -18,7 +18,7 @@ import { Stick } from './stick';
 import { cityPose, placeLabels, toScreen, type Band, type Size } from './camera';
 import { MAP, areaName, cityTitle, type Frame } from './map';
 import { MAX_VENUE_AGENTS, type Venue } from './venue';
-import { useLiveCount } from './park-hud';
+import { useLiveCount, useQuestsDone } from './park-hud';
 
 export function Hud({
   world,
@@ -44,6 +44,7 @@ export function Hud({
   onEnterVenue,
   onLeaveVenue,
   onDirections,
+  onQuests,
   stick,
   exchange,
   question,
@@ -92,6 +93,8 @@ export function Hud({
   onEnterVenue: () => void;
   onLeaveVenue: () => void;
   onDirections: () => void;
+  /** Things to do together in the park (park-hud.tsx QuestsSheet). */
+  onQuests?: () => void;
   /** Where the stick writes what the thumb is doing. */
   stick: MutableRefObject<{ x: number; y: number }>;
   /** What the agents just asked each other, played above the button. */
@@ -112,6 +115,7 @@ export function Hud({
   const askArea = world?.me.need.includes('area') ?? false;
   // People here in person, besides you (the park, live).
   const live = useLiveCount();
+  const [questsDone, questsAll] = useQuestsDone();
   const askName = world?.me.need.includes('first_name') ?? false;
 
   // The thirty names, laid over the city at its zoomed-out pose, faded in and out
@@ -168,6 +172,10 @@ export function Hud({
                   {/* People here in person, first: the reason to be in the park now. */}
                   <Chip label={live > 0 ? `${live} here now` : 'Nobody else here now'} selected={live > 0}
                         onPress={() => {}} disabled={live === 0} />
+                  {/* Things to do together, and how many are done today: points for your look. */}
+                  {onQuests && (
+                    <Chip label={`Things to do · ${questsDone}/${questsAll}`} selected={questsDone > 0} onPress={onQuests} />
+                  )}
                   <Chip label="Directions" selected={false} onPress={onDirections} />
                   <Chip label={crowd ? `${crowd} test people in the park` : `${Math.min(here + 1, MAX_VENUE_AGENTS)} agents in the park`}
                         selected={false} onPress={() => {}} disabled />

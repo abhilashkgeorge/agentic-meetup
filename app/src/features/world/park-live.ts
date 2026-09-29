@@ -10,7 +10,8 @@
  * NO REACT NATIVE HERE: tests/park-live.test.ts holds the merging and the bubbles.
  */
 import { create } from 'zustand';
-import type { Look, ParkPerson } from '@clone/shared';
+import { PARK_QUESTS, type Look, type ParkPerson, type ParkQuestId } from '@clone/shared';
+import type { WorldSim } from './sim';
 
 export interface LivePerson {
   ref: string;
@@ -58,6 +59,31 @@ export const REFUSAL_TEXT: Record<Refusal, string> = {
   bench_taken: 'Somebody just took that bench. Try again for another.',
 };
 
+/** What you have done together in the park today, as the server last said. */
+export interface Quests {
+  day: string;
+  done: ParkQuestId[];
+  progress: Partial<Record<ParkQuestId, number>>;
+  sights: string[];
+}
+
+/**
+ * How far along a thing to do is, in words: metres walked or ridden, things said,
+ * sights seen. A park unit is 8.1 m (cubbon.ts).
+ */
+export function questProgress(id: ParkQuestId, n: number): string {
+  const q = PARK_QUESTS.find((x) => x.id === id)!;
+  if (id === 'walk' || id === 'ride') return `${Math.round((n * 8.1) / 10) * 10} of ${Math.round((q.goal * 8.1) / 10) * 10} m`;
+  if (id === 'talk') return `${n} of ${q.goal} each`;
+  if (id === 'sights') return `${n} of ${q.goal}`;
+  return '';
+}
+
+/** The next thing to do together: the first not done today, after meeting somebody. */
+export function nextQuest(quests: Quests | null): (typeof PARK_QUESTS)[number] | null {
+  return PARK_QUESTS.find((q) => q.id !== 'hello' && !(quests?.done ?? []).includes(q.id)) ?? null;
+}
+
 /** This frame's people, their looks carried over from the last. Nobody without a look yet. */
 export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readonly ParkPerson[]): Map<string, LivePerson> {
   const out = new Map<string, LivePerson>();
@@ -67,6 +93,20 @@ export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readon
     out.set(p.ref, { ref: p.ref, x: p.x, z: p.z, facing: p.facing, moving: p.moving, look, sitting: p.sitting === true, riding: p.riding === true });
   }
   return out;
+}
+
+/**
+ * Whoever is here, into the sim, and whoever has gone, out of it. The one you are
+ * talking with wears a ring at their feet, so you can find them in a crowd -- the sim's
+ * own ring, which the canvas already draws -- and nobody else does.
+ */
+export function livePeople(sim: WorldSim, people: ReadonlyMap<string, LivePerson>, partner: string | null): void {
+  for (const p of people.values()) {
+    sim.live(p.ref, p.look, p.x, p.z, p.facing, p.moving, p.sitting, p.riding);
+    const a = sim.get(p.ref);
+    if (a) a.ring = p.ref === partner;
+  }
+  for (const a of sim.agents()) if (a.kind === 'live' && !people.has(a.ref)) sim.unlive(a.ref);
 }
 
 /** What floats over each head now: the latest line of each speaker, while it lasts. */
@@ -95,6 +135,9 @@ interface ParkLive {
   bench: number | null;
   /** On a bicycle (bike.ts): faster, and seen on one by everybody near. */
   riding: boolean;
+  /** Things to do together today, and the one just done, for a moment on screen. */
+  quests: Quests | null;
+  cheer: { quest: ParkQuestId; points: number; balance: number; at: number } | null;
   setIn: (on: boolean) => void;
   gotPeople: (frame: readonly ParkPerson[]) => void;
   gotLine: (ref: string, text: string, at: number, priv?: boolean) => void;
@@ -112,6 +155,8 @@ interface ParkLive {
   rejoined: () => void;
   /** Get on a bicycle, or off it. Not while on a bench, or while a car is taking you. */
   setRiding: (on: boolean) => void;
+  gotQuests: (q: Quests, just?: { quest: ParkQuestId; points: number; balance: number }) => void;
+  clearCheer: () => void;
 }
 
 let nextId = 1;
@@ -126,11 +171,13 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   partner: null,
   bench: null,
   riding: false,
+  quests: null,
+  cheer: null,
   // Leaving forgets everybody -- and ends whatever you were in the middle of, which the
   // server ends too: the next visit starts from what it sends.
   setIn: (on) => set(on ? { inPark: true } : {
     inPark: false, people: new Map(), lines: [], refused: null, finding: null, asked: null, partner: null, bench: null,
-    riding: false,
+    riding: false, quests: null, cheer: null,
   }),
   gotPeople: (frame) => { if (get().inPark) set({ people: mergePeople(get().people, frame) }); },
   // Timed by the phone's own clock, not the server's: a bubble is how long something
@@ -152,6 +199,9 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   // Sitting down gets you off the bike: nobody sits on a bench astride one.
   gotBench: (bench) => set(bench !== null ? { bench, riding: false } : { bench }),
   rejoined: () => set({ partner: null, bench: null, finding: null, asked: null, people: new Map() }),
+  // A payment is cheered; one that paid nothing (already done today) is not.
+  gotQuests: (quests, just) => set(just && just.points > 0 ? { quests, cheer: { ...just, at: Date.now() } } : { quests }),
+  clearCheer: () => set({ cheer: null }),
   setRiding: (on) => {
     const s = get();
     if (on && (s.bench !== null || s.partner?.rideTo)) return;

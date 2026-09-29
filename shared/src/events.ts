@@ -267,6 +267,19 @@ export const ServerEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('park.stood') }),
   /** That bench is taken. */
   z.object({ type: z.literal('park.bench_taken'), bench: z.number().int() }),
+  /**
+   * What you have done together in the park today, and how far along the rest are
+   * (shared/park-quests.ts; the server's park/quests.ts decides). `just` is the one
+   * just done: what it was, the points it paid you, and your balance after.
+   */
+  z.object({
+    type: z.literal('park.quests'),
+    day: z.string(),
+    done: z.array(z.enum(['hello', 'walk', 'ride', 'talk', 'sights'])),
+    progress: z.record(z.string(), z.number()),
+    sights: z.array(z.string()),
+    just: z.object({ quest: z.enum(['hello', 'walk', 'ride', 'talk', 'sights']), points: z.number().int(), balance: z.number().int() }).optional(),
+  }),
 
   z.object({ type: z.literal('heartbeat') }),
   z.object({

@@ -30,8 +30,10 @@ details), and **database roles** that limit what each part of the server can rea
   "Find someone to talk to" ranks the free people there by what they have in common, with matching's
   own reading of both files, but tells the one asked only one thing both of them made public ("You both
   like climbing"), never a word from a fact only matching may use. On a bench the two of them see and
-  hear only each other; people near see that they sit, never what they say
-  ([server/src/park/socket.ts:196] `const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];`).
+  hear only each other; people near see that they sit, never what they say. For "Sit and talk" the
+  server counts how many things each says there -- a number, never the words
+  ([server/src/park/quests.ts:90] `said(userId: string, partner: string | null, onBench: boolean): Done[] {`,
+  [server/src/park/socket.ts:251] `const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
   ([server/src/matching/orchestrator.ts:366] `loadQuotes(pair.b, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`).

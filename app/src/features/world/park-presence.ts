@@ -10,7 +10,7 @@ import { useEffect, type MutableRefObject } from 'react';
 import { AppState } from 'react-native';
 import { parkEnter, parkLeave, parkMove, parkStand } from '../../lib/socket';
 import type { WorldControl } from './camera';
-import { useParkLive, type LivePerson } from './park-live';
+import { livePeople, useParkLive, type LivePerson } from './park-live';
 import { seatOn } from './ride';
 import type { WorldSim } from './sim';
 
@@ -94,12 +94,9 @@ export function useParkPresence(
   // Whoever is here, into the sim; whoever has gone, out of it.
   useEffect(() => {
     if (!inPark) return;
-    const apply = (people: ReadonlyMap<string, LivePerson>) => {
-      for (const p of people.values()) venueSim.live(p.ref, p.look, p.x, p.z, p.facing, p.moving, p.sitting, p.riding);
-      for (const a of venueSim.agents()) if (a.kind === 'live' && !people.has(a.ref)) venueSim.unlive(a.ref);
-    };
+    const apply = (people: ReadonlyMap<string, LivePerson>) => livePeople(venueSim, people, useParkLive.getState().partner?.ref ?? null);
     apply(useParkLive.getState().people);
-    const unsubscribe = useParkLive.subscribe((s, prev) => { if (s.people !== prev.people) apply(s.people); });
+    const unsubscribe = useParkLive.subscribe((s, prev) => { if (s.people !== prev.people || s.partner !== prev.partner) apply(s.people); });
     return () => {
       unsubscribe();
       for (const a of venueSim.agents()) if (a.kind === 'live') venueSim.unlive(a.ref);

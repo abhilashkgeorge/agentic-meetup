@@ -168,6 +168,9 @@ function connect(): void {
       case 'park.stood':
         useParkLive.getState().gotBench(null);
         break;
+      case 'park.quests':
+        useParkLive.getState().gotQuests({ day: ev.day, done: ev.done, progress: ev.progress, sights: ev.sights }, ev.just);
+        break;
       case 'park.bench_taken':
         useParkLive.getState().gotRefused('bench_taken');
         break;

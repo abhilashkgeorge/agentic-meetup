@@ -13,3 +13,4 @@ export * from './areas.js';
 export * from './contact.js';
 export * from './support.js';
 export * from './identifying.js';
+export * from './park-quests.js';

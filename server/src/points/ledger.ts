@@ -10,7 +10,13 @@
 import type { PoolClient } from 'pg';
 import { currentItem, type LookItem } from '@clone/shared';
 
-export const POINTS = { checkin: 50, met: 10, look: 20, photos_checked: 30 } as const;
+export const POINTS = {
+  checkin: 50, met: 10, look: 20, photos_checked: 30,
+  // Doing things together in Cubbon Park (shared/park-quests.ts; park/quests.ts), paid
+  // once a day each: the ref is the day. tests/park-quests.test.ts holds these to the
+  // amounts the phone shows.
+  park_hello: 10, park_walk: 15, park_ride: 25, park_talk: 20, park_sights: 30,
+} as const;
 export type PointReason = keyof typeof POINTS;
 
 interface Who { tenantId: string; userId: string }

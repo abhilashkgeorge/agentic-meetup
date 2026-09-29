@@ -46,7 +46,7 @@ import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
 import { useParkPresence } from './park-presence';
-import { BikeButton, InviteCard, LiveSheet, ParkActions, ParkChat, SpeechBubbles } from './park-hud';
+import { BikeButton, CheerToast, InviteCard, LiveSheet, ParkActions, ParkChat, QuestsSheet, SpeechBubbles } from './park-hud';
 import { STICK_RING } from './stick';
 import { useParkLive } from './park-live';
 import { gardenSpots } from './garden';
@@ -303,6 +303,7 @@ export default function WorldScreen() {
   const [chatOpen, setChatOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [liveSelected, setLiveSelected] = useState<string | null>(null);
+  const [questsOpen, setQuestsOpen] = useState(false);
   const onTap = useCallback((ref: string) => {
     if (ref === YOU) setChatOpen(true);
     // Somebody here in person: not an agent to send yours over to, a person.
@@ -407,6 +408,7 @@ export default function WorldScreen() {
            walking={walking} venue={realm.venue} transitioning={transitioning}
            onEnterVenue={enterVenue} onLeaveVenue={leaveVenue}
            onDirections={() => void Linking.openURL(directionsUrl(CUBBON_PARK))}
+           onQuests={() => setQuestsOpen(true)}
            stick={stick}
            exchange={bubbles.length > 0 && exchange && world ? (
              <ExchangeStrip bubbles={bubbles} you={world.me.look} them={exchange.look}
@@ -425,6 +427,7 @@ export default function WorldScreen() {
           </ParkChat>
           <InviteCard />
           <BikeButton left={space.screen} bottom={Math.max(insets.bottom, space.lg) + space.lg + STICK_RING + space.md} />
+          <CheerToast top={insets.top + 196} />
         </>
       )}
       {/* Over everything, including the HUD, and under nothing. Debug builds only. */}
@@ -453,6 +456,7 @@ export default function WorldScreen() {
                     onSendOver={(ref) => { setSelected(null); void sendOut(ref); }} />
       )}
       {liveSelected && <LiveSheet parkRef={liveSelected} onClose={() => setLiveSelected(null)} />}
+      {questsOpen && realm.phase === 'venue' && <QuestsSheet onClose={() => setQuestsOpen(false)} />}
       {chatOpen && <CloneSheet onClose={() => setChatOpen(false)} />}
     </View>
   );

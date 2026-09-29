@@ -7,11 +7,13 @@
  *   - rank by distance only (skip `rank`) -> "asks the person with most in common" fails;
  *   - take the shared word from attribute_tags instead of publicTags -> "never names a
  *     word only matching may use" fails;
- *   - skip `unpair` on leaving -> "ends the pair when one leaves" fails.
+ *   - skip `unpair` on leaving -> "ends the pair when one leaves" fails;
+ *   - pay nobody (pay() returning at once) -> "pays each of them" and "pays both for
+ *     sitting and talking" fail.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import type { ServerEvent } from '@clone/shared';
+import { parkDay, type ServerEvent } from '@clone/shared';
 
 const { pool, closeMatchPool, tenantSession } = await import('../src/db/client.js');
 const { env } = await import('../src/env.js');
@@ -119,6 +121,19 @@ describe('finding someone to talk to in the park', () => {
     expect(pairs.partnerOf(seeker.userId)).toBe(climber.userId);
   });
 
+  it('pays each of them for meeting somebody, into their own ledger, and says so', async () => {
+    const day = parkDay(Date.now());
+    const { rows } = await owner.query<{ user_id: string; amount: number }>(
+      `SELECT user_id, amount FROM points_ledger WHERE reason = 'park_hello' AND ref = $1 AND user_id = ANY($2::uuid[])`,
+      [day, [seeker.userId, climber.userId]]);
+    expect(rows.map((r) => r.user_id).sort()).toEqual([seeker.userId, climber.userId].sort());
+    expect(rows.every((r) => r.amount === 10)).toBe(true);
+    const told = seeker.frames.filter((f) => f.type === 'park.quests' && f.just?.quest === 'hello');
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatchObject({ day, just: { quest: 'hello', points: 10, balance: 10 } });
+    expect(last(climber, 'park.quests')!.done).toContain('hello');
+  });
+
   it('gives them a bench, and what they say there reaches only each other', async () => {
     // The seeker has ridden over: now beside the climber, with the stranger in earshot.
     await frame(seeker, { type: 'park.move', x: 30.5, z: 5, facing: 0, moving: false });
@@ -135,6 +150,20 @@ describe('finding someone to talk to in the park', () => {
     // Nobody else takes it.
     await frame(stranger, { type: 'park.sit', bench: 12 });
     expect(last(stranger, 'park.bench_taken')).toMatchObject({ bench: 12 });
+  });
+
+  it('pays both for sitting and talking once each has said three things there -- counted, not read', async () => {
+    // The seeker has said one ("Just us here.") and the stranger's line was not theirs.
+    await frame(seeker, { type: 'park.say', text: 'Nice evening.' });
+    await frame(seeker, { type: 'park.say', text: 'Do you come here often?' });
+    await frame(climber, { type: 'park.say', text: 'Most Sundays.' });
+    await frame(climber, { type: 'park.say', text: 'The rock is my favourite.' });
+    expect(last(climber, 'park.quests')!.just?.quest, 'paid before both had said three').not.toBe('talk');
+    await frame(climber, { type: 'park.say', text: 'Shall we walk there?' });
+    for (const p of [seeker, climber]) expect(last(p, 'park.quests')).toMatchObject({ just: { quest: 'talk', points: 20 } });
+    const { rows } = await owner.query<{ n: string }>(
+      `SELECT count(*) AS n FROM points_ledger WHERE reason = 'park_talk' AND user_id = ANY($1::uuid[])`, [[seeker.userId, climber.userId]]);
+    expect(Number(rows[0]!.n)).toBe(2);
   });
 
   it('ends the pair when one leaves, and frees the bench', () => {
