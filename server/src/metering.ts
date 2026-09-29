@@ -17,12 +17,26 @@ import type { Usage } from './llm/port.js';
 export class BudgetExceeded extends Error {
   constructor(
     readonly kind: 'daily_cost' | 'daily_turns' | 'daily_setup' | 'session_output',
-    used: number,
-    cap: number,
+    readonly used: number,
+    readonly cap: number,
   ) {
     super(`${kind} budget exceeded: ${used} of ${cap}`);
     this.name = 'BudgetExceeded';
   }
+}
+
+/**
+ * What a person reads when the day's allowance runs out: that it did, why, and when it
+ * comes back (the founder, 2026-09-29: "when chat hits the limit, say so clearly"). It
+ * used to be "You have hit today's turn limit." or "That is enough for today." -- and the
+ * app showed neither. Setup never counts towards the ten (0075), so it is not named.
+ */
+export function budgetMessage(err: BudgetExceeded): string {
+  if (err.kind === 'daily_turns') {
+    return `That's all for today. Chat, learning and your agent's rounds share ${err.cap} turns a day, `
+      + 'and today\'s are used up. Your clone can talk again tomorrow.';
+  }
+  return "That's all for today: your clone has reached today's limit. It can talk again tomorrow.";
 }
 
 /**

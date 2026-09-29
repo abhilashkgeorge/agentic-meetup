@@ -191,7 +191,7 @@ The first screen already calls a model (fact extraction, then a sample reply); s
 are counted apart, up to 40 a day, and never use the 10 a day that chat, learning and rounds share;
 the $2.00 daily cost cap still covers them. Measured before the change: real people's setup used 1 to
 4 of the 10 on their first day ([server/src/api/tell.ts:76] `), { setup: true });`,
-[server/src/metering.ts:59] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {`,
+[server/src/metering.ts:73] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {`,
 [server/src/memory/selftest.ts:24] `export const TEST_SIZE = 5;`).
 
 ### Docs vs code

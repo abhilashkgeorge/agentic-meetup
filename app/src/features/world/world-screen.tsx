@@ -27,13 +27,15 @@ import { setupRoute } from '../profile/fields';
 import { Screen, space, useIsDark, usePalette } from '../../components/ui';
 import { FPS_METER, FpsMeter, feedFps } from '../dev/fps';
 import { bubblesForCard, pickExchange } from '../matches/exchange';
+import { SHARED_LIMIT } from '../chat/turn-note';
 import { AgentSheet } from './agent-sheet';
 import { ExchangeStrip } from './exchange-strip';
 import type { Band, Size, WorldControl } from './camera';
 
 /** What the server says when it will not send the agent, in the person's words. */
 const REFUSED: Record<string, string> = {
-  budget_exceeded: 'Your agent has been out enough for today.',
+  // Chat, learning and rounds share the day's turns (chat/turn-note.ts).
+  budget_exceeded: SHARED_LIMIT,
   // One open round a day that met somebody (server world.ts ROUNDS_PER_DAY).
   daily_rounds: 'Your agent has been out enough for today.',
   daily_targets: 'That is all the visits for today. Try again tomorrow.',
@@ -267,7 +269,7 @@ export default function WorldScreen() {
       void getQuestionOfDay(token).then((q) => setQuestion(Boolean(q?.question)));
     }
     setSaid(
-      r.error === 'budget_exceeded' ? 'Your agent has been out enough for today.'
+      r.error === 'budget_exceeded' ? SHARED_LIMIT
       : r.error ? 'Something went wrong while your agent was out.'
       : r.skipped ? r.skipped
       : r.met === 0 ? 'It found nobody new to meet.'

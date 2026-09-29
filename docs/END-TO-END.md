@@ -459,7 +459,7 @@ The first screen already calls a model (fact extraction, then a sample reply); s
 are counted apart, up to 40 a day, and never use the 10 a day that chat, learning and rounds share;
 the $2.00 daily cost cap still covers them. Measured before the change: real people's setup used 1 to
 4 of the 10 on their first day (`server/src/api/tell.ts:76`,
-`server/src/metering.ts:59`,
+`server/src/metering.ts:73`,
 `server/src/memory/selftest.ts:24`).
 
 ### Docs vs code
@@ -621,7 +621,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 |---|---|---|---|---|
 | Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:148` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | `server/src/memory/consolidate.ts:26` |
-| Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:470` |
+| Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:460` |
 | Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:156` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs
@@ -1319,7 +1319,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    `app/src/features/world/agent-sheet.tsx:43`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   (`app/src/features/world/world-screen.tsx:275`,
+   (`app/src/features/world/world-screen.tsx:277`,
    `app/src/features/world/exchange-strip.tsx:83`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).
@@ -1353,23 +1353,28 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | `server/src/matching/world.ts:28`, `server/src/matching/rounds.ts:78` |
 | One round at a time | A second tap returns the round already running | | `server/src/matching/rounds.ts:101` |
 | Model spend | $2.00 per person per day | All of that person's model calls | `server/src/env.ts:334` |
-| Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | `server/src/metering.ts:59` |
+| Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | `server/src/metering.ts:73` |
 
 None of `ROUNDS_PER_DAY`, `TARGETED_ROUNDS_PER_DAY`, `ROUND_CANDIDATES`,
 `WEEKLY_REAL_EXPOSURE`, `AGENT_TALK` or `RENDEZVOUS_RUNS` is set in the development
 configuration, so the code defaults above apply (checked 2026-09-28).
 
-What the person sees when a limit hits: "Your agent has been out enough for today." (spend
-or round limit), "That is all the visits for today. Try again tomorrow.", "That person has
-moved on.", "Your agent needs a few more answers before it can go out."
-(`app/src/features/world/world-screen.tsx:36`,
-`app/src/features/world/world-screen.tsx:39`,
-`app/src/features/world/world-screen.tsx:40`,
-`app/src/features/world/world-screen.tsx:43`).
-Because chat and rounds share the same 10-calls-a-day allowance, a person who chatted a lot
-can be told their agent "has been out enough for today" when it never went out
-(`server/src/matching/orchestrator.ts:301`,
-`server/src/metering.ts:64`).
+What the person sees when a limit hits: "That's all for today: chat, learning and your agent's
+rounds share one daily allowance, and today's is used up. Try again tomorrow." (the shared ten; since
+2026-09-29 -- before, "Your agent has been out enough for today.", even when chat had used the turns
+and the agent never went out), "Your agent has been out enough for today." (the one round a day),
+"That is all the visits for today. Try again tomorrow.", "That person has moved on.", "Your agent
+needs a few more answers before it can go out."
+(`app/src/features/chat/turn-note.ts:17`,
+`app/src/features/world/world-screen.tsx:41`,
+`app/src/features/world/world-screen.tsx:42`,
+`app/src/features/world/world-screen.tsx:45`).
+In the clone chat, the turn that meets the limit ends with a line from the app, in the server's
+words: "That's all for today. Chat, learning and your agent's rounds share 10 turns a day, and
+today's are used up. Your clone can talk again tomorrow." (since 2026-09-29; before, nothing was
+shown, and the clone's previous reply was blanked)
+(`server/src/metering.ts:34`,
+`app/src/lib/socket.ts:197`).
 
 ### 6.3 The rules: who the agent may meet
 
@@ -1463,7 +1468,7 @@ off (`server/src/matching/profile.ts:205`,
 - HOW-IT-WORKS.md §10 says rounds are limited by the round count "instead of by spend". The
   daily spend and call caps can still refuse a round
   (`HOW-IT-WORKS.md:818`,
-  `server/src/metering.ts:56`).
+  `server/src/metering.ts:70`).
 - Several code comments still say a round makes no model call
   (`server/src/api/dating.ts:950`,
   `server/src/matching/answer-sheet.ts:24`). By default it makes the
@@ -1917,7 +1922,7 @@ Each moment that asks something of a person wakes their phone, whether or not th
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
 (`server/src/push/index.ts:31`). The phone asks for
 permission when the person first sends their agent out, not at launch
-(`app/src/features/world/world-screen.tsx:290`), and a
+(`app/src/features/world/world-screen.tsx:292`), and a
 tap opens the card, their profile or the chat
 (`app/src/features/push/route.ts:14`).
 **Not yet reaching phones:** the app has no Expo project id yet and the server sends with
@@ -2264,10 +2269,10 @@ is an estimate from its output limit.
 **Metering.** Each call is recorded against one person (`llm_calls`) and counted against their day: at most
 $2.00 and at most **10 model calls** per person per day, for every account; setup calls (AI-1 on the first screen,
 AI-2 to AI-5, and the answer sheet the first sentence builds) are counted apart, up to 40 a day, since 2026-09-28
-(`server/src/metering.ts:59`); the day resets at midnight UTC
-(`server/src/metering.ts:56`,
-`server/src/metering.ts:65`,
-`server/src/metering.ts:47`). Embeddings are not
+(`server/src/metering.ts:73`); the day resets at midnight UTC
+(`server/src/metering.ts:70`,
+`server/src/metering.ts:79`,
+`server/src/metering.ts:61`). Embeddings are not
 metered. The server refuses to start if a routed model has no verified price or retires within 90 days
 (`server/src/llm/index.ts:118`).
 
@@ -2386,8 +2391,8 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-6"></a>
 ### AI-6. Own-clone chat reply
 
-- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens (`server/src/api/chat.ts:377`,
-  `server/src/api/chat.ts:402`).
+- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens (`server/src/api/chat.ts:372`,
+  `server/src/api/chat.ts:397`).
 - **When:** every message a person sends to their own clone.
 - **In:** the profile summary, style note, last 20 messages, **every** live fact (including private ones: it
   talks only to its own person), up to 5 recalled old messages. Instructions: "You are this person's clone: an
@@ -2397,7 +2402,7 @@ $0.02; not measured, because no round has run since the talk was added.
   `server/src/api/chat.ts:41`,
   `server/src/api/chat.ts:43`).
 - **Out:** free text. **Checks:** none; streamed straight to the phone
-  (`server/src/api/chat.ts:409`).
+  (`server/src/api/chat.ts:404`).
 - **Stored:** the reply, as a message in the person's history.
 
 <a id="ai-7"></a>
@@ -2406,7 +2411,7 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Model:** Gemini Embedding 001, 768 numbers per text (`server/src/llm/adapters/google.ts:216`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
   are embedded and stored (`server/src/memory/retrieval.ts:64`,
-  `server/src/api/chat.ts:480`).
+  `server/src/api/chat.ts:470`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   (`server/src/llm/embeddings.ts:26`).
 
@@ -2555,7 +2560,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Photos screen** | Up to six photos, re-encoded to drop location data | Everyone | `server/src/photos/store.ts:30` |
 | **Selfie check** | "Photos checked" badge from a local face model | Off (`FACE_CHECK=off`) | `server/src/api/verify.ts:39` |
 | **"What it knows"** | Every fact, its history, and the confirm questions | Everyone | `app/src/features/knowledge/you-screen.tsx:91` |
-| **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:93` |
+| **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:98` |
 | **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:238` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable | Everyone | `app/src/features/settings/connect-screen.tsx:36` |
 | **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only). A report on two people who had messages shows "Read their chat (12 messages)": their chat as it stood when the report was made, "Them:" or "Reporter:" on each line, still there after either deletes their account (since 2026-09-29; before, no reviewer could read a reported chat) | Reviewer | `app/src/features/settings/settings-screen.tsx:272`, `server/src/api/admin.ts:80`, `app/src/features/admin/reports-screen.tsx:88` |
@@ -2563,7 +2568,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:40` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
-| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:380` |
+| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:382` |
 
 Also present in the code but not visible anywhere: a "how well it knows you" score that the YOU tab fetches but
 never draws (`server/src/memory/completion.ts:83`),
@@ -2665,10 +2670,10 @@ decides first (the one open card where a real person waited behind one was moved
 limit, both ways; the practice pool no longer expires; setup calls no longer use the day's ten; and phones are
 woken for a new card, a share, an introduction, a message and a card fading today (stages 6 and 9).
 
-11. **Ten model calls a day** for chat, learning and rounds together (setup is counted apart since 2026-09-28).
-    Somebody who chats a lot can leave no call for a round, which then fails with "Your agent has been out enough
-    for today", and in chat the reason is never shown (`server/src/env.ts:342`,
-    `app/src/lib/api.ts:376`).
+11. **Closed on 2026-09-29: the daily limit, said.** Chat, learning and rounds still share ten model calls a day
+    (setup is counted apart since 2026-09-28), but meeting the limit now says so: in chat, a line with the limit,
+    that the three share it and that it comes back tomorrow; for a round, the same allowance in plain words instead
+    of "Your agent has been out enough for today" (`server/src/metering.ts:34`).
 12. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
     list" (stage 5).
 13. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does

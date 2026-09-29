@@ -18,10 +18,10 @@ is an estimate from its output limit.
 **Metering.** Each call is recorded against one person (`llm_calls`) and counted against their day: at most
 $2.00 and at most **10 model calls** per person per day, for every account; setup calls (AI-1 on the first screen,
 AI-2 to AI-5, and the answer sheet the first sentence builds) are counted apart, up to 40 a day, since 2026-09-28
-([server/src/metering.ts:59] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {`); the day resets at midnight UTC
-([server/src/metering.ts:56] `if (spent >= costCap) throw new BudgetExceeded('daily_cost', spent, costCap);`,
-[server/src/metering.ts:65] `throw new BudgetExceeded('daily_turns', row.turns_used, row.turn_cap);`,
-[server/src/metering.ts:47] `WHERE tenant_id = $1 AND user_id = $2 AND day = CURRENT_DATE`). Embeddings are not
+([server/src/metering.ts:73] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {`); the day resets at midnight UTC
+([server/src/metering.ts:70] `if (spent >= costCap) throw new BudgetExceeded('daily_cost', spent, costCap);`,
+[server/src/metering.ts:79] `throw new BudgetExceeded('daily_turns', row.turns_used, row.turn_cap);`,
+[server/src/metering.ts:61] `WHERE tenant_id = $1 AND user_id = $2 AND day = CURRENT_DATE`). Embeddings are not
 metered. The server refuses to start if a routed model has no verified price or retires within 90 days
 ([server/src/llm/index.ts:118] `if (!caps.price.verified && !env.ALLOW_UNVERIFIED_PRICING) {`).
 
@@ -140,8 +140,8 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-6"></a>
 ### AI-6. Own-clone chat reply
 
-- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens ([server/src/api/chat.ts:377] `const model = modelFor('chat');`,
-  [server/src/api/chat.ts:402] `maxOutputTokens: 2048,`).
+- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens ([server/src/api/chat.ts:372] `const model = modelFor('chat');`,
+  [server/src/api/chat.ts:397] `maxOutputTokens: 2048,`).
 - **When:** every message a person sends to their own clone.
 - **In:** the profile summary, style note, last 20 messages, **every** live fact (including private ones: it
   talks only to its own person), up to 5 recalled old messages. Instructions: "You are this person's clone: an
@@ -151,7 +151,7 @@ $0.02; not measured, because no round has run since the talk was added.
   [server/src/api/chat.ts:41] `Never invent a detail about them that is not in the fragments.`,
   [server/src/api/chat.ts:43] `Speak plainly, in their register. No preamble, no hedging, no restating the question.`).
 - **Out:** free text. **Checks:** none; streamed straight to the phone
-  ([server/src/api/chat.ts:409] `send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });`).
+  ([server/src/api/chat.ts:404] `send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });`).
 - **Stored:** the reply, as a message in the person's history.
 
 <a id="ai-7"></a>
@@ -160,7 +160,7 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Model:** Gemini Embedding 001, 768 numbers per text ([server/src/llm/adapters/google.ts:216] `model: env.EMBEDDING_MODEL.replace(/^google:/, ''),`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
   are embedded and stored ([server/src/memory/retrieval.ts:64] `[vector] = await embed([query]);`,
-  [server/src/api/chat.ts:480] `const vectors = await embed(todo.map(([, t]) => t));`).
+  [server/src/api/chat.ts:470] `const vectors = await embed(todo.map(([, t]) => t));`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   ([server/src/llm/embeddings.ts:26] `export async function embed(texts: readonly string[]): Promise<number[][]> {`).
 

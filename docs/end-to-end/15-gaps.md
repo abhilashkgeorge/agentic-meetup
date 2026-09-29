@@ -65,10 +65,10 @@ decides first (the one open card where a real person waited behind one was moved
 limit, both ways; the practice pool no longer expires; setup calls no longer use the day's ten; and phones are
 woken for a new card, a share, an introduction, a message and a card fading today (stages 6 and 9).
 
-11. **Ten model calls a day** for chat, learning and rounds together (setup is counted apart since 2026-09-28).
-    Somebody who chats a lot can leave no call for a round, which then fails with "Your agent has been out enough
-    for today", and in chat the reason is never shown ([server/src/env.ts:342] `TRIAL_TURN_CAP_PER_DAY: z.coerce.number().default(10),`,
-    [app/src/lib/api.ts:376] `return res.ok ? ((await res.json()) as T) : null;`).
+11. **Closed on 2026-09-29: the daily limit, said.** Chat, learning and rounds still share ten model calls a day
+    (setup is counted apart since 2026-09-28), but meeting the limit now says so: in chat, a line with the limit,
+    that the three share it and that it comes back tomorrow; for a round, the same allowance in plain words instead
+    of "Your agent has been out enough for today" ([server/src/metering.ts:34] `export function budgetMessage(err: BudgetExceeded): string {`).
 12. **"Really want" and "Nice to have" do not change who a round meets**; the screen says they "move people up the
     list" (stage 5).
 13. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does

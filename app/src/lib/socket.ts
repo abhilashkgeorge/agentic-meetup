@@ -18,6 +18,7 @@ import { useDm } from '../store/dm';
 import { useWorld } from '../features/world/store';
 import { useParkLive } from '../features/world/park-live';
 import { useParkVoice } from '../features/world/park-voice';
+import { noteFor } from '../features/chat/turn-note';
 
 /** Two missed heartbeats and we assume the socket is dead, whatever it claims. */
 const DEAD_AFTER_MS = HEARTBEAT_MS * 2 + 5_000;
@@ -26,6 +27,8 @@ let ws: WebSocket | null = null;
 let token: string | null = null;
 let sessionId = '';
 let lastSeenTurn: string | null = null;
+/** The turn sent and not yet answered: the one an error ends (turn-note.ts). */
+let pendingTurn: string | null = null;
 let retry = 0;
 let deadTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -93,10 +96,12 @@ function connect(): void {
         s.startClone(ev.turnId);
         s.finishClone(ev.turnId, ev.text);
         lastSeenTurn = ev.turnId;
+        if (pendingTurn === ev.turnId) pendingTurn = null;
         break;
       case 'turn.done':
         s.finishClone(ev.turnId, ev.text);
         lastSeenTurn = ev.turnId;
+        if (pendingTurn === ev.turnId) pendingTurn = null;
         break;
       case 'conflict.question':
         s.setQuestion({ conflictId: ev.conflictId, text: ev.question });
@@ -186,7 +191,11 @@ function connect(): void {
       case 'heartbeat':
         break;
       case 'error':
-        s.finishClone(lastSeenTurn ?? '', '');
+        // The WAITING turn ends, and the chat says why (turn-note.ts). This used to finish
+        // lastSeenTurn -- the last turn already answered -- with empty text, blanking the
+        // clone's previous reply, and to say nothing about this one.
+        if (pendingTurn || ev.code === 'budget_exceeded') s.failTurn(pendingTurn, noteFor(ev.code, ev.message));
+        pendingTurn = null;
         s.setQuestion(null);
         console.warn(`[socket] ${ev.code}: ${ev.message}`);
         break;
@@ -229,6 +238,7 @@ export function sendTurn(text: string): void {
   // resend after a flaky reconnect can never produce a second LLM call.
   const turnId = Crypto.randomUUID();
   useSession.getState().addUser(turnId, trimmed);
+  pendingTurn = turnId;
   push({ type: 'turn', turnId, sessionId, text: trimmed, source: 'text' });
 }
 

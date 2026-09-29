@@ -82,7 +82,12 @@ export function CloneChat({
             {renderEmpty?.({ setDraft })}
           </View>
         }
-        renderItem={({ item }) => (
+        renderItem={({ item }) => item.role === 'note' ? (
+          // Why a turn failed (turn-note.ts): the app speaking, not the clone.
+          <Text style={[type.callout, { color: p.textSecondary, textAlign: 'center', paddingVertical: space.sm }]}>
+            {item.text}
+          </Text>
+        ) : (
           <Bubble text={item.text} mine={item.role === 'user'} pending={item.pending} />
         )}
       />

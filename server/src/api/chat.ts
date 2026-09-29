@@ -13,7 +13,7 @@ import { tenantSession, type TenantCtx } from '../db/client.js';
 import { llm, modelFor } from '../llm/index.js';
 import { UnsupportedCapability } from '../llm/caps.js';
 import type { Message } from '../llm/port.js';
-import { BudgetExceeded, metered } from '../metering.js';
+import { BudgetExceeded, budgetMessage, metered } from '../metering.js';
 import * as episodes from '../memory/episodes.js';
 import { factsTouchedBy, markRetrieved, recall } from '../memory/retrieval.js';
 import { coreProfileText, voiceText } from '../memory/profile.js';
@@ -350,12 +350,7 @@ async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void>
     } as const;
   }).catch((err: unknown) => {
     if (err instanceof BudgetExceeded) {
-      send(ws, {
-        type: 'error',
-        code: 'budget_exceeded',
-        message: `You have hit today's ${err.kind === 'daily_turns' ? 'turn' : 'spend'} limit.`,
-        retryable: false,
-      });
+      send(ws, { type: 'error', code: 'budget_exceeded', message: budgetMessage(err), retryable: false });
       return null;
     }
     throw err;
@@ -422,12 +417,7 @@ async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void>
     if (failed) return;
   } catch (err) {
     if (err instanceof BudgetExceeded) {
-      send(ws, {
-        type: 'error',
-        code: 'budget_exceeded',
-        message: 'That is enough for today. Try again tomorrow.',
-        retryable: false,
-      });
+      send(ws, { type: 'error', code: 'budget_exceeded', message: budgetMessage(err), retryable: false });
       return;
     }
     if (err instanceof UnsupportedCapability) {

@@ -40,7 +40,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   ([app/src/features/world/world-screen.tsx:275] `Your agent met ${r.met} people. See Matches.`,
+   ([app/src/features/world/world-screen.tsx:277] `Your agent met ${r.met} people. See Matches.`,
    [app/src/features/world/exchange-strip.tsx:83] `label="See the card" variant="primary" onPress={onSeeCard}`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).
@@ -74,23 +74,28 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | [server/src/matching/world.ts:28] `Number(process.env.TARGETED_ROUNDS_PER_DAY ?? 5)`, [server/src/matching/rounds.ts:78] `WHERE user_id = $1 AND target_user_id IS NOT NULL` |
 | One round at a time | A second tap returns the round already running | | [server/src/matching/rounds.ts:101] `ON CONFLICT (user_id) WHERE status IN ('queued', 'running') DO NOTHING` |
 | Model spend | $2.00 per person per day | All of that person's model calls | [server/src/env.ts:334] `DAILY_COST_CAP_USD: z.coerce.number().default(2.0),` |
-| Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | [server/src/metering.ts:59] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {` |
+| Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | [server/src/metering.ts:73] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {` |
 
 None of `ROUNDS_PER_DAY`, `TARGETED_ROUNDS_PER_DAY`, `ROUND_CANDIDATES`,
 `WEEKLY_REAL_EXPOSURE`, `AGENT_TALK` or `RENDEZVOUS_RUNS` is set in the development
 configuration, so the code defaults above apply (checked 2026-09-28).
 
-What the person sees when a limit hits: "Your agent has been out enough for today." (spend
-or round limit), "That is all the visits for today. Try again tomorrow.", "That person has
-moved on.", "Your agent needs a few more answers before it can go out."
-([app/src/features/world/world-screen.tsx:36] `budget_exceeded: 'Your agent has been out enough for today.',`,
-[app/src/features/world/world-screen.tsx:39] `daily_targets: 'That is all the visits for today. Try again tomorrow.',`,
-[app/src/features/world/world-screen.tsx:40] `not_here: 'That person has moved on.',`,
-[app/src/features/world/world-screen.tsx:43] `not_ready: 'Your agent needs a few more answers before it can go out.',`).
-Because chat and rounds share the same 10-calls-a-day allowance, a person who chatted a lot
-can be told their agent "has been out enough for today" when it never went out
-([server/src/matching/orchestrator.ts:301] `const outcomes = await metered(spender, 'rendezvous', async () => {`,
-[server/src/metering.ts:64] `if (row.turn_cap !== null && row.turns_used >= row.turn_cap) {`).
+What the person sees when a limit hits: "That's all for today: chat, learning and your agent's
+rounds share one daily allowance, and today's is used up. Try again tomorrow." (the shared ten; since
+2026-09-29 -- before, "Your agent has been out enough for today.", even when chat had used the turns
+and the agent never went out), "Your agent has been out enough for today." (the one round a day),
+"That is all the visits for today. Try again tomorrow.", "That person has moved on.", "Your agent
+needs a few more answers before it can go out."
+([app/src/features/chat/turn-note.ts:17] `export const SHARED_LIMIT = "That's all for today: chat, learning and your agent's rounds share one daily allowance, and today's is used up. Try again tomorrow.";`,
+[app/src/features/world/world-screen.tsx:41] `daily_targets: 'That is all the visits for today. Try again tomorrow.',`,
+[app/src/features/world/world-screen.tsx:42] `not_here: 'That person has moved on.',`,
+[app/src/features/world/world-screen.tsx:45] `not_ready: 'Your agent needs a few more answers before it can go out.',`).
+In the clone chat, the turn that meets the limit ends with a line from the app, in the server's
+words: "That's all for today. Chat, learning and your agent's rounds share 10 turns a day, and
+today's are used up. Your clone can talk again tomorrow." (since 2026-09-29; before, nothing was
+shown, and the clone's previous reply was blanked)
+([server/src/metering.ts:34] `export function budgetMessage(err: BudgetExceeded): string {`,
+[app/src/lib/socket.ts:197] `if (pendingTurn || ev.code === 'budget_exceeded') s.failTurn(pendingTurn, noteFor(ev.code, ev.message));`).
 
 ### 6.3 The rules: who the agent may meet
 
@@ -184,7 +189,7 @@ off ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');
 - HOW-IT-WORKS.md §10 says rounds are limited by the round count "instead of by spend". The
   daily spend and call caps can still refuse a round
   ([HOW-IT-WORKS.md:818] `what the person said has changed -- §7a). Rounds are limited by`,
-  [server/src/metering.ts:56] `throw new BudgetExceeded('daily_cost', spent, costCap)`).
+  [server/src/metering.ts:70] `throw new BudgetExceeded('daily_cost', spent, costCap)`).
 - Several code comments still say a round makes no model call
   ([server/src/api/dating.ts:950] `A round makes no model call (orchestrator.ts), so what limits it`,
   [server/src/matching/answer-sheet.ts:24] `still makes zero model calls.`). By default it makes the

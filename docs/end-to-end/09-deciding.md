@@ -160,7 +160,7 @@ Each moment that asks something of a person wakes their phone, whether or not th
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
 ([server/src/push/index.ts:31] `turn: { title: 'Your agent met someone'`). The phone asks for
 permission when the person first sends their agent out, not at launch
-([app/src/features/world/world-screen.tsx:290] `void registerForPush(token, { ask: true });`), and a
+([app/src/features/world/world-screen.tsx:292] `void registerForPush(token, { ask: true });`), and a
 tap opens the card, their profile or the chat
 ([app/src/features/push/route.ts:14] `export function routeForPush(data: Record<string, unknown> | null | undefined): string | null {`).
 **Not yet reaching phones:** the app has no Expo project id yet and the server sends with

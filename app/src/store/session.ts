@@ -3,7 +3,8 @@ import * as Crypto from 'expo-crypto';
 
 export interface Bubble {
   turnId: string;
-  role: 'user' | 'clone';
+  /** 'note': a line from the app itself -- why a turn failed -- never the clone's words. */
+  role: 'user' | 'clone' | 'note';
   text: string;
   /** Streaming in. The clone bubble grows as deltas arrive. */
   pending: boolean;
@@ -26,6 +27,11 @@ interface SessionState {
   startClone: (turnId: string) => void;
   appendClone: (turnId: string, delta: string) => void;
   finishClone: (turnId: string, text: string) => void;
+  /**
+   * The waiting turn failed: its empty reply goes, and `note` says why. Never touches
+   * another turn's reply.
+   */
+  failTurn: (turnId: string | null, note: string) => void;
   setQuestion: (q: SessionState['question']) => void;
 }
 
@@ -65,6 +71,14 @@ export const useSession = create<SessionState>((set) => ({
       bubbles: s.bubbles.map((b) =>
         b.role === 'clone' && b.turnId === turnId ? { ...b, text, pending: false } : b,
       ),
+    })),
+
+  failTurn: (turnId, note) =>
+    set((s) => ({
+      bubbles: [
+        ...s.bubbles.filter((b) => !(b.role === 'clone' && b.turnId === turnId && !b.text)),
+        { turnId: turnId ?? Crypto.randomUUID(), role: 'note', text: note, pending: false },
+      ],
     })),
 
   setQuestion: (question) => set({ question }),
