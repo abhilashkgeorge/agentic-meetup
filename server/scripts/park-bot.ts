@@ -8,13 +8,17 @@
  * arrive -- walks up to the nearest real person it can see, says hello, and answers
  * whatever is said near it from a short list. Asked to talk ("Find someone"), it says
  * yes and stands still for you to arrive; with --ask it asks you, a few seconds after
- * it walks in. NO MODEL: every line is written here. Development only: it refuses to
- * run with NODE_ENV=production.
+ * it walks in. Told the two of you have a bench, it walks to its own seat -- the one
+ * the app gives it, from the same park layout -- and sits. NO MODEL: every line is
+ * written here. Development only: it refuses to run with NODE_ENV=production.
  */
 import { Pool } from 'pg';
 import WebSocket from 'ws';
 import { env } from '../src/env.js';
 import { mintToken, newSessionId } from '../src/tokens.js';
+// The park the phones draw, so the bot sits where the app would sit it.
+import { seatOn } from '../../app/src/features/world/ride.js';
+import { CUBBON_PARK, venueGarden } from '../../app/src/features/world/venue.js';
 
 if (process.env.NODE_ENV === 'production') throw new Error('park-bot is for development');
 
@@ -24,6 +28,12 @@ let x = Number(args[1] ?? 12);
 let z = Number(args[2] ?? -29);
 const ask = process.argv.includes('--ask');
 let paired = false;
+/** Whether it asked (the left seat) or was asked (the right), once paired. */
+let asker = false;
+/** Its seat on the pair's bench, and whether it has reached the front of it yet. */
+let seat: { x: number; z: number; facing: number } | null = null;
+let atFront = false;
+const garden = venueGarden(CUBBON_PARK);
 
 const HELLO = 'Hi! Nice evening for a walk.';
 const REPLIES = [
@@ -72,14 +82,44 @@ ws.on('message', (data) => {
     setTimeout(() => send({ type: 'park.answer', yes: true }), 1500);
   }
   if (ev.type === 'park.finding') console.log(`park-bot: finding -> ${(ev as { status?: string }).status}`);
-  if (ev.type === 'park.paired') { paired = true; console.log('park-bot: talking with someone'); }
-  if (ev.type === 'park.parted') { paired = false; console.log('park-bot: parted'); }
-  if (ev.type === 'park.sat') console.log(`park-bot: on bench ${(ev as { bench?: number }).bench} -- private now`);
-  if (ev.type === 'park.stood') console.log('park-bot: up off the bench');
+  if (ev.type === 'park.paired') {
+    paired = true;
+    asker = !(ev as { asked?: boolean }).asked;
+    console.log(`park-bot: talking with someone (${asker ? 'it asked' : 'it was asked'})`);
+  }
+  if (ev.type === 'park.parted') { paired = false; seat = null; console.log('park-bot: parted'); }
+  if (ev.type === 'park.sat') {
+    const n = (ev as { bench?: number }).bench ?? -1;
+    const bench = garden.benches[n];
+    if (bench) { seat = seatOn(bench, asker); atFront = false; }
+    console.log(`park-bot: on bench ${n} -- private now; walking to its seat`);
+  }
+  if (ev.type === 'park.stood') { seat = null; console.log('park-bot: up off the bench'); }
 });
 ws.on('close', (code) => console.log(`park-bot: socket closed (${code})`));
 
+/** A step toward (tx, tz) at `speed` units a second; true once there. */
+function stepTo(tx: number, tz: number, speed: number): boolean {
+  const dx = tx - x, dz = tz - z;
+  const d = Math.hypot(dx, dz);
+  if (d < 0.01) { x = tx; z = tz; return true; }
+  const step = Math.min(d, speed * 0.2);
+  x += (dx / d) * step; z += (dz / d) * step;
+  return false;
+}
+
 const walk = setInterval(() => {
+  // On the pair's bench: to the front of its seat at a brisk walk, then onto it, as
+  // the app's sim does (sitOn), and sat still facing out.
+  if (seat) {
+    const front = { x: seat.x + Math.sin(seat.facing) * 0.13, z: seat.z + Math.cos(seat.facing) * 0.13 };
+    let moving = true;
+    let facing = Math.atan2(front.x - x, front.z - z);
+    if (!atFront) atFront = stepTo(front.x, front.z, 0.35 * 1.8);
+    else if (stepTo(seat.x, seat.z, 0.35)) { moving = false; facing = seat.facing; }
+    send({ type: 'park.move', x, z, facing, moving });
+    return;
+  }
   // Talking with somebody: stand still, they come to it.
   const target = paired ? undefined : people[0];
   let moving = false;

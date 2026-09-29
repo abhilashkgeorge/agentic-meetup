@@ -132,14 +132,33 @@ describe('sitting', () => {
     const idle = bake.idle.row, sit = bake.sit.row;
     const legs = { idle: box('m_casual_2_b3', idle), sit: box('m_casual_2_b3', sit) };
     const feet = { idle: box('m_casual_2_b1', idle), sit: box('m_casual_2_b1', sit) };
+    // Where a bone's joint is, in a row of the bake.
+    const names = any.skeleton.bones.map((b) => b.name);
+    const joint = (bone: string, row: number) => {
+      const i = names.indexOf(bone);
+      const bind = new THREE.Vector3().setFromMatrixPosition(any.skeleton.boneInverses[i]!.clone().invert());
+      return gpu.skinFromBake(bake, row, [i, 0, 0, 0], [1, 0, 0, 0], bind);
+    };
     expect(legs.idle.max.y - legs.sit.max.y, 'the body did not come down').toBeGreaterThan(0.3);
-    expect(legs.sit.max.z - legs.idle.max.z, 'the thighs are not forward').toBeGreaterThan(0.3);
+    // Thighs forward and level, hip to knee. (This once compared how far forward the
+    // whole leg reached, which the bent-out shins below made pass on their own.)
+    for (const side of ['L', 'R'] as const) {
+      const thigh = joint(`LowerLeg${side}`, sit).sub(joint(`UpperLeg${side}`, sit));
+      expect(thigh.z / thigh.length(), `the ${side} thigh is not forward and level`).toBeGreaterThan(0.95);
+    }
     expect(Math.abs(feet.sit.min.y - feet.idle.min.y), 'the feet left the ground').toBeLessThan(0.06);
     // The SOLES, not the whole shoe: a high-top's upper follows the shin wherever the
     // foot is, so only the soles say whether the feet came with the legs.
     expect(soles(sit) - soles(idle), 'the feet stayed where the standing feet were').toBeGreaterThan(0.25);
     // Shoes on the legs: the trousers reach down to the top of the shoes, as standing.
     expect(legs.sit.min.y - feet.sit.max.y, 'a gap between the trousers and the shoes').toBeLessThan(legs.idle.min.y - feet.idle.max.y + 0.05);
+    // SHINS STRAIGHT DOWN UNDER THE KNEES: nothing of the legs further forward than a
+    // knee and its kneecap. sitPose once aimed each shin by the foot -- which hangs off
+    // the root and so stays where the standing foot was -- and the shins stuck out
+    // forward, 38 cm past the knees, with the ankles stretched back to the ground (a
+    // couple drawn on a bench, scripts/render-bench.mts, 2026-09-29).
+    const front = Math.max(joint('LowerLegL', sit).z, joint('LowerLegR', sit).z);
+    expect(legs.sit.max.z - front, 'the shins stick out past the knees').toBeLessThan(0.12);
   });
 });
 

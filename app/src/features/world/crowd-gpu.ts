@@ -156,6 +156,14 @@ export function sitPose(root: THREE.Object3D, bone: (name: string) => THREE.Bone
   };
   const body = bone('Body');
   const legs = (['L', 'R'] as const).map((s) => ({ upper: bone(`UpperLeg${s}`), lower: bone(`LowerLeg${s}`), foot: bone(`Foot${s}`) }));
+  // THE SHIN'S OWN END, in the shin's frame, taken standing. The foot is no help once
+  // the thigh has turned: it hangs off the root, so it stays where the standing foot
+  // was while the shin swings forward with the thigh. Aiming the shin by the foot --
+  // which is what this did first -- turned it from pointing at that stale spot to
+  // pointing down, and left it sticking forward, out past the knees; the ankle's skin,
+  // weighted to the foot, stretched back down to the ground (the render of a couple on
+  // a bench, 2026-09-29, scripts/render-bench.mts).
+  const shinEnd = legs.map(({ lower, foot }) => lower.worldToLocal(at(foot)));
   const L = legs[0]!;
   const thigh = at(L.upper).distanceTo(at(L.lower));
   const shin = at(L.lower).distanceTo(at(L.foot));
@@ -165,15 +173,15 @@ export function sitPose(root: THREE.Object3D, bone: (name: string) => THREE.Bone
   const bodyAt = at(body).sub(new THREE.Vector3(0, drop, 0));
   body.position.copy(body.parent!.worldToLocal(bodyAt));
   root.updateMatrixWorld(true);
-  for (const { upper, lower, foot } of legs) {
+  legs.forEach(({ upper, lower, foot }, i) => {
     const hip = at(upper);
     const knee = hip.clone().add(new THREE.Vector3((hip.x > 0 ? 1 : -1) * 0.015, -0.03, thigh));
     aim(upper, at(lower), knee);
     const ankle = at(lower).clone().setY(ground);
-    aim(lower, at(foot), ankle);
+    aim(lower, lower.localToWorld(shinEnd[i]!.clone()), ankle);
     foot.position.copy(foot.parent!.worldToLocal(ankle.clone()));
     foot.updateMatrixWorld(true);
-  }
+  });
   root.updateMatrixWorld(true);
 }
 
