@@ -1,4 +1,5 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const projectRoot = __dirname;
@@ -37,10 +38,34 @@ config.resolver.assetExts.push('glb', 'gltf', 'bin', 'hdr');
 // `exports` hides the subpath, but a bare require resolves the `require` condition,
 // which IS the CJS build.
 const threeCjs = require.resolve('three', { paths: [workspaceRoot] });
+
+// LIVEKIT KEEPS ITS OWN COPIES, and with hierarchical lookup off Metro never saw them.
+// The park's voice (2026-09-29): @livekit/react-native carries @livekit/components-react
+// (there is none at the root) and web-streams-polyfill 4 (the root has 3) in its own
+// node_modules, and the webrtc package its own debug and ms. On the phone voice was off:
+// "Unable to resolve module @livekit/components-react". So for a file inside a LiveKit
+// package, and only there, the package's own node_modules is looked in first, as Node
+// would -- never for React, which must stay one copy.
+const LIVEKIT = path.join(workspaceRoot, 'node_modules', '@livekit') + path.sep;
+const SINGLE = /^(react|react-native|react-dom)(\/|$)/;
+function ownCopy(origin, moduleName) {
+  if (!origin || !origin.startsWith(LIVEKIT) || SINGLE.test(moduleName)) return null;
+  if (moduleName.startsWith('.') || path.isAbsolute(moduleName)) return null;
+  const parts = moduleName.split('/');
+  const pkg = moduleName.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  for (let dir = path.dirname(origin); dir.startsWith(LIVEKIT); dir = path.dirname(dir)) {
+    const nm = path.join(dir, 'node_modules');
+    if (fs.existsSync(path.join(nm, pkg, 'package.json'))) return nm;
+  }
+  return null;
+}
+
 const resolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === 'three') return { type: 'sourceFile', filePath: threeCjs };
-  return (resolveRequest ?? context.resolveRequest)(context, moduleName, platform);
+  const own = ownCopy(context.originModulePath, moduleName);
+  const ctx = own ? { ...context, nodeModulesPaths: [own, ...context.nodeModulesPaths] } : context;
+  return (resolveRequest ?? context.resolveRequest)(ctx, moduleName, platform);
 };
 
 module.exports = config;
