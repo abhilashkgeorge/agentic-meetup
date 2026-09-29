@@ -419,8 +419,9 @@ export default function WorldScreen() {
       {realm.phase === 'venue' && walking && (
         <>
           <SpeechBubbles control={control} />
-          <ParkChat bottom={Math.max(insets.bottom, 20) + 24} />
-          <ParkActions venueSim={venueSim} benches={venueLayout.benches} bottom={Math.max(insets.bottom, 20) + 24 + 58} />
+          <ParkChat bottom={Math.max(insets.bottom, 20) + 24}>
+            <ParkActions venueSim={venueSim} benches={venueLayout.benches} />
+          </ParkChat>
           <InviteCard />
         </>
       )}

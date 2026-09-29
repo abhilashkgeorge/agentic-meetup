@@ -269,7 +269,7 @@ interface CamState {
   /** The camera being drawn through, set by the frame loop: what `headOnScreen` projects with. */
   camera?: THREE.Camera;
   /** A car ride in the park under way (ride.ts), and whom to tell when it is over. */
-  ride?: { ride: Ride; done: () => void } | null;
+  ride?: { ride: Ride; done: () => void; told?: boolean } | null;
 }
 
 function startFly(cam: CamState, to: Pose, followAfter: boolean): void {
@@ -997,14 +997,16 @@ function Town({
       car.visible = riding.car.visible;
       car.position.set(riding.car.x, 0, riding.car.z);
       car.rotation.y = riding.car.heading;
-      if (riding.phase === 'done') {
-        // Out, facing them, the camera behind you, and the car gone.
-        const done = cam.ride.done;
-        cam.ride = null;
-        car.visible = false;
+      // Out of the car: you are there, facing them, whatever the car does next.
+      if (!cam.ride.told && (riding.phase === 'departing' || riding.phase === 'done')) {
+        cam.ride.told = true;
         if (me) { me.hidden = false; me.facing = riding.car.heading; }
         cam.yaw = riding.car.heading;
-        done();
+        cam.ride.done();
+      }
+      if (riding.phase === 'done') {
+        cam.ride = null;
+        car.visible = false;
       }
     } else if (car.visible) car.visible = false;
     if (cam.walking && stick && !riding) {

@@ -20,6 +20,9 @@ import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, useParkLive, type Line } f
 import { benchFor } from './ride';
 import type { WorldSim } from './sim';
 
+/** How wide the right-hand column is: clear of the stick, which has the bottom left. */
+const DOCK_W = 228;
+
 /** How many people are here in person, you not counted. */
 export function useLiveCount(): number {
   return useParkLive((s) => s.people.size);
@@ -93,7 +96,11 @@ function SpeechBubble({ line, control }: { line: Line; control: MutableRefObject
  * Saying something to the people near you: a button that opens a line to type in,
  * the last few things said above it, and why a line was not sent when it was not.
  */
-export function ParkChat({ bottom }: { bottom: number }) {
+export function ParkChat({ bottom, children }: {
+  bottom: number;
+  /** What sits between the log and the chat button: finding, the pair, the bench. */
+  children?: React.ReactNode;
+}) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboardHeight();
@@ -124,10 +131,13 @@ export function ParkChat({ bottom }: { bottom: number }) {
   };
 
   const lift = keyboard > 0 ? keyboard + space.sm : bottom;
+  // ONE COLUMN on the right, bottom up: the chat button, what you are doing with
+  // somebody, what was just said. Kept narrower than the screen less the stick, which
+  // has the bottom left; typing, the line takes the whole width over the keyboard.
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', right: space.screen, left: open ? space.screen : undefined, bottom: lift, gap: space.sm, alignItems: 'flex-end' }}>
       {recent.length > 0 && (
-        <View pointerEvents="none" style={{ gap: 4, maxWidth: 300, alignSelf: open ? 'stretch' : 'flex-end' }}>
+        <View pointerEvents="none" style={{ gap: 4, maxWidth: open ? undefined : DOCK_W, alignSelf: open ? 'stretch' : 'flex-end' }}>
           {recent.map((l) => (
             <Text key={l.id} numberOfLines={2}
                   style={[type.callout, { color: p.text, backgroundColor: p.bg, opacity: 0.92, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden' }]}>
@@ -140,10 +150,11 @@ export function ParkChat({ bottom }: { bottom: number }) {
         </View>
       )}
       {refused && (
-        <Text style={[type.callout, { color: p.danger, backgroundColor: p.bg, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden' }]}>
+        <Text style={[type.callout, { color: p.danger, backgroundColor: p.bg, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm, overflow: 'hidden', maxWidth: open ? undefined : DOCK_W }]}>
           {REFUSAL_TEXT[refused]}
         </Text>
       )}
+      {keyboard === 0 && children}
       {open ? (
         <Surface radius={radius.pill} style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', paddingLeft: space.lg, paddingRight: 4, paddingVertical: 4, gap: space.sm }}>
           <TextInput
@@ -223,14 +234,11 @@ export function LiveSheet({ parkRef, onClose }: { parkRef: string; onClose: () =
  * are free, how the asking is going while it goes, and once somebody says yes, a bar
  * with the bench and the way out.
  */
-export function ParkActions({ venueSim, benches, bottom }: {
+export function ParkActions({ venueSim, benches }: {
   venueSim: WorldSim;
   benches: readonly { x: number; z: number; rot: number }[];
-  /** Where the column starts, from the bottom: above "Say something", right of the stick. */
-  bottom: number;
 }) {
   const p = usePalette();
-  const keyboard = useKeyboardHeight();
   const finding = useParkLive((s) => s.finding);
   const partner = useParkLive((s) => s.partner);
   const bench = useParkLive((s) => s.bench);
@@ -258,11 +266,9 @@ export function ParkActions({ venueSim, benches, bottom }: {
     parkSit(b);
   };
 
-  const card = { paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, backgroundColor: p.bg, boxShadow: raised(p, 4), gap: space.sm, maxWidth: 250 };
-  // Out of the way while typing: the keyboard has the bottom of the screen.
-  if (keyboard > 0) return null;
+  const card = { paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, backgroundColor: p.bg, boxShadow: raised(p, 4), gap: space.sm, maxWidth: DOCK_W };
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', bottom, right: space.screen, alignItems: 'flex-end', gap: space.sm }}>
+    <View pointerEvents="box-none" style={{ alignItems: 'flex-end', gap: space.sm }}>
       {partner ? (
         <View style={card}>
           <Text style={[type.bodyStrong, { color: p.text }]}>

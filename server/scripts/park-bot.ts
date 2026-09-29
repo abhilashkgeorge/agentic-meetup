@@ -88,7 +88,9 @@ const walk = setInterval(() => {
     const dx = target.x - x, dz = target.z - z;
     const d = Math.hypot(dx, dz);
     facing = Math.atan2(dx, dz);
-    if (d > 0.9) {
+    // Walk until within a metre or so: stepping by what is left to 0.9 closes on it for
+    // ever and never gets there, which is how the first cut never said hello.
+    if (d > 0.95) {
       const step = Math.min(d - 0.9, 0.35 * 0.2);         // a stroll: 0.35 units a second
       x += (dx / d) * step; z += (dz / d) * step; moving = true;
     } else if (!greeted) {

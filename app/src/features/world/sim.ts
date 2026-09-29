@@ -527,7 +527,9 @@ export class WorldSim {
     if (!a) return;
     const [fx, fz] = frontOf(seat);
     a.driveX = 0; a.driveZ = 0;
-    this.setTarget(a, fx, fz, WALK);
+    // Briskly: somebody is waiting to talk (at a stroll, a bench forty metres off took
+    // half a minute on the phone).
+    this.setTarget(a, fx, fz, WALK * 1.8);
     a.state = 'walking';
     a.seat = seat;
   }
