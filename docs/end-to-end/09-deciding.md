@@ -15,7 +15,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 | The other taps "Yes, share mine back" | Their profile opens to the first mover; the pair is introduced; chat opens | Code | Pair `introduced` | Both | [app/src/features/matches/turn.ts:44] `shareBack: 'Yes, share mine back',` |
 | Either says no ("Not this one", "Not for me") | The pair ends at once, silently; anything shared closes | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | [server/src/matching/orchestrator.ts:588] `UPDATE rendezvous SET status = 'lapsed' WHERE id = $1 AND status <> 'introduced'` |
 | Nobody answers in 3 days | The pair expires; anything shared closes | Code (a timer every 10 minutes) | Pair `expired` | Nobody is told | [server/src/matching/expiry.ts:26] `UPDATE rendezvous SET status = 'expired', expired_at = now()` |
-| An answer out of turn | Refused by the server | Code | Nothing | — | [server/src/api/dating.ts:879] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);` |
+| An answer out of turn | Refused by the server | Code | Nothing | — | [server/src/api/dating.ts:898] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);` |
 
 ### 9.1 Who decides first, and why
 
@@ -35,8 +35,8 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 - **Turn order is enforced by the server:** the decide route refuses an answer that is not the
   caller's turn ("not_your_turn") or a second answer ("already_decided"), and the database write
   in `decide()` repeats the same test, so no caller can answer out of turn
-  ([server/src/api/dating.ts:877] `if (seat.status !== 'decided' || seat.mine !== null) return c.json({ error: 'already_decided' }, 409);`,
-  [server/src/api/dating.ts:879] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);`,
+  ([server/src/api/dating.ts:896] `if (seat.status !== 'decided' || seat.mine !== null) return c.json({ error: 'already_decided' }, 409);`,
+  [server/src/api/dating.ts:898] `if (!myTurn) return c.json({ error: 'not_your_turn' }, 409);`,
   [server/src/matching/orchestrator.ts:578] `AND (r.first_mover = $2 OR r.first_mover IS NULL`).
   Two old open pairs have no first mover recorded; either side may go first there.
 
@@ -98,7 +98,7 @@ used to come from the matching row, chat-learned and hidden ones included)
 
 **When: only after Meera has said yes to Arjun.** The reveal route opens a person's profile only
 when they said yes in that pair; otherwise it answers "waiting" with no name in it
-([server/src/api/dating.ts:737] `if (seat.other_said_yes !== true) {`). The database photo rule is
+([server/src/api/dating.ts:756] `if (seat.other_said_yes !== true) {`). The database photo rule is
 the same test: a person's photos show only to someone they said yes to, and only while the pair
 has not ended in a no or expired
 ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
@@ -139,9 +139,9 @@ with them." and "Only people you share your profile with"
 - **The other person** is sent nothing
   ([server/src/matching/orchestrator.ts:591] `// NOTHING is sent to anybody. The town on the other phone keeps showing`),
   but their card disappears from Matches at once, because both people's lists hide ended pairs
-  ([server/src/api/dating.ts:589] `AND r.status NOT IN ('lapsed', 'expired')`).
+  ([server/src/api/dating.ts:608] `AND r.status NOT IN ('lapsed', 'expired')`).
 - **Whatever was shared closes:** after a no, the profile screen answers "not found" and the photos
-  stop ([server/src/api/dating.ts:723] `WHERE r.id = $1 AND r.status NOT IN ('expired', 'lapsed')`).
+  stop ([server/src/api/dating.ts:742] `WHERE r.id = $1 AND r.status NOT IN ('expired', 'lapsed')`).
 - **A first-mover no ends it**: the second mover never gets a turn and never saw anything.
 - **Never again:** a pair can exist only once, so they are never matched again
   ([server/migrations/0022_rendezvous.sql:44] `CREATE UNIQUE INDEX rendezvous_pair ON rendezvous (user_a, user_b);`).

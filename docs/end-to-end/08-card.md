@@ -71,7 +71,7 @@ In this example Meera decides first (stage 9 explains why).
 Only one "waiting on you" card shows at a time; the rest wait below it. Cards are ordered
 newest round first, then by a hash of the pair's id, never by a score
 ([app/src/features/matches/matches-screen.tsx:322] `[...matches.filter((m) => m.waitingOnYou).slice(0, 1),`,
-[server/src/api/dating.ts:605] `ORDER BY r.created_at DESC, md5(r.id::text) COLLATE "C"`).
+[server/src/api/dating.ts:624] `ORDER BY r.created_at DESC, md5(r.id::text) COLLATE "C"`).
 
 ### 8.2 Checked again every time
 
@@ -79,7 +79,7 @@ When a card is shown, each of the other person's sentences on it must still be o
 their current public facts and pass the private-topic and contact-detail check. Anything
 that fails comes off: a quote, an answer, a talk line, the date idea, or an opener that
 used it ([server/src/matching/brief.ts:750] `const ok = (t: string) => mayRepeat(t) && (live === null || live.has(sentenceKey(t)));`,
-[server/src/api/dating.ts:623] `AND disclosure = 'public' AND status = 'active' AND valid_to IS NULL`).
+[server/src/api/dating.ts:642] `AND disclosure = 'public' AND status = 'active' AND valid_to IS NULL`).
 Not re-checked: the headline and the shared tags, which stay as written when the round ran
 ([server/src/matching/brief.ts:768] `return { ...card, quotes, qa, wants, talk, opener };`).
 
@@ -87,7 +87,7 @@ Not re-checked: the headline and the shared tags, which stay as written when the
 
 - **No score, percentage or verdict about the pair.** The query for cards does not even
   select the score columns, and the stored "concern" is always empty
-  ([server/src/api/dating.ts:572] `SELECT r.id, b.headline, b.overlap_quotes, b.questions,`,
+  ([server/src/api/dating.ts:591] `SELECT r.id, b.headline, b.overlap_quotes, b.questions,`,
   [server/src/matching/brief.ts:645] `VALUES ($1,$2,$3,$4,'',$5)`). One exception is per want, not
   per pair: "Matches" / "Doesn't match" on a want tied to a question; a private-topic want shows
   only "A private topic. Their answer is never shown." (stage 5).

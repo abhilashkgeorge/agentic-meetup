@@ -137,7 +137,7 @@ three shapes:
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
   must-haves remove anybody. Everything else just ranks."
   ([app/src/features/profile/profile-screen.tsx:287] `<Row title="What you're looking for" subtitle="Your filters, and what each one costs"`,
-  [app/src/features/preferences/preferences-screen.tsx:68] `title="Looking for" subtitle="Only must-haves remove anybody. Everything else just ranks."`).
+  [app/src/features/preferences/preferences-screen.tsx:81] `title="Looking for" subtitle="Only must-haves remove anybody. Everything else just ranks."`).
   The "Your wants" card lists each want with one line
   ([app/src/features/preferences/wants-state.ts:38] `'Checked against your card. Nobody sees your answer.'`,
   [app/src/features/preferences/wants-state.ts:39] `Checked against what people write. It can only move people down, never hide them.`,
@@ -163,6 +163,13 @@ three shapes:
   (`mild`) ([app/src/features/preferences/strengths.ts:11] `{ value: 'dealbreaker', label: 'Must have' },`,
   [app/src/features/preferences/strengths.ts:12] `{ value: 'strong', label: 'Really want' },`,
   [app/src/features/preferences/strengths.ts:13] `{ value: 'mild', label: 'Nice to have' },`).
+  Since 2026-09-29 every rule also has "Remove" ("Remove this rule?" -- a must-have: "People it hid can be
+  met again."); the rule is retired, kept on record, and stops applying. Before, a rule could only change
+  strength, so a must-have could never go ([server/src/api/dating.ts:506] `.post('/v1/preferences/remove', async (c) => {`).
+- **Two wants on one question keep two rules** (since 2026-09-29): one live rule per field, operator and
+  source, so "a saver" and "someone who pays off their debts" -- both the money question -- each keep their
+  own answers; both apply. Before, the second overwrote the first's rule, silently
+  ([server/migrations/0085_one_rule_per_want.sql:21] `ON preferences (user_id, predicate, operator, source_quote) WHERE retired_at IS NULL;`).
 - **Must have is allowed only on fields the person tapped themselves**: the basics, the
   five cards, faith, the eight situation answers, and (since 2026-09-28) work field,
   exercise, sleep and moving cities. On these fields a sentence said in chat waits for the
@@ -171,7 +178,7 @@ three shapes:
   [server/src/onboarding/questions.ts:426] `return TAPPED_PREDICATES.has(predicate);`,
   [server/src/onboarding/questions.ts:415] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
   The server refuses a must-have anywhere else
-  ([server/src/api/dating.ts:530] `A must-have only hides someone over an answer they tapped`).
+  ([server/src/api/dating.ts:549] `A must-have only hides someone over an answer they tapped`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
   checked both ways: Arjun's must-haves on Meera, and Meera's must-haves on Arjun
   ([server/src/matching/candidates.ts:121] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
@@ -195,7 +202,7 @@ three shapes:
   people fit. Turn a must-have into a want to reach more."
   ([server/src/matching/candidates.ts:265] `export const SHOWN_FLOOR = 20;`,
   [app/src/lib/counts.ts:12] `return n === null || n === undefined ? 'Under 20' : n.toLocaleString();`,
-  [app/src/features/preferences/preferences-screen.tsx:98] `Very few people fit. Turn a must-have into a want to reach more.`).
+  [app/src/features/preferences/preferences-screen.tsx:111] `Very few people fit. Turn a must-have into a want to reach more.`).
 
 ### 5.4 When the other person has not answered
 
@@ -299,7 +306,7 @@ asking only when it matched would say how it came out
 - HOW-IT-WORKS.md says a round's only model call is the agents' talk, and a comment above
   the round route says "A round makes no model call". The code also makes the want-check
   calls above, by default ([HOW-IT-WORKS.md:810] `since 2026-09-24 -- the agents' talk`,
-  [server/src/api/dating.ts:950] `A round makes no model call (orchestrator.ts), so what limits it`,
+  [server/src/api/dating.ts:969] `A round makes no model call (orchestrator.ts), so what limits it`,
   [server/src/matching/orchestrator.ts:23] `NO MODEL ON THE DEFAULT PATH, SINCE 2026-09-23.`).
 - HOW-IT-WORKS.md says a want that names a card "is left out". The code keeps it as a
   private want and checks it ([HOW-IT-WORKS.md:522] `cards is left out, because the card already checks it exactly, both ways.`,
@@ -310,12 +317,12 @@ asking only when it matched would say how it came out
   [server/src/matching/brief.ts:456] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
 - The app says wants "move people up the list". Since 2026-09-29 that is what a round does with Really want and
   Nice to have (above); before, nothing moved anybody up
-  ([app/src/features/preferences/preferences-screen.tsx:141] `These never remove anybody. They move people up the list.`).
+  ([app/src/features/preferences/preferences-screen.tsx:155] `These never remove anybody. They move people up the list.`).
 - The app says a private want is "Checked against your card". It is checked against the
   **other person's** card ([server/src/matching/wants.ts:196] `const answer = m ? cardsOf[pi]?.[m.card] : undefined;`).
 - The footer "Must-haves come from your cards" is no longer the whole story: a tied want
   set to Must have is a must-have too
-  ([app/src/features/preferences/preferences-screen.tsx:171] `Must-haves come from your cards. Your agent never adds one by itself: what you`).
+  ([app/src/features/preferences/preferences-screen.tsx:186] `Must-haves come from your cards. Your agent never adds one by itself: what you`).
 - The interview says a sentence no card holds "can't be checked on paper" ("We can't check
   that on paper. You'll spot it in the first chat."). Since 2026-09-25 that sentence is a
   want and is checked every round

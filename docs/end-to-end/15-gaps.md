@@ -29,7 +29,7 @@ first mover in the viewer's own neighbourhood until they share; and the extracto
 the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 
 3. **A "no" shows by timing.** A no removes the other person's card at once; an unanswered card lasts three days
-    ([server/src/api/dating.ts:589] `AND r.status NOT IN ('lapsed', 'expired')`).
+    ([server/src/api/dating.ts:608] `AND r.status NOT IN ('lapsed', 'expired')`).
 4. **Closed on 2026-09-29: "Matches" on a situation want.** A want tied to a situation question shows only
     "A private topic. Their answer is never shown.", whatever the check found, and the after-date check-in no
     longer asks about it ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
@@ -84,8 +84,9 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     retired a card's answer, and a hedged one retired a plain one. Now only sentences that became true take part, a
     card's answer is never retired this way, and every retirement is recorded
     ([server/src/memory/session.ts:147] `.filter((e) => !TAPPED_PREDICATES.has(e.predicate));`).
-18. **Rule clashes.** Two wants tied to the same question overwrite each other's rule; a must-have outlives its want
-    sentence and cannot be deleted, only changed in strength ([server/src/matching/profile.ts:414] `ON CONFLICT (user_id, predicate, operator) WHERE retired_at IS NULL`).
+18. **Closed on 2026-09-29: rule clashes.** Two wants tied to the same question keep a rule each, and every rule --
+    a must-have too -- has "Remove" on "Looking for" ([server/migrations/0085_one_rule_per_want.sql:21] `ON preferences (user_id, predicate, operator, source_quote) WHERE retired_at IS NULL;`).
+    Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.
 19. **Only one waiting card shows at a time.** Each card now wakes the phone when it arrives and the day it fades,
     but only after the founder's push setup; until then a second card can still run out unseen
     ([app/src/features/matches/matches-screen.tsx:322] `[...matches.filter((m) => m.waitingOnYou).slice(0, 1),`).

@@ -88,11 +88,11 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 ### 10.4 The after-date check-in
 
 - **When:** 72 hours after the introduction by default, inside the chat only
-  ([server/src/api/dating.ts:771] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
+  ([server/src/api/dating.ts:790] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
 - **Step 1:** "Did you two meet up? They are not told what you say." [Yes] [Not yet]. The first
   answer is final: a "Not yet" is never asked again
   ([app/src/features/dm/checkin.tsx:109] `Did you two meet up? They are not told what you say.`,
-  [server/src/api/dating.ts:928] `// Own brief only, under RLS. An answer is final: the first one stands.`).
+  [server/src/api/dating.ts:947] `// Own brief only, under RLS. An answer is final: the first one stands.`).
 - **After "Not yet":** "What happened? Only you see this." with "Plans fell through", "They
   stopped replying", "I changed my mind", "Something else", or Skip
   ([app/src/features/dm/checkin.tsx:122] `What happened? Only you see this.`).

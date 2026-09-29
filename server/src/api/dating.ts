@@ -497,6 +497,25 @@ export const datingRoutes = new Hono()
     });
   })
 
+  /**
+   * Remove a rule -- a must-have too (the founder, 2026-09-29: "a must-have can be
+   * deleted"). Rules could only change strength, so a must-have stayed hiding people for
+   * as long as the account lived. Retired, never deleted: the rule stays on record with
+   * the moment it stopped applying. The new count comes back, as for a strength change.
+   */
+  .post('/v1/preferences/remove', async (c) => {
+    const { ctx, res } = await ctxOr401(c);
+    if (!ctx) return c.json({ error: res }, 401);
+    const body = z.object({ id: z.string().uuid() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: 'bad request' }, 400);
+    const { rowCount } = await tenantSession(ctx, (db) =>
+      db.query('UPDATE preferences SET retired_at = now() WHERE id = $1 AND user_id = $2 AND retired_at IS NULL',
+        [body.data.id, ctx.userId]));
+    if (!rowCount) return c.json({ error: 'not found' }, 404);
+    const total = await matchSession((db) => candidateCount(db, ctx.userId)).catch(() => 0);
+    return c.json({ ok: true, total: shownCount(total) });
+  })
+
   .post('/v1/preferences/strength', async (c) => {
     const { ctx, res } = await ctxOr401(c);
     if (!ctx) return c.json({ error: res }, 401);

@@ -122,7 +122,7 @@ they did not ([server/src/matching/answer-sheet.ts:348] `const answered = [...bo
   ([server/src/matching/brief.ts:639] `v: 2, shared: made.shared, work: made.work, quotes: made.quotes`,
   [server/src/matching/rendezvous.ts:625] `INSERT INTO rendezvous_runs`).
 - **Readable:** each person reads only their own card, and only on their turn (stage 9)
-  ([server/src/api/dating.ts:653] `const myTurn = r.first_mover === ctx.userId || r.other_decided === true;`).
+  ([server/src/api/dating.ts:672] `const myTurn = r.first_mover === ctx.userId || r.other_decided === true;`).
   Nobody can read transcripts, scores or want statuses in the app
   ([server/migrations/0028_matchmaker.sql:73] `REVOKE ALL ON rendezvous_runs FROM clone_app;`).
 

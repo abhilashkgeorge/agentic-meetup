@@ -1091,7 +1091,7 @@ three shapes:
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
   must-haves remove anybody. Everything else just ranks."
   (`app/src/features/profile/profile-screen.tsx:287`,
-  `app/src/features/preferences/preferences-screen.tsx:68`).
+  `app/src/features/preferences/preferences-screen.tsx:81`).
   The "Your wants" card lists each want with one line
   (`app/src/features/preferences/wants-state.ts:38`,
   `app/src/features/preferences/wants-state.ts:39`,
@@ -1117,6 +1117,13 @@ three shapes:
   (`mild`) (`app/src/features/preferences/strengths.ts:11`,
   `app/src/features/preferences/strengths.ts:12`,
   `app/src/features/preferences/strengths.ts:13`).
+  Since 2026-09-29 every rule also has "Remove" ("Remove this rule?" -- a must-have: "People it hid can be
+  met again."); the rule is retired, kept on record, and stops applying. Before, a rule could only change
+  strength, so a must-have could never go (`server/src/api/dating.ts:506`).
+- **Two wants on one question keep two rules** (since 2026-09-29): one live rule per field, operator and
+  source, so "a saver" and "someone who pays off their debts" -- both the money question -- each keep their
+  own answers; both apply. Before, the second overwrote the first's rule, silently
+  (`server/migrations/0085_one_rule_per_want.sql:21`).
 - **Must have is allowed only on fields the person tapped themselves**: the basics, the
   five cards, faith, the eight situation answers, and (since 2026-09-28) work field,
   exercise, sleep and moving cities. On these fields a sentence said in chat waits for the
@@ -1125,7 +1132,7 @@ three shapes:
   `server/src/onboarding/questions.ts:426`,
   `server/src/onboarding/questions.ts:415`).
   The server refuses a must-have anywhere else
-  (`server/src/api/dating.ts:530`).
+  (`server/src/api/dating.ts:549`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
   checked both ways: Arjun's must-haves on Meera, and Meera's must-haves on Arjun
   (`server/src/matching/candidates.ts:121`,
@@ -1149,7 +1156,7 @@ three shapes:
   people fit. Turn a must-have into a want to reach more."
   (`server/src/matching/candidates.ts:265`,
   `app/src/lib/counts.ts:12`,
-  `app/src/features/preferences/preferences-screen.tsx:98`).
+  `app/src/features/preferences/preferences-screen.tsx:111`).
 
 ### 5.4 When the other person has not answered
 
@@ -1253,7 +1260,7 @@ asking only when it matched would say how it came out
 - HOW-IT-WORKS.md says a round's only model call is the agents' talk, and a comment above
   the round route says "A round makes no model call". The code also makes the want-check
   calls above, by default (`HOW-IT-WORKS.md:810`,
-  `server/src/api/dating.ts:950`,
+  `server/src/api/dating.ts:969`,
   `server/src/matching/orchestrator.ts:23`).
 - HOW-IT-WORKS.md says a want that names a card "is left out". The code keeps it as a
   private want and checks it (`HOW-IT-WORKS.md:522`,
@@ -1264,12 +1271,12 @@ asking only when it matched would say how it came out
   `server/src/matching/brief.ts:456`).
 - The app says wants "move people up the list". Since 2026-09-29 that is what a round does with Really want and
   Nice to have (above); before, nothing moved anybody up
-  (`app/src/features/preferences/preferences-screen.tsx:141`).
+  (`app/src/features/preferences/preferences-screen.tsx:155`).
 - The app says a private want is "Checked against your card". It is checked against the
   **other person's** card (`server/src/matching/wants.ts:196`).
 - The footer "Must-haves come from your cards" is no longer the whole story: a tied want
   set to Must have is a must-have too
-  (`app/src/features/preferences/preferences-screen.tsx:171`).
+  (`app/src/features/preferences/preferences-screen.tsx:186`).
 - The interview says a sentence no card holds "can't be checked on paper" ("We can't check
   that on paper. You'll spot it in the first chat."). Since 2026-09-25 that sentence is a
   want and is checked every round
@@ -1300,7 +1307,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe [AI-10](#ai-10) | `rounds` row (queued) | Arjun | `server/src/api/dating.ts:956` |
+| Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe [AI-10](#ai-10) | `rounds` row (queued) | Arjun | `server/src/api/dating.ts:975` |
 | The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | `server/src/matching/rounds.ts:161` |
 | The candidate list | Real people first; within that, those who fit more of the person's Really want and Nice to have (since 2026-09-29), then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | `server/src/matching/candidates.ts:171` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | [AI-12](#ai-12) + code | Want results kept for the cards | Arjun (on his cards) | `server/src/matching/orchestrator.ts:226` |
@@ -1315,9 +1322,9 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    The same button is on the Matches tab (`app/src/features/matches/matches-screen.tsx:273`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
-   the round (`server/src/api/dating.ts:967`,
-   `server/src/api/dating.ts:974`,
-   `server/src/api/dating.ts:1017`).
+   the round (`server/src/api/dating.ts:986`,
+   `server/src/api/dating.ts:993`,
+   `server/src/api/dating.ts:1036`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
    heading out…" (`app/src/features/world/hud.tsx:139`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
@@ -1349,7 +1356,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
   counts, and the round checks the rules. Before, a rule failure answered at once and for free, so
   flipping your own must-have and tapping again read someone's card answer
   (`server/src/matching/world.ts:92`,
-  `server/src/api/dating.ts:1004`).
+  `server/src/api/dating.ts:1023`).
   A stranger in the square shows no name, age or photo: "Someone in the square", "One of
   the people your agent could meet.", and a neighbourhood
   (`app/src/features/world/agent-sheet.tsx:42`,
@@ -1483,7 +1490,7 @@ off (`server/src/matching/profile.ts:205`,
   (`HOW-IT-WORKS.md:818`,
   `server/src/metering.ts:70`).
 - Several code comments still say a round makes no model call
-  (`server/src/api/dating.ts:950`,
+  (`server/src/api/dating.ts:969`,
   `server/src/matching/answer-sheet.ts:24`). By default it makes the
   talk and want-check calls.
 - HOW-IT-WORKS.md §9 says a model may write the prose for invented people. No model is
@@ -1620,7 +1627,7 @@ they did not (`server/src/matching/answer-sheet.ts:348`,
   (`server/src/matching/brief.ts:639`,
   `server/src/matching/rendezvous.ts:625`).
 - **Readable:** each person reads only their own card, and only on their turn (stage 9)
-  (`server/src/api/dating.ts:653`).
+  (`server/src/api/dating.ts:672`).
   Nobody can read transcripts, scores or want statuses in the app
   (`server/migrations/0028_matchmaker.sql:73`).
 
@@ -1731,7 +1738,7 @@ In this example Meera decides first (stage 9 explains why).
 Only one "waiting on you" card shows at a time; the rest wait below it. Cards are ordered
 newest round first, then by a hash of the pair's id, never by a score
 (`app/src/features/matches/matches-screen.tsx:322`,
-`server/src/api/dating.ts:605`).
+`server/src/api/dating.ts:624`).
 
 ### 8.2 Checked again every time
 
@@ -1739,7 +1746,7 @@ When a card is shown, each of the other person's sentences on it must still be o
 their current public facts and pass the private-topic and contact-detail check. Anything
 that fails comes off: a quote, an answer, a talk line, the date idea, or an opener that
 used it (`server/src/matching/brief.ts:750`,
-`server/src/api/dating.ts:623`).
+`server/src/api/dating.ts:642`).
 Not re-checked: the headline and the shared tags, which stay as written when the round ran
 (`server/src/matching/brief.ts:768`).
 
@@ -1747,7 +1754,7 @@ Not re-checked: the headline and the shared tags, which stay as written when the
 
 - **No score, percentage or verdict about the pair.** The query for cards does not even
   select the score columns, and the stored "concern" is always empty
-  (`server/src/api/dating.ts:572`,
+  (`server/src/api/dating.ts:591`,
   `server/src/matching/brief.ts:645`). One exception is per want, not
   per pair: "Matches" / "Doesn't match" on a want tied to a question; a private-topic want shows
   only "A private topic. Their answer is never shown." (stage 5).
@@ -1790,7 +1797,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 | The other taps "Yes, share mine back" | Their profile opens to the first mover; the pair is introduced; chat opens | Code | Pair `introduced` | Both | `app/src/features/matches/turn.ts:44` |
 | Either says no ("Not this one", "Not for me") | The pair ends at once, silently; anything shared closes | Code | `human_says_yes = false`, pair `lapsed` | Nobody is told | `server/src/matching/orchestrator.ts:588` |
 | Nobody answers in 3 days | The pair expires; anything shared closes | Code (a timer every 10 minutes) | Pair `expired` | Nobody is told | `server/src/matching/expiry.ts:26` |
-| An answer out of turn | Refused by the server | Code | Nothing | — | `server/src/api/dating.ts:879` |
+| An answer out of turn | Refused by the server | Code | Nothing | — | `server/src/api/dating.ts:898` |
 
 ### 9.1 Who decides first, and why
 
@@ -1810,8 +1817,8 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 - **Turn order is enforced by the server:** the decide route refuses an answer that is not the
   caller's turn ("not_your_turn") or a second answer ("already_decided"), and the database write
   in `decide()` repeats the same test, so no caller can answer out of turn
-  (`server/src/api/dating.ts:877`,
-  `server/src/api/dating.ts:879`,
+  (`server/src/api/dating.ts:896`,
+  `server/src/api/dating.ts:898`,
   `server/src/matching/orchestrator.ts:578`).
   Two old open pairs have no first mover recorded; either side may go first there.
 
@@ -1873,7 +1880,7 @@ used to come from the matching row, chat-learned and hidden ones included)
 
 **When: only after Meera has said yes to Arjun.** The reveal route opens a person's profile only
 when they said yes in that pair; otherwise it answers "waiting" with no name in it
-(`server/src/api/dating.ts:737`). The database photo rule is
+(`server/src/api/dating.ts:756`). The database photo rule is
 the same test: a person's photos show only to someone they said yes to, and only while the pair
 has not ended in a no or expired
 (`server/migrations/0073_consent_first_reveal.sql:42`,
@@ -1914,9 +1921,9 @@ with them." and "Only people you share your profile with"
 - **The other person** is sent nothing
   (`server/src/matching/orchestrator.ts:591`),
   but their card disappears from Matches at once, because both people's lists hide ended pairs
-  (`server/src/api/dating.ts:589`).
+  (`server/src/api/dating.ts:608`).
 - **Whatever was shared closes:** after a no, the profile screen answers "not found" and the photos
-  stop (`server/src/api/dating.ts:723`).
+  stop (`server/src/api/dating.ts:742`).
 - **A first-mover no ends it**: the second mover never gets a turn and never saw anything.
 - **Never again:** a pair can exist only once, so they are never matched again
   (`server/migrations/0022_rendezvous.sql:44`).
@@ -2070,11 +2077,11 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 ### 10.4 The after-date check-in
 
 - **When:** 72 hours after the introduction by default, inside the chat only
-  (`server/src/api/dating.ts:771`).
+  (`server/src/api/dating.ts:790`).
 - **Step 1:** "Did you two meet up? They are not told what you say." [Yes] [Not yet]. The first
   answer is final: a "Not yet" is never asked again
   (`app/src/features/dm/checkin.tsx:109`,
-  `server/src/api/dating.ts:928`).
+  `server/src/api/dating.ts:947`).
 - **After "Not yet":** "What happened? Only you see this." with "Plans fell through", "They
   stopped replying", "I changed my mind", "Something else", or Skip
   (`app/src/features/dm/checkin.tsx:122`).
@@ -2599,11 +2606,11 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 |---|---|---|---|
 | **Train or fine-tune any model.** Every model is a stock vendor model. | Yes | `server/src/llm/caps.ts:87` | — |
 | **Predict chemistry or compatibility.** No model judges the pair; a preference score is recorded but does not pick who is met; the date idea is refused if it uses words like "match", "compatible" or "chemistry". | Mostly | `server/src/matching/orchestrator.ts:178`, `server/src/matching/talk.ts:131` | A model does judge each **want** (met / not met), which moves people later. A switched-off option ([AI-14](#ai-14)) would store a hidden "would want a second evening" probability. |
-| **Show a score or percentage** to a person. The card query does not even select the score columns. | Yes | `server/src/api/dating.ts:572` | Counts appear: "Confirmed by N people who met them", rounded pool sizes, the reviewer's Numbers page. |
-| **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:854`, `server/src/matching/orchestrator.ts:92` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:367`). |
+| **Show a score or percentage** to a person. The card query does not even select the score columns. | Yes | `server/src/api/dating.ts:591` | Counts appear: "Confirmed by N people who met them", rounded pool sizes, the reviewer's Numbers page. |
+| **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:873`, `server/src/matching/orchestrator.ts:92` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:367`). |
 | **Let a model write what others read about you.** Cards are written by code from your own words. | Mostly | `server/src/matching/brief.ts:4` | The date idea is model-written (and checked by code) (`server/src/matching/talk.ts:28`). |
 | **Judge looks.** No photo is ever sent to a model; matching never uses photos. | Yes | `server/src/llm/port.ts:29`, `app/src/features/matches/reveal-screen.tsx:259` | — |
-| **Show your photos or first name to anyone you have not said yes to.** The photo rule and the profile screen both test your own yes in that pair. | Yes | `server/migrations/0073_consent_first_reveal.sql:42`, `server/src/api/dating.ts:737` | Your 3D character, age, neighbourhood and shareable sentences are on the words card before any yes. |
+| **Show your photos or first name to anyone you have not said yes to.** The photo rule and the profile screen both test your own yes in that pair. | Yes | `server/migrations/0073_consent_first_reveal.sql:42`, `server/src/api/dating.ts:756` | Your 3D character, age, neighbourhood and shareable sentences are on the words card before any yes. |
 | **Let strangers message you.** A message can only go to an introduced pair. | Yes | `server/migrations/0024_messages.sql:12` | — |
 | **Tell anyone they were turned down.** Nothing is sent on a no. | In words, yes | `server/src/matching/orchestrator.ts:591` | The other person's card disappears early, which can give it away (Known gaps). |
 | **Show you the other person's wants or rules.** Each card lists only its reader's wants. | Yes | `server/src/matching/orchestrator.ts:398` | — |
@@ -2648,7 +2655,7 @@ first mover in the viewer's own neighbourhood until they share; and the extracto
 the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 
 3. **A "no" shows by timing.** A no removes the other person's card at once; an unanswered card lasts three days
-    (`server/src/api/dating.ts:589`).
+    (`server/src/api/dating.ts:608`).
 4. **Closed on 2026-09-29: "Matches" on a situation want.** A want tied to a situation question shows only
     "A private topic. Their answer is never shown.", whatever the check found, and the after-date check-in no
     longer asks about it (`server/src/matching/brief.ts:453`).
@@ -2703,8 +2710,9 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     retired a card's answer, and a hedged one retired a plain one. Now only sentences that became true take part, a
     card's answer is never retired this way, and every retirement is recorded
     (`server/src/memory/session.ts:147`).
-18. **Rule clashes.** Two wants tied to the same question overwrite each other's rule; a must-have outlives its want
-    sentence and cannot be deleted, only changed in strength (`server/src/matching/profile.ts:414`).
+18. **Closed on 2026-09-29: rule clashes.** Two wants tied to the same question keep a rule each, and every rule --
+    a must-have too -- has "Remove" on "Looking for" (`server/migrations/0085_one_rule_per_want.sql:21`).
+    Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.
 19. **Only one waiting card shows at a time.** Each card now wakes the phone when it arrives and the day it fades,
     but only after the founder's push setup; until then a second card can still run out unseen
     (`app/src/features/matches/matches-screen.tsx:322`).

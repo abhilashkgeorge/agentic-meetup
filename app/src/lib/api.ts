@@ -807,6 +807,10 @@ export async function setPreferenceStrength(
   }
 }
 
+/** Remove a rule, a must-have too (server dating.ts /v1/preferences/remove). */
+export const removePreference = (token: string, id: string) =>
+  post<{ ok: boolean; total: number | null }>('/v1/preferences/remove', token, { id });
+
 /**
  * The second row of a core card: who you would be fine with.
  *

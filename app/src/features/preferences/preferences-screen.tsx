@@ -11,8 +11,8 @@
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
-import { getPool, getPreferences, getWants, setPreferenceStrength, type PoolStep, type Preference } from '../../lib/api';
+import { Alert, Text, View } from 'react-native';
+import { getPool, getPreferences, getWants, removePreference, setPreferenceStrength, type PoolStep, type Preference } from '../../lib/api';
 import { WantsCard } from './wants-card';
 import { NOT_A_MUST_HAVE, STRENGTHS, strengthsFor } from './strengths';
 import type { WantView } from './wants-state';
@@ -58,6 +58,19 @@ export default function PreferencesScreen() {
     // a stale count here would be worse than a moment of loading.
     void load();
   }, [token, load]);
+
+  // Any rule can go, a must-have too (the founder, 2026-09-29). Asked first: a must-have
+  // removed widens who the agent can reach at once.
+  const remove = useCallback((x: Preference) => Alert.alert(
+    'Remove this rule?',
+    x.strength === 'dealbreaker' ? 'People it hid can be met again.' : 'It stops moving people up the list.',
+    [{ text: 'Cancel', style: 'cancel' },
+     { text: 'Remove', style: 'destructive', onPress: () => {
+       if (!token) return;
+       setBusy(x.id);
+       void removePreference(token, x.id).then(() => { setBusy(null); void load(); });
+     } }],
+  ), [token, load]);
 
   const dealbreakers = prefs.filter((x) => x.strength === 'dealbreaker');
   const wants = prefs.filter((x) => x.strength !== 'dealbreaker');
@@ -130,6 +143,7 @@ export default function PreferencesScreen() {
                           disabled={busy === x.id}
                           onPress={() => void change(x.id, s.value)} />
                   ))}
+                  <Chip label="Remove" selected={false} disabled={busy === x.id} onPress={() => remove(x)} />
                 </ChipGroup>
               </View>
             ))
@@ -155,6 +169,7 @@ export default function PreferencesScreen() {
                           disabled={busy === x.id}
                           onPress={() => void change(x.id, s.value)} />
                   ))}
+                  <Chip label="Remove" selected={false} disabled={busy === x.id} onPress={() => remove(x)} />
                 </ChipGroup>
                 {x.mustHave === false && (
                   <Text style={[type.callout, { color: p.textTertiary }]}>{NOT_A_MUST_HAVE}</Text>

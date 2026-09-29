@@ -408,12 +408,13 @@ export async function setPreference(
   if (pref.strength === 'dealbreaker' && !mustHaveAllowed(pref.predicate)) {
     throw new PreferenceCannotFilter(pref.predicate);
   }
+  // One live rule per SOURCE (0085): the same words again update their own rule; another
+  // want on the same question gets a rule of its own instead of overwriting this one.
   await c.query(
     `INSERT INTO preferences (tenant_id, user_id, predicate, operator, value, strength, source_quote)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
-     ON CONFLICT (user_id, predicate, operator) WHERE retired_at IS NULL
-     DO UPDATE SET value = EXCLUDED.value, strength = EXCLUDED.strength,
-                   source_quote = EXCLUDED.source_quote`,
+     ON CONFLICT (user_id, predicate, operator, source_quote) WHERE retired_at IS NULL
+     DO UPDATE SET value = EXCLUDED.value, strength = EXCLUDED.strength`,
     [ctx.tenantId, ctx.userId, pref.predicate, pref.operator,
      JSON.stringify(pref.value), pref.strength, pref.sourceQuote ?? ''],
   );
