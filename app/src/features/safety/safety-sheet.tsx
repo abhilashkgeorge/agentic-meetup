@@ -4,7 +4,9 @@
  * BLOCK hides both people from each other everywhere, for good -- the cards between
  * them, the profile, the chat, the town (server 0064 apart()). They are never told.
  * REPORT gives one of the fixed reasons (reasons.ts), blocks too, and goes to the
- * reviewer's queue. The support address is on the sheet, for anything urgent.
+ * reviewer's queue -- with a copy of the two people's messages in Chats, if any, kept
+ * even after either deletes their account (server 0080); the sheet says so. The support
+ * address is on the sheet, for anything urgent.
  *
  * A card or a profile names the MATCH, never a person: the server works out who the
  * other half is, and only for a match the caller is half of. A chat knows who.
@@ -107,6 +109,9 @@ export function SafetySheet({ target, name, aboutVoice, onClose, onDone }: {
             )}
             <Field value={detail} onChangeText={setDetail} placeholder="Anything else we should know (optional)"
                    multiline minHeight={60} maxLength={2000} />
+            <Text style={[type.callout, { color: p.textTertiary }]}>
+              If you have messages with {who} in Chats, the reviewer can read them.
+            </Text>
             <Button label="Report and block" variant="primary" disabled={!reason} loading={busy} onPress={() => void report()} />
             <Pressable onPress={() => void Linking.openURL(supportMailto('Report'))} accessibilityRole="link">
               <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>

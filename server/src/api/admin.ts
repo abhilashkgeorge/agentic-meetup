@@ -67,6 +67,8 @@ interface ReportRow {
   hidden_photos: number;
   reported_name: string | null;
   banned: boolean;
+  /** Lines of their chat kept with the report (0080). */
+  chat_lines: number;
 }
 
 /**
@@ -141,7 +143,10 @@ export const adminRoutes = new Hono()
                 -- phone reads a name, not a uuid.
                 (SELECT mp.display_name FROM match_profile mp
                   WHERE mp.user_id = w.now_id)                          AS reported_name,
-                COALESCE(is_banned(w.now_id), false)                    AS banned
+                COALESCE(is_banned(w.now_id), false)                    AS banned,
+                -- Their chat, copied to the report when it was made (0080).
+                (SELECT count(*)::int FROM report_messages m
+                  WHERE m.report_id = r.id)                             AS chat_lines
            FROM reports r
            CROSS JOIN LATERAL (SELECT reported_now(r.id) AS now_id) w
            CROSS JOIN LATERAL reports_about(r.id) ra
@@ -174,12 +179,43 @@ export const adminRoutes = new Hono()
         reviewed: r.reviewed_at ? new Date(r.reviewed_at).toISOString() : null,
         outcome: r.outcome,
         note: r.review_note,
+        chatLines: r.chat_lines,
         context: {
           reportsAgainstThem: r.reports_against,
           distinctReporters: r.distinct_reporters,
           photos: r.photos,
           photosHidden: r.hidden_photos,
         },
+      })),
+    });
+  })
+
+  /**
+   * The chat a report is about, as it stood when the report was made (0080). It is kept
+   * with the report, so it is still here after either of them deletes their account.
+   * Each line is said by "them" (the person reported) or the "reporter" -- never an id.
+   * Words taken back with "delete for everyone" are here too, marked: they were kept for
+   * this (0024).
+   */
+  .get('/v1/admin/reports/:id/chat', async (c) => {
+    const ctx = await reviewer(c.req.header('authorization'));
+    if (!ctx) return c.json({ error: 'not found' }, 404);
+
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: 'bad id' }, 400);
+
+    const rows = await matchmakerSession(async (db) => (await db.query<{
+      from_reported: boolean; kind: string; body: string; sent_at: string; redacted_at: string | null;
+    }>(
+      `SELECT from_reported, kind, body, sent_at, redacted_at
+         FROM report_messages WHERE report_id = $1 ORDER BY seq`, [id])).rows);
+    return c.json({
+      lines: rows.map((m) => ({
+        from: m.from_reported ? 'them' as const : 'reporter' as const,
+        text: m.body,
+        dateIdea: m.kind === 'date_idea',
+        at: new Date(m.sent_at).toISOString(),
+        takenBack: m.redacted_at !== null,
       })),
     });
   })

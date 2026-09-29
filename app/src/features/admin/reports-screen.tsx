@@ -12,12 +12,12 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
-import { decideReport, getAdminReports, type AdminReport } from '../../lib/api';
+import { decideReport, getAdminReports, getReportChat, type AdminReport, type ReportChatLine } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
   Button, ButtonRow, Card, Chip, ChipGroup, Empty, Header, Screen, ScreenTitle, space, type, usePalette,
 } from '../../components/ui';
-import { contextLine, outcomeLabel, reasonLabel, reportedLabel } from './queue';
+import { chatButtonLabel, chatLineLabel, contextLine, outcomeLabel, reasonLabel, reportedLabel } from './queue';
 
 export default function ReportsScreen() {
   const p = usePalette();
@@ -25,6 +25,8 @@ export default function ReportsScreen() {
   const [all, setAll] = useState(false);
   const [reports, setReports] = useState<AdminReport[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // The chat kept with a report (server 0080), once the reviewer opens it.
+  const [chats, setChats] = useState<Record<string, ReportChatLine[] | undefined>>({});
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -39,6 +41,12 @@ export default function ReportsScreen() {
     await decideReport(token, r.id, outcome);
     setBusy(null);
     await load();
+  };
+
+  const openChat = async (r: AdminReport) => {
+    if (!token) return;
+    const got = await getReportChat(token, r.id);
+    setChats((c) => ({ ...c, [r.id]: got?.lines ?? [] }));
   };
 
   const ban = (r: AdminReport) => Alert.alert(
@@ -65,6 +73,20 @@ export default function ReportsScreen() {
             <Text style={[type.title, { color: p.text }]}>{reportedLabel(r)}</Text>
             {r.detail ? <Text style={[type.body, { color: p.text }]}>“{r.detail}”</Text> : null}
             <Text style={[type.callout, { color: p.textSecondary }]}>{contextLine(r)}</Text>
+            {chatButtonLabel(r) && (chats[r.id] ? (
+              // Their chat as it stood when the report was made; kept even after either
+              // of them deleted their account.
+              <View style={{ gap: space.xs }}>
+                {chats[r.id]!.map((l, i) => (
+                  <Text key={i} style={[type.callout, { color: l.from === 'them' ? p.text : p.textSecondary }]}>
+                    {chatLineLabel(l)}
+                  </Text>
+                ))}
+                <Button label="Hide the chat" variant="secondary" onPress={() => setChats((c) => ({ ...c, [r.id]: undefined }))} />
+              </View>
+            ) : (
+              <Button label={chatButtonLabel(r)!} variant="secondary" onPress={() => void openChat(r)} />
+            ))}
             <Text style={[type.callout, { color: p.textTertiary }]}>
               {new Date(r.at).toLocaleString()}{r.reporterKnown ? '' : ' · reporter has left'}
             </Text>

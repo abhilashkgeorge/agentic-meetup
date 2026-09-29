@@ -6,7 +6,7 @@
  * and "three people reported them" is the thing a ban turns on. The rule against a
  * number is about a number on a MATCH.
  */
-import type { AdminReport } from '../../lib/api';
+import type { AdminReport, ReportChatLine } from '../../lib/api';
 import { REPORT_REASONS } from '../safety/reasons';
 
 /** A reason id as the person who reported chose it: "Fake profile", not "fake_profile". */
@@ -41,3 +41,14 @@ export const outcomeLabel = (outcome: string | null): string =>
 export const reportedLabel = (r: AdminReport): string =>
   r.reportedDeleted && !r.cameBack ? 'Deleted their account'
     : `${r.reportedName ?? 'Someone without a profile'}${r.cameBack ? ' (came back after deleting an account)' : ''}${r.banned ? ' (banned)' : ''}`;
+
+/** The button that opens the chat kept with a report (server 0080), or null: none kept. */
+export const chatButtonLabel = (r: AdminReport): string | null =>
+  r.chatLines > 0 ? `Read their chat (${n(r.chatLines, 'message', 'messages')})` : null;
+
+/**
+ * One line of that chat: who said it, as the reviewer should read it -- "Them" is the
+ * person reported -- and whether it was a date idea or deleted by whoever sent it.
+ */
+export const chatLineLabel = (l: ReportChatLine): string =>
+  `${l.from === 'them' ? 'Them' : 'Reporter'}: ${l.dateIdea ? '(date idea) ' : ''}${l.text}${l.takenBack ? ' (deleted by the sender)' : ''}`;

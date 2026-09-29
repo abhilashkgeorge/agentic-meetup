@@ -78,13 +78,17 @@ const SHARED_TABLES = [
   // including the other person's. That is correct rather than collateral: a
   // conversation with one participant erased is not a conversation, and leaving the
   // surviving half would leave somebody talking to a person who no longer exists.
+  // A chat somebody REPORTED is not lost with it: the report copied it when it was made
+  // (0080, report_messages), naming neither person, and that copy stays with the report.
   { table: 'rendezvous', columns: ['user_a', 'user_b'] },
   // Belt and braces. Nothing should remain after the cascade above; if anything does,
   // it is this person's words and it goes.
   { table: 'messages', columns: ['sender_id'] },
   { table: 'blocks', columns: ['blocker_id', 'blocked_id'] },
   // Reports are not here at all. Those FILED BY them lose their name; those AGAINST them
-  // are kept, keyed to their phone and handsets as a ban is (0079). See eraseUser.
+  // are kept, keyed to their phone and handsets as a ban is (0079). See eraseUser. Nor is
+  // the copy of the chat a report was about (0080): it carries no user id, only who of
+  // the two said each line, and it is the report's evidence, not either person's data.
 ] as const;
 
 /**

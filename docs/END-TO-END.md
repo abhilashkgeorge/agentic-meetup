@@ -834,7 +834,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 |---|---|---|---|
 | `clone_app` | Everything a signed-in person does | Their own rows only (facts, messages, photos, cards...); the shared pair row and its messages; can write but not read reports; invites table in full (no row security) | `server/migrations/0022_rendezvous.sql:104`, `server/migrations/0024_messages.sql:107` |
 | `clone_match` | Finding and counting candidates | In-pool matching rows (all columns), the rule columns of live preferences (never their sentences), characters | `server/migrations/0019_match_role.sql:40`, `server/migrations/0021_matching_fixes.sql:22` |
-| `clone_matchmaker` | Running rounds, reveals, the reviewer | Facts only where public, live and current; every matching row, pair, card, transcript, report and photo record; every profile summary; the founder's two count functions | `server/migrations/0028_matchmaker.sql:48`, `server/migrations/0028_matchmaker.sql:51` |
+| `clone_matchmaker` | Running rounds, reveals, the reviewer | Facts only where public, live and current; every matching row, pair, card, transcript, report (with the chat copied to it) and photo record; every profile summary; the founder's two count functions | `server/migrations/0028_matchmaker.sql:48`, `server/migrations/0028_matchmaker.sql:51` |
 | `clone_eraser` | Deleting an account | Everything (bypasses row security), to delete and verify | `server/migrations/0026_eraser_role.sql:24` |
 | `clone_door` | The phone sign-in | Code challenges (hashes, caller IP); account id and number hash | `server/migrations/0066_door_and_discovery_roles.sql:46` |
 | `clone_discovery` | Background sweepers | Ids, counts and times, and each account's device name | `server/migrations/0066_door_and_discovery_roles.sql:67` |
@@ -858,7 +858,12 @@ Row-level security is the boundary. Each part of the server connects as its own 
 
 - **Settings → "Delete everything"** ("Cannot be undone. The clone and all of its memory go.") deletes the
   person's rows from 23 tables, their photo folder and every pair they were in (including **both** sides of
-  their conversations); then it counts what is left and deletes the account last. Reports **about** them
+  their conversations); then it counts what is left and deletes the account last. A chat somebody
+  **reported** is kept all the same (since 2026-09-29): the report took a copy when it was made -- the last
+  200 messages, each marked only as said by the reported person or by the reporter -- and the copy stays
+  with the report whoever deletes their account
+  (`server/migrations/0080_reported_chat_kept.sql:73`).
+  Reports **about** them
   stay (since 2026-09-29): the account id comes off, and, as a ban keeps them, their phone's HMAC and the
   handsets they used go on, so a return under the same phone is shown to the reviewer as the same person
   (`server/migrations/0079_reports_outlive_the_reported.sql:27`).
@@ -867,9 +872,9 @@ Row-level security is the boundary. Each part of the server connects as its own 
   touching anything (`app/src/features/settings/delete-outcome.ts:12`)
   (`app/src/features/settings/settings-screen.tsx:292`,
   `server/src/memory/erasure.ts:35`,
-  `server/src/memory/erasure.ts:220`).
+  `server/src/memory/erasure.ts:224`).
 - **It leaves:** a receipt with counts, invites, reports they filed (without their name), reports about
-  them (with their phone and device hashes), bans and the phone and device hashes of a ban, the account's
+  them (with their phone and device hashes), the copy of any chat of theirs somebody reported, bans and the phone and device hashes of a ban, the account's
   device name, and anything already sent to AI providers
   or written to server logs (`server/migrations/0007_erasure.sql:12`).
 - **"Download everything"** exports their facts, all their messages with their clone, their profile,
@@ -880,8 +885,11 @@ Row-level security is the boundary. Each part of the server connects as its own 
 
 - **The reviewer** (accounts in `ADMIN_USER_IDS`) sees the reports queue (reason, the reporter's note, the
   reported person's first name; never who reported), the Numbers page, and the unmatched-wants list
-  (stage 11). No admin route reads messages, photos or facts
-  (`server/src/api/admin.ts:124`,
+  (stage 11). Since 2026-09-29 the reviewer can also read the chat a report is about, as copied when the
+  report was made, each line marked "Them" or "Reporter". No other admin route reads messages, and none
+  reads photos or facts
+  (`server/src/api/admin.ts:126`,
+  `server/src/api/admin.ts:200`,
   `server/src/api/admin.ts:25`).
 - **Logs** carry user ids, not message text; the redaction list covers text fields. In development the
   console SMS sender logs full numbers and codes (`server/src/log.ts:8`).
@@ -916,7 +924,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately (`ARCHITECTURE.md:391`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
-  (`server/src/memory/erasure.ts:185`).
+  (`server/src/memory/erasure.ts:189`).
 
 ### Unverified
 
@@ -1960,7 +1968,7 @@ words are the date idea, written earlier (stage 7).
 | "Propose this date" | Sends "How about this: <idea>?" as the person's own message, once per chat | Code | `messages` row (kind `date_idea`) | The two people | `server/src/api/date-idea.ts:31` |
 | Two quiet days | A one-time nudge for each person | Code | `nudged_at` on each person's card row | Each person, once | `app/src/features/dm/date-idea.ts:17` |
 | 72 hours after the introduction | The after-date check-in inside the chat | Code | `date_checkins` row per person | The person who answered; one bit is shared if both say "see again" | `server/src/api/dating.ts:121` |
-| Block or report | Both are kept apart everywhere; a report is queued for the reviewer | Code | `blocks` row, and `reports` row | Reviewer sees reports | `server/src/messaging/store.ts:220` |
+| Block or report | Both are kept apart everywhere; a report is queued for the reviewer, with a copy of their chat | Code | `blocks` row, `reports` row, and the chat's last 200 messages in `report_messages` | Reviewer sees reports and the copied chat | `server/src/messaging/store.ts:220` |
 | Reviewer bans | Sessions revoked, hidden from everyone, phone and handset remembered | Code | `bans`, `ban_marks` | Reviewer | `server/migrations/0065_bans_stick.sql:70` |
 
 ### Arjun and Meera
@@ -2074,15 +2082,21 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   person's sheet in the town, and the check-in's "felt unsafe" step
   (`app/src/features/dm/thread-screen.tsx:226`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
-  are not told." (`app/src/features/safety/safety-sheet.tsx:50`).
+  are not told." (`app/src/features/safety/safety-sheet.tsx:52`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
   "Inappropriate messages or photos", "Fake profile", "Seems under 18", "Spam or a scam", "Made
   me feel unsafe", "Something else"; an optional note (up to 2,000 characters); the button
   "Report and block"; and "Something urgent? Write to" the support address
   (`app/src/features/safety/reasons.ts:17`,
   `app/src/features/safety/reasons.ts:23`,
-  `app/src/features/safety/safety-sheet.tsx:113`).
+  `app/src/features/safety/safety-sheet.tsx:118`).
   A report always blocks too (`server/src/messaging/store.ts:220`).
+  Above the button: "If you have messages with Meera in Chats, the reviewer can read them." Since
+  2026-09-29 the report takes a copy of their chat when it is made -- the last 200 messages, each
+  marked "Them" or "Reporter", no names -- and the copy outlives both accounts, so deleting yours
+  does not delete what you said to the person who reported you
+  (`app/src/features/safety/safety-sheet.tsx:113`,
+  `server/migrations/0080_reported_chat_kept.sql:73`).
 - **Effect, both ways:** the card, reveal, chat, town seat, photos and date idea disappear for
   both; sends are refused; they are never matched again
   (`server/migrations/0064_bans_and_apart.sql:54`).
@@ -2095,7 +2109,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 
 - **Who:** only accounts listed in `ADMIN_USER_IDS` (the reviewer), from the "Reports to review"
   screen in Settings: "Ban <name>?" / "They are signed out, taken out of the pool and hidden from
-  everybody, for good." (`app/src/features/admin/reports-screen.tsx:46`).
+  everybody, for good." (`app/src/features/admin/reports-screen.tsx:54`).
 - **What it does:** hides all their photos; records the ban; remembers the account's phone-number
   hash and the hashed id of every phone they signed in on; revokes every session; takes them
   out of the pool for good (`server/migrations/0065_bans_stick.sql:61`,
@@ -2519,8 +2533,8 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:93` |
 | **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:238` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable | Everyone | `app/src/features/settings/connect-screen.tsx:36` |
-| **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only) | Reviewer | `app/src/features/settings/settings-screen.tsx:272`, `server/src/api/admin.ts:78` |
-| **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:89` |
+| **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only). A report on two people who had messages shows "Read their chat (12 messages)": their chat as it stood when the report was made, "Them:" or "Reporter:" on each line, still there after either deletes their account (since 2026-09-29; before, no reviewer could read a reported chat) | Reviewer | `app/src/features/settings/settings-screen.tsx:272`, `server/src/api/admin.ts:80`, `app/src/features/admin/reports-screen.tsx:88` |
+| **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:91` |
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:40` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
@@ -2605,8 +2619,11 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     (`server/src/matching/answer-sheet.ts:79`,
     `server/src/matching/brief.ts:82`).
 7. **Deleting an account deletes both halves of their chats**, the other person's messages with them
-    (`server/src/memory/erasure.ts:81`). (Reports
-    against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5.)
+    (`server/src/memory/erasure.ts:83`). (Reports
+    against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5. Since 2026-09-29 a
+    chat somebody reported is kept with the report, both halves, whoever deletes: section 10.5.) Still open: a chat
+    nobody has reported yet goes with either account, so somebody who deletes their account straight after harassing
+    a person leaves them nothing to report.
 8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
     again by everybody) and the Settings line now say what the code does
     (`app/src/features/settings/settings-screen.tsx:299`).

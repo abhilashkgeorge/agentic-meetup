@@ -1001,7 +1001,19 @@ export interface AdminReport {
   reportedDeleted: boolean; cameBack: boolean;
   reportedName: string | null; banned: boolean;
   reviewed: string | null; outcome: string | null; note: string;
+  /** Messages of their chat kept with the report (server 0080); 0 when they never chatted. */
+  chatLines: number;
   context: { reportsAgainstThem: number; distinctReporters: number; photos: number; photosHidden: number };
+}
+/** A line of the chat a report is about, as it stood when the report was made. */
+export interface ReportChatLine {
+  /** Said by the person reported ("them") or by the one who reported them. */
+  from: 'them' | 'reporter';
+  text: string;
+  dateIdea: boolean;
+  at: string;
+  /** They took it back ("delete for everyone") before the report; the words were kept. */
+  takenBack: boolean;
 }
 export const isAdmin = (token: string) => get<{ admin: boolean }>('/v1/admin/me', token);
 /** The founder's funnel: counts between real people (server 0070). Null for non-reviewers. */
@@ -1013,6 +1025,8 @@ export const getFunnel = (token: string) =>
   get<import('../features/admin/funnel').Funnel>('/v1/admin/funnel', token);
 export const getAdminReports = (token: string, all = false) =>
   get<{ open: number; reports: AdminReport[] }>(`/v1/admin/reports${all ? '?all=1' : ''}`, token);
+export const getReportChat = (token: string, id: string) =>
+  get<{ lines: ReportChatLine[] }>(`/v1/admin/reports/${id}/chat`, token);
 export const decideReport = (token: string, id: string, outcome: 'no_action' | 'photos_hidden' | 'banned', note = '') =>
   post<{ ok: boolean }>(`/v1/admin/reports/${id}`, token, { outcome, note });
 

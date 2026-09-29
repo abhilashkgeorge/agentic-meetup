@@ -26,7 +26,7 @@ import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { REPORT_REASONS, SUPPORT_EMAIL, supportMailto } from '../src/features/safety/reasons';
-import { contextLine, outcomeLabel, reasonLabel, reportedLabel } from '../src/features/admin/queue';
+import { chatButtonLabel, chatLineLabel, contextLine, outcomeLabel, reasonLabel, reportedLabel } from '../src/features/admin/queue';
 import type { AdminReport } from '../src/lib/api';
 
 const SRC = join(import.meta.dirname, '..', 'src');
@@ -85,7 +85,7 @@ describe('the reviewer\'s queue', () => {
   const report = (over: Partial<AdminReport> = {}): AdminReport => ({
     id: 'r1', reason: 'fake_profile', detail: '', at: '2026-09-25T10:00:00Z', reportedId: 'u1',
     reporterKnown: true, reportedName: 'Asha', banned: false, reviewed: null, outcome: null, note: '',
-    reportedDeleted: false, cameBack: false,
+    reportedDeleted: false, cameBack: false, chatLines: 0,
     context: { reportsAgainstThem: 3, distinctReporters: 2, photos: 4, photosHidden: 1 }, ...over,
   });
 
@@ -102,6 +102,27 @@ describe('the reviewer\'s queue', () => {
     expect(reportedLabel(report({ reportedId: null, reportedName: null, reportedDeleted: true }))).toBe('Deleted their account');
     expect(reportedLabel(report({ reportedDeleted: true, cameBack: true, reportedName: 'Asha' })))
       .toBe('Asha (came back after deleting an account)');
+  });
+
+  // The chat a report is about is kept with it (server 0080). The reviewer reads who of
+  // the two said each line -- never a name for the reporter -- and the one reporting is
+  // told first that their messages go with the report.
+  it('shows the chat kept with a report, and the reporter is told it goes', () => {
+    expect(chatButtonLabel(report())).toBeNull();
+    expect(chatButtonLabel(report({ chatLines: 1 }))).toBe('Read their chat (1 message)');
+    expect(chatButtonLabel(report({ chatLines: 12 }))).toBe('Read their chat (12 messages)');
+    const at = '2026-09-25T10:00:00Z';
+    expect(chatLineLabel({ from: 'them', text: 'I know where you live', dateIdea: false, at, takenBack: true }))
+      .toBe('Them: I know where you live (deleted by the sender)');
+    expect(chatLineLabel({ from: 'reporter', text: 'please stop', dateIdea: false, at, takenBack: false }))
+      .toBe('Reporter: please stop');
+    expect(chatLineLabel({ from: 'them', text: 'Coffee at Third Wave, Saturday 5 pm', dateIdea: true, at, takenBack: false }))
+      .toBe('Them: (date idea) Coffee at Third Wave, Saturday 5 pm');
+    expect(code('features/admin/reports-screen.tsx')).toMatch(/getReportChat\(token, r\.id\)/);
+    expect(code('features/safety/safety-sheet.tsx')).toMatch(/If you have messages with \{who\} in Chats, the reviewer can read them\./);
+    // The server copies it on every report (the trigger), so the sheet's words are true.
+    expect(readFileSync(join(SERVER, '..', 'migrations', '0080_reported_chat_kept.sql'), 'utf8'))
+      .toMatch(/CREATE TRIGGER reports_keep_chat AFTER INSERT ON reports/);
   });
 
   it('is reachable only through the reviewer check', () => {

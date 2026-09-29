@@ -153,7 +153,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 |---|---|---|---|
 | `clone_app` | Everything a signed-in person does | Their own rows only (facts, messages, photos, cards...); the shared pair row and its messages; can write but not read reports; invites table in full (no row security) | [server/migrations/0022_rendezvous.sql:104] `CREATE POLICY briefs_mine ON rendezvous_briefs FOR ALL`, [server/migrations/0024_messages.sql:107] `CREATE POLICY reports_write_only ON reports FOR INSERT` |
 | `clone_match` | Finding and counting candidates | In-pool matching rows (all columns), the rule columns of live preferences (never their sentences), characters | [server/migrations/0019_match_role.sql:40] `USING (in_pool);`, [server/migrations/0021_matching_fixes.sql:22] `GRANT SELECT (id, user_id, predicate, operator, value, strength) ON preferences TO clone_match;` |
-| `clone_matchmaker` | Running rounds, reveals, the reviewer | Facts only where public, live and current; every matching row, pair, card, transcript, report and photo record; every profile summary; the founder's two count functions | [server/migrations/0028_matchmaker.sql:48] `USING (disclosure = 'public' AND status = 'active' AND valid_to IS NULL);`, [server/migrations/0028_matchmaker.sql:51] `GRANT SELECT ON core_profile TO clone_matchmaker;` |
+| `clone_matchmaker` | Running rounds, reveals, the reviewer | Facts only where public, live and current; every matching row, pair, card, transcript, report (with the chat copied to it) and photo record; every profile summary; the founder's two count functions | [server/migrations/0028_matchmaker.sql:48] `USING (disclosure = 'public' AND status = 'active' AND valid_to IS NULL);`, [server/migrations/0028_matchmaker.sql:51] `GRANT SELECT ON core_profile TO clone_matchmaker;` |
 | `clone_eraser` | Deleting an account | Everything (bypasses row security), to delete and verify | [server/migrations/0026_eraser_role.sql:24] `NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE;` |
 | `clone_door` | The phone sign-in | Code challenges (hashes, caller IP); account id and number hash | [server/migrations/0066_door_and_discovery_roles.sql:46] `GRANT SELECT, INSERT, UPDATE, DELETE ON phone_challenges TO clone_door;` |
 | `clone_discovery` | Background sweepers | Ids, counts and times, and each account's device name | [server/migrations/0066_door_and_discovery_roles.sql:67] `GRANT SELECT (id, name) ON tenants TO clone_discovery;` |
@@ -177,7 +177,12 @@ Row-level security is the boundary. Each part of the server connects as its own 
 
 - **Settings → "Delete everything"** ("Cannot be undone. The clone and all of its memory go.") deletes the
   person's rows from 23 tables, their photo folder and every pair they were in (including **both** sides of
-  their conversations); then it counts what is left and deletes the account last. Reports **about** them
+  their conversations); then it counts what is left and deletes the account last. A chat somebody
+  **reported** is kept all the same (since 2026-09-29): the report took a copy when it was made -- the last
+  200 messages, each marked only as said by the reported person or by the reporter -- and the copy stays
+  with the report whoever deletes their account
+  ([server/migrations/0080_reported_chat_kept.sql:73] `CREATE TRIGGER reports_keep_chat AFTER INSERT ON reports`).
+  Reports **about** them
   stay (since 2026-09-29): the account id comes off, and, as a ban keeps them, their phone's HMAC and the
   handsets they used go on, so a return under the same phone is shown to the reviewer as the same person
   ([server/migrations/0079_reports_outlive_the_reported.sql:27] `ALTER TABLE reports ALTER COLUMN reported_id DROP NOT NULL;`).
@@ -186,9 +191,9 @@ Row-level security is the boundary. Each part of the server connects as its own 
   touching anything ([app/src/features/settings/delete-outcome.ts:12] `export function eraseMessage(outcome: EraseOutcome): { title: string; body: string } | null {`)
   ([app/src/features/settings/settings-screen.tsx:292] `subtitle="Cannot be undone. The clone and all of its memory go."`,
   [server/src/memory/erasure.ts:35] `'answer_sheets', 'unknown_asks', 'question_prompts', 'look_items', 'looks', 'photo_checks',`,
-  [server/src/memory/erasure.ts:220] `if (!remaining.length) await c.query('DELETE FROM app_users WHERE id = $1'`).
+  [server/src/memory/erasure.ts:224] `if (!remaining.length) await c.query('DELETE FROM app_users WHERE id = $1'`).
 - **It leaves:** a receipt with counts, invites, reports they filed (without their name), reports about
-  them (with their phone and device hashes), bans and the phone and device hashes of a ban, the account's
+  them (with their phone and device hashes), the copy of any chat of theirs somebody reported, bans and the phone and device hashes of a ban, the account's
   device name, and anything already sent to AI providers
   or written to server logs ([server/migrations/0007_erasure.sql:12] `counts, never rows.`).
 - **"Download everything"** exports their facts, all their messages with their clone, their profile,
@@ -199,8 +204,11 @@ Row-level security is the boundary. Each part of the server connects as its own 
 
 - **The reviewer** (accounts in `ADMIN_USER_IDS`) sees the reports queue (reason, the reporter's note, the
   reported person's first name; never who reported), the Numbers page, and the unmatched-wants list
-  (stage 11). No admin route reads messages, photos or facts
-  ([server/src/api/admin.ts:124] `SELECT r.id, r.reporter_id, r.reason, r.detail,`,
+  (stage 11). Since 2026-09-29 the reviewer can also read the chat a report is about, as copied when the
+  report was made, each line marked "Them" or "Reporter". No other admin route reads messages, and none
+  reads photos or facts
+  ([server/src/api/admin.ts:126] `SELECT r.id, r.reporter_id, r.reason, r.detail,`,
+  [server/src/api/admin.ts:200] `.get('/v1/admin/reports/:id/chat', async (c) => {`,
   [server/src/api/admin.ts:25] `import { hide, unhide } from '../photos/store.js';`).
 - **Logs** carry user ids, not message text; the redaction list covers text fields. In development the
   console SMS sender logs full numbers and codes ([server/src/log.ts:8] `redact: { paths: ['*.rawText', '*.raw_text', '*.text', 'req.headers.authorization']`).
@@ -235,7 +243,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately ([ARCHITECTURE.md:391] `from the first migration, on every table.`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
-  ([server/src/memory/erasure.ts:185] `// erasure is therefore a way out of a ban.`).
+  ([server/src/memory/erasure.ts:189] `// erasure is therefore a way out of a ban.`).
 
 ### Unverified
 

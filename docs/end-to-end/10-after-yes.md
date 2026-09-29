@@ -14,7 +14,7 @@ words are the date idea, written earlier (stage 7).
 | "Propose this date" | Sends "How about this: <idea>?" as the person's own message, once per chat | Code | `messages` row (kind `date_idea`) | The two people | [server/src/api/date-idea.ts:31] `How about this: ${idea}?` |
 | Two quiet days | A one-time nudge for each person | Code | `nudged_at` on each person's card row | Each person, once | [app/src/features/dm/date-idea.ts:17] `export const QUIET_LINE = 'Quiet for two days. Say hello?';` |
 | 72 hours after the introduction | The after-date check-in inside the chat | Code | `date_checkins` row per person | The person who answered; one bit is shared if both say "see again" | [server/src/api/dating.ts:121] `const MET_ASK_AFTER_MS = Number(process.env.MET_ASK_AFTER_HOURS ?? 72) * 60 * 60_000;` |
-| Block or report | Both are kept apart everywhere; a report is queued for the reviewer | Code | `blocks` row, and `reports` row | Reviewer sees reports | [server/src/messaging/store.ts:220] `await block(c, args.reporterId, args.reportedId);` |
+| Block or report | Both are kept apart everywhere; a report is queued for the reviewer, with a copy of their chat | Code | `blocks` row, `reports` row, and the chat's last 200 messages in `report_messages` | Reviewer sees reports and the copied chat | [server/src/messaging/store.ts:220] `await block(c, args.reporterId, args.reportedId);` |
 | Reviewer bans | Sessions revoked, hidden from everyone, phone and handset remembered | Code | `bans`, `ban_marks` | Reviewer | [server/migrations/0065_bans_stick.sql:70] `UPDATE device_sessions SET revoked_at = now() WHERE user_id = target AND revoked_at IS NULL;` |
 
 ### Arjun and Meera
@@ -128,15 +128,21 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   person's sheet in the town, and the check-in's "felt unsafe" step
   ([app/src/features/dm/thread-screen.tsx:226] `right={{ glyph: '⋯', label: 'Block or report', onPress: stop }}`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
-  are not told." ([app/src/features/safety/safety-sheet.tsx:50] `'You will never see each other again, anywhere in the app. They are not told.',`).
+  are not told." ([app/src/features/safety/safety-sheet.tsx:52] `'You will never see each other again, anywhere in the app. They are not told.',`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
   "Inappropriate messages or photos", "Fake profile", "Seems under 18", "Spam or a scam", "Made
   me feel unsafe", "Something else"; an optional note (up to 2,000 characters); the button
   "Report and block"; and "Something urgent? Write to" the support address
   ([app/src/features/safety/reasons.ts:17] `{ id: 'harassment', label: 'Harassment or threats' },`,
   [app/src/features/safety/reasons.ts:23] `{ id: 'other', label: 'Something else' },`,
-  [app/src/features/safety/safety-sheet.tsx:113] `Something urgent? Write to {SUPPORT_EMAIL}`).
+  [app/src/features/safety/safety-sheet.tsx:118] `Something urgent? Write to {SUPPORT_EMAIL}`).
   A report always blocks too ([server/src/messaging/store.ts:220] `await block(c, args.reporterId, args.reportedId);`).
+  Above the button: "If you have messages with Meera in Chats, the reviewer can read them." Since
+  2026-09-29 the report takes a copy of their chat when it is made -- the last 200 messages, each
+  marked "Them" or "Reporter", no names -- and the copy outlives both accounts, so deleting yours
+  does not delete what you said to the person who reported you
+  ([app/src/features/safety/safety-sheet.tsx:113] `If you have messages with {who} in Chats, the reviewer can read them.`,
+  [server/migrations/0080_reported_chat_kept.sql:73] `CREATE TRIGGER reports_keep_chat AFTER INSERT ON reports`).
 - **Effect, both ways:** the card, reveal, chat, town seat, photos and date idea disappear for
   both; sends are refused; they are never matched again
   ([server/migrations/0064_bans_and_apart.sql:54] `SELECT block_exists(me, other) OR is_banned(other)`).
@@ -149,7 +155,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 
 - **Who:** only accounts listed in `ADMIN_USER_IDS` (the reviewer), from the "Reports to review"
   screen in Settings: "Ban <name>?" / "They are signed out, taken out of the pool and hidden from
-  everybody, for good." ([app/src/features/admin/reports-screen.tsx:46] `'They are signed out, taken out of the pool and hidden from everybody, for good.',`).
+  everybody, for good." ([app/src/features/admin/reports-screen.tsx:54] `'They are signed out, taken out of the pool and hidden from everybody, for good.',`).
 - **What it does:** hides all their photos; records the ban; remembers the account's phone-number
   hash and the hashed id of every phone they signed in on; revokes every session; takes them
   out of the pool for good ([server/migrations/0065_bans_stick.sql:61] `SELECT banned, 'phone', u.phone_hmac FROM app_users u`,
