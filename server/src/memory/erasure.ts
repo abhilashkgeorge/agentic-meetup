@@ -186,6 +186,29 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
     deleted['chats held 30 days for the other person'] = chats.length;
   });
 
+  // "FELT UNSAFE" AND "PHOTOS WEREN'T THEM" ARE KEPT (the founder, 2026-09-29; 0083). The
+  // after-date answers go with the pair below; these two are what the reviewer's flags turn
+  // on, so deleting the account used to wipe them. Copied first -- the ones about this
+  // person and the ones they gave about others -- keyed to the phone and handsets of whom
+  // they are about, as the reports above are. Who answered stays, unless it is this person.
+  await eraseSession(async (c) => {
+    const kept = await c.query(
+      `INSERT INTO kept_checkin_flags (for_user, about_phone_hmac, about_device_hmacs,
+                                       felt_unsafe, photos_not_them, answered_at)
+       SELECT CASE WHEN k.for_user = $1 THEN NULL ELSE k.for_user END, u.phone_hmac,
+              COALESCE((SELECT array_agg(DISTINCT s.device_hmac) FROM device_sessions s
+                         WHERE s.user_id = u.id AND s.device_hmac IS NOT NULL), '{}'),
+              COALESCE(k.felt_safe = false, false), COALESCE(k.answers->>'photos' = 'no', false),
+              k.answered_at
+         FROM date_checkins k
+         JOIN app_users u ON u.id = k.about_user
+        WHERE (k.about_user = $1 OR k.for_user = $1) AND k.met
+          AND (k.felt_safe = false OR k.answers->>'photos' = 'no')`,
+      [ctx.userId],
+    );
+    deleted['safety answers kept (felt unsafe, photos not them)'] = kept.rowCount ?? 0;
+  });
+
   await tenantSession(ctx, async (c) => {
     for (const t of USER_TABLES) {
       const r = await c.query(`DELETE FROM ${t} WHERE user_id = $1`, [ctx.userId]);
@@ -207,6 +230,10 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
     const anon = await c.query(
       'UPDATE reports SET reporter_id = NULL WHERE reporter_id = $1', [ctx.userId]);
     deleted['reports (author removed)'] = anon.rowCount ?? 0;
+    // The same for a safety answer they gave about somebody who left before them (0083).
+    const anonFlags = await c.query(
+      'UPDATE kept_checkin_flags SET for_user = NULL WHERE for_user = $1', [ctx.userId]);
+    deleted['kept safety answers (author removed)'] = anonFlags.rowCount ?? 0;
 
     for (const { table, columns } of SHARED_TABLES) {
       const where = columns.map((col) => `${col} = $1`).join(' OR ');
@@ -256,7 +283,8 @@ export async function eraseUser(ctx: TenantCtx): Promise<ErasureResult> {
       if (Number(rows[0]?.n ?? 0) > 0) remaining.push(t);
     }
     for (const { table, columns } of [...SHARED_TABLES,
-                                      { table: 'reports', columns: ['reporter_id'] }]) {
+                                      { table: 'reports', columns: ['reporter_id'] },
+                                      { table: 'kept_checkin_flags', columns: ['for_user'] }]) {
       const where = columns.map((col) => `${col} = $1`).join(' OR ');
       const { rows } = await c.query<{ n: string }>(
         `SELECT count(*) AS n FROM ${table} WHERE ${where}`, [ctx.userId],

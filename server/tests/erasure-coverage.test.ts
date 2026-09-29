@@ -37,6 +37,9 @@ const KEPT: Record<string, string> = {
   // verification step re-counts these to prove it.
   invites: 'anonymised, not deleted: a spent invite stays spent, used by nobody we name',
   reports: 'anonymised, not deleted: the safety signal about the OTHER person survives',
+  // "Felt unsafe" and "photos weren't them" (0083): kept like a report, keyed to the
+  // phone of whom they are about; the answerer's own deletion takes their name off.
+  kept_checkin_flags: 'anonymised, not deleted: a safety answer about the OTHER person survives',
   // A ban must outlive the account, or erasing it is the way back in. The row loses its
   // user when the account goes (user_id ON DELETE SET NULL, 0064); what keeps it
   // pointing at somebody afterwards is the phone and the device (0065).

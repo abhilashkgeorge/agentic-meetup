@@ -866,7 +866,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
   days; then it goes to the reviewer with the report, keyed to the leaver's phone and handsets. After 30
   days it is deleted. A chat either had blocked is not held. The delete dialog and the privacy notice
   (version 3) say so (`server/migrations/0082_left_chats_held.sql:84`,
-  `server/src/memory/erasure.ts:290`). A chat somebody
+  `server/src/memory/erasure.ts:318`). A chat somebody
   **reported** is kept all the same (since 2026-09-29): the report took a copy when it was made -- the last
   200 messages, each marked only as said by the reported person or by the reporter -- and the copy stays
   with the report whoever deletes their account
@@ -880,10 +880,11 @@ Row-level security is the boundary. Each part of the server connects as its own 
   touching anything (`app/src/features/settings/delete-outcome.ts:12`)
   (`app/src/features/settings/settings-screen.tsx:292`,
   `server/src/memory/erasure.ts:35`,
-  `server/src/memory/erasure.ts:267`).
+  `server/src/memory/erasure.ts:295`).
 - **It leaves:** a receipt with counts, invites, reports they filed (without their name), reports about
   them (with their phone and device hashes), the copy of any chat of theirs somebody reported, each of
-  their chats held hidden for 30 days for the other person to report, bans and the phone and device hashes of a ban, the account's
+  their chats held hidden for 30 days for the other person to report, every "felt unsafe" and "photos:
+  no" answer about them or given by them (keyed to the phone of whom it is about), bans and the phone and device hashes of a ban, the account's
   device name, and anything already sent to AI providers
   or written to server logs (`server/migrations/0007_erasure.sql:12`).
 - **"Download everything"** exports their facts, all their messages with their clone, their profile,
@@ -933,7 +934,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately (`ARCHITECTURE.md:391`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
-  (`server/src/memory/erasure.ts:232`).
+  (`server/src/memory/erasure.ts:259`).
 
 ### Unverified
 
@@ -2082,8 +2083,13 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   with no identity answer of "no" counts); reviewer flags when 2+ people say the photos or age
   were wrong, or 1+ felt unsafe (no automatic action); the founder's numbers
   (`server/migrations/0058_date_checkins.sql:67`,
-  `server/migrations/0058_date_checkins.sql:104`).
+  `server/migrations/0083_checkin_flags_kept.sql:78`).
   Never written into anybody's facts.
+- **Kept after a deletion** (since 2026-09-29): every "felt unsafe" and "photos: no" answer about a
+  person who deletes their account, and those they gave about others (without their name), is kept,
+  keyed to the phone and handsets of whom it is about; the reviewer's flags count it again for the
+  account that comes back under that phone. Nothing else from a check-in is kept
+  (`server/migrations/0083_checkin_flags_kept.sql:38`).
 
 ### 10.5 Block and report
 

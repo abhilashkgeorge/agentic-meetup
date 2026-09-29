@@ -183,7 +183,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
   days; then it goes to the reviewer with the report, keyed to the leaver's phone and handsets. After 30
   days it is deleted. A chat either had blocked is not held. The delete dialog and the privacy notice
   (version 3) say so ([server/migrations/0082_left_chats_held.sql:84] `CREATE FUNCTION report_left_chat(hold uuid, why text, what text) RETURNS uuid`,
-  [server/src/memory/erasure.ts:290] `export async function forgetLeftChats(): Promise<number> {`). A chat somebody
+  [server/src/memory/erasure.ts:318] `export async function forgetLeftChats(): Promise<number> {`). A chat somebody
   **reported** is kept all the same (since 2026-09-29): the report took a copy when it was made -- the last
   200 messages, each marked only as said by the reported person or by the reporter -- and the copy stays
   with the report whoever deletes their account
@@ -197,10 +197,11 @@ Row-level security is the boundary. Each part of the server connects as its own 
   touching anything ([app/src/features/settings/delete-outcome.ts:12] `export function eraseMessage(outcome: EraseOutcome): { title: string; body: string } | null {`)
   ([app/src/features/settings/settings-screen.tsx:292] `subtitle="Cannot be undone. The clone and all of its memory go."`,
   [server/src/memory/erasure.ts:35] `'answer_sheets', 'unknown_asks', 'question_prompts', 'look_items', 'looks', 'photo_checks',`,
-  [server/src/memory/erasure.ts:267] `if (!remaining.length) await c.query('DELETE FROM app_users WHERE id = $1'`).
+  [server/src/memory/erasure.ts:295] `if (!remaining.length) await c.query('DELETE FROM app_users WHERE id = $1'`).
 - **It leaves:** a receipt with counts, invites, reports they filed (without their name), reports about
   them (with their phone and device hashes), the copy of any chat of theirs somebody reported, each of
-  their chats held hidden for 30 days for the other person to report, bans and the phone and device hashes of a ban, the account's
+  their chats held hidden for 30 days for the other person to report, every "felt unsafe" and "photos:
+  no" answer about them or given by them (keyed to the phone of whom it is about), bans and the phone and device hashes of a ban, the account's
   device name, and anything already sent to AI providers
   or written to server logs ([server/migrations/0007_erasure.sql:12] `counts, never rows.`).
 - **"Download everything"** exports their facts, all their messages with their clone, their profile,
@@ -250,7 +251,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - ARCHITECTURE.md says row-level security is on "every table". Invites, tenants, phone challenges and the
   erasure log have none, deliberately ([ARCHITECTURE.md:391] `from the first migration, on every table.`).
 - A code comment says erasure "is a way out of a ban". Since 0065 a ban keeps the phone hash, so it is not
-  ([server/src/memory/erasure.ts:232] `// erasure is therefore a way out of a ban.`).
+  ([server/src/memory/erasure.ts:259] `// erasure is therefore a way out of a ban.`).
 
 ### Unverified
 

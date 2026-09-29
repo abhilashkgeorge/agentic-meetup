@@ -119,8 +119,13 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   with no identity answer of "no" counts); reviewer flags when 2+ people say the photos or age
   were wrong, or 1+ felt unsafe (no automatic action); the founder's numbers
   ([server/migrations/0058_date_checkins.sql:67] `WHERE a.key IN ('photos', 'age', 'name', 'city') AND a.value = 'no'))`,
-  [server/migrations/0058_date_checkins.sql:104] `OR count(*) FILTER (WHERE c.felt_safe = false) >= 1;`).
+  [server/migrations/0083_checkin_flags_kept.sql:78] `OR count(*) FILTER (WHERE s.unsafe) >= 1;`).
   Never written into anybody's facts.
+- **Kept after a deletion** (since 2026-09-29): every "felt unsafe" and "photos: no" answer about a
+  person who deletes their account, and those they gave about others (without their name), is kept,
+  keyed to the phone and handsets of whom it is about; the reviewer's flags count it again for the
+  account that comes back under that phone. Nothing else from a check-in is kept
+  ([server/migrations/0083_checkin_flags_kept.sql:38] `CONSTRAINT kept_flag_is_a_flag CHECK (felt_unsafe OR photos_not_them)`).
 
 ### 10.5 Block and report
 
