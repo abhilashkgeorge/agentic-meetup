@@ -193,7 +193,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **The reviewer** (accounts in `ADMIN_USER_IDS`) sees the reports queue (reason, the reporter's note, the
   reported person's first name; never who reported), the Numbers page, and the unmatched-wants list
   (stage 11). No admin route reads messages, photos or facts
-  ([server/src/api/admin.ts:113] `SELECT r.id, r.reporter_id, r.reported_id, r.reason, r.detail,`,
+  ([server/src/api/admin.ts:121] `SELECT r.id, r.reporter_id, r.reported_id, r.reason, r.detail,`,
   [server/src/api/admin.ts:25] `import { hide, unhide } from '../photos/store.js';`).
 - **Logs** carry user ids, not message text; the redaction list covers text fields. In development the
   console SMS sender logs full numbers and codes ([server/src/log.ts:8] `redact: { paths: ['*.rawText', '*.raw_text', '*.text', 'req.headers.authorization']`).

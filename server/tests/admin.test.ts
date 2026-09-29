@@ -214,3 +214,24 @@ describe('acting on a report', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('the review queue\'s order', () => {
+  // Reviewed 2026-09-29: newest first put a spam report filed a minute after a threat
+  // above it. Negative control, run by hand and recorded in the commit: the order back
+  // to newest first -> this test fails.
+  it('lists the serious first, whatever came in since: under 18, harassment, inappropriate, then the rest', async () => {
+    const who = await person('ordered');
+    const ids: Record<string, string> = {};
+    // The serious ones filed EARLIER than the spam, so newest-first would put spam on top.
+    for (const [reason, minsAgo] of [['underage', 30], ['inappropriate', 20], ['harassment', 10], ['spam', 1]] as const) {
+      const r = await owner.query<{ id: string }>(
+        `INSERT INTO reports (reporter_id, reported_id, reason, detail, created_at)
+         VALUES ($1,$2,$3,'x', now() - make_interval(mins => $4)) RETURNING id`, [reporterId, who, reason, minsAgo]);
+      ids[reason] = r.rows[0]!.id;
+    }
+    const body = await (await get('/v1/admin/reports')).json() as { reports: { id: string }[] };
+    const mine = new Set(Object.values(ids));
+    const order = body.reports.map((r) => r.id).filter((id) => mine.has(id));
+    expect(order, 'the queue is not serious-first').toEqual([ids.underage, ids.harassment, ids.inappropriate, ids.spam]);
+  });
+});

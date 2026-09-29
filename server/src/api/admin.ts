@@ -66,6 +66,14 @@ interface ReportRow {
   banned: boolean;
 }
 
+/**
+ * Report reasons the reviewer sees first, most serious first: somebody under 18, somebody
+ * who felt unsafe, harassment (threats among it), inappropriate (sexual among it). Before
+ * 2026-09-29 the queue was newest first, and a spam report filed a minute after a threat
+ * sat above it. Every other reason follows, newest first.
+ */
+export const SERIOUS_FIRST: readonly string[] = ['underage', 'felt_unsafe', 'harassment', 'inappropriate'];
+
 export const adminRoutes = new Hono()
   /**
    * The queue. Open reports first, because those are the ones with somebody waiting.
@@ -131,9 +139,10 @@ export const adminRoutes = new Hono()
                 is_banned(r.reported_id)                                AS banned
            FROM reports r
           WHERE ($1::bool OR r.reviewed_at IS NULL)
-          ORDER BY r.reviewed_at NULLS FIRST, r.created_at DESC
+          -- Waiting first; among them the serious first (SERIOUS_FIRST), then newest.
+          ORDER BY r.reviewed_at NULLS FIRST, array_position($2::text[], r.reason) NULLS LAST, r.created_at DESC
           LIMIT 200`,
-        [all],
+        [all, SERIOUS_FIRST],
       );
       return rows;
     });

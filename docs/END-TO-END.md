@@ -870,7 +870,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **The reviewer** (accounts in `ADMIN_USER_IDS`) sees the reports queue (reason, the reporter's note, the
   reported person's first name; never who reported), the Numbers page, and the unmatched-wants list
   (stage 11). No admin route reads messages, photos or facts
-  (`server/src/api/admin.ts:113`,
+  (`server/src/api/admin.ts:121`,
   `server/src/api/admin.ts:25`).
 - **Logs** carry user ids, not message text; the redaction list covers text fields. In development the
   console SMS sender logs full numbers and codes (`server/src/log.ts:8`).
@@ -2507,8 +2507,8 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:93` |
 | **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:236` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable | Everyone | `app/src/features/settings/connect-screen.tsx:36` |
-| **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban" | Reviewer | `app/src/features/settings/settings-screen.tsx:270` |
-| **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:78` |
+| **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only) | Reviewer | `app/src/features/settings/settings-screen.tsx:270`, `server/src/api/admin.ts:75` |
+| **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:86` |
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:39` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
