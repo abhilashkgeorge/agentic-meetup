@@ -26,7 +26,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Look } from '@clone/shared';
 import { LOOKS, SKULL_MIDDLE, buildScale, partsOf, underHat, type LookKey, type LookPieces, type Part } from '../src/features/world/character';
 import { buildBag, buildExtras, clothOf, type BagKind, type Bone, type Manifest } from '../src/features/world/character-mesh';
-import { sitPose } from '../src/features/world/crowd-gpu';
+import { ridePose, sitPose } from '../src/features/world/crowd-gpu';
 
 export const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const ASSETS = join(APP, 'assets', 'characters');
@@ -56,21 +56,22 @@ export interface People {
  * second in); `stored` leaves it in the pose the file keeps, arms down and apart,
  * which is how the builder's pictures of single pieces have always been drawn.
  */
-export async function loadPeople(pose: 'idle' | 'stored' | 'sit'): Promise<People> {
+export async function loadPeople(pose: 'idle' | 'stored' | 'sit' | { ride: number }): Promise<People> {
   const manifest = JSON.parse(readFileSync(join(ASSETS, 'people.json'), 'utf8')) as Manifest;
   const buf = readFileSync(join(ASSETS, 'people.glb'));
   const gltf = await new Promise<{ scene: THREE.Object3D; animations: THREE.AnimationClip[] }>((res, rej) =>
     new GLTFLoader().parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, '', res as never, rej));
-  if (pose === 'idle' || pose === 'sit') {
+  if (pose !== 'stored') {
     const mixer = new THREE.AnimationMixer(gltf.scene);
     mixer.clipAction(gltf.animations.find((c) => c.name === 'idle')!).play();
-    mixer.setTime(pose === 'sit' ? 0 : 0.5);
+    mixer.setTime(pose === 'idle' ? 0.5 : 0);
   }
   gltf.scene.updateMatrixWorld(true);
-  if (pose === 'sit') {
+  if (pose === 'sit' || typeof pose === 'object') {
     const bones = new Map<string, THREE.Bone>();
     gltf.scene.traverse((o) => { if ((o as THREE.Bone).isBone) bones.set(o.name, o as THREE.Bone); });
-    sitPose(gltf.scene, (n) => bones.get(n)!);
+    if (pose === 'sit') sitPose(gltf.scene, (n) => bones.get(n)!);
+    else ridePose(gltf.scene, (n) => bones.get(n)!, pose.ride);
   }
   const byName = new Map<string, THREE.SkinnedMesh>();
   gltf.scene.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) byName.set(o.name, o as THREE.SkinnedMesh); });

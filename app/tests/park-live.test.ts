@@ -22,6 +22,7 @@ import { STARTER, type Look, type ParkPerson } from '@clone/shared';
 import { BUBBLE_MS, bubbles, mergePeople, useParkLive, type Line } from '../src/features/world/park-live';
 import { LIVE_CATCH_UP, LIVE_JUMP, WorldSim } from '../src/features/world/sim';
 import { SEAT, benchFor, seatOn } from '../src/features/world/ride';
+import { BIKE_PACE } from '../src/features/world/bike';
 
 const REF = (n: number) => n.toString(16).padStart(32, '0');
 const look: Look = { ...STARTER, hat: 3 };
@@ -148,6 +149,34 @@ describe('talking with somebody in the park', () => {
     expect(src).toMatch(/export function parkStand\(\): void \{[^}]*gotBench\(null\)/);
   });
 
+  it('gets you on a bicycle and off it: off to sit on a bench, off for the car, never on while either', () => {
+    const s = useParkLive.getState();
+    s.setIn(true);
+    s.setRiding(true);
+    expect(useParkLive.getState().riding).toBe(true);
+    s.gotPaired(REF(11), null); s.gotBench(1);
+    expect(useParkLive.getState().riding, 'sat on a bench astride a bike').toBe(false);
+    s.setRiding(true);
+    expect(useParkLive.getState().riding, 'got on a bike sitting on a bench').toBe(false);
+    s.gotParted();
+    s.setRiding(true);
+    s.gotPaired(REF(12), [3, 4]);                     // you asked: the car takes you
+    expect(useParkLive.getState().riding, 'driven over on a bike').toBe(false);
+    s.setRiding(true);
+    expect(useParkLive.getState().riding, 'got on a bike in the car').toBe(false);
+    s.rode();
+    s.setRiding(true);
+    expect(useParkLive.getState().riding).toBe(true);
+    s.setIn(false);
+    expect(useParkLive.getState().riding, 'still on a bike after leaving the park').toBe(false);
+  });
+
+  it('carries who is riding', () => {
+    const got = mergePeople(new Map(), [{ ...at(REF(1), 1, 1, true), riding: true }, at(REF(2), 2, 2, true)]);
+    expect(got.get(REF(1))!.riding).toBe(true);
+    expect(got.get(REF(2))!.riding).toBe(false);
+  });
+
   it('carries who is sitting', () => {
     const got = mergePeople(new Map(), [{ ...at(REF(1), 1, 1, true), sitting: true }, at(REF(2), 2, 2, true)]);
     expect(got.get(REF(1))!.sitting).toBe(true);
@@ -199,6 +228,53 @@ describe('a bench in the park sim', () => {
     sim.live(REF(3), look, 1.2, 1, 0.4, true, false);
     sim.step(1 / 60);
     expect(sim.get(REF(3))!.state).toBe('walking');
+  });
+});
+
+describe('a bicycle in the park sim', () => {
+  it('is wider to steer: a gap a walker slips through is too narrow to ride through', () => {
+    // Two solids with a gap between them wider than a person and narrower than a bike.
+    const sim = new WorldSim(5);
+    sim.setMap({
+      central: 'p', areas: { p: { home: [0, 0], centre: [0, 0], radius: 10, spots: [[0, 0]], polygon: [] } },
+      solids: [{ x: -0.13, z: 1, r: 0.08, h: 1 }, { x: 0.13, z: 1, r: 0.08, h: 1 }],
+    });
+    sim.upsert([{ ref: 'you', kind: 'you', seed: 7, area: null }]);
+    sim.place('you', 0, 0.5);
+    sim.drive('you', 0, 0.3);
+    for (let i = 0; i < 180; i++) sim.step(1 / 60);
+    expect(sim.get('you')!.z, 'a walker could not get through').toBeGreaterThan(1.2);
+    sim.place('you', 0, 0.5);
+    sim.setRiding('you', true);
+    sim.drive('you', 0, 0.3);
+    for (let i = 0; i < 180; i++) sim.step(1 / 60);
+    expect(sim.get('you')!.z, 'rode through a gap narrower than a bike').toBeLessThan(1);
+  });
+
+  it('gets you off to sit, stands you up to get on, and shows a live rider riding', () => {
+    const sim = new WorldSim(5);
+    sim.upsert([{ ref: 'you', kind: 'you', seed: 7, area: null }]);
+    sim.place('you', 0, 0.4);
+    sim.setRiding('you', true);
+    sim.sitOn('you', { x: 0, z: 0, facing: 0 });
+    expect(sim.get('you')!.riding).toBe(false);
+    for (let i = 0; i < 600 && sim.get('you')!.state !== 'sitting'; i++) sim.step(1 / 60);
+    expect(sim.get('you')!.state).toBe('sitting');
+    sim.setRiding('you', true);
+    expect(sim.get('you')!.state, 'got on a bike sitting down').toBe('idle');
+    sim.live(REF(4), look, 1, 1, 0, true, false, true);
+    expect(sim.get(REF(4))!.riding).toBe(true);
+    sim.live(REF(4), look, 1.1, 1, 0, true, false, false);
+    expect(sim.get(REF(4))!.riding).toBe(false);
+  });
+
+  it('sends the server that you ride, and rides at BIKE_PACE times a walk (SOURCE SHAPE: the canvas needs GL)', () => {
+    const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const presence = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-presence.ts'), 'utf8'));
+    expect(presence).toContain('parkMove(me.x, me.z, me.facing, moving, riding);');
+    const canvas = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8'));
+    expect(canvas).toContain("* (walking && live.get('you')?.riding ? BIKE_PACE : 1)");
+    expect(BIKE_PACE).toBeGreaterThan(1.5);
   });
 });
 

@@ -316,6 +316,8 @@ export interface SimAgent {
   hidden?: boolean;
   /** The bench seat they are walking to, or sitting on (`sitOn`). */
   seat?: { x: number; z: number; facing: number };
+  /** On a bicycle (bike.ts): drawn on one, pedalling as they go, and wider to steer. */
+  riding?: boolean;
 }
 
 export interface AgentInput {
@@ -389,6 +391,12 @@ const STROLL = 7;
  * copy by hand is a constant that drifts.
  */
 export const FOOT = 0.035;
+/**
+ * How wide somebody on a bicycle is on the ground: a bike is 1.6 m long, so its wheels
+ * reach most of a metre from the rider's middle. A little under that, as with FOOT, so
+ * a gap the bike plainly fits through is not refused.
+ */
+export const RIDE_FOOT = 0.06;
 /** How far off the straight line an agent will look for a way past, in radians. */
 const DETOURS = [0.4, 0.85, 1.35, 1.9, 2.4] as const;
 /** How long an agent keeps going round a building the same way once it has committed. */
@@ -574,7 +582,7 @@ export class WorldSim {
    * a few times a second, and a jump each time would look like a stutter. Somebody the
    * square was drawing as an agent becomes the person: one body each, never two.
    */
-  live(ref: string, look: Look, x: number, z: number, facing: number, moving: boolean, sitting = false): void {
+  live(ref: string, look: Look, x: number, z: number, facing: number, moving: boolean, sitting = false, riding = false): void {
     const have = this.byRef.get(ref);
     if (have) {
       if (have.kind !== 'live') {
@@ -582,6 +590,7 @@ export class WorldSim {
         this.visits.delete(ref);
       }
       have.look = look; have.tx = x; have.tz = z; have.liveFacing = facing; have.liveMoving = moving; have.liveSitting = sitting;
+      have.riding = riding;
       // One steady pace per word from the server, set to arrive as the next one does:
       // closing a share of the gap each frame instead eased in, and was always late.
       have.speed = Math.max(WALK, Math.hypot(x - have.x, z - have.z) / LIVE_CATCH_UP);
@@ -591,7 +600,7 @@ export class WorldSim {
       ref, kind: 'live', seed: seedOf(ref), ghost: false, look, area: null, x, z, tx: x, tz: z, speed: WALK,
       facing, state: moving ? 'walking' : 'idle', wait: 0, stuck: 0, dodge: 1, dodgeFor: 0,
       driveX: 0, driveZ: 0, partner: null, bubble: null, ring: false, liveFacing: facing, liveMoving: moving,
-      liveSitting: sitting,
+      liveSitting: sitting, riding,
     });
     this.order.push(ref);
     this.list = null;
@@ -610,12 +619,25 @@ export class WorldSim {
   }
 
   /**
+   * On a bicycle or off it. Getting on stands you up off a bench first; nothing else
+   * changes -- you are where you were, facing where you faced.
+   */
+  setRiding(ref: string, on: boolean): void {
+    const a = this.byRef.get(ref);
+    if (!a || !!a.riding === on) return;
+    if (on && a.seat) this.standUp(ref);
+    a.riding = on;
+  }
+
+  /**
    * Walk to a bench and sit on it: to the spot in front of the seat at a walk -- the
    * bench itself is solid, nobody walks into it -- then onto the seat, facing out.
+   * Off the bicycle first: nobody sits on a bench astride one.
    */
   sitOn(ref: string, seat: { x: number; z: number; facing: number }): void {
     const a = this.byRef.get(ref);
     if (!a) return;
+    a.riding = false;
     const [fx, fz] = frontOf(seat);
     a.driveX = 0; a.driveZ = 0;
     // Briskly: somebody is waiting to talk (at a stroll, a bench forty metres off took
@@ -923,12 +945,13 @@ export class WorldSim {
    * stopping dead reads as the controls having broken.
    */
   private push(a: SimAgent, dx: number, dz: number): void {
-    const free = (x: number, z: number) => !this.ground.blocked(x, z, FOOT);
+    const pad = a.riding ? RIDE_FOOT : FOOT;
+    const free = (x: number, z: number) => !this.ground.blocked(x, z, pad);
     if (free(a.x + dx, a.z + dz)) { a.x += dx; a.z += dz; return; }
     if (dx !== 0 && free(a.x + dx, a.z)) { a.x += dx; return; }
     if (dz !== 0 && free(a.x, a.z + dz)) { a.z += dz; return; }
     // Wedged: let them out the way they came in rather than trap them.
-    const out = this.ground.escape(a.x, a.z, FOOT);
+    const out = this.ground.escape(a.x, a.z, pad);
     if (out) { a.x += out[0] * Math.hypot(dx, dz); a.z += out[1] * Math.hypot(dx, dz); }
   }
 

@@ -264,8 +264,8 @@ export function parkLeave(): void {
   push({ type: 'park.leave' });
 }
 
-export function parkMove(x: number, z: number, facing: number, moving: boolean): void {
-  push({ type: 'park.move', x, z, facing, moving });
+export function parkMove(x: number, z: number, facing: number, moving: boolean, riding = false): void {
+  push({ type: 'park.move', x, z, facing, moving, ...(riding ? { riding: true } : {}) });
 }
 
 /** Find someone free to talk to: the server picks and asks them. */

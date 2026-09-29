@@ -24,7 +24,7 @@ import { getFps30, getGlFuse, setGlFuse, strikeGlFuse } from '../../lib/storage'
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import { setupRoute } from '../profile/fields';
-import { Screen, useIsDark, usePalette } from '../../components/ui';
+import { Screen, space, useIsDark, usePalette } from '../../components/ui';
 import { FPS_METER, FpsMeter, feedFps } from '../dev/fps';
 import { bubblesForCard, pickExchange } from '../matches/exchange';
 import { AgentSheet } from './agent-sheet';
@@ -46,7 +46,8 @@ import { CloneSheet } from './clone-sheet';
 import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
 import { useParkPresence } from './park-presence';
-import { InviteCard, LiveSheet, ParkActions, ParkChat, SpeechBubbles } from './park-hud';
+import { BikeButton, InviteCard, LiveSheet, ParkActions, ParkChat, SpeechBubbles } from './park-hud';
+import { STICK_RING } from './stick';
 import { useParkLive } from './park-live';
 import { gardenSpots } from './garden';
 import { MAP, spotsFrom } from './map';
@@ -423,6 +424,7 @@ export default function WorldScreen() {
             <ParkActions venueSim={venueSim} benches={venueLayout.benches} />
           </ParkChat>
           <InviteCard />
+          <BikeButton left={space.screen} bottom={Math.max(insets.bottom, space.lg) + space.lg + STICK_RING + space.md} />
         </>
       )}
       {/* Over everything, including the HUD, and under nothing. Debug builds only. */}

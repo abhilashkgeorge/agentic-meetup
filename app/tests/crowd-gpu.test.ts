@@ -77,7 +77,7 @@ describe('the baked animation', () => {
     const names = sample.skeleton.bones.map((b) => b.name);
     const bake = gpu.bakeClips(gltf.scene, names, sample.skeleton.boneInverses,
       new Map(gltf.animations.map((c) => [c.name, c])));
-    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames);
+    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames + bake.ride.frames);
 
     // three's own answer: the same clip on the model's own skeleton, at the same time.
     const mixer = new THREE.AnimationMixer(gltf.scene);
@@ -452,6 +452,27 @@ describe('a frame', () => {
     expect(nearBuf[2 * gpu.STRIDE]).toBe(Math.fround(people[2]!.x));
     expect(nearBuf[2 * gpu.STRIDE + 6], 'a walking person stands still').toBe(1);
     expect(nearBuf[3 * gpu.STRIDE + 6], 'an idle person walks').toBe(0);
+    crowd.dispose();
+  });
+
+  it('marks a rider as riding -- ghost or not, and whatever their state says -- and a sitter as sitting', async () => {
+    const crowd = gpu.makeGpuCrowd(await fresh(), manifest);
+    const people: Gpu.CrowdPerson[] = [
+      { ref: 'r', x: 0.1, z: 0, facing: 0, look: look(), state: 'walking', ghost: false, seed: 1, riding: true },
+      { ref: 'g', x: 0.2, z: 0, facing: 0, look: look(), state: 'idle', ghost: true, seed: 2, riding: true },
+      { ref: 's', x: 0.3, z: 0, facing: 0, look: look(), state: 'sitting', ghost: false, seed: 3 },
+      { ref: 'w', x: 0.4, z: 0, facing: 0, look: look(), state: 'walking', ghost: false, seed: 4 },
+    ];
+    crowd.update(people, people.length, frame());
+    const buf = crowd.buffers[0]!.array as Float32Array;
+    expect([0, 1, 2, 3].map((i) => buf[i * gpu.STRIDE + 7])).toEqual([4, 5, 2, 0]);
+    // The shader: riding is 4 and up, sitting is 2 without it; the cranks turn only
+    // while the rider moves (the walk weight), and rest on the first frame otherwise.
+    const src = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'crowd-gpu.ts'), 'utf8');
+    expect(src).toContain('bool crowdRiding = aAnim.w > 3.5;');
+    expect(src).toContain('bool crowdSitting = !crowdRiding && aAnim.w > 1.5;');
+    expect(src).toContain('int crowdRideRow = int(uRide.x + (aAnim.z > 0.5 ? mod(floor((uTime + aAnim.x) * uFps), uRide.y) : 0.0));');
+    expect(src).toContain('mat4 crowdSkin = crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))');
     crowd.dispose();
   });
 

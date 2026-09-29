@@ -42,6 +42,8 @@ import { PERSON } from '../src/features/world/camera';
 import { MODEL_SCALE } from '../src/features/world/character-mesh';
 import { CUBBON_PATH_W, CUBBON_ROAD_W, METRES_PER_UNIT as M } from '../src/features/world/cubbon';
 import { buildCar } from '../src/features/world/car-mesh';
+import { BIKE } from '../src/features/world/bike';
+import { buildBike } from '../src/features/world/bike-mesh';
 import { buildAuto, buildBus, buildTwoWheeler } from '../src/features/world/vehicle-mesh';
 import { buildGarden } from '../src/features/world/garden-mesh';
 import { gardenSpots } from '../src/features/world/garden';
@@ -295,6 +297,22 @@ describe('the fence, and the traffic beyond it', () => {
     expect(long(auto)).toBeGreaterThan(2.4); expect(long(auto)).toBeLessThan(3.0);
     expect(long(bus)).toBeGreaterThan(10); expect(long(bus)).toBeLessThan(12.5);
     expect(bus.max.y * M).toBeGreaterThan(2.9); expect(bus.max.y * M).toBeLessThan(3.4);
+  });
+});
+
+describe('a bicycle', () => {
+  it('is a bicycle\'s size: 1.45 to 1.9 m long, wheels 0.55 to 0.72 m across, its saddle 0.75 to 1 m up', () => {
+    const b = buildBike();
+    b.computeBoundingBox();
+    const box = b.boundingBox!;
+    expect((box.max.z - box.min.z) * K * M).toBeGreaterThan(1.45);
+    expect((box.max.z - box.min.z) * K * M).toBeLessThan(1.9);
+    expect(BIKE.wheelR * 2 * K * M).toBeGreaterThan(0.55);
+    expect(BIKE.wheelR * 2 * K * M).toBeLessThan(0.72);
+    expect(BIKE.saddle[1] * K * M).toBeGreaterThan(0.75);
+    expect(BIKE.saddle[1] * K * M).toBeLessThan(1.0);
+    // Its wheels on the ground.
+    expect(box.min.y).toBeCloseTo(0, 2);
   });
 });
 

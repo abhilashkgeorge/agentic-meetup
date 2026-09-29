@@ -55,6 +55,9 @@ import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
 import { Viewport, nearestFirst, pickAlong, visible } from './visible';
 import { buildCar } from './car-mesh';
+import { BIKE_PACE } from './bike';
+import { buildBike } from './bike-mesh';
+import { buildScale } from './character';
 import type { CityPlan } from './city-plan';
 import { buildCity, type BuiltCity } from './city-mesh';
 import { besideThem, rideAt, type Ride } from './ride';
@@ -684,6 +687,8 @@ export function WorldCanvas(props: WorldCanvasProps) {
 const head = new THREE.Vector3();
 /** How tall a body stands in the town: the model is 1.87 units (character-mesh.ts). */
 const BODY_H = 1.87 * MODEL_SCALE * PERSON;
+/** The most bicycles drawn at once: the nearest riders. */
+const BIKES_DRAWN = 48;
 /**
  * Where the walking camera stops drawing: just past the end of the mist, so nothing
  * is clipped while it can still be seen. It was 90, drawing forty-five units of
@@ -774,6 +779,18 @@ function Town({
     return m;
   }, [colors.accent]);
   useEffect(() => () => { car.geometry.dispose(); (car.material as THREE.Material).dispose(); }, [car]);
+  // The bicycles under whoever is riding one (bike.ts): one mesh, a bike per rider drawn.
+  const bikes = useMemo(() => {
+    const m = new THREE.InstancedMesh(buildBike(), new THREE.MeshLambertMaterial({ vertexColors: true }), BIKES_DRAWN);
+    m.name = 'bikes';
+    m.count = 0;
+    m.frustumCulled = false;
+    m.raycast = () => {};
+    // Its count changes every frame (tests/canvas-size.test.ts).
+    m.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
+    return m;
+  }, []);
+  useEffect(() => () => { bikes.geometry.dispose(); (bikes.material as THREE.Material).dispose(); }, [bikes]);
   const furniture = useRef<BuiltVenueFurniture | null>(null);
   useEffect(() => {
     let alive = true;
@@ -1016,7 +1033,8 @@ function Town({
       if (push > 0.08) {
         const [dx, dz] = driveVector(jx, jy, cam.yaw);
         const len = Math.hypot(dx, dz) || 1;
-        const pace = walkSpeedFor(walking ? layout.radius : 26);
+        // On a bicycle, BIKE_PACE times a walk.
+        const pace = walkSpeedFor(walking ? layout.radius : 26) * (walking && live.get('you')?.riding ? BIKE_PACE : 1);
         live.drive('you', (dx / len) * pace * push, (dz / len) * pace * push);
       } else live.drive('you', 0, 0);
     }
@@ -1165,6 +1183,22 @@ function Town({
       crowdFrame.dt = clamped;
       crowdFrame.scale = PERSON;
       bodied.current = bodies.update(shown, used, crowdFrame);
+      // A bicycle under each rider the crowd drew, nearest first, at the rider's own build.
+      let nb = 0;
+      for (let i = 0; walking && i < bodied.current && nb < BIKES_DRAWN; i++) {
+        const a = shown[i]!;
+        if (!a.riding) continue;
+        const [bx, tall, bz] = buildScale(a.look);
+        const k = PERSON * MODEL_SCALE;
+        dummy.position.set(a.x, 0, a.z);
+        dummy.rotation.set(0, a.facing, 0);
+        dummy.scale.set(k * bx, k * tall, k * bz);
+        dummy.updateMatrix();
+        bikes.setMatrixAt(nb++, dummy.matrix);
+      }
+      bikes.count = nb;
+      bikes.visible = nb > 0;
+      if (nb) bikes.instanceMatrix.needsUpdate = true;
     } else if (caps) {
       // THE FALLBACK: the model could not be read, so capsules, as the town was drawn
       // before it had bodies. Solid people first and ghosts after, so each set of
@@ -1350,6 +1384,7 @@ function Town({
       {city && <primitive object={city.group} />}
       <primitive object={furnitureHolder} />
       <primitive object={car} />
+      <primitive object={bikes} />
       <primitive object={crowdHolder} />
       <primitive object={picker} onClick={tapPerson} />
       {meshes.capsules?.solid.all.map((p, i) => <primitive key={`s${i}`} object={p.mesh} />)}

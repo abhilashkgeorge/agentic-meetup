@@ -42,6 +42,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneRig } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { HARD_HAT, lookKey, type Look } from '@clone/shared';
+import { BIKE, RIDE_FRAMES, WRIST_ON_GRIP, ankleOn } from './bike';
 import {
   EXTRA_OWN_COLOUR, FITTED_HAIR, HAT_INSIDE, HEAD_BIND, LOOKS, SCALP, SKULL_MIDDLE, buildScale, coloursOf, hardHatSet, partsOf, roleOf,
   type ExtraKind, type LookKey, type LookPieces, type Role,
@@ -132,6 +133,8 @@ export interface Bake {
   idle: { row: number; frames: number };
   /** One still frame: sitting on a bench (sitPose). */
   sit: { row: number; frames: number };
+  /** One turn of the cranks on a bicycle (ridePose); the first frame is the still one. */
+  ride: { row: number; frames: number };
 }
 
 /**
@@ -185,6 +188,114 @@ export function sitPose(root: THREE.Object3D, bone: (name: string) => THREE.Bone
   root.updateMatrixWorld(true);
 }
 
+/** Turn `b` about its own joint so that the world point `from` comes to lie towards `to`. */
+function aimBone(b: THREE.Bone, from: THREE.Vector3, to: THREE.Vector3): void {
+  const pivot = b.getWorldPosition(new THREE.Vector3());
+  const q = new THREE.Quaternion().setFromUnitVectors(from.clone().sub(pivot).normalize(), to.clone().sub(pivot).normalize());
+  const parentQ = b.parent!.getWorldQuaternion(new THREE.Quaternion());
+  const worldQ = b.getWorldQuaternion(new THREE.Quaternion());
+  b.quaternion.copy(parentQ.invert().multiply(q.multiply(worldQ)));
+  b.updateMatrixWorld(true);
+}
+
+/** Turn `b` in the world by `q` about its own joint. */
+function turnBone(b: THREE.Bone, q: THREE.Quaternion): void {
+  const parentQ = b.parent!.getWorldQuaternion(new THREE.Quaternion());
+  const worldQ = b.getWorldQuaternion(new THREE.Quaternion());
+  b.quaternion.copy(parentQ.invert().multiply(q.clone().multiply(worldQ)));
+  b.updateMatrixWorld(true);
+}
+
+/**
+ * A limb of two bones reaching for a point: the end -- a point fixed in the lower bone,
+ * `end` in its own frame -- is brought to `target`, the joint between bending towards
+ * `pole`. The bones keep their lengths; a target out of reach is reached for.
+ */
+function reach(upper: THREE.Bone, lower: THREE.Bone, end: THREE.Vector3, target: THREE.Vector3, pole: THREE.Vector3): void {
+  const a = upper.getWorldPosition(new THREE.Vector3());
+  const b = lower.getWorldPosition(new THREE.Vector3());
+  const c = lower.localToWorld(end.clone());
+  const l1 = a.distanceTo(b), l2 = b.distanceTo(c);
+  const toT = target.clone().sub(a);
+  const d = Math.min(l1 + l2 - 1e-4, Math.max(Math.abs(l1 - l2) + 1e-4, toT.length()));
+  const dir = toT.normalize();
+  const cos = (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d);
+  const sin = Math.sqrt(Math.max(0, 1 - cos * cos));
+  const side = pole.clone().sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
+  const joint = a.clone().add(dir.clone().multiplyScalar(l1 * cos)).add(side.multiplyScalar(l1 * sin));
+  aimBone(upper, b, joint);
+  aimBone(lower, lower.localToWorld(end.clone()), target);
+}
+
+/** How far the hip joints ride above the saddle: the seat of the trousers is under them. */
+const SADDLE_TO_HIP = 0.115;
+/** How far forward a rider leans, from the waist, and how much of it the neck takes back. */
+const LEAN = 0.42;
+const LOOK_UP = 0.65;
+
+/**
+ * Riding a bicycle, `phase` of a turn of the cranks round (0 to 1): the pack has no such
+ * clip, so, like sitPose, it is made from the idle's first frame -- and from the same
+ * points the bicycle is drawn from (bike.ts BIKE), so the rider is on it:
+ *   - the hips squared to the front (the idle frame has them turned 27 degrees, which
+ *     standing reads as a relaxed stance and on a bike as falling off), the upper body
+ *     left as it was;
+ *   - the body lifted and moved back until the hip joints ride SADDLE_TO_HIP over the
+ *     saddle;
+ *   - a lean forward from the waist, the neck taking most of it back so the rider
+ *     looks down the road;
+ *   - each hand on its grip, the elbows bent back and out;
+ *   - each ankle over its pedal as the cranks go round, the knees forward -- and the
+ *     feet, which in this rig hang off the root, put where the ankles are.
+ */
+export function ridePose(root: THREE.Object3D, bone: (name: string) => THREE.Bone, phase: number): void {
+  root.updateMatrixWorld(true);
+  const at = (b: THREE.Bone) => b.getWorldPosition(new THREE.Vector3());
+  const body = bone('Body'), hips = bone('Hips'), abdomen = bone('Abdomen'), neck = bone('Neck');
+  const sides = ['L', 'R'] as const;
+  const legs = sides.map((s) => ({ s, upper: bone(`UpperLeg${s}`), lower: bone(`LowerLeg${s}`), foot: bone(`Foot${s}`) }));
+  const arms = sides.map((s) => ({ s, upper: bone(`UpperArm${s}`), lower: bone(`LowerArm${s}`), wrist: bone(`Wrist${s}`) }));
+  // Each limb's end in its own lower bone's frame, standing: the shin's ankle (the foot
+  // hangs off the root, so it is no guide once the leg moves) and the forearm's wrist.
+  const shinEnd = legs.map(({ lower, foot }) => lower.worldToLocal(at(foot)));
+  const armEnd = arms.map(({ lower, wrist }) => lower.worldToLocal(at(wrist)));
+
+  // Square the hips, keep the rest of the body where it faced.
+  const across = at(legs[0]!.upper).sub(at(legs[1]!.upper));
+  const hipsWorld = hips.getWorldQuaternion(new THREE.Quaternion());
+  turnBone(body, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(across.z, across.x)));
+  hips.quaternion.copy(body.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(hipsWorld));
+  root.updateMatrixWorld(true);
+
+  // Onto the saddle.
+  const mid = at(legs[0]!.upper).add(at(legs[1]!.upper)).multiplyScalar(0.5);
+  const want = new THREE.Vector3(BIKE.saddle[0], BIKE.saddle[1] + SADDLE_TO_HIP, BIKE.saddle[2] + 0.02);
+  const bodyAt = at(body).add(want.sub(mid));
+  body.position.copy(body.parent!.worldToLocal(bodyAt));
+  root.updateMatrixWorld(true);
+
+  // Lean from the waist; look up the road.
+  turnBone(abdomen, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), LEAN));
+  turnBone(neck, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -LEAN * LOOK_UP));
+  root.updateMatrixWorld(true);
+
+  // Hands on the bars, elbows back and out.
+  arms.forEach(({ s, upper, lower }, i) => {
+    const x = s === 'L' ? 1 : -1;
+    const wrist = new THREE.Vector3(BIKE.grip[0] * x + WRIST_ON_GRIP[0], BIKE.grip[1] + WRIST_ON_GRIP[1], BIKE.grip[2] + WRIST_ON_GRIP[2]);
+    reach(upper, lower, armEnd[i]!, wrist, new THREE.Vector3(0.6 * x, -0.3, -1));
+  });
+
+  // Feet on the pedals, knees forward, and the feet themselves moved to the ankles.
+  legs.forEach(({ s, upper, lower, foot }, i) => {
+    const ankle = new THREE.Vector3(...ankleOn(s, phase));
+    reach(upper, lower, shinEnd[i]!, ankle, new THREE.Vector3(s === 'L' ? 0.15 : -0.15, 0.25, 1));
+    foot.position.copy(foot.parent!.worldToLocal(lower.localToWorld(shinEnd[i]!.clone())));
+    foot.updateMatrixWorld(true);
+  });
+  root.updateMatrixWorld(true);
+}
+
 /**
  * Every bone's skinning matrix -- bone world matrix times its inverse bind matrix,
  * exactly what three's Skeleton.update computes -- for every frame of walk and idle.
@@ -211,7 +322,7 @@ export function bakeClips(
   const w = framesOf(walk);
   const i = framesOf(idle);
   const width = bones.length * 4;
-  const data = new Float32Array(width * (w + i + 1) * 4);
+  const data = new Float32Array(width * (w + i + 1 + RIDE_FRAMES) * 4);
   const mixer = new THREE.AnimationMixer(root);
   const m = new THREE.Matrix4();
   let row = 0;
@@ -234,16 +345,35 @@ export function bakeClips(
   still.reset().play();
   mixer.setTime(0);
   mixer.stopAllAction();
-  sitPose(root, (n) => {
+  const need = (n: string) => {
     const b = found.get(n);
-    if (!b) throw new Error(`sitting needs bone "${n}"`);
+    if (!b) throw new Error(`sitting and riding need bone "${n}"`);
     return b;
-  });
-  for (let b = 0; b < bones.length; b++) {
-    m.multiplyMatrices(bones[b]!.matrixWorld, boneInverses[b]!);
-    data.set(m.elements, (row * width + b * 4) * 4);
+  };
+  // The idle's first frame, kept: each posed row starts again from it.
+  const base = [...found.values()].map((b) => ({ b, p: b.position.clone(), q: b.quaternion.clone(), s: b.scale.clone() }));
+  const restore = () => { for (const { b, p, q, s } of base) { b.position.copy(p); b.quaternion.copy(q); b.scale.copy(s); } root.updateMatrixWorld(true); };
+  const write = () => {
+    for (let b = 0; b < bones.length; b++) {
+      m.multiplyMatrices(bones[b]!.matrixWorld, boneInverses[b]!);
+      data.set(m.elements, (row * width + b * 4) * 4);
+    }
+    row++;
+  };
+  sitPose(root, need);
+  write();
+  // Riding: a turn of the cranks, a frame at a time.
+  for (let f = 0; f < RIDE_FRAMES; f++) {
+    restore();
+    ridePose(root, need, f / RIDE_FRAMES);
+    write();
   }
-  return { data, width, rows: w + i + 1, walk: { row: 0, frames: w }, idle: { row: w, frames: i }, sit: { row: w + i, frames: 1 } };
+  restore();
+  return {
+    data, width, rows: w + i + 1 + RIDE_FRAMES,
+    walk: { row: 0, frames: w }, idle: { row: w, frames: i }, sit: { row: w + i, frames: 1 },
+    ride: { row: w + i + 1, frames: RIDE_FRAMES },
+  };
 }
 
 /**
@@ -706,6 +836,7 @@ const VERTEX_PARS = /* glsl */`
 uniform highp sampler2D uBake;
 uniform vec4 uClips;
 uniform float uSit;
+uniform vec2 uRide;
 uniform float uFps;
 uniform float uTime;
 uniform vec4 uHat[8];
@@ -761,7 +892,7 @@ else if (crowdRole < 8.5) crowdPaint = color * crowdUnpack(aCol2.z);
 else if (crowdRole < 9.5) crowdPaint = color * crowdUnpack(aCol2.w);
 else crowdPaint = color * crowdUnpack(aShape.w);
 vColor = vec4(crowdPaint, 1.0);
-// aAnim.w: 1 for see-through, plus 2 for sitting.
+// aAnim.w: 1 for see-through, plus 2 for sitting, plus 4 for riding a bicycle.
 vGhost = mod(aAnim.w, 2.0);
 `;
 
@@ -769,7 +900,11 @@ vGhost = mod(aAnim.w, 2.0);
 const VERTEX_SKIN = /* glsl */`
 int crowdWalkRow = int(uClips.x + mod(floor((uTime + aAnim.x) * uFps), uClips.y));
 int crowdIdleRow = int(uClips.z + mod(floor((uTime + aAnim.y) * uFps), uClips.w));
-mat4 crowdSkin = aAnim.w > 1.5 ? crowdPose(int(uSit))
+// Riding: the cranks turn while they move and rest level while they stand.
+bool crowdRiding = aAnim.w > 3.5;
+bool crowdSitting = !crowdRiding && aAnim.w > 1.5;
+int crowdRideRow = int(uRide.x + (aAnim.z > 0.5 ? mod(floor((uTime + aAnim.x) * uFps), uRide.y) : 0.0));
+mat4 crowdSkin = crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))
   : aAnim.z > 0.995 ? crowdPose(crowdWalkRow) : aAnim.z < 0.005 ? crowdPose(crowdIdleRow)
   : crowdPose(crowdWalkRow) * aAnim.z + crowdPose(crowdIdleRow) * (1.0 - aAnim.z);
 float crowdC = cos(aPos.z);
@@ -817,7 +952,7 @@ function crowdMaterial(uniforms: Record<string, THREE.IUniform>): THREE.MeshLamb
       .replace('#include <color_pars_fragment>', '#include <color_pars_fragment>\nvarying float vGhost;')
       .replace('#include <clipping_planes_fragment>', `${FRAGMENT_GHOST}\n#include <clipping_planes_fragment>`);
   };
-  m.customProgramCacheKey = () => 'crowd-gpu-4';
+  m.customProgramCacheKey = () => 'crowd-gpu-5';
   return m;
 }
 
@@ -834,6 +969,8 @@ export interface CrowdPerson {
   readonly ghost: boolean;
   /** 'walking', 'approaching' and 'leaving' walk; 'sitting' sits; every other state stands. */
   readonly state: string;
+  /** On a bicycle: pedalling while they move, still on it while they stand. */
+  readonly riding?: boolean;
 }
 
 /** One frame's camera and clock. The caller keeps one and rewrites it each frame. */
@@ -952,6 +1089,7 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
     uBake: { value: bakeTex },
     uClips: { value: new THREE.Vector4(bake.walk.row, bake.walk.frames, bake.idle.row, bake.idle.frames) },
     uSit: { value: bake.sit.row },
+    uRide: { value: new THREE.Vector2(bake.ride.row, bake.ride.frames) },
     uFps: { value: BAKE_FPS },
     uTime: { value: 0 },
     uHat: { value: hatUniform() },
@@ -1033,7 +1171,7 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
         const at = l.n * STRIDE;
         arr[at] = a.x; arr[at + 1] = a.z; arr[at + 2] = a.facing; arr[at + 3] = s;
         arr[at + 4] = offset * walkDur; arr[at + 5] = offset * idleDur; arr[at + 6] = w;
-        arr[at + 7] = (a.ghost ? 1 : 0) + (a.state === 'sitting' ? 2 : 0);
+        arr[at + 7] = (a.ghost ? 1 : 0) + (a.riding ? 4 : a.state === 'sitting' ? 2 : 0);
         arr.set(f, at + 8);
         l.n++;
         drawn++;

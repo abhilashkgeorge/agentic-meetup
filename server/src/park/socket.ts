@@ -58,7 +58,7 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
   switch (msg.type) {
     case 'park.move':
       if (!take(`park-move:${me}`, MOVE_LIMIT).ok) return;
-      if (!park.move(me, msg.x, msg.z, msg.facing, msg.moving)) send(ws, { type: 'park.refused', reason: 'not_in_park' });
+      if (!park.move(me, msg.x, msg.z, msg.facing, msg.moving, msg.riding === true)) send(ws, { type: 'park.refused', reason: 'not_in_park' });
       return;
     case 'park.say': {
       if (!take(`park-say:${me}`, SAY_LIMIT).ok) { send(ws, { type: 'park.refused', reason: 'too_fast' }); return; }

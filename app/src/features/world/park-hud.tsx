@@ -301,6 +301,37 @@ export function ParkActions({ venueSim, benches }: {
   );
 }
 
+/**
+ * Get on a bicycle, or off it (the founder, 2026-09-29: "bicycles should also be used
+ * for travel around the park"). Above the stick, where the thumb already is. Gone while
+ * you sit on a bench or a car is taking you: you get off to do either.
+ */
+export function BikeButton({ bottom, left }: { bottom: number; left: number }) {
+  const p = usePalette();
+  const riding = useParkLive((s) => s.riding);
+  const hidden = useParkLive((s) => s.bench !== null || !!s.partner?.rideTo);
+  const setRiding = useParkLive((s) => s.setRiding);
+  const pop = useRef(new Animated.Value(1)).current;
+  const toggle = () => {
+    setRiding(!riding);
+    pop.setValue(0.86);
+    Animated.spring(pop, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 10 }).start();
+  };
+  if (hidden) return null;
+  return (
+    <Animated.View style={{ position: 'absolute', left, bottom, transform: [{ scale: pop }] }}>
+      <Pressable onPress={toggle} accessibilityRole="button" accessibilityLabel={riding ? 'Get off the bike' : 'Ride a bike'}
+                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.lg, paddingVertical: space.sm + 2,
+                          borderRadius: radius.pill, backgroundColor: riding ? p.accent : p.bg, boxShadow: raised(p, 4) }}>
+        <Text style={{ fontSize: 18 }}>🚲</Text>
+        <Text style={[type.callout, { color: riding ? p.accentText : p.text, fontFamily: type.bodyStrong.fontFamily }]}>
+          {riding ? 'Get off the bike' : 'Ride a bike'}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 function Pill({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
   const p = usePalette();
   return (

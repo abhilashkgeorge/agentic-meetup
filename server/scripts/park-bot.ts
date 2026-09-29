@@ -1,7 +1,7 @@
 /**
  * A practice person who walks in Cubbon Park live, for trying the park with one phone.
  *
- *     npx tsx scripts/park-bot.ts [minutes=10] [x=12] [z=-29] [--ask]
+ *     npx tsx scripts/park-bot.ts [minutes=10] [x=12] [z=-29] [--ask] [--ride]
  *
  * It signs in as one of the practice profiles (a session row of its own, removed when
  * it goes), walks into the park at (x, z) -- by default a few steps from where you
@@ -10,7 +10,8 @@
  * yes and stands still for you to arrive; with --ask it asks you, a few seconds after
  * it walks in. Told the two of you have a bench, it walks to its own seat -- the one
  * the app gives it, from the same park layout -- and sits. NO MODEL: every line is
- * written here. Development only: it refuses to run with NODE_ENV=production.
+ * written here. With --ride it is on a bicycle, and rides round you in a circle rather
+ * than standing by you. Development only: it refuses to run with NODE_ENV=production.
  */
 import { Pool } from 'pg';
 import WebSocket from 'ws';
@@ -27,6 +28,8 @@ const minutes = Number(args[0] ?? 10);
 let x = Number(args[1] ?? 12);
 let z = Number(args[2] ?? -29);
 const ask = process.argv.includes('--ask');
+const ride = process.argv.includes('--ride');
+let lap = 0;
 let paired = false;
 /** Whether it asked (the left seat) or was asked (the right), once paired. */
 let asker = false;
@@ -118,6 +121,16 @@ const walk = setInterval(() => {
     if (!atFront) atFront = stepTo(front.x, front.z, 0.35 * 1.8);
     else if (stepTo(seat.x, seat.z, 0.35)) { moving = false; facing = seat.facing; }
     send({ type: 'park.move', x, z, facing, moving });
+    return;
+  }
+  // On a bicycle: round whoever it can see, a few metres out, at a bicycle's pace.
+  if (ride && !paired && people[0]) {
+    const c = people[0];
+    lap += (0.35 * 2 * 0.2) / 1.2;
+    const nx = c.x + Math.sin(lap) * 1.2, nz = c.z + Math.cos(lap) * 1.2;
+    const facing = Math.atan2(nx - x, nz - z);
+    x = nx; z = nz;
+    send({ type: 'park.move', x, z, facing, moving: true, riding: true });
     return;
   }
   // Talking with somebody: stand still, they come to it.

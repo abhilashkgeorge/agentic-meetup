@@ -90,6 +90,8 @@ export const ClientParkMove = z.object({
   z: ParkCoord,
   facing: z.number().finite(),
   moving: z.boolean(),
+  /** On a bicycle (the app's bike.ts): the people near see you on one. */
+  riding: z.boolean().optional(),
 });
 export const ClientParkSay = z.object({
   type: z.literal('park.say'),
@@ -153,6 +155,8 @@ export const ParkPerson = z.object({
   look: Look.optional(),
   /** On a bench with somebody, and not walking to it: drawn sitting. */
   sitting: z.boolean().optional(),
+  /** On a bicycle: drawn riding one. */
+  riding: z.boolean().optional(),
 });
 export type ParkPerson = z.infer<typeof ParkPerson>;
 

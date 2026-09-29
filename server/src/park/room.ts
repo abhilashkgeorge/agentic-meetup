@@ -33,6 +33,8 @@ export interface Member {
   z: number;
   facing: number;
   moving: boolean;
+  /** On a bicycle, as their phone last said. */
+  riding: boolean;
   /** When they last sent anything: moving or standing, the app says so every few seconds. */
   seen: number;
 }
@@ -74,7 +76,7 @@ export class ParkRoom {
     this.members.set(userId, {
       userId, look,
       x: at?.x ?? was?.x ?? 0, z: at?.z ?? was?.z ?? 0,
-      facing: was?.facing ?? 0, moving: false, seen: this.now(),
+      facing: was?.facing ?? 0, moving: false, riding: was?.riding ?? false, seen: this.now(),
     });
   }
 
@@ -93,10 +95,10 @@ export class ParkRoom {
     return this.apart.has(pair(a, b));
   }
 
-  move(userId: string, x: number, z: number, facing: number, moving: boolean): boolean {
+  move(userId: string, x: number, z: number, facing: number, moving: boolean, riding = false): boolean {
     const m = this.members.get(userId);
     if (!m) return false;
-    m.x = x; m.z = z; m.facing = facing; m.moving = moving; m.seen = this.now();
+    m.x = x; m.z = z; m.facing = facing; m.moving = moving; m.riding = riding; m.seen = this.now();
     return true;
   }
 
@@ -122,7 +124,7 @@ export class ParkRoom {
       x: round(m.x), z: round(m.z), facing: round(m.facing), moving: m.moving, look: m.look,
       // Seen sitting once they have walked to it: what they say there is theirs, that
       // they are sitting there is not a secret.
-      ...(this.seats?.benchOf(m.userId) != null && !m.moving ? { sitting: true } : {}),
+      ...(this.seats?.benchOf(m.userId) != null && !m.moving ? { sitting: true } : m.riding ? { riding: true } : {}),
     }));
   }
 

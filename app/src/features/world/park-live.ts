@@ -20,6 +20,7 @@ export interface LivePerson {
   moving: boolean;
   look: Look;
   sitting: boolean;
+  riding: boolean;
 }
 
 export interface Line {
@@ -63,7 +64,7 @@ export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readon
   for (const p of frame) {
     const look = p.look ?? prev.get(p.ref)?.look;
     if (!look) continue;
-    out.set(p.ref, { ref: p.ref, x: p.x, z: p.z, facing: p.facing, moving: p.moving, look, sitting: p.sitting === true });
+    out.set(p.ref, { ref: p.ref, x: p.x, z: p.z, facing: p.facing, moving: p.moving, look, sitting: p.sitting === true, riding: p.riding === true });
   }
   return out;
 }
@@ -92,6 +93,8 @@ interface ParkLive {
   partner: { ref: string; rideTo: readonly [number, number] | null; asker: boolean } | null;
   /** The bench the two of you took, while you sit on it. */
   bench: number | null;
+  /** On a bicycle (bike.ts): faster, and seen on one by everybody near. */
+  riding: boolean;
   setIn: (on: boolean) => void;
   gotPeople: (frame: readonly ParkPerson[]) => void;
   gotLine: (ref: string, text: string, at: number, priv?: boolean) => void;
@@ -107,6 +110,8 @@ interface ParkLive {
   gotBench: (bench: number | null) => void;
   /** Back after a dropped connection: the server ended any pair, asking or bench then. */
   rejoined: () => void;
+  /** Get on a bicycle, or off it. Not while on a bench, or while a car is taking you. */
+  setRiding: (on: boolean) => void;
 }
 
 let nextId = 1;
@@ -120,10 +125,12 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   asked: null,
   partner: null,
   bench: null,
+  riding: false,
   // Leaving forgets everybody -- and ends whatever you were in the middle of, which the
   // server ends too: the next visit starts from what it sends.
   setIn: (on) => set(on ? { inPark: true } : {
     inPark: false, people: new Map(), lines: [], refused: null, finding: null, asked: null, partner: null, bench: null,
+    riding: false,
   }),
   gotPeople: (frame) => { if (get().inPark) set({ people: mergePeople(get().people, frame) }); },
   // Timed by the phone's own clock, not the server's: a bubble is how long something
@@ -136,9 +143,18 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   setFinding: (finding) => set({ finding }),
   gotAsked: (ref, why) => set({ asked: { ref, ...(why ? { why } : {}), at: Date.now() } }),
   gotUnasked: () => set({ asked: null }),
-  gotPaired: (ref, rideTo) => set({ partner: { ref, rideTo, asker: rideTo !== null }, finding: null, asked: null }),
+  // The car takes the one who asked: off the bike for it.
+  gotPaired: (ref, rideTo) => set({
+    partner: { ref, rideTo, asker: rideTo !== null }, finding: null, asked: null, ...(rideTo ? { riding: false } : {}),
+  }),
   rode: () => { const p = get().partner; if (p) set({ partner: { ...p, rideTo: null } }); },
   gotParted: () => set({ partner: null, bench: null }),
-  gotBench: (bench) => set({ bench }),
+  // Sitting down gets you off the bike: nobody sits on a bench astride one.
+  gotBench: (bench) => set(bench !== null ? { bench, riding: false } : { bench }),
   rejoined: () => set({ partner: null, bench: null, finding: null, asked: null, people: new Map() }),
+  setRiding: (on) => {
+    const s = get();
+    if (on && (s.bench !== null || s.partner?.rideTo)) return;
+    set({ riding: on });
+  },
 }));

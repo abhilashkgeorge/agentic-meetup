@@ -25,6 +25,8 @@ import { usePalette } from '../../components/ui';
 
 /** Outer ring, in points. The knob travels to its edge. */
 const RING = 132;
+/** How big the stick is on screen, for what sits beside it. */
+export const STICK_RING = RING;
 const KNOB = 54;
 const TRAVEL = (RING - KNOB) / 2;
 /** The four quarter marks, on a circle this far out from the middle. */

@@ -42,22 +42,31 @@ export function useParkPresence(
   // Where you are: whenever it changed, checked five times a second.
   useEffect(() => {
     if (!inPark) return;
-    let last = { x: NaN, z: NaN, facing: NaN, moving: false, at: 0 };
+    let last = { x: NaN, z: NaN, facing: NaN, moving: false, riding: false, at: 0 };
     const t = setInterval(() => {
       const me = venueSim.get('you');
       if (!me) return;
       const moving = venueSim.driven('you');
+      const riding = me.riding === true;
       const now = Date.now();
       const changed = Math.hypot(me.x - last.x, me.z - last.z) > 0.01
-        || Math.abs(me.facing - last.facing) > 0.05 || moving !== last.moving;
+        || Math.abs(me.facing - last.facing) > 0.05 || moving !== last.moving || riding !== last.riding;
       // Walked off the bench with the stick: up, for the server too, so talk is heard
       // nearby again rather than staying between two people no longer sitting.
       if (useParkLive.getState().bench !== null && !me.seat && me.state !== 'sitting') parkStand();
       if (!changed && now - last.at < STILL_MS) return;
-      parkMove(me.x, me.z, me.facing, moving);
-      last = { x: me.x, z: me.z, facing: me.facing, moving, at: now };
+      parkMove(me.x, me.z, me.facing, moving, riding);
+      last = { x: me.x, z: me.z, facing: me.facing, moving, riding, at: now };
     }, EVERY_MS);
     return () => clearInterval(t);
+  }, [inPark, venueSim]);
+
+  // On a bicycle or off it, as the store says -- and off it on walking out of the park.
+  useEffect(() => {
+    if (!inPark) return;
+    venueSim.setRiding('you', useParkLive.getState().riding);
+    const unsubscribe = useParkLive.subscribe((s, prev) => { if (s.riding !== prev.riding) venueSim.setRiding('you', s.riding); });
+    return () => { unsubscribe(); venueSim.setRiding('you', false); };
   }, [inPark, venueSim]);
 
   // A yes to your "Find someone": the car takes you over (ride.ts, in the canvas). The
@@ -86,7 +95,7 @@ export function useParkPresence(
   useEffect(() => {
     if (!inPark) return;
     const apply = (people: ReadonlyMap<string, LivePerson>) => {
-      for (const p of people.values()) venueSim.live(p.ref, p.look, p.x, p.z, p.facing, p.moving, p.sitting);
+      for (const p of people.values()) venueSim.live(p.ref, p.look, p.x, p.z, p.facing, p.moving, p.sitting, p.riding);
       for (const a of venueSim.agents()) if (a.kind === 'live' && !people.has(a.ref)) venueSim.unlive(a.ref);
     };
     apply(useParkLive.getState().people);

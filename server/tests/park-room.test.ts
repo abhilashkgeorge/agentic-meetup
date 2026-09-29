@@ -14,7 +14,8 @@
  * Negative controls, run by hand and recorded in the commit:
  *   - drop the apart check in `near` -> "never shows two people kept apart" fails;
  *   - drop the contact check in `say` -> "refuses contact details" fails;
- *   - hear at PARK_VIEW instead of PARK_EARSHOT -> "reaches earshot and no further" fails.
+ *   - hear at PARK_VIEW instead of PARK_EARSHOT -> "reaches earshot and no further" fails;
+ *   - leave `riding` out of the snapshot -> "on a bicycle riding it" fails.
  */
 import { describe, expect, it } from 'vitest';
 import { PARK_EARSHOT, PARK_VIEW, STARTER } from '@clone/shared';
@@ -44,6 +45,20 @@ describe('the park, live', () => {
     expect(r.snapshot('a').some((p) => p.ref === ref('a', 'a'))).toBe(false);
     // Nobody not in the park sees anything.
     expect(r.snapshot('zz')).toEqual([]);
+  });
+
+  it('shows somebody on a bicycle riding it, and stops when they get off', () => {
+    // The founder, 2026-09-29: "bicycles should also be used for travel around the
+    // park". Whoever is near sees you on one; nothing else about you changes.
+    const { r } = room();
+    r.enter('a', look, []); r.move('a', 0, 0, 0, false);
+    r.enter('b', look, []); r.move('b', 2, 0, 0.5, true, true);
+    expect(r.snapshot('a')[0]).toMatchObject({ x: 2, moving: true, riding: true });
+    r.move('b', 2.5, 0, 0.5, false);
+    expect(r.snapshot('a')[0]!.riding).toBeUndefined();
+    // Not a thing anybody is sent for somebody walking.
+    r.move('b', 3, 0, 0.5, true);
+    expect('riding' in r.snapshot('a')[0]!).toBe(false);
   });
 
   it('never shows two people kept apart, either way, and hides them the moment one blocks', () => {
