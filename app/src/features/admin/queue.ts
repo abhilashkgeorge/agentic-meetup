@@ -51,4 +51,4 @@ export const chatButtonLabel = (r: AdminReport): string | null =>
  * person reported -- and whether it was a date idea or deleted by whoever sent it.
  */
 export const chatLineLabel = (l: ReportChatLine): string =>
-  `${l.from === 'them' ? 'Them' : 'Reporter'}: ${l.dateIdea ? '(date idea) ' : ''}${l.text}${l.takenBack ? ' (deleted by the sender)' : ''}`;
+  `${l.from === 'them' ? 'Them' : 'Reporter'}: ${l.park ? '(in the park) ' : ''}${l.dateIdea ? '(date idea) ' : ''}${l.text}${l.takenBack ? ' (deleted by the sender)' : ''}`;

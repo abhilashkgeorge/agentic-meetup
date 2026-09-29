@@ -14,7 +14,7 @@ import { tenantSession } from '../db/client.js';
 import * as messages from '../messaging/store.js';
 import { log } from '../log.js';
 import { REPORT_REASONS } from './messages.js';
-import { park, pairs, refreshVoice, separate } from '../park/socket.js';
+import { lines, park, pairs, refreshVoice, separate } from '../park/socket.js';
 import { PARK_ROOM, VOICE_REPORT, benchRoom, silence, voiceBannedUntil } from '../park/voice.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
@@ -55,10 +55,18 @@ export const parkRoutes = new Hono()
     if (!body.success) return c.json({ error: 'bad request' }, 400);
     const other = park.resolve(ctx.userId, body.data.ref);
     if (!other) return c.json({ error: 'not_here' }, 404);
-    await tenantSession(ctx, (db) => messages.report(db, {
-      reporterId: ctx.userId, reportedId: other, rendezvousId: null,
-      reason: body.data.reason, detail: `${body.data.voice ? VOICE_REPORT : 'In the park.'} ${body.data.detail}`,
-    }));
+    await tenantSession(ctx, async (db) => {
+      const report = await messages.report(db, {
+        reporterId: ctx.userId, reportedId: other, rendezvousId: null,
+        reason: body.data.reason, detail: `${body.data.voice ? VOICE_REPORT : 'In the park.'} ${body.data.detail}`,
+      });
+      // What the two typed to each other here in the last ten minutes goes with it, as its
+      // evidence -- the one use of those lines (park/lines.ts, 0084). Nothing said out loud
+      // is ever recorded.
+      const said = lines.between(ctx.userId, other)
+        .map((l) => ({ fromReported: l.speaker === other, text: l.text, at: l.at }));
+      if (said.length) await db.query('SELECT keep_park_lines($1, $2::jsonb)', [report, JSON.stringify(said)]);
+    });
     await separate(ctx.userId, other);
     log.warn({ reason: body.data.reason, voice: body.data.voice }, 'park: report filed');
     // Enough people reporting somebody's voice and their mic goes, now: taken on the

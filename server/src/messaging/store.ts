@@ -16,6 +16,7 @@
  *                -- telling somebody they are blocked is an invitation to make a
  *                second account.
  */
+import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 
 export interface Message {
@@ -209,13 +210,18 @@ export async function report(
     reporterId: string; reportedId: string; rendezvousId: string | null;
     reason: string; detail: string;
   },
-): Promise<void> {
+): Promise<string> {
+  // The id is made here: the application may write a report and never read one back
+  // (0024), so it cannot ask the insert for it -- and a park report needs it to attach
+  // the lines the two typed (park/lines.ts).
+  const id = randomUUID();
   await c.query(
-    `INSERT INTO reports (reporter_id, reported_id, rendezvous_id, reason, detail)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [args.reporterId, args.reportedId, args.rendezvousId, args.reason, args.detail.slice(0, 2000)],
+    `INSERT INTO reports (id, reporter_id, reported_id, rendezvous_id, reason, detail)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [id, args.reporterId, args.reportedId, args.rendezvousId, args.reason, args.detail.slice(0, 2000)],
   );
   // Reporting blocks too. Nobody reports somebody they want to keep hearing from, and
   // making it two actions is how a person ends up still receiving messages.
   await block(c, args.reporterId, args.reportedId);
+  return id;
 }

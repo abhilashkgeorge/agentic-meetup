@@ -214,6 +214,8 @@ export const adminRoutes = new Hono()
         from: m.from_reported ? 'them' as const : 'reporter' as const,
         text: m.body,
         dateIdea: m.kind === 'date_idea',
+        // Typed in the park, not in their chat (park/lines.ts, 0084).
+        park: m.kind === 'park',
         at: new Date(m.sent_at).toISOString(),
         takenBack: m.redacted_at !== null,
       })),

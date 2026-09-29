@@ -1029,6 +1029,8 @@ export interface ReportChatLine {
   from: 'them' | 'reporter';
   text: string;
   dateIdea: boolean;
+  /** Typed in the park, not in their chat (server park/lines.ts). */
+  park?: boolean;
   at: string;
   /** They took it back ("delete for everyone") before the report; the words were kept. */
   takenBack: boolean;

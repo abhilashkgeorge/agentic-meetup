@@ -118,6 +118,9 @@ describe('the reviewer\'s queue', () => {
       .toBe('Reporter: please stop');
     expect(chatLineLabel({ from: 'them', text: 'Coffee at Third Wave, Saturday 5 pm', dateIdea: true, at, takenBack: false }))
       .toBe('Them: (date idea) Coffee at Third Wave, Saturday 5 pm');
+    // Typed in the park, kept ten minutes for a report (server park/lines.ts).
+    expect(chatLineLabel({ from: 'them', text: 'come with me', dateIdea: false, park: true, at, takenBack: false }))
+      .toBe('Them: (in the park) come with me');
     expect(code('features/admin/reports-screen.tsx')).toMatch(/getReportChat\(token, r\.id\)/);
     expect(code('features/safety/safety-sheet.tsx')).toMatch(/If you have messages with \{who\} in Chats, the reviewer can read them\./);
     // The server copies it on every report (the trigger), so the sheet's words are true.

@@ -24,12 +24,15 @@ import * as hub from '../messaging/hub.js';
 import { log } from '../log.js';
 import { take } from '../ratelimit.js';
 import { award, balance, type PointReason } from '../points/ledger.js';
+import { ParkLines } from './lines.js';
 import { ParkPairs } from './pairs.js';
 import { ParkQuests, type Done } from './quests.js';
 import { ParkRoom } from './room.js';
 import { PARK_ROOM, benchRoom, evict, voiceBannedUntil, voiceOn, voicePass } from './voice.js';
 
 export const pairs = new ParkPairs();
+/** What was typed here, ten minutes, for a report and nothing else (lines.ts). */
+export const lines = new ParkLines();
 export const park = new ParkRoom(agentRef, Date.now, pairs);
 /** Things done together (quests.ts), and each person's tenant, to pay them in. */
 export const quests = new ParkQuests();
@@ -76,6 +79,8 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       const at = Date.now();
       const priv = r.private ? { private: true } : {};
       for (const { userId, ref } of r.to) hub.pushTo(userId, { type: 'park.said', ref, text: msg.text, at, ...priv } satisfies ServerEvent);
+      // Held ten minutes, with who was sent it, in case one of them reports it (lines.ts).
+      lines.said(me, r.to.map((t) => t.userId), msg.text);
       // Said on a bench, to a partner: one more towards sitting and talking. Counted only.
       if (r.private) await pay(quests.said(me, pairs.partnerOf(me), true));
       return;
@@ -359,6 +364,7 @@ function pushPeople(viewerId: string): void {
 /** Every person in the park, the people near them. And the silent ones leave. */
 let ticks = 0;
 export function tick(): void {
+  lines.forgetOld();
   for (const gone of park.sweep()) {
     sentLooks.delete(gone); unpair(gone); quests.leave(gone); tenantOf.delete(gone);
     log.info({ userId: gone }, 'park: timed out');

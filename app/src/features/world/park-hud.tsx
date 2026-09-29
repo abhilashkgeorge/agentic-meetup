@@ -4,7 +4,8 @@
  * here in person; and, tapping one of them, a way to block or report them.
  *
  * WHAT IS SAID stays on screen for a few seconds (BUBBLE_MS) over the speaker and in
- * the log, and goes nowhere else: the server keeps no copy (server park/room.ts). Lines
+ * the log. The server keeps it ten minutes in memory, for one use: a report about it
+ * carries the lines between the two people (server park/lines.ts). Lines
  * are anonymous -- "Someone nearby" -- because a stranger in the park is only a ref.
  */
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
