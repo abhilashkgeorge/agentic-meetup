@@ -16,7 +16,7 @@ import { candidateCount, poolBreakdown, shownBreakdown, shownCount } from '../ma
 import { decide, runRound } from '../matching/orchestrator.js';
 import { DailyRoundsExceeded, DailyTargetsExceeded, enqueueRound, latestRound } from '../matching/rounds.js';
 import { resolveAgentRef } from '../matching/world.js';
-import { liveCard, mayRepeat, plainCard, readBrief, sentenceKey } from '../matching/brief.js';
+import { liveCard, mayRepeat, plainCard, readBrief, sentenceKey, wantCheck } from '../matching/brief.js';
 import { publicTags } from '../matching/rendezvous.js';
 import { expireDue } from '../matching/expiry.js';
 import { roundRecap } from '../matching/recap.js';
@@ -220,11 +220,17 @@ async function checkinSeat(db: PoolClient, id: string, me: string) {
  * The reader's wants their card for this match showed as "Matches", each tied to its
  * question: what the check-in may ask about in their own words (checkin/questions.ts).
  * Read from their own brief -- what they were shown -- and their own tied wants.
+ *
+ * BY WHAT THE CARD SHOWED (wantCheck), not by the stored result (the founder's (b),
+ * 2026-09-29). A want tied to a situation question now shows only "A private topic" on
+ * the card; asking after the date "You wanted a saver. Did they seem that way?" -- only
+ * when she was one -- would have told the reader her answer all the same.
  */
 async function matchedWants(ctx: TenantCtx, rendezvousId: string): Promise<{ key: string; text: string; kind: 'wants' | 'not' }[]> {
-  const rows = await tenantSession(ctx, async (db) => (await db.query<{ overlap_quotes: { wants?: { want: string; kind: 'wants' | 'not'; status: string }[] } | null }>(
-    'SELECT overlap_quotes FROM rendezvous_briefs WHERE rendezvous_id = $1 AND for_user = $2', [rendezvousId, ctx.userId])).rows);
-  const shown = (rows[0]?.overlap_quotes?.wants ?? []).filter((w) => w.status === 'met');
+  const rows = await tenantSession(ctx, async (db) => (await db.query<{
+    overlap_quotes: { wants?: { want: string; kind: 'wants' | 'not'; status: 'met' | 'not_met' | 'unknown' | 'cant_check'; private?: boolean }[] } | null;
+  }>('SELECT overlap_quotes FROM rendezvous_briefs WHERE rendezvous_id = $1 AND for_user = $2', [rendezvousId, ctx.userId])).rows);
+  const shown = (rows[0]?.overlap_quotes?.wants ?? []).filter((w) => wantCheck(w) === 'matches');
   if (!shown.length) return [];
   const tied = new Map((await loadWants(ctx)).filter((w) => w.ask).map((w) => [w.text, w.ask!.questionId]));
   return shown.filter((w) => tied.has(w.want)).map((w) => ({ key: `want:${tied.get(w.want)}`, text: w.want, kind: w.kind }));

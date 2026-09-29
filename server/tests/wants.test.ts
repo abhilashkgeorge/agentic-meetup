@@ -394,17 +394,32 @@ describe('in a round, private topics and nothing dropped', () => {
 });
 
 describe('one word for a private topic', () => {
-  it('whatever the check found; a want tied to a question still says matches or not', () => {
+  it('whatever the check found; a want tied to a tapped question still says matches or not', () => {
     for (const status of ['met', 'not_met', 'unknown', 'cant_check'] as const) {
       for (const want of ["Someone who doesn't drink", 'Same faith as me', 'Wants kids someday', 'A vegetarian']) {
         expect(wantCheck({ want, status, private: true }), `${want} / ${status}`).toBe('private');
       }
     }
-    // Checked by code against a situation or a tapped question: not a private topic.
-    expect(wantCheck({ want: 'Someone who reads', status: 'met', private: true })).toBe('matches');
-    expect(wantCheck({ want: 'Someone who reads', status: 'not_met', private: true })).toBe('doesnt_match');
-    expect(wantCheck({ want: 'Someone who reads', status: 'cant_check', private: true })).toBe('cant_check');
+    // Checked by code against a tapped question (the field you work in): its answer is
+    // not a secret, so the card says whether it matched.
+    expect(wantCheck({ want: 'Works in AI', status: 'met', private: true })).toBe('matches');
+    expect(wantCheck({ want: 'Works in AI', status: 'not_met', private: true })).toBe('doesnt_match');
+    expect(wantCheck({ want: 'Works in AI', status: 'cant_check', private: true })).toBe('cant_check');
     // An ordinary want: no word at all -- the reader judges from the quote.
     expect(wantCheck({ want: 'Must love dogs', status: 'met' })).toBeNull();
+  });
+
+  // The founder's item (b), 2026-09-29: "Matches" on a want tied to a SITUATION question
+  // told the reader how the other person answered it -- to a want that accepts one answer,
+  // exactly -- and a situation answer "is never repeated to anybody". Before this, "Someone
+  // who reads" said "matches" (this test's first line, asserted, in the test above).
+  // Negative control, run by hand and recorded in the commit: wantCheck without the
+  // situation line -> this test fails.
+  it('says nothing either for a want checked against a situation question, whatever it found', () => {
+    for (const status of ['met', 'not_met', 'unknown', 'cant_check'] as const) {
+      for (const want of ['Someone who reads', 'A saver, not an impulse spender', 'Loves street food', 'Loves dogs']) {
+        expect(wantCheck({ want, status, private: true }), `${want} / ${status}`).toBe('private');
+      }
+    }
   });
 });

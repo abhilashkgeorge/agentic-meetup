@@ -58,7 +58,7 @@ words are the date idea, written earlier (stage 7).
   [server/src/ratelimit.ts:216] `message: { max: 60, windowMs: 60_000 },`).
 - **Contact details are allowed in chat.** The contact-detail filter guards what agents say,
   not what people type to each other; the app itself tells people to swap details in chat
-  ([server/src/matching/brief.ts:198] `street address (shared/src/contact.ts). People swap those themselves, in chat, after`,
+  ([server/src/matching/brief.ts:199] `street address (shared/src/contact.ts). People swap those themselves, in chat, after`,
   [app/src/features/stories/stories-state.ts:29] `Swap those in chat after you both say yes.`).
 - **Receipts:** "Sent", "Delivered", "Read", "typing…", always on
   ([app/src/features/dm/thread-screen.tsx:40] `state === 'queued' ? 'waiting to send'`).
@@ -88,11 +88,11 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 ### 10.4 The after-date check-in
 
 - **When:** 72 hours after the introduction by default, inside the chat only
-  ([server/src/api/dating.ts:765] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
+  ([server/src/api/dating.ts:771] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
 - **Step 1:** "Did you two meet up? They are not told what you say." [Yes] [Not yet]. The first
   answer is final: a "Not yet" is never asked again
   ([app/src/features/dm/checkin.tsx:109] `Did you two meet up? They are not told what you say.`,
-  [server/src/api/dating.ts:922] `// Own brief only, under RLS. An answer is final: the first one stands.`).
+  [server/src/api/dating.ts:928] `// Own brief only, under RLS. An answer is final: the first one stands.`).
 - **After "Not yet":** "What happened? Only you see this." with "Plans fell through", "They
   stopped replying", "I changed my mind", "Something else", or Skip
   ([app/src/features/dm/checkin.tsx:122] `What happened? Only you see this.`).

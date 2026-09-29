@@ -29,12 +29,10 @@ first mover in the viewer's own neighbourhood until they share; and the extracto
 the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 
 3. **A "no" shows by timing.** A no removes the other person's card at once; an unanswered card lasts three days
-    ([server/src/api/dating.ts:583] `AND r.status NOT IN ('lapsed', 'expired')`).
-4. **"Matches" on a situation want can say how someone answered.** A want tied to a situation question ("a
-    saver") shows "Matches" or "Doesn't match"; if it accepts one answer, that tells the reader the other
-    person's answer, though situation answers are "never repeated to anybody"
-    ([server/src/matching/want-questions.ts:113] `return ask.accepted.includes(v) ? 'met' : 'not_met';`,
-    [shared/src/facts.ts:209] `match and is never repeated to anybody (not in PUBLIC_BY_DEFAULT).`).
+    ([server/src/api/dating.ts:589] `AND r.status NOT IN ('lapsed', 'expired')`).
+4. **Closed on 2026-09-29: "Matches" on a situation want.** A want tied to a situation question shows only
+    "A private topic. Their answer is never shown.", whatever the check found, and the after-date check-in no
+    longer asks about it ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
 5. **The square itself can still be probed** (read, not run). Strangers in the square are people who pass your
     rules, so flipping a must-have and reopening the town shows whether a stranger you recognise by their character
     is still there; the sample is 40 nearest plus 24 recent and refreshes every 30 seconds
@@ -44,7 +42,7 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     talk and answer sheets also use "goal" and "dislikes" sentences, which the card's own rule leaves out as the place
     "where faith, politics and children are said in prose"
     ([server/src/matching/answer-sheet.ts:79] `export const SHEET_SOURCES: readonly string[] = [...QUOTABLE, 'goal', 'dislikes'];`,
-    [server/src/matching/brief.ts:81] `is where faith, politics and children are said in prose.`).
+    [server/src/matching/brief.ts:82] `is where faith, politics and children are said in prose.`).
 7. **Deleting an account deletes both halves of their chats**, the other person's messages with them
     ([server/src/memory/erasure.ts:81] `{ table: 'rendezvous', columns: ['user_a', 'user_b'] },`). (Reports
     against them are kept since 2026-09-29, and a failed delete says what it knows: section 4.5.)

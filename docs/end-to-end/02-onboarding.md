@@ -11,7 +11,7 @@ can meet it.
 |---|---|---|---|---|---|
 | "Tell it one true thing" (one sentence) | Facts are pulled out of it; the clone then answers a question as the person | AI ({AI:extract}, then {AI:selftest}) | An episode (the words) and facts | The person; public facts can later reach others (stage 4) | [server/src/api/tell.ts:73] `out = await metered(ctx, 'extract', () => extractSessionFacts(` |
 | The interview: basics, five cards, faith, one sentence | Each tap is saved; card "who's fine" rows become hard rules | Code (the sentence also goes to {AI:dealbreaker}) | `question_answers`, facts, `preferences` | The person; rules are used by matching | [server/src/api/interview.ts:276] `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)` |
-| Essentials: birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | [server/src/api/dating.ts:376] `extractorModel: 'direct',` |
+| Essentials: birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | [server/src/api/dating.ts:382] `extractorModel: 'direct',` |
 | Voice (optional): a WhatsApp export | Only the person's own lines are read; a style note is written | AI ({AI:voice}) | A "voice" note; the chat itself is not kept | The person's own clone | [server/src/memory/chatImport.ts:127] `VALUES ($1,$2,'voice',$3,$4,$5,'{}', now())` |
 | Self-test (optional) | The clone writes as the person; they grade it | AI ({AI:selftest}) | Grades | The person | [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), { db, setup: true }));` |
 | Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | [app/src/features/onboarding/photos-step.tsx:168] `Nobody sees these until you share your profile with them. Your agent never does,` |
@@ -151,7 +151,7 @@ A city among 46 listed ones becomes that city's centre; an unlisted city becomes
 **The name others see comes only from that screen** (since 2026-09-28). One word of letters is kept
 (a number or an "@" gets "Just your first name, in letters."); the fact store refuses a first name
 from any other writer, so a name said in chat never becomes it; and without one the other person sees
-"Someone" ([server/src/api/dating.ts:296] `return c.json({ error: 'bad_name', message: 'Just your first name, in letters.' }, 400);`,
+"Someone" ([server/src/api/dating.ts:302] `return c.json({ error: 'bad_name', message: 'Just your first name, in letters.' }, 400);`,
 [server/src/memory/facts.ts:103] `if (SCREEN_ONLY.has(cand.predicate) && cand.extractorModel !== 'direct') {`,
 [server/src/matching/profile.ts:76] `if (f.extractor_model === 'direct') displayName = firstName(f.object_text);`,
 [server/src/api/dating.ts:166] `const name = other.display_name ?? 'Someone';`). People who set up

@@ -38,7 +38,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 - **If he taps Yes**, the claim becomes his live answer, and it stays match-only: "that's right" is
   not "OK to share", so nobody else hears his work sentence until he shares it on "How you appear"
   ([server/src/memory/pasteImport.ts:337] `...learnedDisclosure(row.predicate),`,
-  [server/src/matching/brief.ts:108] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
+  [server/src/matching/brief.ts:109] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
   One side effect remains (Known gaps): "runs most mornings" is not one of the exercise answers, so
   his exercise answer becomes "unknown" for matching
   ([shared/src/values.ts:37] `export const FREQUENCY = ['never', 'rarely', 'sometimes', 'often', 'daily'] as const;`).
@@ -50,7 +50,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   Until she confirms, nothing from the paste affects matching, her cards or her clone's "true right
   now" list. Even after she confirms, a pasted fact can never be quoted to anyone, because the
   quote check needs her own typed words and the paste was not kept
-  ([server/src/matching/brief.ts:271] `WHERE e.user_id = $1 AND e.role = 'user'`).
+  ([server/src/matching/brief.ts:272] `WHERE e.user_id = $1 AND e.role = 'user'`).
 - **Arjun never sees** anything of Meera's paste or chat unless she made it shareable and it passed the
   quote rules (stage 4).
 
@@ -91,7 +91,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   anyone until "OK to share" ([server/src/memory/extract.ts:245] `...learnedDisclosure(f.predicate),`).
   A Yes on a held fact keeps it match-only too; only a tapped field that nothing ever quotes (the basics,
   the cards, faith, the situations) keeps its own default
-  ([server/src/matching/brief.ts:108] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
+  ([server/src/matching/brief.ts:109] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
 - **Where the question appears:** the YOU tab, one at a time ("Your agent heard something"), and "What it
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
   that.") ([app/src/features/knowledge/you-screen.tsx:112] `<Card label="Is this right?">`,

@@ -9,12 +9,12 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe {AI:sheet} | `rounds` row (queued) | Arjun | [server/src/api/dating.ts:950] `.post('/v1/matches/run', async (c) => {` |
+| Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe {AI:sheet} | `rounds` row (queued) | Arjun | [server/src/api/dating.ts:956] `.post('/v1/matches/run', async (c) => {` |
 | The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | [server/src/matching/rounds.ts:161] `ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED)` |
 | The candidate list | Real people first, then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | [server/src/matching/candidates.ts:132] `ORDER BY b.is_synthetic ASC, b.last_active_at DESC` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | {AI:wants} + code | Want results kept for the cards | Arjun (on his cards) | [server/src/matching/orchestrator.ts:217] `const order = pre && !target ? demote(shortlist.order, notMetCounts(pre.byId)) : shortlist.order;` |
 | The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | [server/src/matching/orchestrator.ts:238] `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, rank_score)` |
-| Each pair | The agents' exchange and the two cards (stages 7 and 8) | {AI:talk} + code | Two card rows per pair | Each person, their own card | [server/src/matching/brief.ts:637] `(rendezvous_id, for_user, headline, overlap_quotes, concern, questions)` |
+| Each pair | The agents' exchange and the two cards (stages 7 and 8) | {AI:talk} + code | Two card rows per pair | Each person, their own card | [server/src/matching/brief.ts:644] `(rendezvous_id, for_user, headline, overlap_quotes, concern, questions)` |
 
 ### Arjun and Meera
 
@@ -24,9 +24,9 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:273] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
-   the round ([server/src/api/dating.ts:961] `return poolNow(db, ctx);`,
-   [server/src/api/dating.ts:968] `await ensureSheet(ctx);`,
-   [server/src/api/dating.ts:1011] `return c.json({ roundId: round.id, status: round.status }, 202);`).
+   the round ([server/src/api/dating.ts:967] `return poolNow(db, ctx);`,
+   [server/src/api/dating.ts:974] `await ensureSheet(ctx);`,
+   [server/src/api/dating.ts:1017] `return c.json({ roundId: round.id, status: round.status }, 202);`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
    heading out…" ([app/src/features/world/hud.tsx:139] `? 'Your agent is heading out…'`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
@@ -58,7 +58,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
   counts, and the round checks the rules. Before, a rule failure answered at once and for free, so
   flipping your own must-have and tapping again read someone's card answer
   ([server/src/matching/world.ts:92] `if (!met.has(id) && agentRef(viewerId, id) === ref) return id;`,
-  [server/src/api/dating.ts:998] `const id = await matchSession((db) => resolveAgentRef(db, ctx.userId, ref, met));`).
+  [server/src/api/dating.ts:1004] `const id = await matchSession((db) => resolveAgentRef(db, ctx.userId, ref, met));`).
   A stranger in the square shows no name, age or photo: "Someone in the square", "One of
   the people your agent could meet.", and a neighbourhood
   ([app/src/features/world/agent-sheet.tsx:42] `One of the people your agent could meet.`,
@@ -186,7 +186,7 @@ off ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');
   ([HOW-IT-WORKS.md:818] `what the person said has changed -- §7a). Rounds are limited by`,
   [server/src/metering.ts:56] `throw new BudgetExceeded('daily_cost', spent, costCap)`).
 - Several code comments still say a round makes no model call
-  ([server/src/api/dating.ts:944] `A round makes no model call (orchestrator.ts), so what limits it`,
+  ([server/src/api/dating.ts:950] `A round makes no model call (orchestrator.ts), so what limits it`,
   [server/src/matching/answer-sheet.ts:24] `still makes zero model calls.`). By default it makes the
   talk and want-check calls.
 - HOW-IT-WORKS.md §9 says a model may write the prose for invented people. No model is

@@ -42,6 +42,7 @@ import { findArea, contactDetail } from '@clone/shared';
 import { tenantSession } from '../db/client.js';
 import { log } from '../log.js';
 import { TAPPED_PREDICATES } from '../onboarding/questions.js';
+import { isSituationWant } from './want-questions.js';
 
 export interface Quote {
   id: string;
@@ -439,11 +440,17 @@ export interface WantRow {
  * still moves a not-met person later in the round (wants.ts), silently. Decided by the
  * want's words, the same test that made it private (loadWants), so a card stored
  * before this rule reads the same way.
+ *
+ * A SITUATION ANSWER SAYS NOTHING EITHER (the founder, 2026-09-29, item (b)). A want tied
+ * to a situation question -- "a saver, not an impulse spender" -- is checked against the
+ * other person's tapped answer, and "Matches" beside a want that accepts one answer told
+ * the reader how they answered a question whose answer "is never repeated to anybody".
+ * The same one word, whatever the check found; the round still uses it, silently.
  */
 export function wantCheck(
   w: Pick<WantRow, 'want' | 'status' | 'private'>,
 ): 'matches' | 'doesnt_match' | 'cant_check' | 'private' | null {
-  if (namesCoreValue(w.want)) return 'private';
+  if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';
   if (w.status === 'cant_check') return 'cant_check';
   if (!w.private) return null;
   return w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match' : 'cant_check';

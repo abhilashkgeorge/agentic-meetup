@@ -22,7 +22,7 @@ three shapes:
 | Answer to "Anyone else you couldn't be with?" | Saved as a `dealbreaker` fact; a model may also propose a card change | Code, plus {AI:dealbreaker} | `facts` row | Same as above | [server/src/api/interview.ts:341] `predicate: 'dealbreaker',` |
 | A want's words match a question | The question is offered; Arjun ticks the answers he accepts | Code (word patterns) | `preferences` row: field, ticked values, strength | Arjun, on "Looking for" | [server/src/matching/want-questions.ts:84] `if (w.pattern.test(text)) return { want: w` |
 | Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:88] `// The only place a personal rule excludes anybody. Both directions.` |
-| A round meets Meera: tied want | Her answer is compared with his ticks | Code | Status on the card record | Arjun sees "Matches", "Doesn't match" or "We can't check this one yet." | [server/src/matching/want-questions.ts:113] `return ask.accepted.includes(v) ? 'met' : 'not_met';` |
+| A round meets Meera: tied want | Her answer is compared with his ticks | Code | Status on the card record | Tied to a tapped question (work, exercise, sleep, moving): Arjun sees "Matches", "Doesn't match" or "We can't check this one yet." Tied to a situation question: only "A private topic. Their answer is never shown." (since 2026-09-29) | [server/src/matching/want-questions.ts:121] `return ask.accepted.includes(v) ? 'met' : 'not_met';` |
 | A round meets Meera: untied or private want | One model call checks all of Arjun's untied wants against his first 12 candidates | {AI:wants}, then code | Status (+ her sentence) on the card record | Untied: her sentence, or "Nothing they've said covers this yet." Private: only "A private topic. Their answer is never shown." | [server/src/matching/wants.ts:257] `task: 'extract',` |
 | Meera never answered the question | The want reads "can't check"; a request to ask Meera is recorded | Code | `unknown_asks` row about Meera | Meera may get it as a question of the day; the asker is never named | [server/src/matching/unknowns.ts:127] `INSERT INTO unknown_asks (tenant_id, user_id, question_id)` |
 
@@ -60,9 +60,12 @@ three shapes:
   answer." ([app/src/features/world/hud.tsx:191] `<Chip label="A question for you" selected onPress={onQuestion} />`,
   [app/src/features/question/question-state.ts:45] `lately to check who fits, and yours could not say. One tap. Nobody ever sees your answer.`).
   She is never told whose want it was, or what the want said.
-- **If Meera had answered** "Saved or invested", Arjun's card says "Matches"; if she
-  answered "A treat: a trip, a gadget, a night out", it says "Doesn't match" and she moves
-  later in Arjun's order, never out
+- **If Meera had answered** "Saved or invested" or "A treat: a trip, a gadget, a night out",
+  Arjun's card says the same either way: "A private topic. Their answer is never shown." A
+  situation answer is never repeated to anybody, and "Matches" beside a want that accepts one
+  answer told him hers, until 2026-09-29
+  ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
+  Answering "A treat", she moves later in Arjun's order, never out
   ([server/src/matching/wants.ts:297] `[c.synthetic ? 1 : 0, notMet.get(c.userId) ?? 0, i]`).
 - **If Arjun had tapped "Must have"**, a Meera who answered "A treat" would never be met by
   Arjun's agent, and Arjun would never be met by hers: each person's must-haves apply to
@@ -168,7 +171,7 @@ three shapes:
   [server/src/onboarding/questions.ts:426] `return TAPPED_PREDICATES.has(predicate);`,
   [server/src/onboarding/questions.ts:415] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
   The server refuses a must-have anywhere else
-  ([server/src/api/dating.ts:524] `A must-have only hides someone over an answer they tapped`).
+  ([server/src/api/dating.ts:530] `A must-have only hides someone over an answer they tapped`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
   checked both ways: Arjun's must-haves on Meera, and Meera's must-haves on Arjun
   ([server/src/matching/candidates.ts:97] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
@@ -197,7 +200,7 @@ three shapes:
   even for a Must have ([server/migrations/0020_match_functions.sql:22] `WHEN actual IS NULL OR jsonb_typeof(actual) = 'null' THEN true`,
   [server/migrations/0071_must_have_fields_wait_for_yes.sql:40] `-- Nothing answered on this field: unknown, never a mismatch.`).
   Every card carries the same line: "Passes your rules both ways, on everything they've
-  answered" ([server/src/matching/brief.ts:65] `export const BRIEF_LINE = "Passes your rules both ways, on everything they've answered";`).
+  answered" ([server/src/matching/brief.ts:66] `export const BRIEF_LINE = "Passes your rules both ways, on everything they've answered";`).
 - **The card says** "We can't check this one yet." for that want
   ([app/src/features/matches/exchange.ts:170] `export const CANT_CHECK = "We can't check this one yet.";`).
 - **The other person may be asked.** A tied want that could not be checked records
@@ -213,7 +216,7 @@ three shapes:
   ([server/src/matching/orchestrator.ts:416] `(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId`).
 - **A written card is not updated** when the answer arrives later: the want results are
   stored with the card when the round runs
-  ([server/src/matching/brief.ts:633] `wants: made.wants,`).
+  ([server/src/matching/brief.ts:640] `wants: made.wants,`).
 
 ### 5.5 Untied and private wants: the model check
 
@@ -231,9 +234,9 @@ three shapes:
 - **Whose words go in.** The reader's own want text, and the other person's own public
   sentences: never interview answers, 12 to 300 characters, found word for word in
   something they typed, with no private topic and no contact detail
-  ([server/src/matching/brief.ts:266] `AND f.extractor_model <> 'interview'`,
-  [server/src/matching/brief.ts:268] `AND length(btrim(f.source_quote)) BETWEEN 12 AND 300`,
-  [server/src/matching/brief.ts:279] `opts.includeHidden ? ['public', 'private'] : ['public']`).
+  ([server/src/matching/brief.ts:267] `AND f.extractor_model <> 'interview'`,
+  [server/src/matching/brief.ts:269] `AND length(btrim(f.source_quote)) BETWEEN 12 AND 300`,
+  [server/src/matching/brief.ts:280] `opts.includeHidden ? ['public', 'private'] : ['public']`).
   Another person's wants are never sent as sentences.
 - **Code checks the answer.** A "met" or "not met" survives only with the number of one of
   that person's sentences; the quote shown is looked up by that number, never copied from
@@ -247,7 +250,7 @@ three shapes:
   [server/src/matching/wants.ts:198] `m.values.has(answer) ? 'met' : 'not_met'`). The result is
   stored and moves a not-met person later in the round, but whatever it is -- met, not met, or no
   card to check (politics, health) -- Arjun's card says only "A private topic. Their answer is never
-  shown." ([server/src/matching/brief.ts:446] `if (namesCoreValue(w.want)) return 'private';`).
+  shown." ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
   "Matches" beside "Someone who doesn't drink" used to tell him Meera's card answer, which she was
   promised nobody sees.
 - **If the call fails**, every want on that side, tied ones included, reads "We can't
@@ -263,7 +266,8 @@ Section "WHAT YOU ASKED FOR", with each of the reader's own wants
 |---|---|---|
 | Untied, a sentence found | "You asked for" / "You couldn't be with" | "They said" + their sentence in quotes (a practice profile's line is marked "(practice)") |
 | Untied, nothing found | same | "They said" + "Nothing they've said covers this yet." |
-| Tied to a question | same | "Matches" or "Doesn't match" |
+| Tied to a tapped question (work, exercise, sleep, moving) | same | "Matches" or "Doesn't match" |
+| Tied to a situation question | same | "A private topic. Their answer is never shown." whatever the check found |
 | Private topic | same | "A private topic. Their answer is never shown." whatever the check found |
 | Could not be checked | same | "We can't check this one yet." |
 
@@ -271,14 +275,17 @@ Sources: [app/src/features/matches/exchange.ts:197] `const label = w.kind === 'n
 [app/src/features/matches/exchange.ts:201] `w.check === 'matches' ? 'Matches' : w.check === 'doesnt_match' ? "Doesn't match"`,
 [app/src/features/matches/exchange.ts:178] `export const PRIVATE_TOPIC = 'A private topic. Their answer is never shown.';`.
 An untied want shows no verdict: "met" and "not met" look the same, and the reader judges
-the sentence ([server/src/matching/brief.ts:708] `// NO STATUS. The want and the quote, side by side; the reader judges. A want tied to`).
+the sentence ([server/src/matching/brief.ts:715] `// NO STATUS. The want and the quote, side by side; the reader judges. A want tied to`).
 Never shown: the other person's wants, their actual card answer, how a private-topic want came
 out, and any quote beside a tied or private want
-([server/src/matching/brief.ts:714] `want: w.want, kind: w.kind, theirs: w.private || check === 'private' ? null : w.theirs,`).
+([server/src/matching/brief.ts:721] `want: w.want, kind: w.kind, theirs: w.private || check === 'private' ? null : w.theirs,`).
 
 ### 5.7 After a date
 
-If a tied want showed "Matches" on the reader's card, the after-date check-in may ask
+If a want tied to a tapped question showed "Matches" on the reader's card, the after-date
+check-in may ask -- never about a situation want, whose card said only that it is private, and
+asking only when it matched would say how it came out
+([server/src/api/dating.ts:233] `const shown = (rows[0]?.overlap_quotes?.wants ?? []).filter((w) => wantCheck(w) === 'matches');`) --
 "You wanted “…”. Did they seem that way?" (or, for a could-not-be-with, "You didn't want
 “…”. Were they fine on that?"), at most two such questions
 ([server/src/checkin/questions.ts:56] `You wanted “${w.text}”. Did they seem that way?`,
@@ -289,7 +296,7 @@ If a tied want showed "Matches" on the reader's card, the after-date check-in ma
 - HOW-IT-WORKS.md says a round's only model call is the agents' talk, and a comment above
   the round route says "A round makes no model call". The code also makes the want-check
   calls above, by default ([HOW-IT-WORKS.md:810] `since 2026-09-24 -- the agents' talk`,
-  [server/src/api/dating.ts:944] `A round makes no model call (orchestrator.ts), so what limits it`,
+  [server/src/api/dating.ts:950] `A round makes no model call (orchestrator.ts), so what limits it`,
   [server/src/matching/orchestrator.ts:23] `NO MODEL ON THE DEFAULT PATH, SINCE 2026-09-23.`).
 - HOW-IT-WORKS.md says a want that names a card "is left out". The code keeps it as a
   private want and checks it ([HOW-IT-WORKS.md:522] `cards is left out, because the card already checks it exactly, both ways.`,
@@ -297,7 +304,7 @@ If a tied want showed "Matches" on the reader's card, the after-date check-in ma
 - HOW-IT-WORKS.md says a want's status is "never sent to a phone". That is true for untied
   and private-topic wants; for a tied want "Matches"/"Doesn't match" and "can't check" are sent
   ([HOW-IT-WORKS.md:545] `brief for measurement and never sent to a phone.`,
-  [server/src/matching/brief.ts:449] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
+  [server/src/matching/brief.ts:456] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
 - The app says wants "move people up the list". Nothing moves anybody up in a round: the
   score no longer picks, and the want check only moves people down
   ([app/src/features/preferences/preferences-screen.tsx:141] `These never remove anybody. They move people up the list.`).

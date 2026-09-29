@@ -86,6 +86,14 @@ export function questionForWant(text: string): { want: WantQuestion; question: Q
   return null;
 }
 
+/**
+ * Whether a want is checked against a SITUATION question ("a saver, not an impulse
+ * spender" -> "You get an unexpected ₹50,000..."): an answer that decides a match and is
+ * never repeated to anybody (shared/facts.ts SITUATION_PREDICATES). By the want's words,
+ * the same first match that tied it to the question. Pure.
+ */
+export const isSituationWant = (text: string): boolean => questionForWant(text)?.question.tier === 'situation';
+
 /** A want question by its bank id, or null. */
 export const wantQuestion = (questionId: string): { want: WantQuestion; question: Question } | null => {
   const w = BY_QUESTION.get(questionId);
