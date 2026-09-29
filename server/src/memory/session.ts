@@ -15,6 +15,7 @@ import { extractSessionFacts } from './extract.js';
 import { multiValuedExisting, resolveConflicts } from './resolve.js';
 import { rebuildCoreProfile } from './profile.js';
 import { ensureSheet } from '../matching/answer-sheet.js';
+import { TAPPED_PREDICATES } from '../onboarding/questions.js';
 
 /**
  * Sessions idle this long are considered over and get extracted.
@@ -119,29 +120,51 @@ async function extractSessionInner(
   // --- Write phase. New short transaction; all commits atomic together. ---
   return tenantSession(ctx, async (c) => {
     let staged = 0, asserted = 0, superseded = 0;
+    // What became TRUE this session: only these may retire anything below.
+    const believed: typeof out.candidates = [];
     for (const cand of out.candidates) {
       const r = await commit(c, ctx, cand);
       if (r.outcome === 'staged') staged++;
       else if (r.outcome === 'asserted') asserted++;
       else if (r.outcome === 'superseded') superseded++;
+      if (r.outcome !== 'staged' && r.outcome !== 'rejected') believed.push(cand);
     }
 
     // P2 -- multi-valued conflicts only. Single-valued ones were already decided by
     // the unique index during commit, deterministically and for free.
+    //
+    // ONLY WHAT WAS BELIEVED, AND NEVER A CARD (the founder, 2026-09-29; docs 15.3 item
+    // 17, found by running it: tests/unconfirmed-chat.test.ts). Every candidate used to be
+    // fed in, the HELD ones too -- a hedged "I might ...", or anything said about a card
+    // field, which waits for the person's Yes (extract.ts) -- and whatever the model
+    // called contradicted was retired at once, with no Yes and no record. So a sentence
+    // that never became true could take a card's answer away. Now only sentences that
+    // became true take part; a card's answer is never retired here (it changes on the
+    // card, or by a Yes); and each retirement is written to memory_audit.
     let resolvedContradictions = 0;
     let resolveCost = 0;
-    const existing = await multiValuedExisting(c, ctx.userId, out.candidates);
-    if (existing.length && out.candidates.length) {
+    const existing = (await multiValuedExisting(c, ctx.userId, believed))
+      .filter((e) => !TAPPED_PREDICATES.has(e.predicate));
+    if (existing.length && believed.length) {
       const r = await resolveConflicts({
-        tenantId: ctx.tenantId, userId: ctx.userId, existing, candidates: out.candidates,
+        tenantId: ctx.tenantId, userId: ctx.userId, existing, candidates: believed,
       });
       resolveCost = r.costUsd;
 
+      const retirable = new Set(existing.map((e) => e.id));
       for (const id of r.contradictedIds) {
-        await c.query(
+        if (!retirable.has(id)) continue;
+        const { rowCount } = await c.query(
           `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'
             WHERE id = $1 AND user_id = $2 AND status = 'active'`,
           [id, ctx.userId],
+        );
+        if (!rowCount) continue;
+        await c.query(
+          `INSERT INTO memory_audit (tenant_id, user_id, fact_id, op, before, after, actor, model, prompt_version)
+           VALUES ($1,$2,$3,'contradicted',$4,$5,'resolver',$6,NULL)`,
+          [ctx.tenantId, ctx.userId, id, JSON.stringify({ status: 'active' }),
+           JSON.stringify({ status: 'superseded', by: believed.map((b) => b.objectText) }), r.model || null],
         );
         resolvedContradictions++;
       }

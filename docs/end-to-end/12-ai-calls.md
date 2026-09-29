@@ -59,9 +59,9 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Task / model:** `extract` → Gemini 3.5 Flash-Lite ([server/src/memory/extract.ts:175] `const model = modelFor('extract');`).
 - **When:** the first setup screen, at once; and for every chat session, about 5 minutes after it goes quiet
   ([server/src/api/tell.ts:73] `out = await metered(ctx, 'extract', () => extractSessionFacts(`,
-  [server/src/memory/session.ts:28] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);`).
+  [server/src/memory/session.ts:29] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);`).
   Story and question-of-the-day answers are also swept later, and a first-screen sentence is extracted a second
-  time by the sweeper ([server/src/memory/session.ts:302] `AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)`).
+  time by the sweeper ([server/src/memory/session.ts:325] `AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)`).
 - **What goes in:** the person's own lines from the session -- never the clone's (since 2026-09-28) --
   plus their current facts; a session with nothing they typed makes no call. Key instructions: "You extract
   durable facts about ONE person from what they typed to their AI clone.", "NEVER generalise the object.",
@@ -173,15 +173,16 @@ $0.02; not measured, because no round has run since the talk was added.
   positions in EXISTING. Never return text." "When you cannot decide, choose uncertain_ids."
   ([server/src/memory/resolve.ts:41] `Return three lists of INTEGERS, referring to positions in EXISTING. Never return text.`,
   [server/src/memory/resolve.ts:63] `When you cannot decide, choose uncertain_ids.`).
-- **Checks:** must parse; out-of-range numbers dropped. **Stored:** contradicted facts are retired; uncertain ones
-  become a question ([server/src/memory/session.ts:142] `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'`).
+- **Checks:** must parse; out-of-range numbers dropped. **Stored:** contradicted facts are retired, and the
+  retirement recorded; uncertain ones become a question. It sees only sentences that became true, and never a
+  card's answer (since 2026-09-29) ([server/src/memory/session.ts:147] `.filter((e) => !TAPPED_PREDICATES.has(e.predicate));`).
 
 <a id="ai-9"></a>
 ### AI-9. Profile summary
 
 - **Task / model:** `render_profile` → Flash-Lite ([server/src/memory/profile.ts:146] `modelFor('render_profile'),`).
 - **When:** inside AI-1, when 3 or more facts changed, and only if the new summary would not drop more than a
-  quarter of the old ([server/src/memory/session.ts:181] `if (asserted + superseded + resolvedContradictions >= 3) {`).
+  quarter of the old ([server/src/memory/session.ts:204] `if (asserted + superseded + resolvedContradictions >= 3) {`).
 - **In:** up to 60 confirmed facts, any visibility. Instructions: "Write a short profile of this person from the
   facts given." "Use ONLY the facts given. Add nothing." ([server/src/memory/profile.ts:71] `Write a short profile of this person from the facts given.`,
   [server/src/memory/profile.ts:82] `Use ONLY the facts given. Add nothing.`).

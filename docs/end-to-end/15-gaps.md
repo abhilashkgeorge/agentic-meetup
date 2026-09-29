@@ -80,8 +80,10 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 16. **Closed on 2026-09-29: "Yes, that's right" doing more than agree.** Words a card cannot read, or a place with no
     map point, leave the card's answer as it was and say so; words it can read still change it
     ([server/src/memory/card-guard.ts:31] `export async function cardItWouldWipe(`).
-17. **Unconfirmed chat can still retire answers** on multi-answer fields such as who they want to meet or work field, with
-    no Yes and no record (read, not run) ([server/src/memory/session.ts:142] `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'`).
+17. **Closed on 2026-09-29: unconfirmed chat retiring answers.** Run first, it did: a sentence still waiting for a Yes
+    retired a card's answer, and a hedged one retired a plain one. Now only sentences that became true take part, a
+    card's answer is never retired this way, and every retirement is recorded
+    ([server/src/memory/session.ts:147] `.filter((e) => !TAPPED_PREDICATES.has(e.predicate));`).
 18. **Rule clashes.** Two wants tied to the same question overwrite each other's rule; a must-have outlives its want
     sentence and cannot be deleted, only changed in strength ([server/src/matching/profile.ts:414] `ON CONFLICT (user_id, predicate, operator) WHERE retired_at IS NULL`).
 19. **Only one waiting card shows at a time.** Each card now wakes the phone when it arrives and the day it fades,

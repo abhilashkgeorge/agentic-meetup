@@ -502,7 +502,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
 | A tap in the interview or setup | Saved as a fact, live at once | Code | `facts` (+ `question_answers`) | The person; matching | `server/src/api/interview.ts:456` |
-| A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | [AI-1](#ai-1) | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | `server/src/memory/session.ts:28` |
+| A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | [AI-1](#ai-1) | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | `server/src/memory/session.ts:29` |
 | A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | `server/src/memory/extract.ts:237` |
 | A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | `server/src/onboarding/stories.ts:150` |
 | Question of the day | Saved like a story and put on the answer sheet | Code | Episode + fact + answer sheet | Others, via the agents | `server/src/matching/unknowns.ts:212` |
@@ -590,13 +590,13 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
   that.") (`app/src/features/knowledge/you-screen.tsx:112`,
   `server/src/api/profile.ts:250`).
-- **Before a Yes**, a held fact changes nothing in matching, cards, sheets, talk or want checks. Two
-  exceptions: the person's own clone still sees the sentence in its recent chat, and a background
-  resolver ([AI-8](#ai-8)) can retire a live answer on a multi-answer field (for example who they want to
-  meet, or work field) on the strength of an unconfirmed sentence, with no Yes and no record of the
-  change (`server/src/memory/session.ts:133`,
-  `server/src/memory/session.ts:142`).
-  Unverified whether this happens in practice.
+- **Before a Yes**, a held fact changes nothing in matching, cards, sheets, talk or want checks; the
+  person's own clone still sees the sentence in its recent chat. Since 2026-09-29 that includes the
+  background resolver ([AI-8](#ai-8)): only sentences that became true may retire an older answer on a
+  multi-answer field, never a card's answer (who they want to meet, work field...), and each retirement is
+  written down. Before, it was fed the held sentences too and retired what it liked with no record --
+  run on 2026-09-29, a held sentence did retire a card's answer
+  (`server/src/memory/session.ts:147`).
 
 ### 3.3 Question of the day
 
@@ -687,7 +687,6 @@ and "things they said before" come only from the person's own lines
 
 - Which fields the extractor picks for a given sentence, and whether it repeats identical words when it
   re-reads a session (model behaviour; nothing was run).
-- Whether the background resolver retires tapped answers in practice.
 
 ---
 
@@ -2324,9 +2323,9 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Task / model:** `extract` → Gemini 3.5 Flash-Lite (`server/src/memory/extract.ts:175`).
 - **When:** the first setup screen, at once; and for every chat session, about 5 minutes after it goes quiet
   (`server/src/api/tell.ts:73`,
-  `server/src/memory/session.ts:28`).
+  `server/src/memory/session.ts:29`).
   Story and question-of-the-day answers are also swept later, and a first-screen sentence is extracted a second
-  time by the sweeper (`server/src/memory/session.ts:302`).
+  time by the sweeper (`server/src/memory/session.ts:325`).
 - **What goes in:** the person's own lines from the session -- never the clone's (since 2026-09-28) --
   plus their current facts; a session with nothing they typed makes no call. Key instructions: "You extract
   durable facts about ONE person from what they typed to their AI clone.", "NEVER generalise the object.",
@@ -2438,15 +2437,16 @@ $0.02; not measured, because no round has run since the talk was added.
   positions in EXISTING. Never return text." "When you cannot decide, choose uncertain_ids."
   (`server/src/memory/resolve.ts:41`,
   `server/src/memory/resolve.ts:63`).
-- **Checks:** must parse; out-of-range numbers dropped. **Stored:** contradicted facts are retired; uncertain ones
-  become a question (`server/src/memory/session.ts:142`).
+- **Checks:** must parse; out-of-range numbers dropped. **Stored:** contradicted facts are retired, and the
+  retirement recorded; uncertain ones become a question. It sees only sentences that became true, and never a
+  card's answer (since 2026-09-29) (`server/src/memory/session.ts:147`).
 
 <a id="ai-9"></a>
 ### AI-9. Profile summary
 
 - **Task / model:** `render_profile` → Flash-Lite (`server/src/memory/profile.ts:146`).
 - **When:** inside AI-1, when 3 or more facts changed, and only if the new summary would not drop more than a
-  quarter of the old (`server/src/memory/session.ts:181`).
+  quarter of the old (`server/src/memory/session.ts:204`).
 - **In:** up to 60 confirmed facts, any visibility. Instructions: "Write a short profile of this person from the
   facts given." "Use ONLY the facts given. Add nothing." (`server/src/memory/profile.ts:71`,
   `server/src/memory/profile.ts:82`).
@@ -2699,8 +2699,10 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 16. **Closed on 2026-09-29: "Yes, that's right" doing more than agree.** Words a card cannot read, or a place with no
     map point, leave the card's answer as it was and say so; words it can read still change it
     (`server/src/memory/card-guard.ts:31`).
-17. **Unconfirmed chat can still retire answers** on multi-answer fields such as who they want to meet or work field, with
-    no Yes and no record (read, not run) (`server/src/memory/session.ts:142`).
+17. **Closed on 2026-09-29: unconfirmed chat retiring answers.** Run first, it did: a sentence still waiting for a Yes
+    retired a card's answer, and a hedged one retired a plain one. Now only sentences that became true take part, a
+    card's answer is never retired this way, and every retirement is recorded
+    (`server/src/memory/session.ts:147`).
 18. **Rule clashes.** Two wants tied to the same question overwrite each other's rule; a must-have outlives its want
     sentence and cannot be deleted, only changed in strength (`server/src/matching/profile.ts:414`).
 19. **Only one waiting card shows at a time.** Each card now wakes the phone when it arrives and the day it fades,

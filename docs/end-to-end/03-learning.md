@@ -13,7 +13,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
 | A tap in the interview or setup | Saved as a fact, live at once | Code | `facts` (+ `question_answers`) | The person; matching | [server/src/api/interview.ts:456] `extractorModel: 'interview',` |
-| A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | {AI:extract} | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | [server/src/memory/session.ts:28] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);` |
+| A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | {AI:extract} | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | [server/src/memory/session.ts:29] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);` |
 | A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | [server/src/memory/extract.ts:237] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',` |
 | A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | [server/src/onboarding/stories.ts:150] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Question of the day | Saved like a story and put on the answer sheet | Code | Episode + fact + answer sheet | Others, via the agents | [server/src/matching/unknowns.ts:212] `INSERT INTO answer_sheets (user_id, tenant_id, answers, basis)` |
@@ -101,13 +101,13 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
   that.") ([app/src/features/knowledge/you-screen.tsx:112] `<Card label="Is this right?">`,
   [server/src/api/profile.ts:250] `message: verdict === 'yes' ? 'Good. It believes you now.' : 'Dropped. It will not use that.',`).
-- **Before a Yes**, a held fact changes nothing in matching, cards, sheets, talk or want checks. Two
-  exceptions: the person's own clone still sees the sentence in its recent chat, and a background
-  resolver ({AI:resolve}) can retire a live answer on a multi-answer field (for example who they want to
-  meet, or work field) on the strength of an unconfirmed sentence, with no Yes and no record of the
-  change ([server/src/memory/session.ts:133] `const existing = await multiValuedExisting(c, ctx.userId, out.candidates);`,
-  [server/src/memory/session.ts:142] `UPDATE facts SET valid_to = now(), invalidated_at = now(), status = 'superseded'`).
-  Unverified whether this happens in practice.
+- **Before a Yes**, a held fact changes nothing in matching, cards, sheets, talk or want checks; the
+  person's own clone still sees the sentence in its recent chat. Since 2026-09-29 that includes the
+  background resolver ({AI:resolve}): only sentences that became true may retire an older answer on a
+  multi-answer field, never a card's answer (who they want to meet, work field...), and each retirement is
+  written down. Before, it was fed the held sentences too and retired what it liked with no record --
+  run on 2026-09-29, a held sentence did retire a card's answer
+  ([server/src/memory/session.ts:147] `.filter((e) => !TAPPED_PREDICATES.has(e.predicate));`).
 
 ### 3.3 Question of the day
 
@@ -198,4 +198,3 @@ and "things they said before" come only from the person's own lines
 
 - Which fields the extractor picks for a given sentence, and whether it repeats identical words when it
   re-reads a session (model behaviour; nothing was run).
-- Whether the background resolver retires tapped answers in practice.
