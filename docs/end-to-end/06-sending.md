@@ -47,7 +47,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   ([app/src/features/world/world-screen.tsx:277] `Your agent met ${r.met} people. See Matches.`,
+   ([app/src/features/world/world-screen.tsx:278] `Your agent met ${r.met} people. See Matches.`,
    [app/src/features/world/exchange-strip.tsx:83] `label="See the card" variant="primary" onPress={onSeeCard}`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).
@@ -94,9 +94,9 @@ and the agent never went out), "Your agent has been out enough for today." (the 
 "That is all the visits for today. Try again tomorrow.", "That person has moved on.", "Your agent
 needs a few more answers before it can go out."
 ([app/src/features/chat/turn-note.ts:17] `export const SHARED_LIMIT = "That's all for today: chat, learning and your agent's rounds share one daily allowance, and today's is used up. Try again tomorrow.";`,
-[app/src/features/world/world-screen.tsx:41] `daily_targets: 'That is all the visits for today. Try again tomorrow.',`,
-[app/src/features/world/world-screen.tsx:42] `not_here: 'That person has moved on.',`,
-[app/src/features/world/world-screen.tsx:45] `not_ready: 'Your agent needs a few more answers before it can go out.',`).
+[app/src/features/world/world-screen.tsx:42] `daily_targets: 'That is all the visits for today. Try again tomorrow.',`,
+[app/src/features/world/world-screen.tsx:43] `not_here: 'That person has moved on.',`,
+[app/src/features/world/world-screen.tsx:46] `not_ready: 'Your agent needs a few more answers before it can go out.',`).
 In the clone chat, the turn that meets the limit ends with a line from the app, in the server's
 words: "That's all for today. Chat, learning and your agent's rounds share 10 turns a day, and
 today's are used up. Your clone can talk again tomorrow." (since 2026-09-29; before, nothing was

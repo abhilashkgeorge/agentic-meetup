@@ -16,7 +16,7 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, AppState, Text, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, Animated, AppState, BackHandler, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatScreen from '../chat/chat-screen';
 import { getMatches, getQuestionOfDay, runRound, type MatchCard, type WorldAgent } from '../../lib/api';
@@ -29,6 +29,7 @@ import { FPS_METER, FpsMeter, feedFps } from '../dev/fps';
 import { bubblesForCard, pickExchange } from '../matches/exchange';
 import { SHARED_LIMIT } from '../chat/turn-note';
 import { AgentSheet } from './agent-sheet';
+import { backStep } from './back';
 import { ExchangeStrip } from './exchange-strip';
 import type { Band, Size, WorldControl } from './camera';
 
@@ -341,6 +342,29 @@ export default function WorldScreen() {
     if (realm.phase !== 'venue') return;
     dispatchRealm({ type: 'leave' });
   }, [realm.phase]);
+
+  // Android's Back closes what is open, topmost first, and in the park goes back to the
+  // city (back.ts). Before this, nothing listened, and Back with a sheet open quit the app.
+  useEffect(() => {
+    if (!focused) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      const step = backStep({
+        chat: chatOpen, live: liveSelected !== null, agent: selected !== null, quests: questsOpen,
+        voices: voicesOpen, people: peopleOpen, exchange: exchange !== null,
+        inPark: realm.phase === 'venue', moving: transitioning,
+      });
+      if (step === 'chat') setChatOpen(false);
+      else if (step === 'live') setLiveSelected(null);
+      else if (step === 'agent') setSelected(null);
+      else if (step === 'quests') setQuestsOpen(false);
+      else if (step === 'voices') setVoicesOpen(false);
+      else if (step === 'people') setPeopleOpen(false);
+      else if (step === 'exchange') setExchange(null);
+      else if (step === 'inPark') leaveVenue();
+      return step !== null;
+    });
+    return () => sub.remove();
+  }, [focused, chatOpen, liveSelected, selected, questsOpen, voicesOpen, peopleOpen, exchange, realm.phase, transitioning, leaveVenue]);
 
   useEffect(() => {
     Animated.timing(veil, {
