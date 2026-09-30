@@ -35,12 +35,13 @@ export function PeopleSheet({ agents, myArea, myLook, onPick, onClose }: {
   return (
     <Pressable onPress={onClose} style={{ position: 'absolute', inset: 0 }} accessibilityLabel="Close">
       <Pressable onPress={() => {}} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '70%' }}>
-        <Surface radius={radius.xl} style={{ padding: space.screen, paddingBottom: Math.max(insets.bottom, space.lg), gap: space.md,
+        {/* flexShrink, twice: the panel gives way to the sheet's 70%, and the list gives way
+            inside the panel, so Close stays on screen. With the list alone shrinking the panel
+            still grew past the 70% and took Close under the tab bar (on the Pixel, 2026-09-30). */}
+        <Surface radius={radius.xl} style={{ flexShrink: 1, padding: space.screen, paddingBottom: Math.max(insets.bottom, space.lg), gap: space.md,
                                               borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
           <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: p.dark }} />
           <Text style={[type.title, { color: p.text }]}>People here</Text>
-          {/* flexShrink: the list gives way inside the sheet's 70%, so Close stays on screen.
-              It grew past it, and Close was pushed off the bottom (on the Pixel, 2026-09-30). */}
           <FlatList
             style={{ flexShrink: 1 }}
             data={rows}

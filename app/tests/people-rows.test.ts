@@ -43,10 +43,15 @@ describe('peopleRows', () => {
     expect(row('p2').look).toEqual(lookFor(3));
   });
 
-  it('keeps Close on screen: the list gives way inside the sheet', async () => {
+  // Both links of the chain: the panel shrinks to the sheet's 70%, and the list inside the
+  // panel. With the list alone (the first fix, be3de79) this passed while the panel still
+  // grew past 70% and Close sat under the tab bar -- seen on the Pixel, not in the test.
+  // Negative control, run by hand: the panel without flexShrink -> this fails.
+  it('keeps Close on screen: the panel and the list both give way inside the sheet', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const sheet = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'people-sheet.tsx'), 'utf8');
+    expect(sheet).toMatch(/maxHeight: '70%' \}\}>\s*(\{\/\*[\s\S]*?\*\/\}\s*)?<Surface radius=\{radius\.xl\} style=\{\{ flexShrink: 1,/);
     expect(sheet).toMatch(/<FlatList\s+style=\{\{ flexShrink: 1 \}\}/);
     expect(sheet).toMatch(/left=\{item\.look \? <CharacterAvatar look=\{item\.look\} size=\{40\} \/> : undefined\}/);
   });
