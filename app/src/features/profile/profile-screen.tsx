@@ -149,9 +149,11 @@ export default function ProfileScreen() {
         <Card>
           <Stats
             items={[
-              { value: loading ? '—' : String(k?.knows.length ?? 0), label: 'Known' },
+              // Said as what they count: "17 KNOWN" and "40 CAN REACH" left the reader to
+              // guess known what, and reach whom (on the Pixel, 2026-09-30).
+              { value: loading ? '—' : String(k?.knows.length ?? 0), label: 'Things known' },
               { value: loading ? '—' : String(k?.wontGuess.length ?? 0), label: "Won't guess" },
-              { value: loading ? '—' : countLabel(pool?.total), label: 'Can reach' },
+              { value: loading ? '—' : countLabel(pool?.total), label: 'People in reach' },
             ]}
           />
         </Card>
@@ -207,7 +209,9 @@ export default function ProfileScreen() {
           <Button label={lookSaved ? 'Edit' : 'Build your character'} variant="secondary"
                   onPress={() => router.push('/character')} />
           {/* Owner-only, by the ledger's policy. Never on anybody else's screen. */}
-          <Row title="Points" value={String(points)} subtitle="Only you see this. Earned by answering after your dates." last />
+          {/* Points come from the park too since 2026-09-29; "Earned by answering after your
+              dates" had stopped being the whole story (on the Pixel, 2026-09-30). */}
+          <Row title="Points" value={String(points)} subtitle="Only you see this. Earned after your dates and in Cubbon Park, spent on your character." last />
         </Card>
 
         {/* Three sentence-stems in the person's own words. The only free text another
@@ -288,7 +292,7 @@ export default function ProfileScreen() {
                onPress={() => router.push('/preferences')} />
           <Row title="How you appear" subtitle="Your rules in words, and what others see"
                onPress={() => router.push('/appearance')} />
-          <Row title="Things to talk about" subtitle="What your agent can say when it meets someone's"
+          <Row title="Things to talk about" subtitle="What your agent can say when it meets another agent"
                onPress={() => router.push('/stories')} />
           {/* The optional faith card (2026-09-25), for people set up before it existed:
               the interview asks whatever card is still unanswered, then sends them back. */}

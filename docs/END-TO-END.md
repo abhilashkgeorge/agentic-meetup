@@ -430,7 +430,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 `server/src/api/dating.ts:167`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
 ("First name") (`app/src/features/world/town-bar.ts:19`,
-`app/src/features/profile/profile-screen.tsx:246`).
+`app/src/features/profile/profile-screen.tsx:250`).
 
 ### 2.3 Required vs optional, and "ready to send"
 
@@ -1095,7 +1095,7 @@ three shapes:
   tied to the basics, the five core cards or the faith card.
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
   must-haves remove anybody. Everything else just ranks."
-  (`app/src/features/profile/profile-screen.tsx:287`,
+  (`app/src/features/profile/profile-screen.tsx:291`,
   `app/src/features/preferences/preferences-screen.tsx:81`).
   The "Your wants" card lists each want with one line
   (`app/src/features/preferences/wants-state.ts:47`,

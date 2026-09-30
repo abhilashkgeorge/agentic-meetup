@@ -136,7 +136,7 @@ three shapes:
   tied to the basics, the five core cards or the faith card.
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
   must-haves remove anybody. Everything else just ranks."
-  ([app/src/features/profile/profile-screen.tsx:287] `<Row title="What you're looking for" subtitle="Your filters, and what each one costs"`,
+  ([app/src/features/profile/profile-screen.tsx:291] `<Row title="What you're looking for" subtitle="Your filters, and what each one costs"`,
   [app/src/features/preferences/preferences-screen.tsx:81] `title="Looking for" subtitle="Only must-haves remove anybody. Everything else just ranks."`).
   The "Your wants" card lists each want with one line
   ([app/src/features/preferences/wants-state.ts:47] `'Checked against your card. Nobody sees your answer.'`,
