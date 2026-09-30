@@ -158,6 +158,12 @@ interface ParkVoice {
    * keeps trying); `unavailable` when this build has no voice.
    */
   link: 'off' | 'connecting' | 'on' | 'failed' | 'unavailable';
+  /**
+   * Whether voice has ever been on since the app started. A phone that has never reached
+   * the voice server gives up quietly and goes on with typing (voice-room.ts); one that
+   * has, and lost it, says so and keeps trying.
+   */
+  everOn: boolean;
   /** The phone said no to the mic. */
   micDenied: boolean;
   gotPass: (pass: VoicePass) => void;
@@ -183,6 +189,7 @@ export const useParkVoice = create<ParkVoice>((set, get) => ({
   muted: [],
   speaking: new Set(),
   link: 'off',
+  everOn: false,
   micDenied: false,
   // A pass that says you may not speak switches the mic off: when the ban ends, it is
   // for you to switch it on again.
@@ -196,7 +203,7 @@ export const useParkVoice = create<ParkVoice>((set, get) => ({
   toggleMute: (ref) => set({ muted: toggled(get().muted, ref) }),
   setMuted: (muted) => set({ muted }),
   setSpeaking: (speaking) => { if (!same(speaking, get().speaking)) set({ speaking }); },
-  setLink: (link) => set({ link }),
+  setLink: (link) => set(link === 'on' ? { link, everOn: true } : { link }),
   setMicDenied: (micDenied) => set(micDenied ? { micDenied, micOn: false } : { micDenied }),
   left: () => set({ pass: null, micOn: false, speaking: new Set(), link: get().link === 'unavailable' ? 'unavailable' : 'off' }),
 }));

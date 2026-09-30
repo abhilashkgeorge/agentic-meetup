@@ -36,6 +36,16 @@ export const VOICE_UNREACHABLE: RegExp[] = [
 
 /** How long to wait before each fresh try after losing the voice server; the last repeats. */
 export const RETRY_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
+
+/**
+ * How many times a phone that has NEVER reached the voice server tries, quietly, before it
+ * goes on with typing for the rest of the session. The voice server's address is handed
+ * out as the laptop's own (ws://localhost:7880, down the USB cable): a phone on the
+ * internet -- the founder's friend, on the release app, 2026-09-30 -- can never reach it,
+ * and "Voice lost. Trying again..." stayed over the park for good. Lost after it was on,
+ * it still says so and keeps trying (RETRY_MS).
+ */
+export const NEVER_ON_TRIES = 2;
 let lib: Promise<Lib | null> | null = null;
 
 function load(): Promise<Lib | null> {
@@ -115,6 +125,7 @@ export function startVoice(venueSim: WorldSim): () => void {
   // the park for a fresh pass -- the old one may have run out -- sooner first, then every
   // half minute, for as long as there is a pass to be had.
   let retries = 0;
+  let neverOnFails = 0;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   const retryLater = () => {
     if (stopped || !wanted || retryTimer) return;
@@ -175,6 +186,8 @@ export function startVoice(venueSim: WorldSim): () => void {
   };
 
   const join = async (pass: VoicePass) => {
+    // Given up on this session (never reached), or a build with no voice: typing only.
+    if (useParkVoice.getState().link === 'unavailable') return;
     const my = ++gen;
     const loaded = await load();
     if (!loaded) { useParkVoice.getState().setLink('unavailable'); return; }
@@ -209,7 +222,12 @@ export function startVoice(venueSim: WorldSim): () => void {
       await room.connect(pass.url, pass.token, { autoSubscribe: false });
     } catch (err) {
       console.warn('[voice] could not connect', (err as Error).message);
-      if (my === gen) { useParkVoice.getState().setLink('failed'); retryLater(); }
+      if (my !== gen) return;
+      const v = useParkVoice.getState();
+      if (!v.everOn && ++neverOnFails >= NEVER_ON_TRIES) { noRetry(); v.setLink('unavailable'); return; }
+      // Never on yet: still "connecting", not "Voice lost" -- nothing was lost.
+      v.setLink(v.everOn ? 'failed' : 'connecting');
+      retryLater();
       return;
     }
     if (my !== gen || stopped) { await room.disconnect().catch(() => {}); return; }

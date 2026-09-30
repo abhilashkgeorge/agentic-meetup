@@ -65,7 +65,7 @@ vi.mock('../src/lib/storage', () => ({
   getParkVoiceOpen: async () => false, setParkVoiceOpen: async (open: boolean) => { fake.kept.push(open); },
 }));
 
-const { RETRY_MS, VOICE_UNREACHABLE, startVoice } = await import('../src/features/world/voice-room');
+const { NEVER_ON_TRIES, RETRY_MS, VOICE_UNREACHABLE, startVoice } = await import('../src/features/world/voice-room');
 const { useParkVoice } = await import('../src/features/world/park-voice');
 
 const sim = { get: () => ({ x: 0, z: 0 }) } as never;
@@ -85,7 +85,7 @@ describe('voice after the voice server was lost', () => {
     fake.askAgain.ok = true;
     fake.told.length = 0;
     fake.kept.length = 0;
-    useParkVoice.setState({ pass: null, micOn: false, hearing: true, open: false, muted: [], speaking: new Set(), link: 'off', micDenied: false });
+    useParkVoice.setState({ pass: null, micOn: false, hearing: true, open: false, muted: [], speaking: new Set(), link: 'off', everOn: false, micDenied: false });
   });
   afterEach(() => { stop(); vi.useRealTimers(); });
 
@@ -138,6 +138,33 @@ describe('voice after the voice server was lost', () => {
       await settle();
       expect(useParkVoice.getState().link).toBe('failed');
     }
+  });
+
+  // The founder's friend, on the release app over the internet (2026-09-30): the voice
+  // server's address is the laptop's own, so her phone could never reach it, and "Voice
+  // lost. Trying again..." sat over the park for good. Negative control, run by hand: the
+  // give-up branch taken out of the failed connect -> this fails.
+  it('on a phone that never reached the voice server, tries quietly, then goes on with typing', async () => {
+    stop = startVoice(sim);
+    fake.FakeRoom.unreachable = true;
+    useParkVoice.getState().gotPass(pass('t1'));
+    await settle();
+    expect(useParkVoice.getState().link, 'said "Voice lost" when nothing was lost').toBe('connecting');
+    for (let i = 1; i < NEVER_ON_TRIES; i++) {
+      await vi.advanceTimersByTimeAsync(RETRY_MS[i - 1]!);
+      useParkVoice.getState().gotPass(pass(`t${i + 1}`));
+      await settle();
+    }
+    expect(useParkVoice.getState().link, 'never gave up').toBe('unavailable');
+    const asked = fake.askAgain.calls;
+    const rooms = fake.FakeRoom.made.length;
+    await vi.advanceTimersByTimeAsync(120_000);
+    useParkVoice.getState().left();
+    useParkVoice.getState().gotPass(pass('walked in again'));
+    await settle();
+    expect(fake.askAgain.calls, 'kept asking the park').toBe(asked);
+    expect(fake.FakeRoom.made, 'tried again on the next pass').toHaveLength(rooms);
+    expect(useParkVoice.getState().link).toBe('unavailable');
   });
 
   it('takes the pass straight back up when started again, rather than waiting for the next walk in', async () => {
