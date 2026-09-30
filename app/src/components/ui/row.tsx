@@ -40,8 +40,11 @@ export function Row({
           </Text>
         )}
       </View>
+      {/* A long value gives way, cut with an ellipsis, and never takes more than just over
+          half the row: unshrinkable, the server's address squeezed its title to "Serve" over
+          "r" (Settings, on the Pixel, 2026-09-30). */}
       {value !== undefined && (
-        <Text style={[type.callout, { color: p.textSecondary }]} numberOfLines={1}>
+        <Text style={[type.callout, { color: p.textSecondary, flexShrink: 1, maxWidth: '55%' }]} numberOfLines={1}>
           {value}
         </Text>
       )}
