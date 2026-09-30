@@ -46,7 +46,7 @@ export function Button({
           style,
         ]}
       >
-        <Text style={[type.bodyStrong, { color: dead ? p.textTertiary : p.textSecondary }]}>
+        <Text numberOfLines={1} textBreakStrategy="simple" style={[type.bodyStrong, { color: dead ? p.textTertiary : p.textSecondary }]}>
           {label}
         </Text>
       </Pressable>
@@ -75,7 +75,13 @@ export function Button({
         style,
       ]}
     >
+      {/* One line, and Android's simple line breaking: with the default ("highQuality")
+          Android measured "Add another" a hair narrower than it drew it, wrapped the last
+          word onto a second line, and the button showed only "Add" (the release app on
+          the Pixel, 2026-09-30). A label is never two lines. */}
       <Text
+        numberOfLines={1}
+        textBreakStrategy="simple"
         style={[
           type.bodyStrong,
           { color: variant === 'primary' && !dead ? p.accentText : dead ? p.textTertiary : p.text },
