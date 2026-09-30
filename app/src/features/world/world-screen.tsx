@@ -367,7 +367,9 @@ export default function WorldScreen() {
   const [band, setBand] = useState<Band | null>(null);
   const [size, setSize] = useState<Size | null>(null);
   const insets = useSafeAreaInsets();
-  const frame = useMemo(() => ({ top: insets.top + 168, bottom: Math.max(insets.bottom, 20) + 88, side: 12 }), [insets.top, insets.bottom]);
+  // What the HUD covers: since 2026-09-30 a title and one pill at the top (hud.tsx
+  // TownBar), and at the bottom the status line, a nudge, the button and its counts.
+  const frame = useMemo(() => ({ top: insets.top + 96, bottom: Math.max(insets.bottom, 20) + 150, side: 12 }), [insets.top, insets.bottom]);
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     setSize((s) => (s && s.width === width && s.height === height ? s : { width, height }));

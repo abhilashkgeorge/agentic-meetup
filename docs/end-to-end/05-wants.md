@@ -54,10 +54,10 @@ three shapes:
   says "We can't check this one yet." for that want, and the app records that Meera
   should be asked it ([server/src/onboarding/next-question.ts:110] `// SITUATIONS ARE NEVER ASKED HERE. They exist for other people's wants and arrive`,
   [server/src/matching/unknowns.ts:88] `if (r.question && r.status === 'cant_check' && CARD_QUESTIONS.has(`).
-- **What Meera sees** later, if it is her most-asked gap: a "A question for you" chip in
-  the town; the screen says "MONEY", the question, and "Other agents needed this once
+- **What Meera sees** later, if it is her most-asked gap: "A question for you" by the
+  button in the town (the first of its nudges); the screen says "MONEY", the question, and "Other agents needed this once
   lately to check who fits, and yours could not say. One tap. Nobody ever sees your
-  answer." ([app/src/features/world/hud.tsx:167] `<Chip label="A question for you" selected onPress={onQuestion} />`,
+  answer." ([app/src/features/world/town-bar.ts:18] `if (wants.question) return { label: 'A question for you', onPress: go.question };`,
   [app/src/features/question/question-state.ts:45] `lately to check who fits, and yours could not say. One tap. Nobody ever sees your answer.`).
   She is never told whose want it was, or what the want said.
 - **If Meera had answered** "Saved or invested" or "A treat: a trip, a gadget, a night out",

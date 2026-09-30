@@ -122,7 +122,7 @@ details), and **database roles** that limit what each part of the server can rea
 
 ### 4.3 "How you appear" and hiding
 
-- **The screen** (YOU → Manage, or the town's "How you appear" chip) shows, in order: "Your agent only
+- **The screen** (YOU → Manage, or the town's "How you appear" pill) shows, in order: "Your agent only
   brings you people who" (the person's card rules read back in words), "What someone sees about you"
   (headline, the fixed line, tags, up to eight sentences each marked "On your card", "Not on a card
   now" or "Hidden"), "When another agent asks yours" (their answer sheet), and "Learned in chat" ("Only

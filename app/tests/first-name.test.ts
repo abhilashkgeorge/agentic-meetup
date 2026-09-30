@@ -50,10 +50,13 @@ describe('where it is asked and shown', () => {
     expect(profile).toContain("router.push('/edit/first_name')");
   });
 
-  it('the Home: a chip asks it while the server lists it as needed', () => {
+  it('the Home: its one nudge asks it while the server lists it as needed', () => {
+    // Since 2026-09-30 the Home's nudges show one at a time (town-bar.ts nudgeFor), not
+    // as chips in a card over the map.
     const hud = said('src/features/world/hud.tsx');
     expect(hud).toContain("world?.me.need.includes('first_name')");
-    expect(hud).toContain('label="Add your first name"');
+    expect(hud).toMatch(/nudgeFor\(\{ question: Boolean\(question && onQuestion\), askName, askArea \}/);
+    expect(said('src/features/world/town-bar.ts')).toContain("label: 'Add your first name'");
     expect(said('src/features/world/world-screen.tsx')).toContain("setupRoute(['first_name'])");
   });
 });

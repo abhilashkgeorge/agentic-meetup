@@ -36,7 +36,7 @@
  */
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
+import { LogBox, PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
 import { CENTRAL_AREA, HAIR_HEX, HEIGHT_SCALE, OUTFIT_HEX, PARK_SIGHTS, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
@@ -64,6 +64,16 @@ import { buildCity, type BuiltCity } from './city-mesh';
 import { besideThem, rideAt, type Ride } from './ride';
 import { CUBBON_PARK, venueGarden, type Venue } from './venue';
 import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
+
+/**
+ * Two warnings three.js prints for every canvas, about itself, that nothing here can act on:
+ * @react-three/fiber still makes a THREE.Clock (deprecated upstream), and expo-gl offers no
+ * WEBGL_lose_context to give the context back with. In a debug build each start put "Open
+ * debugger to view warnings" over the Send button and the tabs (on the Pixel, 2026-09-30).
+ * Only the toast goes: the lines still reach the terminal.
+ */
+export const THREE_NOISE = [/THREE\.Clock: This module has been deprecated/, /WEBGL_lose_context extension not supported/];
+LogBox.ignoreLogs(THREE_NOISE);
 
 export interface WorldColors {
   bg: string;

@@ -12,7 +12,7 @@ import { CENTRAL_AREA } from '@clone/shared';
 import type { World } from '../../lib/api';
 import { countLabel } from '../../lib/counts';
 import { missingLabel } from '../profile/fields';
-import { Button, Card, Chip, ChipGroup, radius, raised, space, type, usePalette } from '../../components/ui';
+import { Button, radius, raised, space, type, usePalette } from '../../components/ui';
 import { roundActive } from './bridge';
 import { Stick } from './stick';
 import { cityPose, placeLabels, toScreen, type Band, type Size } from './camera';
@@ -20,6 +20,7 @@ import { MAP, areaName, cityTitle, type Frame } from './map';
 import { MAX_VENUE_AGENTS, type Venue } from './venue';
 import { useLiveCount, useQuestsDone } from './park-hud';
 import { PARK_WHO_MEANS, parkWho } from './park-top';
+import { nudgeFor, townCounts } from './town-bar';
 
 export function Hud({
   world,
@@ -126,6 +127,11 @@ export function Hud({
     Animated.timing(fade, { toValue: band === 'city' ? 1 : 0, duration: 250, useNativeDriver: true }).start();
   }, [band, fade]);
 
+  // The one nudge worth a tap now, if any: a question waiting, a name, a part of town.
+  const nudge = world?.me.inPool ? nudgeFor({ question: Boolean(question && onQuestion), askName, askArea }, {
+    question: () => onQuestion?.(), name: onName, area: onArea,
+  }) : null;
+
   const status = !world
     ? 'Finding the square…'
     : active
@@ -155,31 +161,9 @@ export function Hud({
         <ParkBar onBack={onLeaveVenue} agents={Math.min(here + 1, MAX_VENUE_AGENTS)} crowd={crowd}
                  onQuests={onQuests} onCrowd={onCrowd} />
       ) : (
-        <View pointerEvents="box-none"
-              style={{ position: 'absolute', top: insets.top + space.sm, left: space.screen, right: space.screen, gap: space.sm }}>
-          <Text style={[type.title, { color: p.text }]}>{title}</Text>
-          <Card>
-            <Text style={[type.body, { color: p.text }]}>{status}</Text>
-            {world && world.me.inPool && (
-              <ChipGroup>
-                {askName && <Chip label="Add your first name" selected={false} onPress={onName} />}
-                {askArea && <Chip label="Which part of town?" selected={false} onPress={onArea} />}
-                {question && onQuestion && <Chip label="A question for you" selected onPress={onQuestion} />}
-                <Chip label="Visit Cubbon Park" selected={false} onPress={onEnterVenue} />
-                <Chip label={`${areaName(myArea)} · ${here} here`} selected={band !== 'city'} onPress={onHome} />
-                {band !== 'city' && <Chip label="Whole city" selected={false} onPress={onCity} />}
-                <Chip label={`${countLabel(world.pool.total)} people nearby`} selected={false} onPress={() => {}} disabled />
-                <Chip label={`${world.targetsLeftToday} visits left today`} selected={false} onPress={() => {}} disabled />
-                <Chip label="Who's here" selected={false} onPress={onPeople} />
-                <Chip label="How you appear" selected={false} onPress={onAppearance} />
-                {onCityCrowd && (
-                  <Chip label={cityCrowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
-                        selected={cityCrowd > 0} onPress={onCityCrowd} />
-                )}
-              </ChipGroup>
-            )}
-          </Card>
-        </View>
+        <TownBar title={title} inPool={!!world?.me.inPool} area={areaName(myArea)} here={here} band={band}
+                 onPeople={onPeople} onHome={onHome} onCity={onCity} onEnterVenue={onEnterVenue}
+                 onAppearance={onAppearance} cityCrowd={cityCrowd} onCityCrowd={onCityCrowd} />
       )}
 
       {/* The stick sits where a thumb already is, and takes the bottom of the screen
@@ -192,13 +176,38 @@ export function Hud({
       )}
 
       <View pointerEvents="box-none"
-            style={{ position: 'absolute', bottom: space.lg, left: space.screen, right: space.screen, gap: space.md }}>
+            style={{ position: 'absolute', bottom: space.lg, left: space.screen, right: space.screen, gap: space.sm }}>
         {walking || transitioning ? null : exchange}
+        {!venue && !walking && !transitioning && (
+          <>
+            {/* One thing to do at a time, the most useful first (town-bar.ts nudgeFor). */}
+            {nudge && (
+              <Pressable onPress={nudge.onPress} accessibilityRole="button" accessibilityLabel={nudge.label}
+                         style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, alignSelf: 'center',
+                                  paddingHorizontal: space.lg, paddingVertical: space.sm, borderRadius: radius.pill,
+                                  backgroundColor: p.accent, boxShadow: raised(p, 3) }}>
+                <Text style={[type.callout, { color: p.accentText, fontFamily: type.bodyStrong.fontFamily }]}>{nudge.label}</Text>
+                <Text style={[type.callout, { color: p.accentText }]}>›</Text>
+              </Pressable>
+            )}
+            {/* What your agent is doing, or knows: said once, over the map, not in a card. */}
+            <Text numberOfLines={1}
+                  style={[type.callout, { color: p.text, alignSelf: 'center', paddingHorizontal: space.md, paddingVertical: 2,
+                                          borderRadius: radius.pill, backgroundColor: p.bg, opacity: 0.94, overflow: 'hidden' }]}>
+              {status}
+            </Text>
+          </>
+        )}
         {walking || transitioning ? null : world && !world.me.inPool ? (
           <Button label="Finish setup" variant="primary" onPress={onFinishSetup} />
         ) : (
           <Button label={active ? 'Your agent is out…' : 'Send my agent out'} variant="primary"
                   onPress={onSendOut} disabled={!world || active} />
+        )}
+        {!venue && !walking && !transitioning && world?.me.inPool && (
+          <Text numberOfLines={1} style={[type.label, { color: p.textSecondary, alignSelf: 'center' }]}>
+            {townCounts(countLabel(world.pool.total), world.targetsLeftToday)}
+          </Text>
         )}
       </View>
     </>
@@ -287,6 +296,95 @@ function ParkBar({ onBack, agents, crowd, onQuests, onCrowd }: {
           </Pressable>
         )}
       </View>
+    </View>
+  );
+}
+
+/** A small raised pill on the town's edges: the one shape every control there has. */
+function EdgePill({ label, detail, glyph, onPress, active = false, accessibilityLabel }: {
+  label: string;
+  /** A second, quieter word: a count. */
+  detail?: string;
+  glyph?: string;
+  onPress: () => void;
+  /** Where you are now: filled, like a selected chip. */
+  active?: boolean;
+  accessibilityLabel?: string;
+}) {
+  const p = usePalette();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} hitSlop={6}
+               style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, height: 36, flexShrink: 0,
+                        paddingHorizontal: space.md, borderRadius: radius.pill,
+                        backgroundColor: active ? p.accent : p.bg, boxShadow: raised(p, 3) }}>
+      {glyph ? <Text style={{ fontSize: 14 }}>{glyph}</Text> : null}
+      <Text numberOfLines={1} style={[type.callout, { color: active ? p.accentText : p.text, fontFamily: type.bodyStrong.fontFamily }]}>
+        {label}
+      </Text>
+      {detail ? <Text numberOfLines={1} style={[type.callout, { color: active ? p.accentText : p.textSecondary }]}>{detail}</Text> : null}
+    </Pressable>
+  );
+}
+
+/**
+ * THE TOWN'S OWN TOP, ON ITS EDGES ONLY (the founder, 2026-09-30: "fix any UI/UX issues
+ * like the one that we found on the main homepage with a lot of tabs blocking most of the
+ * screens"). The town wore a card of up to eleven chips over the top half of the map --
+ * places, counts, a camera switch and links, all the same shape, some of them not
+ * buttons at all. Now:
+ *   - top left, the city and your part of it with how many agents are there, which opens
+ *     who they are;
+ *   - top right, one camera switch -- "Whole city", or back to your part of town -- and
+ *     under it the two places to go: the park, and how you appear;
+ *   - the line about your agent, one nudge and the counts moved to the bottom, beside the
+ *     button they are about (the Hud's bottom column).
+ */
+function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, onEnterVenue, onAppearance, cityCrowd, onCityCrowd }: {
+  title: string;
+  inPool: boolean;
+  /** Your part of town, by name. */
+  area: string;
+  /** Agents there now. */
+  here: number;
+  band: Band | null;
+  onPeople: () => void;
+  onHome: () => void;
+  onCity: () => void;
+  onEnterVenue: () => void;
+  onAppearance: () => void;
+  cityCrowd: number;
+  onCityCrowd?: () => void;
+}) {
+  const p = usePalette();
+  const insets = useSafeAreaInsets();
+  const wide = band === 'city';
+  return (
+    <View pointerEvents="box-none"
+          style={{ position: 'absolute', top: insets.top + space.sm, left: space.screen, right: space.screen,
+                   flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <View pointerEvents="box-none" style={{ gap: space.sm, alignItems: 'flex-start', flexShrink: 1 }}>
+        <Text numberOfLines={1} style={[type.title, { color: p.text }]}>{title}</Text>
+        {inPool && (
+          <EdgePill glyph="📍" label={area} detail={`· ${here} here`} onPress={onPeople}
+                    accessibilityLabel={`${area}, ${here} agents here. Who they are`} />
+        )}
+      </View>
+      {inPool && (
+        <View pointerEvents="box-none" style={{ gap: space.sm, alignItems: 'flex-end', flexShrink: 0 }}>
+          <EdgePill label={wide ? `Back to ${area}` : 'Whole city'} onPress={wide ? onHome : onCity} />
+          <EdgePill glyph="🌳" label="Cubbon Park" onPress={onEnterVenue} />
+          <EdgePill label="How you appear" onPress={onAppearance} />
+          {onCityCrowd && (
+            <Pressable onPress={onCityCrowd} accessibilityRole="button" hitSlop={6}
+                       style={{ paddingHorizontal: space.md, paddingVertical: space.xs, borderRadius: radius.pill,
+                                backgroundColor: p.bg, opacity: 0.8 }}>
+              <Text style={[type.label, { color: p.textSecondary }]}>
+                {cityCrowd ? 'Remove the test crowd' : 'Test: add 1000 people'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      )}
     </View>
   );
 }
