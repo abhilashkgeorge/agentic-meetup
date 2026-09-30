@@ -589,7 +589,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **Where the question appears:** the YOU tab, one at a time ("Your agent heard something"), and "What it
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
   that.") (`app/src/features/knowledge/you-screen.tsx:112`,
-  `server/src/api/profile.ts:250`).
+  `server/src/api/profile.ts:251`).
 - **Before a Yes**, a held fact changes nothing in matching, cards, sheets, talk or want checks; the
   person's own clone still sees the sentence in its recent chat. Since 2026-09-29 that includes the
   background resolver ([AI-8](#ai-8)): only sentences that became true may retire an older answer on a
@@ -2607,7 +2607,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Push notifications** | A closed app is woken for a new card, "they shared their profile", "you can talk now", a message, and "a card fades today"; no names or words on the lock screen. Needs the founder's Expo setup before it reaches phones (stage 9.5) | Everyone, once allowed | `server/src/push/index.ts:34` |
 | **Photos screen** | Up to six photos, re-encoded to drop location data | Everyone | `server/src/photos/store.ts:30` |
 | **Selfie check** | "Photos checked" badge from a local face model | Off (`FACE_CHECK=off`) | `server/src/api/verify.ts:39` |
-| **"What it knows"** | Every fact, its history, and the confirm questions | Everyone | `app/src/features/knowledge/you-screen.tsx:91` |
+| **"What it knows"** | Every fact, its history, and the confirm questions. Since 2026-09-30 each reads in words -- the field as a person says it and a tapped answer by its chip: "Kids: Want kids", "One person or open: One person", "How far you would go: 25 km" (it was the column and the stored value: "wants children: yes"); what the person typed is shown exactly as typed | Everyone | `app/src/features/knowledge/you-screen.tsx:91`, `server/src/memory/fact-words.ts:47` |
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:98` |
 | **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:238` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable | Everyone | `app/src/features/settings/connect-screen.tsx:36` |

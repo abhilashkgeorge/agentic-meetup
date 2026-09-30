@@ -164,8 +164,9 @@ describe('(c) a card answer, then a sentence that disagrees', () => {
     const k = await (await knowledgeRoutes.request('/v1/knowledge', { headers: headers(me) })).json() as {
       confirm: { factId: string; claim: string } | null; review: { label: string }[];
     };
-    expect(k.confirm?.claim).toMatch(/drinking/);
-    expect(k.review.map((r) => r.label)).not.toContain('drinking');
+    // The field in words since 2026-09-30 (fact-words.ts): "Drinking: ...", not "drinking: daily".
+    expect(k.confirm?.claim).toMatch(/^Drinking: /);
+    expect(k.review.map((r) => r.label)).not.toContain('Drinking');
 
     const yes = await knowledgeRoutes.request('/v1/knowledge/confirm', {
       method: 'POST', headers: headers(me), body: JSON.stringify({ factId: k.confirm!.factId, verdict: 'yes' }),

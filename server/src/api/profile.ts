@@ -8,6 +8,7 @@ import {
 } from '../memory/pasteImport.js';
 import { currentState, history } from '../memory/facts.js';
 import { openGaps } from '../memory/gaps.js';
+import { fieldWords, valueWords } from '../memory/fact-words.js';
 import { log } from '../log.js';
 
 /** Auth or 401, written once because eleven routes needed the same six lines. */
@@ -117,8 +118,8 @@ export const knowledgeRoutes = new Hono()
       knows: [...data.live].sort((a, b) => weight(a.predicate) - weight(b.predicate)).map((f) => ({
         id: f.id,
         predicate: f.predicate,
-        label: f.predicate.replace(/_/g, ' '),
-        value: f.objectText,
+        label: fieldWords(f.predicate),
+        value: valueWords(f.predicate, f.objectText),
         // Plain English, because "corroboration_count: 2, stance: asserted" is a
         // database row and this screen is meant to be readable by a person.
         because:
@@ -128,15 +129,15 @@ export const knowledgeRoutes = new Hono()
       })),
       wontGuess: data.gaps.map((g) => ({ id: g.id, question: g.question })),
       changedMind: data.changed.map((r) => ({
-        label: r.predicate.replace(/_/g, ' '),
-        was: r.old_text,
-        now: r.new_text,
+        label: fieldWords(r.predicate),
+        was: valueWords(r.predicate, r.old_text),
+        now: valueWords(r.predicate, r.new_text),
         when: r.changed_at,
       })),
       confirm: data.confirm
         ? {
             factId: data.confirm.id,
-            claim: `${data.confirm.predicate.replace(/_/g, ' ')}: ${data.confirm.objectText}`,
+            claim: `${fieldWords(data.confirm.predicate)}: ${valueWords(data.confirm.predicate, data.confirm.objectText)}`,
             from: data.confirm.sourceQuote,
           }
         : null,
@@ -144,8 +145,8 @@ export const knowledgeRoutes = new Hono()
       // individually is the intake wall the design forbids, arriving by accident.
       review: data.review.map((f) => ({
         factId: f.id,
-        label: f.predicate.replace(/_/g, ' '),
-        value: f.objectText,
+        label: fieldWords(f.predicate),
+        value: valueWords(f.predicate, f.objectText),
       })),
     });
   })
@@ -160,9 +161,9 @@ export const knowledgeRoutes = new Hono()
 
     const rows = await tenantSession(ctx, (db) => history(db, ctx.userId, predicate));
     return c.json({
-      label: predicate.replace(/_/g, ' '),
+      label: fieldWords(predicate),
       entries: rows.map((f) => ({
-        value: f.objectText,
+        value: valueWords(predicate, f.objectText),
         status: f.status,
         current: f.status === 'active' && f.validTo === null,
         recordedAt: f.recordedAt,
