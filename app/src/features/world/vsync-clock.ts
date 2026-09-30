@@ -11,36 +11,37 @@
  * and a call from it into JS arrived every 16.6 ms. So the town asks the UI thread.
  *
  * ONE TICK IN FLIGHT. The UI thread refreshes whether or not JS kept up, so it sends a
- * tick only when the last one has come back: JS answers every tick, drawn or not, and a
- * refresh that finds one still out sends nothing. A slow frame costs the refreshes it
- * overran and no more -- never a queue of ticks drawn back to back once JS is free (a
- * six-second stall would otherwise leave 360 of them).
+ * tick only when the last one has been taken: JS marks every tick taken as it starts it,
+ * drawn or not, and a refresh that finds one still waiting sends nothing. So at most one
+ * tick waits behind the frame being drawn, and a stall costs the refreshes it overran --
+ * never a queue of ticks drawn back to back once JS is free (a six-second stall would
+ * otherwise leave 360 of them).
+ *
+ * THE MARK IS SHARED MEMORY, not a message. It was a call back to the UI runtime, and
+ * such a call is run at the UI thread's next frame -- after that frame's own check had
+ * already found the tick still out, so about every other refresh was skipped: 77 fps on
+ * the Seeker's 120 Hz screen, where r3f's own loop held 119 (measured 2026-09-30). A
+ * Synchronizable is read by the UI thread directly, at once.
  *
  * ONE LOOP. A generation number on the UI runtime: starting bumps it, and a loop whose
  * number is not the current one stops at its next refresh, so a start while running, or a
  * Fast Refresh, never leaves two loops ticking.
  */
-import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
+import { createSynchronizable, scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
-type UiGlobals = { __townVsync?: number; __townTickOut?: boolean };
+type UiGlobals = { __townVsync?: number };
+
+/** True from the UI thread sending a tick until JS takes it. Read by both threads directly. */
+const tickOut = createSynchronizable(false);
 
 let onFrame: ((nowMs: number) => void) | null = null;
 let every = 1;
 let count = 0;
 
-/** On the UI runtime: the tick is back, the next refresh may send one. */
-function tickBack(): void {
-  'worklet';
-  (globalThis as unknown as UiGlobals).__townTickOut = false;
-}
-
-/** Runs on the JS thread, once per tick the UI thread sent. Always answers it. */
+/** Runs on the JS thread, once per tick the UI thread sent. Takes it first, then draws. */
 export function tick(): void {
-  try {
-    if (onFrame && ++count % every === 0) onFrame(performance.now());
-  } finally {
-    scheduleOnUI(tickBack);
-  }
+  tickOut.setBlocking(false);
+  if (onFrame && ++count % every === 0) onFrame(performance.now());
 }
 
 /**
@@ -56,11 +57,11 @@ export function startVsync(frame: (nowMs: number) => void, everyOther = false): 
     const g = globalThis as unknown as UiGlobals;
     const mine = (g.__townVsync ?? 0) + 1;
     g.__townVsync = mine;
-    g.__townTickOut = false;
+    tickOut.setBlocking(false);
     const loop = () => {
       if (g.__townVsync !== mine) return;
-      if (!g.__townTickOut) {
-        g.__townTickOut = true;
+      if (!tickOut.getDirty()) {
+        tickOut.setBlocking(true);
         scheduleOnRN(tick);
       }
       requestAnimationFrame(loop);
