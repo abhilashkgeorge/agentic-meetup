@@ -8,6 +8,9 @@
  * - The three numbers at the top were "KNOWN", "WON'T GUESS" and "CAN REACH": known what,
  *   reach whom.
  *
+ * - "Things to talk about" itself opened with the same cut-off phrase: "When your agent
+ *   meets someone's, it only repeats what you write here."
+ *
  * Words on a screen, so the source is what is checked. Negative control, run by hand: any
  * one of the old strings back -> this fails.
  */
@@ -24,5 +27,11 @@ describe('the You tab', () => {
     expect(screen).toMatch(/label: 'Things known'/);
     expect(screen).toMatch(/label: 'People in reach'/);
     expect(screen).not.toMatch(/meets someone's"|Earned by answering after your dates|label: 'Known'|label: 'Can reach'/);
+  });
+
+  it('opens "Things to talk about" with a finished sentence too', () => {
+    const stories = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'stories', 'stories-screen.tsx'), 'utf8');
+    expect(stories).toContain('subtitle="When your agent meets another agent, it only repeats what you write here. Nothing made up."');
+    expect(stories).not.toContain("meets someone's");
   });
 });

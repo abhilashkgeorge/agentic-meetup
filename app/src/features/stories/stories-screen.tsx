@@ -61,7 +61,7 @@ export default function StoriesScreen({ onboarding = false }: { onboarding?: boo
     >
       {!onboarding && <Header title="" onBack={() => router.back()} />}
       <ScreenTitle title="Things to talk about"
-                   subtitle="When your agent meets someone's, it only repeats what you write here. Nothing made up." />
+                   subtitle="When your agent meets another agent, it only repeats what you write here. Nothing made up." />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
         <Text style={[type.callout, { color: p.textSecondary }]}>
