@@ -704,7 +704,7 @@ details), and **database roles** that limit what each part of the server can rea
 | "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | `app/src/features/appearance/appearance-screen.tsx:187` |
 | "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | `server/src/api/me.ts:177` |
 | A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | `server/src/matching/brief.ts:204` |
-| A sentence naming a company, college or building | A suggestion: "This names a company. Hide this?" | Code | Nothing unless hidden | The person | `app/src/features/appearance/appearance-state.ts:72` |
+| A sentence naming a company, college or building | A suggestion: "This names a company. Hide this?" | Code | Nothing unless hidden | The person | `app/src/features/appearance/appearance-state.ts:81` |
 
 ### Arjun and Meera
 
@@ -815,11 +815,16 @@ details), and **database roles** that limit what each part of the server can rea
 ### 4.3 "How you appear" and hiding
 
 - **The screen** (YOU → Manage, or the town's "How you appear" pill) shows, in order: "Your agent only
-  brings you people who" (the person's card rules read back in words), "What someone sees about you"
-  (headline, the fixed line, tags, up to eight sentences each marked "On your card", "Not on a card
-  now" or "Hidden"), "When another agent asks yours" (their answer sheet), and "Learned in chat" ("Only
+  brings you people who" (the person's card rules read back in words, each the rest of that sentence:
+  "want kids", "never or rarely smoke", "are Hindu or Jain"; since 2026-09-30, before which they read
+  "kids: want kids" and "faith: hindu or jain"), "What someone sees about you"
+  (headline; the fixed line, said as the quote it is -- "Under it, every card says ..." -- since
+  2026-09-30, when shown bare it read as being about the owner's own rules; tags; up to eight
+  sentences each marked "On your card", "Not on a card now" or "Hidden"), "When another agent asks yours" (their answer sheet), and "Learned in chat" ("Only
   you see these. Your agent uses them to find people, but never says them until you tap OK to share.")
   (`app/src/features/appearance/appearance-screen.tsx:88`,
+  `server/src/matching/readback.ts:28`,
+  `app/src/features/appearance/appearance-state.ts:25`,
   `app/src/features/appearance/appearance-screen.tsx:106`,
   `app/src/features/appearance/appearance-screen.tsx:167`,
   `app/src/features/appearance/appearance-screen.tsx:181`).

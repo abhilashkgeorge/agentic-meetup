@@ -32,7 +32,7 @@ import { useSession } from '../../store/session';
 import {
   Button, Card, Chip, ChipGroup, Crease, Header, Screen, ScreenTitle, Skeleton, space, type, usePalette,
 } from '../../components/ui';
-import { hideAsk, sheetView, withHidden, withShared } from './appearance-state';
+import { everyCardSays, hideAsk, sheetView, withHidden, withShared } from './appearance-state';
 
 export default function AppearanceScreen() {
   const p = usePalette();
@@ -109,7 +109,7 @@ export default function AppearanceScreen() {
           ) : (
             <>
               <Text style={[type.bodyStrong, { color: p.text }]}>{look.headline}</Text>
-              <Text style={[type.callout, { color: p.textSecondary }]}>{look.line}</Text>
+              <Text style={[type.callout, { color: p.textSecondary }]}>{everyCardSays(look.line)}</Text>
               {look.tags.length > 0 && (
                 <>
                   <Crease />

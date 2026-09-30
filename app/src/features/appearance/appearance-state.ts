@@ -17,6 +17,15 @@ import type { Appearance, SheetEntry } from '../../lib/api';
 
 export const QUOTES_ON_A_CARD = 2;
 
+/**
+ * The line every card carries, said as what it is. Shown bare under the headline,
+ * "Passes your rules both ways" read as a claim about the owner's own rules (the founder's
+ * "How you appear" on the Pixel, 2026-09-30); it is a quote of what the reader's card says.
+ */
+export function everyCardSays(line: string): string {
+  return `Under it, every card says “${line.replace(/[.\s]+$/, '')}.”`;
+}
+
 /** Recompute `shown` over the list as it stands. */
 export function markShown(quotes: Appearance['quotes']): Appearance['quotes'] {
   const seen = new Set<string>();

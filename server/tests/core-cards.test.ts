@@ -680,7 +680,7 @@ describe('the faith card', () => {
     // Her own rule, read back to her -- the one place her faith rule is ever said.
     const rb = await (await meRoutes.request('/v1/me/readback', { headers: headers(me) })).json() as { lines: string[] };
     // In the card's own order, whatever order they were ticked in.
-    expect(rb.lines).toContain('faith: hindu or jain');
+    expect(rb.lines).toContain('are Hindu or Jain');
   });
 
   it('its partner row is a rule both ways, and an unknown passes', async () => {

@@ -181,10 +181,31 @@ describe('the rules, read back', () => {
       intent: ['marriage'], ageRange: { min: 26, max: 34 }, maxDistanceKm: null,
       rules: [{ predicate: 'smoking', values: ['never', 'rarely'] }, { predicate: 'diet', values: ['vegetarian'] }],
     });
-    expect(r.lines).toEqual(['want marriage', 'are 26 to 34', 'smoking: never or rarely', 'food: vegetarian']);
+    expect(r.lines).toEqual(['want marriage', 'are 26 to 34', 'never or rarely smoke', 'are vegetarian']);
     expect(r.sentence).toBe(
-      `I'll only bring you people who want marriage, are 26 to 34, smoking: never or rarely and food: vegetarian. ${READBACK_FOOTER}`);
+      `I'll only bring you people who want marriage, are 26 to 34, never or rarely smoke and are vegetarian. ${READBACK_FOOTER}`);
     expect(r.footer).toMatch(/haven't answered/);
+  });
+
+  // The founder's rules card on the Pixel, 2026-09-30, under "Your agent only brings you
+  // people who": "kids: want kids" and "one person or open: one person". Every line now
+  // reads on from "people who". Negative control, run by hand: the old "card: labels"
+  // line back -> this fails.
+  it('says every card rule as the rest of "people who"', () => {
+    const r = readback({
+      intent: [], ageRange: null, maxDistanceKm: null,
+      rules: [
+        { predicate: 'wants_children', values: ['yes'] },
+        { predicate: 'monogamy_stance', values: ['monogamous', 'open_to_either'] },
+        { predicate: 'drinking', values: ['sometimes', 'daily'] },
+        { predicate: 'diet', values: ['vegetarian', 'vegan'] },
+        { predicate: 'religion', values: ['hindu', 'jain'] },
+      ],
+    });
+    expect(r.lines).toEqual([
+      'want kids', 'want one person or are open to either', 'sometimes drink or drink every day',
+      'are vegetarian or vegan', 'are Hindu or Jain',
+    ]);
   });
 
   it('says so plainly when there are no rules', () => {
@@ -206,6 +227,6 @@ describe('the rules, read back', () => {
       lines: string[]; footer: string;
     };
     expect(r.lines).toContain('want marriage');
-    expect(r.lines).toContain('smoking: never');
+    expect(r.lines).toContain('never smoke');
   });
 });

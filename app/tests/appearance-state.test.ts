@@ -17,7 +17,7 @@
  *   - withShared leaving the sentence in the list    -> "leaves the learned list" fails
  */
 import { describe, expect, it } from 'vitest';
-import { markShown, sheetView, withHidden, withShared } from '../src/features/appearance/appearance-state';
+import { everyCardSays, markShown, sheetView, withHidden, withShared } from '../src/features/appearance/appearance-state';
 
 const q = (factId: string, text: string, hidden = false) => ({ factId, text, hidden, shown: false });
 const base = {
@@ -40,6 +40,21 @@ describe('which sentences are on a card', () => {
 
   it('counts the same words once', () => {
     expect(shown({ quotes: markShown([q('a', 'Canoe'), q('b', 'canoe'), q('c', 'subtitles')]) })).toEqual(['a', 'c']);
+  });
+});
+
+// The founder's "How you appear" on the Pixel, 2026-09-30: "Passes your rules both ways,
+// on everything they've answered" sat bare under the headline and read as being about his
+// own rules. It is shown as the quote it is. Negative control, run by hand: the screen
+// showing `look.line` bare -> the second assertion fails.
+describe('the line every card carries', () => {
+  it('is said as a quote of the card, under its headline', async () => {
+    expect(everyCardSays("Passes your rules both ways, on everything they've answered"))
+      .toBe('Under it, every card says \u201cPasses your rules both ways, on everything they\'ve answered.\u201d');
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const screen = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'appearance', 'appearance-screen.tsx'), 'utf8');
+    expect(screen).toContain('{everyCardSays(look.line)}');
   });
 });
 

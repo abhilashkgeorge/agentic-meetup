@@ -17,15 +17,45 @@
 import { ALL_CARDS, BY_ID } from '../onboarding/questions.js';
 import { INTENT_WORDS } from './brief.js';
 
-/** What a card is called when its rule is read back: "smoking: never". */
-const CARD_NOUN: Record<string, string> = {
-  wants_children: 'kids',
-  monogamy_stance: 'one person or open',
-  smoking: 'smoking',
-  drinking: 'drinking',
-  diet: 'food',
-  religion: 'faith',
+/**
+ * Each card answer as the rest of "people who ...". It used to be the card's name and its
+ * labels -- "kids: want kids", "one person or open: one person" -- which does not follow
+ * "people who", on the screen or in the sentence, and it lower-cased a faith's name (the
+ * rules card on the Pixel, 2026-09-30). An answer missing here falls back to its label.
+ */
+const SAYS: Record<string, Record<string, string>> = {
+  wants_children: {
+    yes: 'want kids', no: "don't want kids", maybe: "aren't sure about kids yet",
+    have_and_want_more: 'have kids and want more', have_and_done: 'have kids and want no more',
+  },
+  monogamy_stance: {
+    monogamous: 'want one person', non_monogamous: 'want an open relationship', open_to_either: 'are open to either',
+  },
+  diet: {
+    omnivore: 'eat everything', no_beef: "don't eat beef", no_pork: "don't eat pork",
+    pescatarian: 'eat fish but no meat', vegetarian: 'are vegetarian', vegan: 'are vegan',
+  },
+  religion: {
+    spiritual: 'are spiritual but not religious', not_religious: "aren't religious", other: 'have another faith',
+  },
 };
+/** The cards that ask how often: "never or rarely smoke", "drink every day". */
+const HOW_OFTEN: Record<string, string> = { smoking: 'smoke', drinking: 'drink' };
+
+/** One card's rule, in the card's order of answers. */
+function says(predicate: string, values: readonly string[], label: (v: string) => string): string {
+  const verb = HOW_OFTEN[predicate];
+  if (verb) {
+    const now = values.filter((v) => v !== 'daily');
+    return or([...(now.length ? [`${or(now)} ${verb}`] : []), ...(values.includes('daily') ? [`${verb} every day`] : [])]);
+  }
+  // A faith is said as it is named on the card: "are Hindu", never "hindu".
+  const phrases = values.map((v) => SAYS[predicate]?.[v] ?? (predicate === 'religion' ? `are ${label(v)}` : label(v).toLowerCase()));
+  // "are vegetarian or vegan", not "are vegetarian or are vegan".
+  const are = phrases.filter((x) => x.startsWith('are '));
+  const merged = are.length > 1 ? `are ${or(are.map((x) => x.slice(4)))}` : null;
+  return or(phrases.flatMap((x) => (!merged || !x.startsWith('are ') ? [x] : x === are[0] ? [merged] : [])));
+}
 
 export interface ReadbackInput {
   intent: readonly string[];
@@ -68,8 +98,8 @@ export function readback(input: ReadbackInput): Readback {
     const rule = input.rules.find((r) => r.predicate === card.predicate);
     if (!rule || !rule.values.length) continue;
     const q = BY_ID.get(card.id);
-    const label = (v: string) => (q?.options.find((o) => o.value === v)?.label ?? v.replace(/_/g, ' ')).toLowerCase();
-    lines.push(`${CARD_NOUN[card.predicate] ?? card.predicate}: ${or(rule.values.map(label))}`);
+    const label = (v: string) => q?.options.find((o) => o.value === v)?.label ?? v.replace(/_/g, ' ');
+    lines.push(says(card.predicate, rule.values, label));
   }
 
   const sentence = lines.length
