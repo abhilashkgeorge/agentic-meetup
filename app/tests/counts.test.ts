@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { costLabel, countLabel, isUnder20 } from '../src/lib/counts';
+import { costLabel, countLabel, isUnder20, FEW_ON_THE_APP, fewOnTheApp } from '../src/lib/counts';
 
 const SRC = join(import.meta.dirname, '..', 'src');
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
@@ -62,5 +62,26 @@ describe('what a rule costs', () => {
       const src = readFileSync(join(import.meta.dirname, '..', 'src', 'features', ...f), 'utf8');
       expect(src, f[1]).toContain('value={costLabel(s.cost ?? 0)}');
     }
+  });
+});
+
+// Testing a new account on the release app (2026-09-30), one of two people on the app: both
+// Matches and Looking for said, in orange, to loosen her rules -- which were not why. When
+// fewer than twenty people exist before any rule applies, the words say so. Negative
+// control, run by hand: Matches back on the old sentence alone -> the second test fails.
+describe('a small pool, when the app itself is small', () => {
+  it('is known from the funnel\'s first step, not from the total', () => {
+    expect(fewOnTheApp([{ step: 'everyone', remaining: null }, { step: 'the ages you want', remaining: null }])).toBe(true);
+    expect(fewOnTheApp([{ step: 'everyone', remaining: 340 }, { step: 'your dealbreakers', remaining: null }])).toBe(false);
+    expect(fewOnTheApp([])).toBe(false);
+    expect(fewOnTheApp(undefined)).toBe(false);
+  });
+
+  it('is said on both screens instead of "loosen something"', () => {
+    for (const f of [['matches', 'matches-screen.tsx'], ['preferences', 'preferences-screen.tsx']]) {
+      const src = readFileSync(join(SRC, 'features', ...f), 'utf8');
+      expect(src, f[1]).toMatch(/fewOnTheApp\(pool\.steps\) \? FEW_ON_THE_APP/);
+    }
+    expect(FEW_ON_THE_APP).toContain('not because of anything you asked for');
   });
 });

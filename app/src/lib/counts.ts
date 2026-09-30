@@ -20,5 +20,19 @@ export function costLabel(n: number): string {
   return `\u2212${n.toLocaleString()}`;
 }
 
+/**
+ * The whole app is small: fewer than twenty people your agent could consider before any
+ * rule of yours applies (the funnel's first step, "everyone", comes back as "under 20").
+ * Then a small pool is the app's size, not your rules, and saying "loosen something" is
+ * wrong -- it told a brand-new tester, one of two people on the app, to give up her
+ * must-haves (Matches and Looking for, the release app, 2026-09-30).
+ */
+export function fewOnTheApp(steps: readonly { step: string; remaining: number | null }[] | undefined): boolean {
+  const everyone = steps?.find((s) => s.step === 'everyone');
+  return everyone !== undefined && everyone.remaining === null;
+}
+
+export const FEW_ON_THE_APP = 'Very few people are on the app yet. That is not because of anything you asked for.';
+
 /** True when the server said "under 20": a small pool, which may be none at all. */
 export const isUnder20 = (n: number | null | undefined): boolean => n === null || n === undefined;

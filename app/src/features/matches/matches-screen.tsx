@@ -28,7 +28,7 @@ import { Pressable, Text, View } from 'react-native';
 import {
   decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep, type RoundState, type Talk,
 } from '../../lib/api';
-import { costLabel, countLabel, isUnder20 } from '../../lib/counts';
+import { FEW_ON_THE_APP, costLabel, countLabel, fewOnTheApp, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import {
@@ -263,7 +263,8 @@ export default function MatchesScreen() {
             <StatRow label="left to meet" value={countLabel(pool.total)} />
             {isUnder20(pool.total) && (
               <Text style={[type.callout, { color: p.warning }]}>
-                Very few people fit. If something you asked for is strict, loosening it reaches more.
+                {fewOnTheApp(pool.steps) ? FEW_ON_THE_APP
+                  : 'Very few people fit. If something you asked for is strict, loosening it reaches more.'}
               </Text>
             )}
           </Card>

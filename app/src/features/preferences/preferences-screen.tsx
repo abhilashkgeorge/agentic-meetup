@@ -16,7 +16,7 @@ import { getPool, getPreferences, getWants, removePreference, setPreferenceStren
 import { WantsCard } from './wants-card';
 import { NOT_A_MUST_HAVE, STRENGTHS, strengthsFor } from './strengths';
 import type { WantView } from './wants-state';
-import { costLabel, countLabel, isUnder20 } from '../../lib/counts';
+import { FEW_ON_THE_APP, costLabel, countLabel, fewOnTheApp, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import {
   Header,
@@ -111,6 +111,7 @@ export default function PreferencesScreen() {
                 <Text style={[type.callout, { color: p.warning }]}>
                   {!pool.inPool
                     ? 'Your agent is not out there yet, so it cannot reach anybody. Finish setting it up first.'
+                    : fewOnTheApp(pool.steps) ? FEW_ON_THE_APP
                     : dealbreakers.length > 0
                       ? 'Very few people fit. Turn a must-have into a want to reach more.'
                       : 'Very few people are in range yet — not because of anything you asked for.'}

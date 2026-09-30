@@ -206,10 +206,14 @@ three shapes:
   whatever the strength ([server/src/matching/wants.ts:284] `rs.filter((r) => r.status === 'not_met').length`).
 - **The pool count.** "Who your agent can reach" shows how many people pass every filter,
   rounded to the nearest 10; below 20 it says "Under 20" and a warning such as "Very few
-  people fit. Turn a must-have into a want to reach more."
+  people fit. Turn a must-have into a want to reach more." When the whole app has fewer
+  than 20 people you could meet before any rule of yours applies, it says so instead: "Very
+  few people are on the app yet. That is not because of anything you asked for." (since
+  2026-09-30; before, a new person on a near-empty app was told to loosen their rules)
   ([server/src/matching/candidates.ts:265] `export const SHOWN_FLOOR = 20;`,
   [app/src/lib/counts.ts:12] `return n === null || n === undefined ? 'Under 20' : n.toLocaleString();`,
-  [app/src/features/preferences/preferences-screen.tsx:115] `Very few people fit. Turn a must-have into a want to reach more.`).
+  [app/src/features/preferences/preferences-screen.tsx:116] `Very few people fit. Turn a must-have into a want to reach more.`,
+  [app/src/lib/counts.ts:35] `export const FEW_ON_THE_APP = 'Very few people are on the app yet. That is not because of anything you asked for.';`).
 
 ### 5.4 When the other person has not answered
 
@@ -277,7 +281,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-([app/src/features/matches/matches-screen.tsx:398] `WHAT YOU ASKED FOR`):
+([app/src/features/matches/matches-screen.tsx:399] `WHAT YOU ASKED FOR`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|
@@ -324,12 +328,12 @@ asking only when it matched would say how it came out
   [server/src/matching/brief.ts:456] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
 - The app says wants "move people up the list". Since 2026-09-29 that is what a round does with Really want and
   Nice to have (above); before, nothing moved anybody up
-  ([app/src/features/preferences/preferences-screen.tsx:159] `These never remove anybody. They move people up the list.`).
+  ([app/src/features/preferences/preferences-screen.tsx:160] `These never remove anybody. They move people up the list.`).
 - The app says a private want is "Checked against your card". It is checked against the
   **other person's** card ([server/src/matching/wants.ts:196] `const answer = m ? cardsOf[pi]?.[m.card] : undefined;`).
 - The footer "Must-haves come from your cards" is no longer the whole story: a tied want
   set to Must have is a must-have too
-  ([app/src/features/preferences/preferences-screen.tsx:190] `Must-haves come from your cards. Your agent never adds one by itself: what you`).
+  ([app/src/features/preferences/preferences-screen.tsx:191] `Must-haves come from your cards. Your agent never adds one by itself: what you`).
 - The interview says a sentence no card holds "can't be checked on paper" ("We can't check
   that on paper. You'll spot it in the first chat."). Since 2026-09-25 that sentence is a
   want and is checked every round
