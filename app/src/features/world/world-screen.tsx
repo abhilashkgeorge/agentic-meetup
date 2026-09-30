@@ -438,8 +438,9 @@ export default function WorldScreen() {
         </>
       )}
       {/* Over everything, including the HUD, and under nothing. Debug builds only. */}
-      {/* In the park, under the back button: the top right is who is here. */}
-      <FpsMeter capped={cap30} at={realm.phase === 'venue' ? { top: insets.top + 56, left: space.screen } : undefined} />
+      {/* Off the top right, which both views use now: in the park under the back button,
+          in the town under your part of town (hud.tsx ParkBar, TownBar). */}
+      <FpsMeter capped={cap30} at={{ top: insets.top + (realm.phase === 'venue' ? 56 : 92), left: space.screen }} />
       <Animated.View
         pointerEvents={transitioning ? 'auto' : 'none'}
         style={{

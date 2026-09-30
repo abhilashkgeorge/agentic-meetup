@@ -61,6 +61,6 @@ describe('the park\'s top edge', () => {
 
   it('moves the FPS meter off the corner that says who is here', () => {
     expect(code('features/world/world-screen.tsx'))
-      .toMatch(/<FpsMeter capped=\{cap30\} at=\{realm\.phase === 'venue' \? \{ top: insets\.top \+ 56, left: space\.screen \} : undefined\} \/>/);
+      .toMatch(/<FpsMeter capped=\{cap30\} at=\{\{ top: insets\.top \+ \(realm\.phase === 'venue' \? 56 : 92\), left: space\.screen \}\} \/>/);
   });
 });

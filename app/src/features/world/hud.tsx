@@ -205,7 +205,7 @@ export function Hud({
                   onPress={onSendOut} disabled={!world || active} />
         )}
         {!venue && !walking && !transitioning && world?.me.inPool && (
-          <Text numberOfLines={1} style={[type.label, { color: p.textSecondary, alignSelf: 'center' }]}>
+          <Text numberOfLines={1} style={[type.callout, { fontSize: 12, lineHeight: 16, color: p.textSecondary, alignSelf: 'center' }]}>
             {townCounts(countLabel(world.pool.total), world.targetsLeftToday)}
           </Text>
         )}
