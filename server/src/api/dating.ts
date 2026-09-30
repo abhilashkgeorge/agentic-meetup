@@ -21,6 +21,7 @@ import { publicTags } from '../matching/rendezvous.js';
 import { expireDue } from '../matching/expiry.js';
 import { roundRecap } from '../matching/recap.js';
 import { ruleLabel } from '../matching/want-questions.js';
+import { cardRuleLine } from '../matching/readback.js';
 import { loadWants } from '../matching/wants.js';
 import { mustHaveAllowed } from '../onboarding/questions.js';
 import { lookOf, looksFor } from '../looks/store.js';
@@ -488,7 +489,10 @@ export const datingRoutes = new Hono()
         id: r.id,
         predicate: r.predicate,
         // A want's rule reads with its question's own words (want-questions.ts).
-        label: (r.operator === 'in' ? ruleLabel(r.predicate, r.value) : null) ?? phrase(r.predicate, r.operator, r.value),
+        // A card's rule reads as the rules read back ("They want kids"), never the column.
+        label: (r.operator === 'in'
+          ? ruleLabel(r.predicate, r.value) ?? (Array.isArray(r.value) ? cardRuleLine(r.predicate, r.value.map(String)) : null)
+          : null) ?? phrase(r.predicate, r.operator, r.value),
         // Whether "Must have" is offered at all: only on a tapped answer.
         mustHave: canFilterOn(r.predicate) && mustHaveAllowed(r.predicate),
         strength: r.strength,

@@ -93,7 +93,11 @@ export default function PreferencesScreen() {
                 people fit everything you have asked for
               </Text>
               {/* What each rule cost. The line that turns an invisible failure into a
-                  choice somebody can actually make. */}
+                  choice somebody can actually make. Said what it is: bare, "who you want to
+                  meet  -2600" left the number to be guessed at (on the Pixel, 2026-09-30). */}
+              {(pool?.steps ?? []).some((s) => (s.cost ?? 0) > 0) && (
+                <Text style={[type.callout, { color: p.textSecondary, marginTop: space.sm }]}>Each rule leaves out:</Text>
+              )}
               {(pool?.steps ?? []).filter((s) => (s.cost ?? 0) > 0).map((s) => (
                 <StatRow key={s.step} label={s.step} value={`−${s.cost}`} muted />
               ))}

@@ -85,6 +85,27 @@ function join(xs: readonly string[], word: string): string {
   return xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} ${word} ${xs[xs.length - 1]}`;
 }
 
+/** An answer as the card names it: "Want kids", "Hindu". */
+function labelFor(predicate: string): (v: string) => string {
+  const card = ALL_CARDS.find((c) => c.predicate === predicate);
+  const q = card ? BY_ID.get(card.id) : undefined;
+  return (v: string) => q?.options.find((o) => o.value === v)?.label ?? v.replace(/_/g, ' ');
+}
+
+/**
+ * A card rule standing on its own line, for the rules screen: "They want kids", "They never
+ * or rarely smoke". Values in the card's order. Null for anything that is not a card. It
+ * read "wants children is yes" and "monogamy stance is monogamous" -- the column's name and
+ * the stored value (the founder's "Looking for" on the Pixel, 2026-09-30).
+ */
+export function cardRuleLine(predicate: string, values: readonly string[]): string | null {
+  const card = ALL_CARDS.find((c) => c.predicate === predicate);
+  if (!card || !values.length) return null;
+  const order = BY_ID.get(card.id)?.options.map((o) => o.value) ?? [];
+  const inOrder = [...values].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  return `They ${says(predicate, inOrder, labelFor(predicate))}`;
+}
+
 export function readback(input: ReadbackInput): Readback {
   const lines: string[] = [];
 
@@ -97,9 +118,7 @@ export function readback(input: ReadbackInput): Readback {
   for (const card of ALL_CARDS) {
     const rule = input.rules.find((r) => r.predicate === card.predicate);
     if (!rule || !rule.values.length) continue;
-    const q = BY_ID.get(card.id);
-    const label = (v: string) => q?.options.find((o) => o.value === v)?.label ?? v.replace(/_/g, ' ');
-    lines.push(says(card.predicate, rule.values, label));
+    lines.push(says(card.predicate, rule.values, labelFor(card.predicate)));
   }
 
   const sentence = lines.length

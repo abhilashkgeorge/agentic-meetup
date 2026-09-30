@@ -33,6 +33,15 @@ export const canSave = (ticks: readonly string[]): boolean => ticks.length > 0;
 export const acceptsEverybody = (ticks: readonly string[], options: readonly { value: string }[]): boolean =>
   options.length > 0 && options.every((o) => ticks.includes(o.value));
 
+/**
+ * A want as a heading. Something the person does not want says so in words: a bare "Not:"
+ * before their own sentence read as a puzzle -- "Not: \u201cSomeone who is not disciplined\u201d"
+ * (the founder's "Looking for" on the Pixel, 2026-09-30).
+ */
+export function wantHeading(w: Pick<WantView, 'kind' | 'text'>): string {
+  return `${w.kind === 'not' ? "You don't want: " : ''}\u201c${w.text}\u201d`;
+}
+
 /** The one line under a want, by what it is checked against. */
 export function wantLine(w: WantView): string {
   if (w.private) return 'Checked against your card. Nobody sees your answer.';

@@ -11,7 +11,7 @@
  *   - acceptsEverybody always false                 -> "says it is no rule" fails
  */
 import { describe, expect, it } from 'vitest';
-import { acceptsEverybody, canSave, startTicks, toggleTick, wantLine, type WantView } from '../src/features/preferences/wants-state';
+import { acceptsEverybody, canSave, startTicks, toggleTick, wantHeading, wantLine, type WantView } from '../src/features/preferences/wants-state';
 
 const OPTIONS = [{ value: 'save-invest', label: 'Saved or invested' }, { value: 'pay-off', label: 'Pays off something' }, { value: 'treat', label: 'A treat' }];
 const want = (over: Partial<WantView> = {}): WantView => ({
@@ -43,5 +43,29 @@ describe('ticking a want', () => {
     expect(wantLine(want())).toMatch(/Tick the answers/);
     expect(wantLine(want({ question: null }))).toMatch(/only move people down, never hide them/);
     expect(wantLine(want({ private: true, question: null }))).toMatch(/card/);
+  });
+});
+
+// The founder's "Looking for" on the Pixel, 2026-09-30: "Not: \u201cSomeone who is not
+// disciplined\u201d". Negative control, run by hand: the card back on its bare "Not: " -> the
+// second assertion fails.
+describe('a want as a heading', () => {
+  it('says a not-want in words, and the card uses it', async () => {
+    expect(wantHeading({ kind: 'not', text: 'Someone who is not disciplined' }))
+      .toBe("You don't want: \u201cSomeone who is not disciplined\u201d");
+    expect(wantHeading({ kind: 'wants', text: 'A saver' })).toBe('\u201cA saver\u201d');
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const card = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'preferences', 'wants-card.tsx'), 'utf8');
+    expect(card).toContain('{wantHeading(w)}');
+  });
+
+  // Same screen, same day: "who you want to meet  -2600" with nothing saying what the
+  // number is. Negative control, run by hand: the line removed -> this fails.
+  it('says what the numbers under the reach are', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const screen = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'preferences', 'preferences-screen.tsx'), 'utf8');
+    expect(screen).toMatch(/>Each rule leaves out:<\/Text>\s*\)\}\s*\{\(pool\?\.steps \?\? \[\]\)\.filter/);
   });
 });

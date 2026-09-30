@@ -41,7 +41,7 @@ const { env } = await import('../src/env.js');
 const { commit } = await import('../src/memory/facts.js');
 const episodes = await import('../src/memory/episodes.js');
 const { loadQuotes } = await import('../src/matching/brief.js');
-const { readback, READBACK_FOOTER } = await import('../src/matching/readback.js');
+const { cardRuleLine, readback, READBACK_FOOTER } = await import('../src/matching/readback.js');
 const { meRoutes } = await import('../src/api/me.js');
 const { interviewRoutes } = await import('../src/api/interview.js');
 const { mintToken, newSessionId } = await import('../src/tokens.js');
@@ -206,6 +206,13 @@ describe('the rules, read back', () => {
       'want kids', 'want one person or are open to either', 'sometimes drink or drink every day',
       'are vegetarian or vegan', 'are Hindu or Jain',
     ]);
+  });
+
+  it('stands a card rule on its own line for the rules screen, in the card\'s order', () => {
+    expect(cardRuleLine('wants_children', ['yes'])).toBe('They want kids');
+    expect(cardRuleLine('monogamy_stance', ['open_to_either', 'monogamous'])).toBe('They want one person or are open to either');
+    expect(cardRuleLine('smoking', ['rarely', 'never'])).toBe('They never or rarely smoke');
+    expect(cardRuleLine('relationship_intent', ['marriage'])).toBeNull();
   });
 
   it('says so plainly when there are no rules', () => {

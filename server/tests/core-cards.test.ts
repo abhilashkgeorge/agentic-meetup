@@ -681,6 +681,12 @@ describe('the faith card', () => {
     const rb = await (await meRoutes.request('/v1/me/readback', { headers: headers(me) })).json() as { lines: string[] };
     // In the card's own order, whatever order they were ticked in.
     expect(rb.lines).toContain('are Hindu or Jain');
+    // And on the rules screen, as the same words about them -- it said "religion is hindu or
+    // jain" (the founder's "Looking for", 2026-09-30). Negative control, run by hand: the
+    // label without cardRuleLine -> this fails.
+    const list = await (await datingRoutes.request('/v1/preferences', { headers: headers(me) })).json() as
+      { preferences: { predicate: string; label: string }[] };
+    expect(list.preferences.find((x) => x.predicate === 'religion')?.label).toBe('They are Hindu or Jain');
   });
 
   it('its partner row is a rule both ways, and an unknown passes', async () => {

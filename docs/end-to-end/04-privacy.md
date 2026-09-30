@@ -59,8 +59,8 @@ details), and **database roles** that limit what each part of the server can rea
   ([app/src/features/matches/exchange.ts:178] `export const PRIVATE_TOPIC = 'A private topic. Their answer is never shown.';`).
 - **On the reveal**: the first name she typed on the setup screen, age, city, up to eight interest and
   work tags from facts she made shareable (no private-topic word), photos (stage 9)
-  ([server/src/api/dating.ts:145] `return { ...row, attribute_tags: await publicTags(db, row.user_id), look: await lookOf(db, row.user_id, synthetic) };`,
-  [server/src/api/dating.ts:164] `.filter((t) => t.word && mayRepeat(t.word))`).
+  ([server/src/api/dating.ts:146] `return { ...row, attribute_tags: await publicTags(db, row.user_id), look: await lookOf(db, row.user_id, synthetic) };`,
+  [server/src/api/dating.ts:165] `.filter((t) => t.word && mayRepeat(t.word))`).
 - **Arjun never sees** her facts list, her chat, her hidden or match-only sentences, her rules and
   wants, her card answers as values, her check-in answers, her reports or blocks, her exact location,
   her birth year or her phone number
@@ -99,7 +99,7 @@ details), and **database roles** that limit what each part of the server can rea
 - **Where levels are not applied:** the matching row is built from every live fact whatever its level,
   so match-only and hidden facts still filter and rank; and the reveal's tags come from that row (Known
   gaps) ([server/src/matching/profile.ts:45] `WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL`,
-  [server/src/api/dating.ts:162] `.filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))`).
+  [server/src/api/dating.ts:163] `.filter((t) => t.startsWith('interest:') || t.startsWith('works_in:'))`).
 
 ### 4.2 Private topics and contact details
 

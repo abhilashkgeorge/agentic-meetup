@@ -8,7 +8,7 @@ import { Text, View } from 'react-native';
 import { clearWantQuestion, setWantQuestion } from '../../lib/api';
 import { useSession } from '../../store/session';
 import { Button, Card, Chip, ChipGroup, Crease, type as t, space, usePalette } from '../../components/ui';
-import { acceptsEverybody, canSave, startTicks, toggleTick, wantLine, type WantView } from './wants-state';
+import { acceptsEverybody, canSave, startTicks, toggleTick, wantHeading, wantLine, type WantView } from './wants-state';
 
 export function WantsCard({ wants, onSaved }: { wants: WantView[]; onSaved: () => void }) {
   const p = usePalette();
@@ -59,7 +59,7 @@ function WantRow({ w, onSaved }: { w: WantView; onSaved: () => void }) {
   return (
     <>
       <Text style={[t.body, { color: p.text, fontStyle: 'italic' }]}>
-        {w.kind === 'not' ? 'Not: ' : ''}“{w.text}”
+        {wantHeading(w)}
       </Text>
       <Text style={[t.callout, { color: p.textTertiary }]}>{wantLine(w)}</Text>
       {q && (

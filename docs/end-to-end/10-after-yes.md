@@ -13,7 +13,7 @@ words are the date idea, written earlier (stage 7).
 | A message | Sent over a live connection; delivered, read receipts | Code | `messages` row | The two people | [server/migrations/0025_messaging_fixes.sql:37] `AND r.status = 'introduced'));` |
 | "Propose this date" | Sends "How about this: <idea>?" as the person's own message, once per chat | Code | `messages` row (kind `date_idea`) | The two people | [server/src/api/date-idea.ts:31] `How about this: ${idea}?` |
 | Two quiet days | A one-time nudge for each person | Code | `nudged_at` on each person's card row | Each person, once | [app/src/features/dm/date-idea.ts:17] `export const QUIET_LINE = 'Quiet for two days. Say hello?';` |
-| 72 hours after the introduction | The after-date check-in inside the chat | Code | `date_checkins` row per person | The person who answered; one bit is shared if both say "see again" | [server/src/api/dating.ts:121] `const MET_ASK_AFTER_MS = Number(process.env.MET_ASK_AFTER_HOURS ?? 72) * 60 * 60_000;` |
+| 72 hours after the introduction | The after-date check-in inside the chat | Code | `date_checkins` row per person | The person who answered; one bit is shared if both say "see again" | [server/src/api/dating.ts:122] `const MET_ASK_AFTER_MS = Number(process.env.MET_ASK_AFTER_HOURS ?? 72) * 60 * 60_000;` |
 | Block or report | Both are kept apart everywhere; a report is queued for the reviewer, with a copy of their chat | Code | `blocks` row, `reports` row, and the chat's last 200 messages in `report_messages` | Reviewer sees reports and the copied chat | [server/src/messaging/store.ts:225] `await block(c, args.reporterId, args.reportedId);` |
 | Reviewer bans | Sessions revoked, hidden from everyone, phone and handset remembered | Code | `bans`, `ban_marks` | Reviewer | [server/migrations/0065_bans_stick.sql:70] `UPDATE device_sessions SET revoked_at = now() WHERE user_id = target AND revoked_at IS NULL;` |
 
@@ -88,11 +88,11 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 ### 10.4 The after-date check-in
 
 - **When:** 72 hours after the introduction by default, inside the chat only
-  ([server/src/api/dating.ts:790] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
+  ([server/src/api/dating.ts:794] `const state = seat.answered ? 'done' : seat.met === null ? (due ? 'ask_met' : 'not_yet') : 'ask';`).
 - **Step 1:** "Did you two meet up? They are not told what you say." [Yes] [Not yet]. The first
   answer is final: a "Not yet" is never asked again
   ([app/src/features/dm/checkin.tsx:115] `Did you two meet up? They are not told what you say.`,
-  [server/src/api/dating.ts:947] `// Own brief only, under RLS. An answer is final: the first one stands.`).
+  [server/src/api/dating.ts:951] `// Own brief only, under RLS. An answer is final: the first one stands.`).
 - **After "Not yet":** "What happened? Only you see this." with "Plans fell through", "They
   stopped replying", "I changed my mind", "Something else", or Skip
   ([app/src/features/dm/checkin.tsx:128] `What happened? Only you see this.`).

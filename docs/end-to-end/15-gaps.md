@@ -29,7 +29,7 @@ first mover in the viewer's own neighbourhood until they share; and the extracto
 the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 
 3. **A "no" shows by timing.** A no removes the other person's card at once; an unanswered card lasts three days
-    ([server/src/api/dating.ts:608] `AND r.status NOT IN ('lapsed', 'expired')`).
+    ([server/src/api/dating.ts:612] `AND r.status NOT IN ('lapsed', 'expired')`).
 4. **Closed on 2026-09-29: "Matches" on a situation want.** A want tied to a situation question shows only
     "A private topic. Their answer is never shown.", whatever the check found, and the after-date check-in no
     longer asks about it ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
