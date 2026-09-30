@@ -34,7 +34,7 @@
  * The frame loop touches no React state. The spike's lesson, verbatim: "touching React
  * state per frame would measure React, not the renderer."
  */
-import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
+import { Canvas, advance, useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { LogBox, PanResponder, View, type LayoutChangeEvent } from 'react-native';
 import * as THREE from 'three';
@@ -46,6 +46,7 @@ import {
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
 } from './camera';
 import { MODEL_SCALE } from './character-mesh';
+import { startVsync, stopVsync } from './vsync-clock';
 import { loadGpuCrowd, type CrowdFrame, type GpuCrowd } from './crowd-gpu';
 import { honourSubDataRanges } from './gl-subdata';
 import { hairOf, skirtOf, topOf } from '../look/silhouette';
@@ -686,12 +687,37 @@ export function WorldCanvas(props: WorldCanvasProps) {
         // No dpr prop: expo-gl renders at the phone's native pixel ratio and nothing
         // else, and the native Canvas type says so by leaving it out.
         gl={{ antialias: false }}
-        frameloop={!active ? 'never' : cap30 ? 'demand' : 'always'}
+        // Never r3f's own loop: RefreshTicker draws each frame, on the UI thread's clock.
+        frameloop="never"
       >
         <Town {...props} cam={c} />
+        <RefreshTicker active={active} cap30={cap30} />
       </Canvas>
     </View>
   );
+}
+
+/**
+ * Draws the town once per screen refresh while it is in front, or once per two with the
+ * "30 fps" setting. The canvas's frameloop is 'never' and this advances it: r3f's own loop
+ * runs on React Native's requestAnimationFrame, which on the Pixel 6a settled at every
+ * second or fourth refresh after about half of the returns to the town (vsync-clock.ts).
+ * Time is continuous across a pause: a gap longer than 100 ms counts as 100 ms.
+ */
+function RefreshTicker({ active, cap30 }: { active: boolean; cap30: boolean }) {
+  const get = useThree((s) => s.get);
+  useEffect(() => {
+    if (!active) return;
+    let last = performance.now();
+    startVsync((now) => {
+      const state = get();
+      const dt = Math.min(now - last, 100) / 1000;
+      last = now;
+      advance(state.clock.elapsedTime + dt, true, state);
+    }, cap30);
+    return () => stopVsync();
+  }, [active, cap30, get]);
+  return null;
 }
 
 /** Reused for every head the bubbles ask about. */
@@ -739,7 +765,7 @@ function Town({
   sim, colors, cap30, onStats, onTapAgent, onTapVenue, onFirstFrame, onBand, onWalking,
   stick, venueSim, venue = CUBBON_PARK, cam, slots = SLOTS,
 }: WorldCanvasProps & { cam: CamState }) {
-  const { gl, scene, invalidate, size, set, get } = useThree();
+  const { gl, scene, size, set, get } = useThree();
   const mapCamera = useMemo(() => new THREE.OrthographicCamera(), []);
   const walkCamera = useMemo(() => new THREE.PerspectiveCamera(WALK_FOV, 1, 0.08, WALK_FAR), []);
 
@@ -909,13 +935,6 @@ function Town({
     return () => { scene.fog = was; };
   }, [scene]);
   const yourArea = useRef<string | null | undefined>(undefined);
-
-  // 30 fps: r3f's demand mode draws only when asked, so ask on a 33 ms ticker.
-  useEffect(() => {
-    if (!cap30) return;
-    const t = setInterval(() => invalidate(), 33);
-    return () => clearInterval(t);
-  }, [cap30, invalidate]);
 
   const meshes = useMemo(() => {
     const g = buildGeometry();
