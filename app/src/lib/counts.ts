@@ -12,5 +12,13 @@ export function countLabel(n: number | null | undefined): string {
   return n === null || n === undefined ? 'Under 20' : n.toLocaleString();
 }
 
+/**
+ * What one rule costs, as the funnel shows it: "\u22122,600", set like the counts around it.
+ * It was "\u22122600" under "5,010" (Matches and Looking for, on the Pixel, 2026-09-30).
+ */
+export function costLabel(n: number): string {
+  return `\u2212${n.toLocaleString()}`;
+}
+
 /** True when the server said "under 20": a small pool, which may be none at all. */
 export const isUnder20 = (n: number | null | undefined): boolean => n === null || n === undefined;

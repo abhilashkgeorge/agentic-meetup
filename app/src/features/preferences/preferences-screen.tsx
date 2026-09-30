@@ -16,7 +16,7 @@ import { getPool, getPreferences, getWants, removePreference, setPreferenceStren
 import { WantsCard } from './wants-card';
 import { NOT_A_MUST_HAVE, STRENGTHS, strengthsFor } from './strengths';
 import type { WantView } from './wants-state';
-import { countLabel, isUnder20 } from '../../lib/counts';
+import { costLabel, countLabel, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import {
   Header,
@@ -99,7 +99,7 @@ export default function PreferencesScreen() {
                 <Text style={[type.callout, { color: p.textSecondary, marginTop: space.sm }]}>Each rule leaves out:</Text>
               )}
               {(pool?.steps ?? []).filter((s) => (s.cost ?? 0) > 0).map((s) => (
-                <StatRow key={s.step} label={s.step} value={`−${s.cost}`} muted />
+                <StatRow key={s.step} label={s.step} value={costLabel(s.cost ?? 0)} muted />
               ))}
               {/* THREE REASONS THE NUMBER IS ZERO, and they need different answers.
                   This told everybody to loosen a must-have -- while the card directly

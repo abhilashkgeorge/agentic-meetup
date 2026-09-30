@@ -28,7 +28,7 @@ import { Pressable, Text, View } from 'react-native';
 import {
   decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep, type RoundState, type Talk,
 } from '../../lib/api';
-import { countLabel, isUnder20 } from '../../lib/counts';
+import { costLabel, countLabel, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import {
@@ -257,7 +257,7 @@ export default function MatchesScreen() {
               value={countLabel(pool.steps.find((s) => s.step === 'everyone')?.remaining)}
             />
             {pool.steps.filter((s) => (s.cost ?? 0) > 0).map((s) => (
-              <StatRow key={s.step} label={s.step} value={`−${s.cost}`} muted />
+              <StatRow key={s.step} label={s.step} value={costLabel(s.cost ?? 0)} muted />
             ))}
             <Crease />
             <StatRow label="left to meet" value={countLabel(pool.total)} />

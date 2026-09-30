@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { countLabel, isUnder20 } from '../src/lib/counts';
+import { costLabel, countLabel, isUnder20 } from '../src/lib/counts';
 
 const SRC = join(import.meta.dirname, '..', 'src');
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
@@ -45,6 +45,22 @@ describe('the screens that show a pool count', () => {
       expect(src, `${f} stringifies a raw pool count`).not.toMatch(/String\(pool\??\.total/);
       expect(src, `${f} formats a raw pool count`).not.toMatch(/pool\.total\.toLocaleString/);
       expect(src, `${f} reads "nobody" off a count that means "under 20"`).not.toMatch(/total\s*===\s*0/);
+    }
+  });
+});
+
+// The funnel read "5,010" and then "\u22122600" (Matches and Looking for, on the Pixel,
+// 2026-09-30). Negative control, run by hand: the screens back on the bare number -> the
+// second assertion fails.
+describe('what a rule costs', () => {
+  it('is set like the counts around it, and both funnels use it', async () => {
+    expect(costLabel(2600)).toBe(`\u2212${(2600).toLocaleString()}`);
+    expect(costLabel(80)).toBe('\u221280');
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    for (const f of [['matches', 'matches-screen.tsx'], ['preferences', 'preferences-screen.tsx']]) {
+      const src = readFileSync(join(import.meta.dirname, '..', 'src', 'features', ...f), 'utf8');
+      expect(src, f[1]).toContain('value={costLabel(s.cost ?? 0)}');
     }
   });
 });
