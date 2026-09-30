@@ -2,6 +2,15 @@
   "name": "@clone/app",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-gl"
+        ]
+      }
+    }
+  },
   "dependencies": {
     "@clone/shared": "*",
     "@expo-google-fonts/source-sans-3": "^0.4.1",

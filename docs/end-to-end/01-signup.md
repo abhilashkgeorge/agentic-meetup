@@ -6,7 +6,7 @@ The app is called "Clone" (id `com.clone.app` on both platforms)
 ([app/app.json:3] `"name": "Clone",`, [app/app.json:25] `"package": "com.clone.app"`).
 Today it reaches a phone only as a **development build compiled on the founder's computer**
 (`expo run:android` / `expo run:ios`); there is no app-store pipeline in the repository
-([app/package.json:60] `"android": "expo run:android",`,
+([app/package.json:69] `"android": "expo run:android",`,
 [app/README.md:7] `dev build; Expo Go cannot load the native modules`). The daily loop `./dev.sh`
 starts the server, opens a **public tunnel** to it (cloudflared, else ngrok) so friends' phones
 can reach it off the founder's Wi-Fi, and starts the app's bundler

@@ -1,0 +1,103 @@
+diff --git a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java
+index 082c40f..f4d0639 100644
+--- a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java
++++ b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java
+@@ -58,6 +58,19 @@ public class GLContext {
+     return mEXGLCtxId;
+   }
+ 
++  // PATCHED (clone app, 2026-09-30): while the view is off the window its SurfaceTexture is
++  // kept but nothing consumes frames, so a swap could fill the queue and block this thread in
++  // eglSwapBuffers. Paused, a flush still runs the commands and leaves the swap for later.
++  private volatile boolean mSurfacePaused = false;
++
++  public void setSurfacePaused(boolean paused) {
++    mSurfacePaused = paused;
++  }
++
++  public boolean isInitialized() {
++    return mGLThread != null;
++  }
++
+   public boolean isHeadless() {
+     if (mGLThread != null) {
+       return mGLThread.mSurfaceTexture == null;
+@@ -122,7 +135,7 @@ public class GLContext {
+         if (mEXGLCtxId > 0) {
+           EXGLContextFlush(mEXGLCtxId);
+ 
+-          if (!isHeadless() && EXGLContextNeedsRedraw(mEXGLCtxId)) {
++          if (!isHeadless() && !mSurfacePaused && EXGLContextNeedsRedraw(mEXGLCtxId)) {
+             if (!swapBuffers(mEGLSurface)) {
+               Log.e("EXGL", "Cannot swap buffers!");
+             }
+diff --git a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLModule.kt b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLModule.kt
+index 8752ff6..b3bb8bf 100644
+--- a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLModule.kt
++++ b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLModule.kt
+@@ -94,6 +94,11 @@ class GLModule : Module() {
+       Prop("enableExperimentalWorkletSupport") { view: GLView, enableExperimentalWorkletSupport: Boolean? ->
+         view.enableExperimentalWorkletSupport = enableExperimentalWorkletSupport ?: false
+       }
++      // PATCHED (clone app, 2026-09-30): a detach no longer destroys the context (GLView.kt);
++      // the view being dropped does.
++      OnViewDestroys { view: GLView ->
++        view.release()
++      }
+     }
+   }
+ 
+diff --git a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLView.kt b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLView.kt
+index 72dfb8b..0aa0286 100644
+--- a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLView.kt
++++ b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLView.kt
+@@ -58,7 +58,21 @@ class GLView(context: Context, appContext: AppContext) : TextureView(context), S
+     }
+   }
+ 
++  // PATCHED (clone app, 2026-09-30; patches/expo-gl+57.0.2.patch): the context outlives
++  // navigation. Android detaches this view whenever its screen is covered -- another tab, a
++  // screen pushed on top -- and the context used to be destroyed right here, so the app
++  // rebuilt its whole scene on a new one each time it came back. Now a detach keeps the
++  // SurfaceTexture (and with it the EGL surface and context) and onAttachedToWindow hands it
++  // back; the context goes when the view is dropped for good (release, from OnViewDestroys).
++  private var keptSurface: SurfaceTexture? = null
++  private var dropped = false
++
+   override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
++    if (!dropped && glContext.isInitialized()) {
++      keptSurface = surface
++      glContext.setSurfacePaused(true)
++      return false
++    }
+     glContext.destroy()
+ 
+     // reset flag, so the context will be recreated when the new surface is available
+@@ -66,6 +80,27 @@ class GLView(context: Context, appContext: AppContext) : TextureView(context), S
+     return true
+   }
+ 
++  override fun onAttachedToWindow() {
++    super.onAttachedToWindow()
++    val kept = keptSurface ?: return
++    keptSurface = null
++    try {
++      setSurfaceTexture(kept)
++      glContext.setSurfacePaused(false)
++    } catch (e: IllegalArgumentException) {
++      // Released under us: fall back to a new surface and a new context, as before.
++      glContext.destroy()
++      onSurfaceCreateWasCalled = false
++    }
++  }
++
++  fun release() {
++    dropped = true
++    glContext.destroy()
++    keptSurface?.release()
++    keptSurface = null
++  }
++
+   @Synchronized
+   override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+     if (onSurfaceTextureWasCalledWithZeroSize && (width != 0 || height != 0)) {

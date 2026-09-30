@@ -13,7 +13,8 @@
     "test": "npm run test --workspaces --if-present",
     "app": "npm run start --workspace=@clone/app",
     "android": "npm run android --workspace=@clone/app",
-    "ios": "npm run ios --workspace=@clone/app"
+    "ios": "npm run ios --workspace=@clone/app",
+    "postinstall": "patch-package"
   },
   "packageManager": "yarn@4.5.3+sha512.3003a14012e2987072d244c720506549c1aab73ee728208f1b2580a9fd67b92d61ba6b08fe93f6dce68fd771e3af1e59a0afa28dd242dd0940d73b95fedd4e90",
   "version": "1.0.0",
@@ -22,5 +23,8 @@
     "react": "19.2.3",
     "react-native": "0.86.3"
   },
-  "main": "./expo-entry-guard.js"
+  "main": "./expo-entry-guard.js",
+  "devDependencies": {
+    "patch-package": "^8.0.1"
+  }
 }
