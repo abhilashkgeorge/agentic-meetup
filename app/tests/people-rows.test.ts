@@ -30,6 +30,27 @@ describe('peopleRows', () => {
     expect(rows.find((r) => r.kind === 'row' && r.ref === 'p')).toMatchObject({ title: 'Practice match', subtitle: 'Not a real person' });
   });
 
+  // The founder, 2026-09-30: the list said "Practice match / Not a real person" on every
+  // row, with nothing to tell them apart. Each row carries the character the map draws.
+  // Negative controls, run by hand and recorded in the commit: rows without `look` ->
+  // this fails; the sheet's list without flexShrink -> "keeps Close on screen" fails.
+  it('gives every row the character the map draws, yours beside "Your agent"', () => {
+    const mine = lookFor(7);
+    const rows = peopleRows([agent('p1', 'koramangala', 'practice'), { ...agent('p2', 'koramangala', 'practice'), look: lookFor(3) }], 'koramangala', mine);
+    const row = (ref: string) => rows.find((r) => r.kind === 'row' && r.ref === ref) as { look?: unknown };
+    expect(row(YOU).look).toEqual(mine);
+    expect(row('p1').look).toEqual(lookFor(1));
+    expect(row('p2').look).toEqual(lookFor(3));
+  });
+
+  it('keeps Close on screen: the list gives way inside the sheet', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const sheet = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'people-sheet.tsx'), 'utf8');
+    expect(sheet).toMatch(/<FlatList\s+style=\{\{ flexShrink: 1 \}\}/);
+    expect(sheet).toMatch(/left=\{item\.look \? <CharacterAvatar look=\{item\.look\} size=\{40\} \/> : undefined\}/);
+  });
+
   it('puts you in the central tile when you have not said', () => {
     const rows = peopleRows([agent('a', 'hebbal'), agent('b', undefined)], null);
     expect(rows.map((r) => (r.kind === 'header' ? `# ${r.title}` : r.ref))).toEqual([YOU, '# MG Road · yours', 'b', '# Hebbal', 'a']);

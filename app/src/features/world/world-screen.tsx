@@ -456,7 +456,7 @@ export default function WorldScreen() {
         </Text>
       </Animated.View>
       {peopleOpen && world && (
-        <PeopleSheet agents={world.agents} myArea={world.me.area} onClose={() => setPeopleOpen(false)}
+        <PeopleSheet agents={world.agents} myArea={world.me.area} myLook={world.me.look} onClose={() => setPeopleOpen(false)}
                      onPick={(ref) => { setPeopleOpen(false); onTap(ref); }} />
       )}
       {selectedAgent && (

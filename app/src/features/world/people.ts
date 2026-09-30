@@ -2,13 +2,14 @@
  * The people list's rows -- the pure half of people-sheet.tsx, so the order can be
  * tested without react-native in the room.
  */
-import { CENTRAL_AREA } from '@clone/shared';
+import { CENTRAL_AREA, type Look } from '@clone/shared';
 import type { WorldAgent } from '../../lib/api';
 import { YOU } from './bridge';
 import { MAP, areaName } from './map';
 
 export type PeopleRow =
-  | { kind: 'row'; ref: string; title: string; subtitle?: string }
+  /** `look`: their character, as the map draws them -- the one way to tell practice rows apart. */
+  | { kind: 'row'; ref: string; title: string; subtitle?: string; look?: Look }
   | { kind: 'header'; ref: string; title: string };
 
 const STATE: Record<WorldAgent['state'], string> = {
@@ -28,7 +29,7 @@ const STATE: Record<WorldAgent['state'], string> = {
  * the strangers inside each. Somebody with no neighbourhood stands in the central
  * tile on the map and is listed there too.
  */
-export function peopleRows(agents: readonly WorldAgent[], myArea: string | null | undefined): PeopleRow[] {
+export function peopleRows(agents: readonly WorldAgent[], myArea: string | null | undefined, myLook?: Look): PeopleRow[] {
   const mine = myArea ?? CENTRAL_AREA;
   const centre = (id: string) => MAP.areas.find((a) => a.id === id)?.centre ?? [0, 0];
   const [mx, mz] = centre(mine);
@@ -42,7 +43,7 @@ export function peopleRows(agents: readonly WorldAgent[], myArea: string | null 
     const [ax, az] = centre(a); const [bx, bz] = centre(b);
     return Math.hypot(ax - mx, az - mz) - Math.hypot(bx - mx, bz - mz);
   });
-  const rows: PeopleRow[] = [{ kind: 'row', ref: YOU, title: 'Your agent', subtitle: 'Tap to talk to it' }];
+  const rows: PeopleRow[] = [{ kind: 'row', ref: YOU, title: 'Your agent', subtitle: 'Tap to talk to it', ...(myLook ? { look: myLook } : {}) }];
   for (const id of order) {
     rows.push({ kind: 'header', ref: `h:${id}`, title: id === mine ? `${areaName(id)} · yours` : areaName(id) });
     for (const a of [...groups.get(id)!].sort((a, b) => (a.kind === 'met' ? 0 : 1) - (b.kind === 'met' ? 0 : 1))) {
@@ -50,6 +51,7 @@ export function peopleRows(agents: readonly WorldAgent[], myArea: string | null 
         kind: 'row', ref: a.ref,
         title: a.kind === 'met' ? (a.name ?? 'Someone your agent met') : a.practice ? 'Practice match' : 'Someone in the square',
         subtitle: a.kind === 'met' ? (STATE[a.state] || undefined) : a.practice ? 'Not a real person' : undefined,
+        look: a.look,
       });
     }
   }
