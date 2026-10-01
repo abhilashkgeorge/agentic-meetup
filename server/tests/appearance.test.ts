@@ -181,9 +181,9 @@ describe('the rules, read back', () => {
       intent: ['marriage'], ageRange: { min: 26, max: 34 }, maxDistanceKm: null,
       rules: [{ predicate: 'smoking', values: ['never', 'rarely'] }, { predicate: 'diet', values: ['vegetarian'] }],
     });
-    expect(r.lines).toEqual(['want marriage', 'are 26 to 34', 'never or rarely smoke', 'are vegetarian']);
+    expect(r.lines).toEqual(['want marriage or something long-term', 'are 26 to 34', 'never or rarely smoke', 'are vegetarian']);
     expect(r.sentence).toBe(
-      `I'll only bring you people who want marriage, are 26 to 34, never or rarely smoke and are vegetarian. ${READBACK_FOOTER}`);
+      `I'll only bring you people who want marriage or something long-term, are 26 to 34, never or rarely smoke and are vegetarian. ${READBACK_FOOTER}`);
     expect(r.footer).toMatch(/haven't answered/);
   });
 
@@ -215,6 +215,19 @@ describe('the rules, read back', () => {
     expect(cardRuleLine('relationship_intent', ['marriage'])).toBeNull();
   });
 
+  // Close "here for" answers meet (2026-10-01), so the line names every one the filter
+  // lets through, and "Anywhere" is no line at all, not "live within 20000 km".
+  // Negative control, run by hand: the line back to your own intent alone -> this fails.
+  it('names every "here for" answer the filter lets through, and no distance for Anywhere', () => {
+    const line = (intent: string, km: number | null = null) =>
+      readback({ intent: [intent], ageRange: null, maxDistanceKm: km, rules: [] }).lines;
+    expect(line('long_term')).toEqual(['want something long-term or marriage, or are still working out what they want']);
+    expect(line('casual')).toEqual(['want something casual, or are still working out what they want']);
+    expect(line('undecided')).toEqual(['want something long-term, something casual or companionship, or are still working out what they want']);
+    expect(line('marriage', 25)).toEqual(['want marriage or something long-term', 'live within 25 km']);
+    expect(line('marriage', 20000)).toEqual(['want marriage or something long-term']);
+  });
+
   it('says so plainly when there are no rules', () => {
     const r = readback({ intent: [], ageRange: null, maxDistanceKm: null, rules: [] });
     expect(r.lines).toEqual([]);
@@ -233,7 +246,7 @@ describe('the rules, read back', () => {
     const r = await (await meRoutes.request('/v1/me/readback', { headers: headers(me) })).json() as {
       lines: string[]; footer: string;
     };
-    expect(r.lines).toContain('want marriage');
+    expect(r.lines).toContain('want marriage or something long-term');
     expect(r.lines).toContain('never smoke');
   });
 });

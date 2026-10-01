@@ -32,6 +32,37 @@ export const GENDERS = ['woman', 'man', 'nonbinary', 'other'] as const;
 // person.
 export const RELATIONSHIP_INTENTS =
   ['long_term', 'marriage', 'companionship', 'casual', 'undecided'] as const;
+/**
+ * "Anywhere" on "How far would you travel?": a limit no two places on Earth exceed, stored
+ * as a number so the distance filter needs no special case. Words that read a distance
+ * back say "anywhere" for it, never "20000 km".
+ */
+export const ANYWHERE_KM = 20000;
+
+/**
+ * Which different "here for" answers can still meet (the founder, 2026-10-01, "close ones
+ * meet"). Two people used to meet only on the same answer, so "Marriage" never met
+ * "Something long-term" and "Still working it out" met nobody else. Each pair is listed
+ * once and read both ways, so the rule is symmetric by construction; the same answer
+ * always meets itself and is not listed. Marriage never meets Casual.
+ */
+export const INTENTS_THAT_MEET: readonly (readonly [string, string])[] = [
+  ['marriage', 'long_term'],
+  ['long_term', 'undecided'],
+  ['undecided', 'casual'],
+  ['undecided', 'companionship'],
+];
+
+/** Every "here for" answer that can meet somebody with `intent`: its own first, then the close ones. */
+export function intentsThatMeet(intent: string): string[] {
+  const out = [intent];
+  for (const [a, b] of INTENTS_THAT_MEET) {
+    if (a === intent && !out.includes(b)) out.push(b);
+    if (b === intent && !out.includes(a)) out.push(a);
+  }
+  return out;
+}
+
 export const MONOGAMY = ['monogamous', 'non_monogamous', 'open_to_either'] as const;
 export const WANTS_CHILDREN = ['yes', 'no', 'maybe', 'have_and_want_more', 'have_and_done'] as const;
 export const FREQUENCY = ['never', 'rarely', 'sometimes', 'often', 'daily'] as const;

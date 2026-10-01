@@ -11,7 +11,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 |---|---|---|---|---|---|
 | Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe {AI:sheet} | `rounds` row (queued) | Arjun | [server/src/api/dating.ts:979] `.post('/v1/matches/run', async (c) => {` |
 | The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | [server/src/matching/rounds.ts:161] `ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED)` |
-| The candidate list | Real people first; within that, those who fit more of the person's Really want and Nice to have (since 2026-09-29), then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | [server/src/matching/candidates.ts:171] `ORDER BY b.is_synthetic ASC, ${FITS_MY_WANTS} DESC, b.last_active_at DESC` |
+| The candidate list | Real people first; within that, those who fit more of the person's Really want and Nice to have (since 2026-09-29), then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | [server/src/matching/candidates.ts:185] `ORDER BY b.is_synthetic ASC, ${FITS_MY_WANTS} DESC, b.last_active_at DESC` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | {AI:wants} + code | Want results kept for the cards | Arjun (on his cards) | [server/src/matching/orchestrator.ts:226] `const order = pre && !target ? demote(shortlist.order, notMetCounts(pre.byId)) : shortlist.order;` |
 | The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | [server/src/matching/orchestrator.ts:247] `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, rank_score)` |
 | Each pair | The agents' exchange and the two cards (stages 7 and 8) | {AI:talk} + code | Two card rows per pair | Each person, their own card | [server/src/matching/brief.ts:644] `(rendezvous_id, for_user, headline, overlap_quotes, concern, questions)` |
@@ -116,12 +116,12 @@ lets an **unknown** value pass: someone who never answered is not excluded for i
 | Both ready ("in the pool") | Arjun ready | Meera ready | Not ready = out | [server/src/matching/candidates.ts:61] `AND a.in_pool AND b.in_pool` |
 | Real and practice | A real person meets practice profiles while `sees_synthetic` is on (the default); practice profiles never meet real people | | | [server/src/matching/candidates.ts:67] `AND (a.is_synthetic = b.is_synthetic OR (a.sees_synthetic AND b.is_synthetic))` |
 | Blocks (a report also blocks) | Arjun never blocked Meera | Meera never blocked Arjun | | [server/src/matching/candidates.ts:73] `AND NOT block_exists(a.user_id, b.user_id)` |
-| Gender | Meera's gender is in Arjun's "seeking" | Arjun's is in Meera's | Passes | [server/src/matching/candidates.ts:86] `AND (a.seeking_gender = '{}' OR b.gender IS NULL OR b.gender = ANY(a.seeking_gender))`, [server/src/matching/candidates.ts:87] `AND (b.seeking_gender = '{}' OR a.gender IS NULL OR a.gender = ANY(b.seeking_gender))` |
-| Age | Meera's age in Arjun's range | Arjun's age in Meera's range | Passes | [server/src/matching/candidates.ts:90] `AND (a.age_min IS NULL OR b.age IS NULL OR b.age >= a.age_min)`, [server/src/matching/candidates.ts:92] `AND (b.age_min IS NULL OR a.age IS NULL OR a.age >= b.age_min)` |
-| Distance | Within Arjun's maximum distance | Within Meera's | No location: skipped. No maximum: only that person's side passes (since 2026-09-28; before, one missing maximum switched off both) | [server/src/matching/candidates.ts:104] `(a.max_distance_km IS NULL` |
-| What they are looking for (intent) | At least one choice in common | same | Passes | [server/src/matching/candidates.ts:110] `AND (a.intent = '{}' OR b.intent = '{}' OR a.intent && b.intent)` |
-| Must-haves | Every Arjun must-have passes on Meera | Every Meera must-have passes on Arjun | Passes | [server/src/matching/candidates.ts:122] `AND NOT ${passes('b')})`, [server/src/matching/candidates.ts:126] `AND NOT ${passes('a')})` |
-| Recently active | Meera used the app in the last 60 days; a practice profile always passes (since 2026-09-28) | (not checked for Arjun; he just tapped) | | [server/src/matching/candidates.ts:135] `AND (b.is_synthetic OR b.last_active_at > now() - interval '60 days')` |
+| Gender | Meera's gender is in Arjun's "seeking" | Arjun's is in Meera's | Passes | [server/src/matching/candidates.ts:94] `AND (a.seeking_gender = '{}' OR b.gender IS NULL OR b.gender = ANY(a.seeking_gender))`, [server/src/matching/candidates.ts:95] `AND (b.seeking_gender = '{}' OR a.gender IS NULL OR a.gender = ANY(b.seeking_gender))` |
+| Age | Meera's age in Arjun's range | Arjun's age in Meera's range | Passes | [server/src/matching/candidates.ts:98] `AND (a.age_min IS NULL OR b.age IS NULL OR b.age >= a.age_min)`, [server/src/matching/candidates.ts:100] `AND (b.age_min IS NULL OR a.age IS NULL OR a.age >= b.age_min)` |
+| Distance | Within Arjun's maximum distance | Within Meera's | No location: skipped. No maximum: only that person's side passes (since 2026-09-28; before, one missing maximum switched off both) | [server/src/matching/candidates.ts:112] `(a.max_distance_km IS NULL` |
+| What they are looking for (intent) | The same answer, or a close one: Marriage and Long-term meet; Long-term and Still working it out; Still working it out and Casual, and Company (since 2026-10-01; before, only the same answer, so Marriage never met Long-term). Marriage never meets Casual | same | Passes | [server/src/matching/candidates.ts:123] `SELECT 1 FROM (VALUES ${INTENT_PAIRS_SQL}) AS ok(x, y)`, [shared/src/values.ts:49] `export const INTENTS_THAT_MEET: readonly (readonly [string, string])[] = [` |
+| Must-haves | Every Arjun must-have passes on Meera | Every Meera must-have passes on Arjun | Passes | [server/src/matching/candidates.ts:136] `AND NOT ${passes('b')})`, [server/src/matching/candidates.ts:140] `AND NOT ${passes('a')})` |
+| Recently active | Meera used the app in the last 60 days; a practice profile always passes (since 2026-09-28) | (not checked for Arjun; he just tapped) | | [server/src/matching/candidates.ts:149] `AND (b.is_synthetic OR b.last_active_at > now() - interval '60 days')` |
 
 After the SQL, three more steps remove people:
 
@@ -131,8 +131,8 @@ After the SQL, three more steps remove people:
   [server/migrations/0022_rendezvous.sql:44] `CREATE UNIQUE INDEX rendezvous_pair ON rendezvous (user_a, user_b);`).
 - **Weekly exposure cap.** A real person already met by 5 other real people's rounds in the
   last 7 days is skipped. Practice profiles are never capped
-  ([server/src/matching/candidates.ts:190] `Number(process.env.WEEKLY_REAL_EXPOSURE ?? 5)`,
-  [server/src/matching/candidates.ts:206] `WHERE r.requested_at > now() - interval '7 days'`).
+  ([server/src/matching/candidates.ts:204] `Number(process.env.WEEKLY_REAL_EXPOSURE ?? 5)`,
+  [server/src/matching/candidates.ts:220] `WHERE r.requested_at > now() - interval '7 days'`).
 - **Claims.** Two rounds running at once cannot claim the same pair
   ([server/src/matching/orchestrator.ts:249] `ON CONFLICT (user_a, user_b) DO NOTHING`).
 
@@ -193,7 +193,7 @@ off ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');
   [server/src/matching/orchestrator.ts:167] `const pickable = fresh.filter((id) => !capped.has(id));`).
 - HOW-IT-WORKS.md §4 says every rule is symmetric. "Recently active" is checked on the
   candidate only ([HOW-IT-WORKS.md:204] `| distance | the **shorter** of the two willingnesses |`,
-  [server/src/matching/candidates.ts:135] `AND (b.is_synthetic OR b.last_active_at > now() - interval '60 days')`).
+  [server/src/matching/candidates.ts:149] `AND (b.is_synthetic OR b.last_active_at > now() - interval '60 days')`).
 - HOW-IT-WORKS.md §10 says rounds are limited by the round count "instead of by spend". The
   daily spend and call caps can still refuse a round
   ([HOW-IT-WORKS.md:818] `what the person said has changed -- §7a). Rounds are limited by`,

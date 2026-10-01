@@ -131,7 +131,7 @@ details), and **database roles** that limit what each part of the server can rea
   sentences each marked "On your card", "Not on a card now" or "Hidden"), "When another agent asks yours" (their answer sheet), and "Learned in chat" ("Only
   you see these. Your agent uses them to find people, but never says them until you tap OK to share.")
   ([app/src/features/appearance/appearance-screen.tsx:88] `<Card label="Your agent only brings you people who">`,
-  [server/src/matching/readback.ts:28] `yes: 'want kids', no: "don't want kids", maybe: "aren't sure about kids yet",`,
+  [server/src/matching/readback.ts:29] `yes: 'want kids', no: "don't want kids", maybe: "aren't sure about kids yet",`,
   [app/src/features/appearance/appearance-state.ts:25] `export function everyCardSays(line: string): string {`,
   [app/src/features/appearance/appearance-screen.tsx:106] `<Card label="What someone sees about you">`,
   [app/src/features/appearance/appearance-screen.tsx:167] `<Card label="When another agent asks yours">`,

@@ -46,7 +46,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   [server/src/matching/brief.ts:109] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
   One side effect remains (Known gaps): "runs most mornings" is not one of the exercise answers, so
   his exercise answer becomes "unknown" for matching
-  ([shared/src/values.ts:37] `export const FREQUENCY = ['never', 'rarely', 'sometimes', 'often', 'daily'] as const;`).
+  ([shared/src/values.ts:68] `export const FREQUENCY = ['never', 'rarely', 'sometimes', 'often', 'daily'] as const;`).
 - **Meera pastes** a paragraph about herself from another AI. One model call pulls facts out of it
   ({AI:paste}); **every** fact is held for checking, and the paragraph itself is not stored. She sees
   "Held for checking" and "Nothing is treated as true until you say so."

@@ -17,7 +17,7 @@
  * exclusion that must hold whichever clauses are switched on.
  */
 import type { PoolClient } from 'pg';
-import { CORE_PREDICATES } from '@clone/shared';
+import { CORE_PREDICATES, INTENTS_THAT_MEET } from '@clone/shared';
 import { STRENGTH_WEIGHT } from './strength.js';
 
 /**
@@ -73,6 +73,14 @@ const BASE = `
    AND NOT block_exists(a.user_id, b.user_id)
 `;
 
+/** INTENTS_THAT_MEET as SQL VALUES rows, both ways round. Only [a-z_] words, checked. */
+const INTENT_PAIRS_SQL = INTENTS_THAT_MEET.flatMap(([a, b]) => [[a, b], [b, a]])
+  .map(([a, b]) => {
+    if (!/^[a-z_]+$/.test(a!) || !/^[a-z_]+$/.test(b!)) throw new Error(`bad intent pair ${a}/${b}`);
+    return `('${a}', '${b}')`;
+  })
+  .join(', ');
+
 /**
  * Every clause is SYMMETRIC and every clause passes on NULL.
  *
@@ -106,8 +114,14 @@ export const CLAUSES: Record<string, string> = {
     AND (b.max_distance_km IS NULL
          OR earth_distance(ll_to_earth(a.lat, a.lon), ll_to_earth(b.lat, b.lon)) <= b.max_distance_km * 1000.0)))`,
 
+  // The same answer meets itself (and a test's made-up tag still meets only itself); a
+  // different answer meets when it is a close one (shared INTENTS_THAT_MEET, both ways,
+  // the founder 2026-10-01). It was the overlap alone, so "Marriage" never met "Something
+  // long-term". The pairs are code constants, written in as literals.
   intent: `
-   AND (a.intent = '{}' OR b.intent = '{}' OR a.intent && b.intent)`,
+   AND (a.intent = '{}' OR b.intent = '{}' OR a.intent && b.intent OR EXISTS (
+        SELECT 1 FROM (VALUES ${INTENT_PAIRS_SQL}) AS ok(x, y)
+         WHERE ok.x = ANY(a.intent) AND ok.y = ANY(b.intent)))`,
 
   // The only place a personal rule excludes anybody. Both directions.
   // `retired_at IS NULL` is spelled out. clone_match's policy already hides retired

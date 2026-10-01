@@ -15,6 +15,7 @@
  * Pure: no client, no clock. The same rules always read the same way.
  */
 import { ALL_CARDS, BY_ID } from '../onboarding/questions.js';
+import { ANYWHERE_KM, intentsThatMeet } from '@clone/shared';
 import { INTENT_WORDS } from './brief.js';
 
 /**
@@ -109,10 +110,17 @@ export function cardRuleLine(predicate: string, values: readonly string[]): stri
 export function readback(input: ReadbackInput): Readback {
   const lines: string[] = [];
 
-  const intents = input.intent.map((i) => INTENT_WORDS[i]).filter((w): w is string => Boolean(w));
-  if (intents.length) lines.push(`want ${or(intents)}`);
+  // Everybody the intent filter lets through, not only the same answer: a close one meets
+  // too (INTENTS_THAT_MEET, 2026-10-01), and a readback that named only your own would
+  // promise less than the filter does. "want marriage or something long-term".
+  const meets = [...new Set(input.intent.flatMap((i) => intentsThatMeet(i)))];
+  const wants = meets.map((i) => INTENT_WORDS[i]).filter((w): w is string => Boolean(w));
+  const want = wants.length ? `want ${or(wants)}` : null;
+  const unsure = meets.includes('undecided') ? 'are still working out what they want' : null;
+  if (want || unsure) lines.push(want && unsure ? `${want}, or ${unsure}` : (want ?? unsure)!);
   if (input.ageRange) lines.push(`are ${input.ageRange.min} to ${input.ageRange.max}`);
-  if (input.maxDistanceKm !== null) lines.push(`live within ${input.maxDistanceKm} km`);
+  // "Anywhere" is a distance too large to limit anything: no line, as with no answer.
+  if (input.maxDistanceKm !== null && input.maxDistanceKm < ANYWHERE_KM) lines.push(`live within ${input.maxDistanceKm} km`);
 
   // Card order, so the list reads the way the cards were asked.
   for (const card of ALL_CARDS) {

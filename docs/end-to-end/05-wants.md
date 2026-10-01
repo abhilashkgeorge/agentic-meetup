@@ -21,7 +21,7 @@ three shapes:
 | Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | [server/src/onboarding/stories.ts:150] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Answer to "Anyone else you couldn't be with?" | Saved as a `dealbreaker` fact; a model may also propose a card change | Code, plus {AI:dealbreaker} | `facts` row | Same as above | [server/src/api/interview.ts:341] `predicate: 'dealbreaker',` |
 | A want's words match a question | The question is offered; Arjun ticks the answers he accepts | Code (word patterns) | `preferences` row: field, ticked values, strength | Arjun, on "Looking for" | [server/src/matching/want-questions.ts:84] `if (w.pattern.test(text)) return { want: w` |
-| Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:112] `// The only place a personal rule excludes anybody. Both directions.` |
+| Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:126] `// The only place a personal rule excludes anybody. Both directions.` |
 | A round meets Meera: tied want | Her answer is compared with his ticks | Code | Status on the card record | Tied to a tapped question (work, exercise, sleep, moving): Arjun sees "Matches", "Doesn't match" or "We can't check this one yet." Tied to a situation question: only "A private topic. Their answer is never shown." (since 2026-09-29) | [server/src/matching/want-questions.ts:121] `return ask.accepted.includes(v) ? 'met' : 'not_met';` |
 | A round meets Meera: untied or private want | One model call checks all of Arjun's untied wants against his first 12 candidates | {AI:wants}, then code | Status (+ her sentence) on the card record | Untied: her sentence, or "Nothing they've said covers this yet." Private: only "A private topic. Their answer is never shown." | [server/src/matching/wants.ts:257] `task: 'extract',` |
 | Meera never answered the question | The want reads "can't check"; a request to ask Meera is recorded | Code | `unknown_asks` row about Meera | Meera may get it as a question of the day; the asker is never named | [server/src/matching/unknowns.ts:127] `INSERT INTO unknown_asks (tenant_id, user_id, question_id)` |
@@ -69,8 +69,8 @@ three shapes:
   ([server/src/matching/wants.ts:297] `[c.synthetic ? 1 : 0, notMet.get(c.userId) ?? 0, i]`).
 - **If Arjun had tapped "Must have"**, a Meera who answered "A treat" would never be met by
   Arjun's agent, and Arjun would never be met by hers: each person's must-haves apply to
-  both searches ([server/src/matching/candidates.ts:122] `AND NOT ${passes('b')})`,
-  [server/src/matching/candidates.ts:126] `AND NOT ${passes('a')})`). A Meera who never answered
+  both searches ([server/src/matching/candidates.ts:136] `AND NOT ${passes('b')})`,
+  [server/src/matching/candidates.ts:140] `AND NOT ${passes('a')})`). A Meera who never answered
   still passes.
 - **"Someone kind"** goes to the model with up to 10 of Meera's own public sentences. If
   the model points at one, Arjun's card shows "You asked for “Someone kind”" and "They
@@ -150,7 +150,7 @@ three shapes:
   Jain" (it was the column and its stored value: "wants children is yes"); a not-want is
   headed "You don't want:" (it was a bare "Not:"); and the numbers under the reach say what
   they are, under "Each rule leaves out:"
-  ([server/src/matching/readback.ts:101] `export function cardRuleLine(predicate: string, values: readonly string[]): string | null {`,
+  ([server/src/matching/readback.ts:102] `export function cardRuleLine(predicate: string, values: readonly string[]): string | null {`,
   [app/src/features/preferences/wants-state.ts:41] `export function wantHeading(w: Pick<WantView, 'kind' | 'text'>): string {`).
 - **Ticking.** Nothing is pre-ticked. "Use this question" is disabled until one answer is
   ticked; ticking every answer stores no rule at all ("Every answer is fine, so this rules
@@ -188,14 +188,14 @@ three shapes:
   ([server/src/api/dating.ts:553] `A must-have only hides someone over an answer they tapped`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
   checked both ways: Arjun's must-haves on Meera, and Meera's must-haves on Arjun
-  ([server/src/matching/candidates.ts:121] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
-  [server/src/matching/candidates.ts:125] `WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`).
+  ([server/src/matching/candidates.ts:135] `WHERE p.user_id = a.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`,
+  [server/src/matching/candidates.ts:139] `WHERE p.user_id = b.user_id AND p.strength = 'dealbreaker' AND p.retired_at IS NULL`).
   A field with several answers (the work field) passes if any of the other person's
   answers is ticked ([server/src/matching/candidates.ts:31] `THEN match_pref_satisfied_multi(p.predicate, p.operator, p.value,`).
 - **What Really want and Nice to have do.** Since 2026-09-29 they decide the order a round takes people in:
   within each group (real people still before practice profiles), somebody who fits more of your Really-want
   (3) and Nice-to-have (1) rules comes first -- counted only on answers they gave -- and recency breaks ties
-  ([server/src/matching/candidates.ts:171] `ORDER BY b.is_synthetic ASC, ${FITS_MY_WANTS} DESC, b.last_active_at DESC`,
+  ([server/src/matching/candidates.ts:185] `ORDER BY b.is_synthetic ASC, ${FITS_MY_WANTS} DESC, b.last_active_at DESC`,
   [server/src/matching/strength.ts:6] `export const STRENGTH_WEIGHT = {`). Before, they only fed the score
   recorded on each pair, and a round took real people by recency whatever anybody wanted. That two-way score
   still records and does not pick ([server/src/matching/orchestrator.ts:178] `it just no longer decides who is met.`).
@@ -210,7 +210,7 @@ three shapes:
   than 20 people you could meet before any rule of yours applies, it says so instead: "Very
   few people are on the app yet. That is not because of anything you asked for." (since
   2026-09-30; before, a new person on a near-empty app was told to loosen their rules)
-  ([server/src/matching/candidates.ts:265] `export const SHOWN_FLOOR = 20;`,
+  ([server/src/matching/candidates.ts:279] `export const SHOWN_FLOOR = 20;`,
   [app/src/lib/counts.ts:12] `return n === null || n === undefined ? 'Under 20' : n.toLocaleString();`,
   [app/src/features/preferences/preferences-screen.tsx:116] `Very few people fit. Turn a must-have into a want to reach more.`,
   [app/src/lib/counts.ts:35] `export const FEW_ON_THE_APP = 'Very few people are on the app yet. That is not because of anything you asked for.';`).

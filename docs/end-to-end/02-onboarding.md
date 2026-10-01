@@ -163,7 +163,7 @@ before the step existed are asked on the Home ("Add your first name") and can se
 
 The server recomputes readiness on every profile rebuild. A person is **in the pool** when all of
 these hold ([server/src/matching/profile.ts:207] `const inPool = missing.length === 0 && adult;`,
-[shared/src/values.ts:77] `export const POOL_REQUIRED = [`):
+[shared/src/values.ts:108] `export const POOL_REQUIRED = [`):
 
 - gender, who they want to meet, birth year, city **with a map point**, and what they are here for,
   each from a confirmed (not held) fact ([server/src/matching/profile.ts:45] `WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL`,
