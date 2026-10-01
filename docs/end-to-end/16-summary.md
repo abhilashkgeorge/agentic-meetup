@@ -5,7 +5,7 @@
 2. **Sign up.** You enter your phone number and a 6-digit code. A new number also needs an invite code from a member
    (each member has 3). Then you agree to three short documents: age, terms, privacy.
 3. **Set up.** You write one true sentence about yourself. You answer 3 basics (who you are, who you want to meet, what
-   you're here for) and 5 cards (kids, one person or open, smoking, drinking, food). Each card has a "who's fine for my
+   you're here for) and 5 cards (kids, one person or open, smoking, drinking, food; no kids card for casual or company). Each card has a "who's fine for my
    partner" row. You add your first name, birth year, age range, city and distance. Faith, voice, a character and
    photos are optional.
 4. **Ready.** When the basics, the five cards, birth year, city and consent are in and you are 18 or over, your agent

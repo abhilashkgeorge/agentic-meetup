@@ -29,7 +29,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   session ({AI:extract}) ([server/src/index.ts:150] `}, Math.min(SESSION_IDLE_MS, 60_000));`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
   mornings". Both are fields a must-have can depend on, so both are **held**
-  ([server/src/onboarding/questions.ts:415] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
+  ([server/src/onboarding/questions.ts:433] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
   ([app/src/features/profile/profile-screen.tsx:132] `<Card label="Your agent heard something">`,
@@ -90,7 +90,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **What is held:** anything heard (chat, the first sentence, a paste) on a **tapped** field: gender, who
   they want to meet, birth year, city, intent, age range, distance, neighbourhood, the five cards,
   faith, the eight situation answers, and (since 2026-09-28) work field, exercise, sleep and moving
-  cities; plus **everything** from a paste ([server/src/onboarding/questions.ts:403] `'gender', 'seeking_gender', 'birth_date', 'lives_in', 'relationship_intent',`).
+  cities; plus **everything** from a paste ([server/src/onboarding/questions.ts:421] `'gender', 'seeking_gender', 'birth_date', 'lives_in', 'relationship_intent',`).
 - **What goes live at once:** everything else heard in chat (interests, things done, employer, wants
   and "could not be with" sentences...), but **match-only**: it may help matching, it is never said to
   anyone until "OK to share" ([server/src/memory/extract.ts:245] `...learnedDisclosure(f.predicate),`).

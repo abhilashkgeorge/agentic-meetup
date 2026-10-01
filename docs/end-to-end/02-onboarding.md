@@ -81,7 +81,10 @@ Sources: [server/src/onboarding/questions.ts:142] `text: 'You are…',`,
 [server/src/onboarding/questions.ts:159] `text: 'What are you here for?',`.
 
 **The five cards** (the fixed "set" questions; required, but "Prefer not to say" counts as an
-answer) ([server/src/onboarding/questions.ts:371] `['card-kids', 'card-monogamy', 'card-smoking', 'card-drinking', 'card-food']`).
+answer). Since 2026-10-01 somebody here for something casual or for company gets four: the
+kids card is never asked of them and does not hold them back (before, everybody was asked
+"Do you want children?" and could not go out without it)
+([server/src/onboarding/questions.ts:385] `export const NO_KIDS_CARD: readonly string[] = ['casual', 'companionship'];`) ([server/src/onboarding/questions.ts:371] `['card-kids', 'card-monogamy', 'card-smoking', 'card-drinking', 'card-food']`).
 Each card has two rows: **You** (your answer) and **Your partner** ("Tap every one that is okay.
 People who have not said still pass."), with "All are okay" and nothing pre-ticked
 ([app/src/features/onboarding/interview-screen.tsx:359] `Tap every one that is okay. People who have not said still pass.`,
@@ -129,7 +132,7 @@ around?", "Would you move cities for the right person?"
 
 **Situation questions** (8): never asked during setup. They arrive only as a question of the day
 when someone else's want needs the answer (stages 3 and 5)
-([server/src/onboarding/next-question.ts:113] `if (q.tier === 'situation') return false;`).
+([server/src/onboarding/next-question.ts:120] `if (q.tier === 'situation') return false;`).
 
 **Essentials** (the setup wizard): "What should people call you?" (asked first; "Just your first
 name." and "People see it only after you share your profile with them."), "What year were you
@@ -162,16 +165,17 @@ before the step existed are asked on the Home ("Add your first name") and can se
 ### 2.3 Required vs optional, and "ready to send"
 
 The server recomputes readiness on every profile rebuild. A person is **in the pool** when all of
-these hold ([server/src/matching/profile.ts:207] `const inPool = missing.length === 0 && adult;`,
+these hold ([server/src/matching/profile.ts:209] `const inPool = missing.length === 0 && adult;`,
 [shared/src/values.ts:108] `export const POOL_REQUIRED = [`):
 
 - gender, who they want to meet, birth year, city **with a map point**, and what they are here for,
   each from a confirmed (not held) fact ([server/src/matching/profile.ts:45] `WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL`,
   [server/src/matching/profile.ts:152] `if (p === 'lives_in') return lat === null;`);
-- an answer (or "prefer not to say") on each of the five cards
-  ([server/src/matching/profile.ts:178] `for (const k of CORE_CARDS) if (!done.has(k.id)) missing.push(k.predicate);`);
-- all three consent documents ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');`);
-- age 18 or over, computed from the birth year alone ([server/src/matching/profile.ts:190] `const adult = age !== null && age >= MIN_AGE;`).
+- an answer (or "prefer not to say") on each of the five cards -- four, without kids, for
+  somebody here for something casual or for company
+  ([server/src/matching/profile.ts:180] `for (const k of coreCardsFor(intent)) if (!done.has(k.id)) missing.push(k.predicate);`);
+- all three consent documents ([server/src/matching/profile.ts:207] `if (!agreed) missing.push('consent');`);
+- age 18 or over, computed from the birth year alone ([server/src/matching/profile.ts:192] `const adult = age !== null && age >= MIN_AGE;`).
 
 Not required: photos, a name, age range, distance, neighbourhood, faith, the sentence, stories,
 voice, self-test, character. The self-test's "It's ready. It can go out and meet people for you."
@@ -204,7 +208,7 @@ the $2.00 daily cost cap still covers them. Measured before the change: real peo
 - HOW-IT-WORKS.md §2a describes the partner row as "Anyone is fine" or "Let me choose". The screen shows
   "All are okay" and every answer, unticked ([HOW-IT-WORKS.md:82] `one explicit tap -- "Anyone is fine" or "Let me choose".`).
 - HOW-IT-WORKS.md §2b says "which part of town" is asked in setup; it is not asked until the person has
-  a map point ([server/src/matching/profile.ts:350] `if (!p || p.lat === null || p.lon === null) return false;`).
+  a map point ([server/src/matching/profile.ts:360] `if (!p || p.lat === null || p.lon === null) return false;`).
 - HOW-IT-WORKS.md §2c calls the voice step free paragraphs "extracted into facts"; it is a WhatsApp
   import that writes a style note, not facts ([HOW-IT-WORKS.md:150] `free paragraphs, extracted into facts.`).
 - The location code and the phone's permission text say only the city is kept. For an unlisted city,

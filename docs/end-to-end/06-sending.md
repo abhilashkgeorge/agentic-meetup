@@ -137,9 +137,10 @@ After the SQL, three more steps remove people:
   ([server/src/matching/orchestrator.ts:249] `ON CONFLICT (user_a, user_b) DO NOTHING`).
 
 "Ready" (`in_pool`) means: the basics answered, all five core cards answered (a "prefer not
-to say" counts), consent given, and age 18 or over. A moderator's hide or a ban forces it
-off ([server/src/matching/profile.ts:205] `if (!agreed) missing.push('consent');`,
-[server/src/matching/profile.ts:207] `const inPool = missing.length === 0 && adult;`,
+to say" counts; four, without kids, for somebody here for something casual or for company),
+consent given, and age 18 or over. A moderator's hide or a ban forces it
+off ([server/src/matching/profile.ts:207] `if (!agreed) missing.push('consent');`,
+[server/src/matching/profile.ts:209] `const inPool = missing.length === 0 && adult;`,
 [server/migrations/0048_filter_defects.sql:53] `NEW.in_pool := false;`). See stage 2.
 
 ### 6.4 Picking

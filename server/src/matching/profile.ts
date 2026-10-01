@@ -17,7 +17,7 @@ import { MIN_AGE, POOL_REQUIRED, canFilterOn, findArea, firstName, haversineKm, 
 // and importing a second one under the same name silently shadowed it, emptying
 // `missing` for every profile. tsc accepted it; a test caught it.
 import { REQUIRED as REQUIRED_CONSENTS } from '../api/consent.js';
-import { CORE_CARDS, mustHaveAllowed } from '../onboarding/questions.js';
+import { CORE_CARDS, NO_KIDS_CARD, coreCardsFor, mustHaveAllowed } from '../onboarding/questions.js';
 
 export interface RebuildResult {
   matchable: number;
@@ -175,7 +175,9 @@ export async function rebuildMatchProfile(
     [ctx.userId, CORE_CARDS.map((k) => k.id)],
   );
   const done = new Set(cards.map((r) => r.question_id));
-  for (const k of CORE_CARDS) if (!done.has(k.id)) missing.push(k.predicate);
+  // Four cards, not five, for somebody here for something casual or for company: they are
+  // never asked the kids card (coreCardsFor, the founder 2026-10-01).
+  for (const k of coreCardsFor(intent)) if (!done.has(k.id)) missing.push(k.predicate);
 
   // An agent that cannot answer the five questions every candidate query asks would
   // be matched with everybody or nobody. It waits outside the pool until it can.
@@ -267,14 +269,17 @@ export async function poolNow(
   c: PoolClient,
   ctx: { tenantId: string; userId: string },
 ): Promise<{ inPool: boolean; missing: string[] }> {
-  const { rows } = await c.query<{ in_pool: boolean; cards: string }>(
-    `SELECT mp.in_pool,
-            (SELECT count(*) FROM question_answers q
+  const { rows } = await c.query<{ in_pool: boolean; intent: string[] | null; cards: string[] | null }>(
+    `SELECT mp.in_pool, mp.intent,
+            (SELECT array_agg(q.question_id) FROM question_answers q
               WHERE q.user_id = mp.user_id AND q.question_id = ANY($2)) AS cards
        FROM match_profile mp WHERE mp.user_id = $1`,
     [ctx.userId, CORE_CARDS.map((k) => k.id)],
   );
-  if (rows[0]?.in_pool && Number(rows[0].cards) === CORE_CARDS.length) {
+  // The cards THIS person must have (four without kids for casual or company), each by
+  // id: a count would let an extra kids answer stand in for a missing smoking one.
+  const have = new Set(rows[0]?.cards ?? []);
+  if (rows[0]?.in_pool && coreCardsFor(rows[0].intent ?? []).every((k) => have.has(k.id))) {
     return { inPool: true, missing: [] };
   }
   const r = await rebuildMatchProfile(c, ctx);
@@ -308,10 +313,15 @@ export async function holdUntilCardsDone(
     `${opts.dry ? 'SELECT mp.user_id FROM match_profile mp WHERE' : 'UPDATE match_profile mp SET in_pool = false WHERE'}
         NOT mp.is_synthetic AND mp.in_pool
         AND ($1::uuid[] IS NULL OR mp.user_id = ANY($1::uuid[]))
-        AND (SELECT count(*) FROM question_answers q
-              WHERE q.user_id = mp.user_id AND q.question_id = ANY($2)) < $3
+        -- Missing a card they must have: every core card, but the kids one is not asked
+        -- of somebody here only for something casual or for company (coreCardsFor).
+        AND EXISTS (
+          SELECT 1 FROM unnest($2::text[]) AS need(id)
+           WHERE NOT EXISTS (SELECT 1 FROM question_answers q
+                              WHERE q.user_id = mp.user_id AND q.question_id = need.id)
+             AND NOT (need.id = 'card-kids' AND mp.intent <> '{}' AND mp.intent <@ $3::text[]))
      ${opts.dry ? '' : 'RETURNING mp.user_id'}`,
-    [opts.only ?? null, CORE_CARDS.map((k) => k.id), CORE_CARDS.length],
+    [opts.only ?? null, CORE_CARDS.map((k) => k.id), NO_KIDS_CARD],
   );
   return rows.map((r) => r.user_id);
 }

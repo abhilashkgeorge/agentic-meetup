@@ -23,7 +23,7 @@
  * for the bug that made this necessary.
  */
 import type { PoolClient } from 'pg';
-import { CORE, GATING, OPTIONAL_CARDS, QUESTIONS, type Question } from './questions.js';
+import { CORE, GATING, OPTIONAL_CARDS, QUESTIONS, coreCardsFor, type Question } from './questions.js';
 
 export interface Asked {
   /** Question ids already answered, including ones declined. */
@@ -105,8 +105,15 @@ export async function nextQuestion(
    */
   skipped: ReadonlySet<string> = new Set(),
 ): Promise<NextQuestion | null> {
+  // The cards this person is asked: not the kids one for somebody here only for something
+  // casual or for company (coreCardsFor, the founder 2026-10-01). Read from their own row,
+  // which the route has just rebuilt; nothing there yet means all five.
+  const { rows: me } = await c.query<{ intent: string[] | null }>(
+    'SELECT intent FROM match_profile WHERE user_id = $1', [userId]);
+  const cards = new Set(coreCardsFor(me[0]?.intent ?? []).map((k) => k.id));
   const available = QUESTIONS.filter((q) => {
     if (answered.has(q.id)) return false;
+    if ((CORE as readonly string[]).includes(q.id) && !cards.has(q.id)) return false;
     // SITUATIONS ARE NEVER ASKED HERE. They exist for other people's wants and arrive
     // as a question of the day when one needs them (matching/want-questions.ts); in the
     // interview they would be a form for its own sake, and count toward "remaining".

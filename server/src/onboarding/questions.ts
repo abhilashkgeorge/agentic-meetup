@@ -377,6 +377,24 @@ export const CORE_CARDS: readonly { id: string; predicate: string }[] =
 /** The five predicates a card writes, and the only ones a written dealbreaker may map to. */
 export const CORE_PREDICATES: readonly string[] = CORE_CARDS.map((c) => c.predicate);
 
+/**
+ * "Here for" answers that are never asked the kids card (the founder, 2026-10-01). Somebody
+ * here for something casual, or for company, was asked "Do you want children?" and who
+ * could be their partner on it -- and could not go out until they answered.
+ */
+export const NO_KIDS_CARD: readonly string[] = ['casual', 'companionship'];
+
+/**
+ * The core cards this person must answer, by what they are here for: all five, or the four
+ * without kids. One rule for the question picker and every pool check (profile.ts).
+ */
+export function coreCardsFor(intent: readonly string[]): readonly { id: string; predicate: string }[] {
+  return intent.length > 0 && intent.every((i) => NO_KIDS_CARD.includes(i))
+    ? CORE_CARDS.filter((k) => k.id !== 'card-kids')
+    : CORE_CARDS;
+}
+
+
 /** Cards that may be skipped whole, asked in this order straight after the five. */
 export const OPTIONAL_CARDS = ['card-faith'] as const;
 

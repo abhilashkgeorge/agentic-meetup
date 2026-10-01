@@ -354,7 +354,10 @@ Sources: `server/src/onboarding/questions.ts:142`,
 `server/src/onboarding/questions.ts:159`.
 
 **The five cards** (the fixed "set" questions; required, but "Prefer not to say" counts as an
-answer) (`server/src/onboarding/questions.ts:371`).
+answer). Since 2026-10-01 somebody here for something casual or for company gets four: the
+kids card is never asked of them and does not hold them back (before, everybody was asked
+"Do you want children?" and could not go out without it)
+(`server/src/onboarding/questions.ts:385`) (`server/src/onboarding/questions.ts:371`).
 Each card has two rows: **You** (your answer) and **Your partner** ("Tap every one that is okay.
 People who have not said still pass."), with "All are okay" and nothing pre-ticked
 (`app/src/features/onboarding/interview-screen.tsx:359`,
@@ -402,7 +405,7 @@ around?", "Would you move cities for the right person?"
 
 **Situation questions** (8): never asked during setup. They arrive only as a question of the day
 when someone else's want needs the answer (stages 3 and 5)
-(`server/src/onboarding/next-question.ts:113`).
+(`server/src/onboarding/next-question.ts:120`).
 
 **Essentials** (the setup wizard): "What should people call you?" (asked first; "Just your first
 name." and "People see it only after you share your profile with them."), "What year were you
@@ -435,16 +438,17 @@ before the step existed are asked on the Home ("Add your first name") and can se
 ### 2.3 Required vs optional, and "ready to send"
 
 The server recomputes readiness on every profile rebuild. A person is **in the pool** when all of
-these hold (`server/src/matching/profile.ts:207`,
+these hold (`server/src/matching/profile.ts:209`,
 `shared/src/values.ts:108`):
 
 - gender, who they want to meet, birth year, city **with a map point**, and what they are here for,
   each from a confirmed (not held) fact (`server/src/matching/profile.ts:45`,
   `server/src/matching/profile.ts:152`);
-- an answer (or "prefer not to say") on each of the five cards
-  (`server/src/matching/profile.ts:178`);
-- all three consent documents (`server/src/matching/profile.ts:205`);
-- age 18 or over, computed from the birth year alone (`server/src/matching/profile.ts:190`).
+- an answer (or "prefer not to say") on each of the five cards -- four, without kids, for
+  somebody here for something casual or for company
+  (`server/src/matching/profile.ts:180`);
+- all three consent documents (`server/src/matching/profile.ts:207`);
+- age 18 or over, computed from the birth year alone (`server/src/matching/profile.ts:192`).
 
 Not required: photos, a name, age range, distance, neighbourhood, faith, the sentence, stories,
 voice, self-test, character. The self-test's "It's ready. It can go out and meet people for you."
@@ -477,7 +481,7 @@ the $2.00 daily cost cap still covers them. Measured before the change: real peo
 - HOW-IT-WORKS.md §2a describes the partner row as "Anyone is fine" or "Let me choose". The screen shows
   "All are okay" and every answer, unticked (`HOW-IT-WORKS.md:82`).
 - HOW-IT-WORKS.md §2b says "which part of town" is asked in setup; it is not asked until the person has
-  a map point (`server/src/matching/profile.ts:350`).
+  a map point (`server/src/matching/profile.ts:360`).
 - HOW-IT-WORKS.md §2c calls the voice step free paragraphs "extracted into facts"; it is a WhatsApp
   import that writes a style note, not facts (`HOW-IT-WORKS.md:150`).
 - The location code and the phone's permission text say only the city is kept. For an unlisted city,
@@ -518,7 +522,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   session ([AI-1](#ai-1)) (`server/src/index.ts:150`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
   mornings". Both are fields a must-have can depend on, so both are **held**
-  (`server/src/onboarding/questions.ts:415`).
+  (`server/src/onboarding/questions.ts:433`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
   (`app/src/features/profile/profile-screen.tsx:132`,
@@ -579,7 +583,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **What is held:** anything heard (chat, the first sentence, a paste) on a **tapped** field: gender, who
   they want to meet, birth year, city, intent, age range, distance, neighbourhood, the five cards,
   faith, the eight situation answers, and (since 2026-09-28) work field, exercise, sleep and moving
-  cities; plus **everything** from a paste (`server/src/onboarding/questions.ts:403`).
+  cities; plus **everything** from a paste (`server/src/onboarding/questions.ts:421`).
 - **What goes live at once:** everything else heard in chat (interests, things done, employer, wants
   and "could not be with" sentences...), but **match-only**: it may help matching, it is never said to
   anyone until "OK to share" (`server/src/memory/extract.ts:245`).
@@ -1011,7 +1015,7 @@ three shapes:
 - **Meera's side, round one.** Situation questions are never asked during onboarding, so
   Meera has most likely not answered the ₹50,000 question. Arjun's card about her then
   says "We can't check this one yet." for that want, and the app records that Meera
-  should be asked it (`server/src/onboarding/next-question.ts:110`,
+  should be asked it (`server/src/onboarding/next-question.ts:117`,
   `server/src/matching/unknowns.ts:88`).
 - **What Meera sees** later, if it is her most-asked gap: "A question for you" by the
   button in the town (the first of its nudges); the screen says "MONEY", the question, and "Other agents needed this once
@@ -1140,9 +1144,9 @@ three shapes:
   five cards, faith, the eight situation answers, and (since 2026-09-28) work field,
   exercise, sleep and moving cities. On these fields a sentence said in chat waits for the
   person's Yes before it counts, so chat can never silently move someone into or out of a
-  must-have (`server/src/onboarding/questions.ts:425`,
-  `server/src/onboarding/questions.ts:426`,
-  `server/src/onboarding/questions.ts:415`).
+  must-have (`server/src/onboarding/questions.ts:443`,
+  `server/src/onboarding/questions.ts:444`,
+  `server/src/onboarding/questions.ts:433`).
   The server refuses a must-have anywhere else
   (`server/src/api/dating.ts:553`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
@@ -1451,9 +1455,10 @@ After the SQL, three more steps remove people:
   (`server/src/matching/orchestrator.ts:249`).
 
 "Ready" (`in_pool`) means: the basics answered, all five core cards answered (a "prefer not
-to say" counts), consent given, and age 18 or over. A moderator's hide or a ban forces it
-off (`server/src/matching/profile.ts:205`,
-`server/src/matching/profile.ts:207`,
+to say" counts; four, without kids, for somebody here for something casual or for company),
+consent given, and age 18 or over. A moderator's hide or a ban forces it
+off (`server/src/matching/profile.ts:207`,
+`server/src/matching/profile.ts:209`,
 `server/migrations/0048_filter_defects.sql:53`). See stage 2.
 
 ### 6.4 Picking
@@ -2778,7 +2783,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 2. **Sign up.** You enter your phone number and a 6-digit code. A new number also needs an invite code from a member
    (each member has 3). Then you agree to three short documents: age, terms, privacy.
 3. **Set up.** You write one true sentence about yourself. You answer 3 basics (who you are, who you want to meet, what
-   you're here for) and 5 cards (kids, one person or open, smoking, drinking, food). Each card has a "who's fine for my
+   you're here for) and 5 cards (kids, one person or open, smoking, drinking, food; no kids card for casual or company). Each card has a "who's fine for my
    partner" row. You add your first name, birth year, age range, city and distance. Faith, voice, a character and
    photos are optional.
 4. **Ready.** When the basics, the five cards, birth year, city and consent are in and you are 18 or over, your agent

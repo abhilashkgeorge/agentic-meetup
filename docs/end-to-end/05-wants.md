@@ -52,7 +52,7 @@ three shapes:
 - **Meera's side, round one.** Situation questions are never asked during onboarding, so
   Meera has most likely not answered the ₹50,000 question. Arjun's card about her then
   says "We can't check this one yet." for that want, and the app records that Meera
-  should be asked it ([server/src/onboarding/next-question.ts:110] `// SITUATIONS ARE NEVER ASKED HERE. They exist for other people's wants and arrive`,
+  should be asked it ([server/src/onboarding/next-question.ts:117] `// SITUATIONS ARE NEVER ASKED HERE. They exist for other people's wants and arrive`,
   [server/src/matching/unknowns.ts:88] `if (r.question && r.status === 'cant_check' && CARD_QUESTIONS.has(`).
 - **What Meera sees** later, if it is her most-asked gap: "A question for you" by the
   button in the town (the first of its nudges); the screen says "MONEY", the question, and "Other agents needed this once
@@ -181,9 +181,9 @@ three shapes:
   five cards, faith, the eight situation answers, and (since 2026-09-28) work field,
   exercise, sleep and moving cities. On these fields a sentence said in chat waits for the
   person's Yes before it counts, so chat can never silently move someone into or out of a
-  must-have ([server/src/onboarding/questions.ts:425] `export function mustHaveAllowed(predicate: string): boolean {`,
-  [server/src/onboarding/questions.ts:426] `return TAPPED_PREDICATES.has(predicate);`,
-  [server/src/onboarding/questions.ts:415] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
+  must-have ([server/src/onboarding/questions.ts:443] `export function mustHaveAllowed(predicate: string): boolean {`,
+  [server/src/onboarding/questions.ts:444] `return TAPPED_PREDICATES.has(predicate);`,
+  [server/src/onboarding/questions.ts:433] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
   The server refuses a must-have anywhere else
   ([server/src/api/dating.ts:553] `A must-have only hides someone over an answer they tapped`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
