@@ -21,7 +21,7 @@ import { usePhoto } from '../photos/photo';
 import { Preview } from '../look/preview';
 import { useLook } from '../look/store';
 import { useSession } from '../../store/session';
-import { AREAS } from '@clone/shared';
+import { ANYWHERE_KM, AREAS } from '@clone/shared';
 import { PHOTO_SLOTS } from '../photos/photos-screen';
 import { label, setupRoute } from './fields';
 import { rangeFromText, rangeLabel } from './age-range';
@@ -266,6 +266,11 @@ export default function ProfileScreen() {
               {/* Set once during setup from a pre-fill; this is where it is changed. */}
               <Row title="Ages you'd meet" value={rangeLabel(rangeFromText(valueOf(k, 'age_range_sought')))}
                    onPress={() => router.push('/edit/age_range_sought')} />
+              {/* The distance map (2026-10-01): asked once in setup, and nowhere to change it
+                  after until this row. */}
+              <Row title="How far you'd go"
+                   value={(() => { const v = Number(valueOf(k, 'max_distance_km') ?? NaN); return Number.isFinite(v) ? (v >= ANYWHERE_KM ? 'Anywhere' : `${v} km`) : 'Not set'; })()}
+                   onPress={() => router.push('/edit/max_distance_km')} />
               <Row title="Height" value={valueOf(k, 'height_cm') ?? 'Not set'}
                    onPress={() => router.push('/edit/height_cm')} />
               <Row title="Diet"

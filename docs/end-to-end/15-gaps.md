@@ -16,7 +16,7 @@ the SMS code is no longer sent back in the reply (`SMS_DEV_ECHO=false`). What re
 2. **The code default is still on.** A new development setup whose `.env` lacks the line turns the
    old sign-in method back on; only a production server refuses it
    ([server/src/env.ts:199] `.default('true')`,
-   [server/src/env.ts:374] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`).
+   [server/src/env.ts:380] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`).
 
 ### 15.2 Private information that can reach another person
 
@@ -109,5 +109,5 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     past a few hundred people talking at once the park needs splitting into rooms by area. The voice server runs on
     the laptop with LiveKit's public development keys, which a production server refuses to start with; a real host
     and keys are the founder's. A mic ban is automatic, with nobody reviewing it first
-    ([server/src/env.ts:422] `if (env.NODE_ENV === 'production' && env.LIVEKIT_API_SECRET === 'secret') {`,
+    ([server/src/env.ts:428] `if (env.NODE_ENV === 'production' && env.LIVEKIT_API_SECRET === 'secret') {`,
     [app/src/features/world/voice-room.ts:264] `const tick = setInterval(apply, 250);`).

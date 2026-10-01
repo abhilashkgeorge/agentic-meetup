@@ -63,7 +63,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 
 - **Normalising:** spaces and dashes removed; a local number is completed for the chosen country
   only (+91: 10 digits) ([shared/src/phone.ts:31] `'+91': { trunk: '0', digits: [10] },`).
-  Only +91, +1 and +44 can be texted ([server/src/env.ts:290] `SMS_COUNTRIES: z.string().default('+91,+1,+44'),`).
+  Only +91, +1 and +44 can be texted ([server/src/env.ts:296] `SMS_COUNTRIES: z.string().default('+91,+1,+44'),`).
 - **The code:** six random digits, valid 5 minutes, at most 5 guesses
   ([server/src/phone.ts:85] `return String(randomInt(0, max)).padStart(OTP_LENGTH, '0');`,
   [shared/src/phone.ts:110] `export const OTP_TTL_SEC = 300;`,
@@ -80,7 +80,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **Limits:** per IP 10 codes per 15 minutes; per number 3 per 15 minutes; 500 texts a day in
   total ([server/src/ratelimit.ts:204] `otpSend: { max: 10, windowMs: 15 * 60_000 },`,
   [server/src/ratelimit.ts:206] `otpSendPerPhone: { max: 3, windowMs: 15 * 60_000 },`,
-  [server/src/env.ts:297] `SMS_DAILY_CAP: z.coerce.number().default(500),`). These counters live in
+  [server/src/env.ts:303] `SMS_DAILY_CAP: z.coerce.number().default(500),`). These counters live in
   the server's memory and reset when it restarts.
 - **Three outcomes** after a right code: a signed-in person adds the number to their account; a
   known number signs straight in (no invite, no consent screen); an unknown number gets a ticket
@@ -102,9 +102,9 @@ Nothing in sign-up differs by gender. Both see, in order:
   [server/src/api/auth.ts:230] `if (env.ALLOW_REUSABLE_INVITES) {`).
 - **A production server refuses to start** with any development shortcut on: reusable invites,
   echoed codes, the console SMS sender, legacy tokens, unverified or device sign-up, practice
-  profiles saying yes, or a development secret ([server/src/env.ts:374] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`,
-  [server/src/env.ts:378] `if (env.NODE_ENV === 'production' && env.ALLOW_REUSABLE_INVITES) {`,
-  [server/src/env.ts:412] `if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {`).
+  profiles saying yes, or a development secret ([server/src/env.ts:380] `if (env.NODE_ENV === 'production' && env.ALLOW_LEGACY_TOKENS) {`,
+  [server/src/env.ts:384] `if (env.NODE_ENV === 'production' && env.ALLOW_REUSABLE_INVITES) {`,
+  [server/src/env.ts:418] `if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {`).
 
 ### 1.3 Consent
 

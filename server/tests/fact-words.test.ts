@@ -54,6 +54,7 @@ describe('a fact, in words', () => {
     expect(valueWords('monogamy_stance', 'monogamous')).toBe('One person');
     expect(valueWords('religion', 'not religious')).toBe('Not religious');
     expect(valueWords('max_distance_km', '25')).toBe('25 km');
+    expect(valueWords('max_distance_km', '20000'), 'Anywhere').toBe('Anywhere');
     expect(valueWords('age_range_sought', '20-27')).toBe('20 to 27');
   });
 

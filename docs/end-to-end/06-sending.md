@@ -80,7 +80,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Open rounds | 1 per rolling 24 hours | Only a finished open round that met at least one person | [server/src/matching/world.ts:44] `Number(process.env.ROUNDS_PER_DAY ?? 1)`, [server/src/matching/rounds.ts:94] `AND result->'metAll' <> '[]'::jsonb` |
 | Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | [server/src/matching/world.ts:28] `Number(process.env.TARGETED_ROUNDS_PER_DAY ?? 5)`, [server/src/matching/rounds.ts:78] `WHERE user_id = $1 AND target_user_id IS NOT NULL` |
 | One round at a time | A second tap returns the round already running | | [server/src/matching/rounds.ts:101] `ON CONFLICT (user_id) WHERE status IN ('queued', 'running') DO NOTHING` |
-| Model spend | $2.00 per person per day | All of that person's model calls | [server/src/env.ts:334] `DAILY_COST_CAP_USD: z.coerce.number().default(2.0),` |
+| Model spend | $2.00 per person per day | All of that person's model calls | [server/src/env.ts:340] `DAILY_COST_CAP_USD: z.coerce.number().default(2.0),` |
 | Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | [server/src/metering.ts:73] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {` |
 
 None of `ROUNDS_PER_DAY`, `TARGETED_ROUNDS_PER_DAY`, `ROUND_CANDIDATES`,
@@ -184,7 +184,7 @@ off ([server/src/matching/profile.ts:207] `if (!agreed) missing.push('consent');
   [app/src/features/matches/reveal-screen.tsx:179] `This is not a real person. The pool is invented until enough people have`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a
   production server refuses to start with it on
-  ([server/src/env.ts:367] `if (env.NODE_ENV === 'production' && env.SYNTHETIC_AUTO_YES) {`).
+  ([server/src/env.ts:373] `if (env.NODE_ENV === 'production' && env.SYNTHETIC_AUTO_YES) {`).
 
 ### Docs vs code
 

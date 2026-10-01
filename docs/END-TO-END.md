@@ -49,14 +49,14 @@ something else, a **Docs vs code** note says so. Where something could not be co
 | Agent conversations | Off (`RENDEZVOUS_RUNS` not set, default 0) | `server/src/matching/rendezvous.ts:75` |
 | The agents' talk | On (`AGENT_TALK` not set, default on) | `server/src/matching/talk.ts:49` |
 | SMS | `console`: no text is sent, the code goes to the server log only (`SMS_DEV_ECHO=false` since 2026-09-28) | `server/src/env.ts:221` |
-| Reusable dev invite `KNOX-1010` | Works (`ALLOW_REUSABLE_INVITES=true`) | `server/src/env.ts:320` |
+| Reusable dev invite `KNOX-1010` | Works (`ALLOW_REUSABLE_INVITES=true`) | `server/src/env.ts:326` |
 | Old-style sign-in (account id as token) | Off (`ALLOW_LEGACY_TOKENS=false` since 2026-09-28; the code default is on) | `server/src/env.ts:199` |
-| Face check | Off | `server/src/env.ts:339` |
-| Spend per person per day | $2.00 and 10 model calls, plus up to 40 setup calls counted apart (since 2026-09-28) | `server/src/env.ts:342`, `server/src/env.ts:351` |
+| Face check | Off | `server/src/env.ts:345` |
+| Spend per person per day | $2.00 and 10 model calls, plus up to 40 setup calls counted apart (since 2026-09-28) | `server/src/env.ts:348`, `server/src/env.ts:357` |
 | Push notifications | `console`: each push is written to the server log, nothing is sent, until the app has an Expo project and `PUSH_PROVIDER=expo` is set | `server/src/env.ts:229` |
 
 The development values come from `server/.env`, which is not in git. A production server refuses to start with the
-development shortcuts on (`server/src/env.ts:374`).
+development shortcuts on (`server/src/env.ts:380`).
 
 **The development database today** (queried 2026-09-28): 11 real people, 4 of them ready to be sent out; 5,008
 practice profiles; no pair between two real people yet; no round since 2026-09-22.
@@ -160,7 +160,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 
 - **Normalising:** spaces and dashes removed; a local number is completed for the chosen country
   only (+91: 10 digits) (`shared/src/phone.ts:31`).
-  Only +91, +1 and +44 can be texted (`server/src/env.ts:290`).
+  Only +91, +1 and +44 can be texted (`server/src/env.ts:296`).
 - **The code:** six random digits, valid 5 minutes, at most 5 guesses
   (`server/src/phone.ts:85`,
   `shared/src/phone.ts:110`,
@@ -177,7 +177,7 @@ Nothing in sign-up differs by gender. Both see, in order:
 - **Limits:** per IP 10 codes per 15 minutes; per number 3 per 15 minutes; 500 texts a day in
   total (`server/src/ratelimit.ts:204`,
   `server/src/ratelimit.ts:206`,
-  `server/src/env.ts:297`). These counters live in
+  `server/src/env.ts:303`). These counters live in
   the server's memory and reset when it restarts.
 - **Three outcomes** after a right code: a signed-in person adds the number to their account; a
   known number signs straight in (no invite, no consent screen); an unknown number gets a ticket
@@ -199,9 +199,9 @@ Nothing in sign-up differs by gender. Both see, in order:
   `server/src/api/auth.ts:230`).
 - **A production server refuses to start** with any development shortcut on: reusable invites,
   echoed codes, the console SMS sender, legacy tokens, unverified or device sign-up, practice
-  profiles saying yes, or a development secret (`server/src/env.ts:374`,
-  `server/src/env.ts:378`,
-  `server/src/env.ts:412`).
+  profiles saying yes, or a development secret (`server/src/env.ts:380`,
+  `server/src/env.ts:384`,
+  `server/src/env.ts:418`).
 
 ### 1.3 Consent
 
@@ -331,7 +331,7 @@ In order, each sees:
 
 For a new person: start → (optional paste) → interview → essentials → voice → self-test →
 character → photos → Home (`app/src/features/onboarding/interview-screen.tsx:214`,
-`app/src/features/onboarding/essentials-screen.tsx:73`,
+`app/src/features/onboarding/essentials-screen.tsx:74`,
 `app/src/features/onboarding/character-step.tsx:23`).
 The Stories screen is shown only when someone is already in the pool when the interview ends, so a
 new person does not see it during setup; it is reached later from the You tab.
@@ -410,12 +410,24 @@ when someone else's want needs the answer (stages 3 and 5)
 **Essentials** (the setup wizard): "What should people call you?" (asked first; "Just your first
 name." and "People see it only after you share your profile with them."), "What year were you
 born?", "Who would you like to meet?" (age range), "Where are you now?" ("Your city is enough. Nobody
-sees your exact location."), "How far would you travel?" (10 km, 25 km, 50 km, 200 km, Anywhere).
+sees your exact location."), "How far would you travel?" -- since 2026-10-01 a map (before, five
+chips: 10, 25, 50, 200 km, Anywhere): the person's place at the centre, a circle for the
+distance that stays one size while the map zooms, a slider from 1 to 200 km (25 km to start),
+"Anywhere" for no limit, "Use my location", and a way to stand somewhere else -- search a city or
+a part of Bengaluru, or drag the map, and the centre lands on the nearest named place. Moving the
+circle moves where the person is matched from, both ways ("move you there", the founder's choice);
+a neighbourhood is saved as the city plus the area, so nothing finer than a neighbourhood is
+ever stored. In setup it starts on the person's neighbourhood when the pool has only their city
+and the phone already allows location (no dialog appears unasked). The map's pictures are
+OpenStreetMap's, fetched by our server and kept there, so the map provider never sees a person.
+The same map is the "How far you'd go" row on the You tab.
 Only the first name and distance can be declined here
 (`app/src/features/profile/fields.ts:59`,
 `app/src/features/profile/fields.ts:62`,
 (`app/src/features/profile/fields.ts:82`,
-`app/src/features/profile/fields.ts:94`).
+`app/src/features/profile/fields.ts:92`,
+`app/src/features/distance/geo.ts:180`,
+`server/src/api/tiles.ts:23`).
 A city among 46 listed ones becomes that city's centre; an unlisted city becomes a point only if
 "Use my location" was used (`shared/src/places.ts:36`,
 `server/src/api/dating.ts:108`).
@@ -519,7 +531,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   chat connection; the server stores it, and the clone replies. No fact is written yet
   (`server/src/api/chat.ts:315`).
 - **About five minutes after he stops**, a background sweep runs the extractor over the whole
-  session ([AI-1](#ai-1)) (`server/src/index.ts:150`).
+  session ([AI-1](#ai-1)) (`server/src/index.ts:154`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
   mornings". Both are fields a must-have can depend on, so both are **held**
   (`server/src/onboarding/questions.ts:433`).
@@ -633,10 +645,10 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 
 | Job | When | What it does | Model? | Code |
 |---|---|---|---|---|
-| Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:148` |
+| Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:152` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | `server/src/memory/consolidate.ts:26` |
 | Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:460` |
-| Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:156` |
+| Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:160` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs
 (`server/src/llm/index.ts:32`, `server/src/llm/index.ts:34`).
@@ -1099,7 +1111,7 @@ three shapes:
   tied to the basics, the five core cards or the faith card.
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
   must-haves remove anybody. Everything else just ranks."
-  (`app/src/features/profile/profile-screen.tsx:291`,
+  (`app/src/features/profile/profile-screen.tsx:296`,
   `app/src/features/preferences/preferences-screen.tsx:81`).
   The "Your wants" card lists each want with one line
   (`app/src/features/preferences/wants-state.ts:47`,
@@ -1398,7 +1410,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Open rounds | 1 per rolling 24 hours | Only a finished open round that met at least one person | `server/src/matching/world.ts:44`, `server/src/matching/rounds.ts:94` |
 | Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | `server/src/matching/world.ts:28`, `server/src/matching/rounds.ts:78` |
 | One round at a time | A second tap returns the round already running | | `server/src/matching/rounds.ts:101` |
-| Model spend | $2.00 per person per day | All of that person's model calls | `server/src/env.ts:334` |
+| Model spend | $2.00 per person per day | All of that person's model calls | `server/src/env.ts:340` |
 | Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | `server/src/metering.ts:73` |
 
 None of `ROUNDS_PER_DAY`, `TARGETED_ROUNDS_PER_DAY`, `ROUND_CANDIDATES`,
@@ -1502,7 +1514,7 @@ off (`server/src/matching/profile.ts:207`,
   `app/src/features/matches/reveal-screen.tsx:179`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a
   production server refuses to start with it on
-  (`server/src/env.ts:367`).
+  (`server/src/env.ts:373`).
 
 ### Docs vs code
 
@@ -1993,7 +2005,7 @@ tap opens the card, their profile or the chat
   (`server/src/push/index.ts:78`).
 - **The sweeper** runs every 10 minutes and whenever the Matches list or a decision is
   loaded; it marks overdue pairs `expired` and writes no answer
-  (`server/src/index.ts:205`,
+  (`server/src/index.ts:209`,
   `server/src/matching/expiry.ts:27`).
 - **Expired is not no:** a no is `lapsed` plus a recorded "no"; an expiry is its own status and
   is left out of the yes/no measurement; the founder's numbers count it separately
@@ -2576,7 +2588,7 @@ shown (`server/src/matching/score.ts:286`,
 With `FACE_CHECK` on, two selfie frames are compared with the person's photos by a face model that runs on the
 server itself, with no vendor; the frames are deleted and only the verdict is kept
 (`server/src/photos/face.ts:7`,
-`server/src/env.ts:339`).
+`server/src/env.ts:345`).
 
 ### Docs vs code
 
@@ -2585,7 +2597,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 - HOW-IT-WORKS.md §10 says "One meter wraps a whole round". There are two meters, each with its own budget check
   (`HOW-IT-WORKS.md:807`).
 - `MAX_SESSION_OUTPUT_TOKENS` is configured but nothing enforces it
-  (`server/src/env.ts:352`).
+  (`server/src/env.ts:358`).
 - ARCHITECTURE.md plans chat on GPT-5.6-luna, nightly batch jobs and a paid tier with a 10-turn trial. The code
   runs every task on one model, has no batch jobs and no payment code; the 10-call cap applies to everyone
   (`ARCHITECTURE.md:24`,
@@ -2616,7 +2628,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Push notifications** | A closed app is woken for a new card, "they shared their profile", "you can talk now", a message, and "a card fades today"; no names or words on the lock screen. Needs the founder's Expo setup before it reaches phones (stage 9.5) | Everyone, once allowed | `server/src/push/index.ts:34` |
 | **Photos screen** | Up to six photos, re-encoded to drop location data | Everyone | `server/src/photos/store.ts:30` |
 | **Selfie check** | "Photos checked" badge from a local face model | Off (`FACE_CHECK=off`) | `server/src/api/verify.ts:39` |
-| **"What it knows"** | Every fact, its history, and the confirm questions. Since 2026-09-30 each reads in words -- the field as a person says it and a tapped answer by its chip: "Kids: Want kids", "One person or open: One person", "How far you would go: 25 km" (it was the column and the stored value: "wants children: yes"); what the person typed is shown exactly as typed | Everyone | `app/src/features/knowledge/you-screen.tsx:91`, `server/src/memory/fact-words.ts:47` |
+| **"What it knows"** | Every fact, its history, and the confirm questions. Since 2026-09-30 each reads in words -- the field as a person says it and a tapped answer by its chip: "Kids: Want kids", "One person or open: One person", "How far you would go: 25 km" (it was the column and the stored value: "wants children: yes"); what the person typed is shown exactly as typed | Everyone | `app/src/features/knowledge/you-screen.tsx:91`, `server/src/memory/fact-words.ts:48` |
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:98` |
 | **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:238` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable | Everyone | `app/src/features/settings/connect-screen.tsx:36` |
@@ -2643,7 +2655,7 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | **Train or fine-tune any model.** Every model is a stock vendor model. | Yes | `server/src/llm/caps.ts:87` | — |
 | **Predict chemistry or compatibility.** No model judges the pair; a preference score is recorded but does not pick who is met; the date idea is refused if it uses words like "match", "compatible" or "chemistry". | Mostly | `server/src/matching/orchestrator.ts:178`, `server/src/matching/talk.ts:131` | A model does judge each **want** (met / not met), which moves people later. A switched-off option ([AI-14](#ai-14)) would store a hidden "would want a second evening" probability. |
 | **Show a score or percentage** to a person. The card query does not even select the score columns. | Yes | `server/src/api/dating.ts:595` | Counts appear: "Confirmed by N people who met them", rounded pool sizes, the reviewer's Numbers page. |
-| **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:877`, `server/src/matching/orchestrator.ts:92` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:367`). |
+| **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:877`, `server/src/matching/orchestrator.ts:92` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:373`). |
 | **Let a model write what others read about you.** Cards are written by code from your own words. | Mostly | `server/src/matching/brief.ts:4` | The date idea is model-written (and checked by code) (`server/src/matching/talk.ts:28`). |
 | **Judge looks.** No photo is ever sent to a model; matching never uses photos. | Yes | `server/src/llm/port.ts:29`, `app/src/features/matches/reveal-screen.tsx:259` | — |
 | **Show your photos or first name to anyone you have not said yes to.** The photo rule and the profile screen both test your own yes in that pair. | Yes | `server/migrations/0073_consent_first_reveal.sql:42`, `server/src/api/dating.ts:760` | Your 3D character, age, neighbourhood and shareable sentences are on the words card before any yes. |
@@ -2653,7 +2665,7 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | **Hide anyone for a "Really want" or "Nice to have".** Only must-haves exclude. | Yes | `server/src/matching/candidates.ts:126` | — |
 | **Match the same two people twice.** | Yes | `server/migrations/0022_rendezvous.sql:44` | They can still appear to each other as strangers in the town. |
 | **Store your phone number** in the database. Only a keyed hash is kept. | Yes | `server/migrations/0045_phone_identity.sql:22` | In development, the console SMS sender writes full numbers to the server log. |
-| **Track your location.** Location is read only when you tap "Use my location", never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:347` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
+| **Track your location.** Location is read only when you tap "Use my location", never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:372` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
 | **Act on reports automatically.** A person reviews each one. | Yes | `server/migrations/0039_trust_and_safety.sql:21` | — |
 | **Put a name or anybody's words on the lock screen.** Push notifications say only what kind of thing happened. | Yes | `server/src/push/index.ts:34` | Push reaches phones only after the founder's Expo setup (stage 9.5). |
 | **Hold free conversations between agents.** | Yes, by default | `server/src/matching/rendezvous.ts:75` | The code exists behind a switch ([AI-13](#ai-13)). |
@@ -2678,7 +2690,7 @@ the SMS code is no longer sent back in the reply (`SMS_DEV_ECHO=false`). What re
 2. **The code default is still on.** A new development setup whose `.env` lacks the line turns the
    old sign-in method back on; only a production server refuses it
    (`server/src/env.ts:199`,
-   `server/src/env.ts:374`).
+   `server/src/env.ts:380`).
 
 ### 15.2 Private information that can reach another person
 
@@ -2771,7 +2783,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     past a few hundred people talking at once the park needs splitting into rooms by area. The voice server runs on
     the laptop with LiveKit's public development keys, which a production server refuses to start with; a real host
     and keys are the founder's. A mic ban is automatic, with nobody reviewing it first
-    (`server/src/env.ts:422`,
+    (`server/src/env.ts:428`,
     `app/src/features/world/voice-room.ts:264`).
 
 ---

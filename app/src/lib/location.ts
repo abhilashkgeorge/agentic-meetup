@@ -77,3 +77,46 @@ export async function cityFromDevice(): Promise<LocationResult> {
     return { ok: false, reason: 'failed' };
   }
 }
+
+export type PointResult =
+  | { ok: true; lat: number; lon: number; city: string | null }
+  | { ok: false; reason: 'denied' | 'unavailable' | 'failed' };
+
+/**
+ * The phone's position, coarse (about a kilometre), for the distance map to pick the
+ * neighbourhood it is in. Never stored as such: what is saved is the neighbourhood, or a
+ * listed city's name (features/distance/geo.ts placeWrites).
+ *
+ * `ask: false` reads it only if location was ALREADY allowed -- the map can start on where
+ * the person is without a dialog appearing unasked (the rule above "Use my location" on
+ * "Where are you now?") -- and answers `denied` otherwise. `ask: true` is for a tap.
+ */
+export async function pointFromDevice(ask: boolean): Promise<PointResult> {
+  let Location;
+  try {
+    Location = await import('expo-location');
+  } catch {
+    return { ok: false, reason: 'unavailable' };
+  }
+  try {
+    const perm = ask
+      ? await Location.requestForegroundPermissionsAsync()
+      : await Location.getForegroundPermissionsAsync();
+    if (perm.status !== 'granted') return { ok: false, reason: 'denied' };
+    const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const lat = coarse(fix.coords.latitude);
+    const lon = coarse(fix.coords.longitude);
+    // The town's name, for a city the table does not list. A phone without a geocoder
+    // still has the point; the map then names the nearest listed city or asks.
+    let city: string | null = null;
+    try {
+      const [place] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
+      city = place?.city ?? place?.subregion ?? place?.region ?? null;
+    } catch {
+      city = null;
+    }
+    return { ok: true, lat, lon, city };
+  } catch {
+    return { ok: false, reason: 'failed' };
+  }
+}

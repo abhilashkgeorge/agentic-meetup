@@ -19,6 +19,7 @@ import { useSession } from '../../store/session';
 import { FIELD_BY_KEY } from './fields';
 import { ageRangeDefault, parseAgeRange, rangeFromText } from './age-range';
 import { AgeRangeInput, type AgeRangeText } from './age-range-input';
+import { DistanceStep, saveDistance, type DistanceChoice } from '../distance/distance-step';
 import {
   Button, Chip, ChipGroup, Field, Header, Screen, space, type, usePalette,
 } from '../../components/ui';
@@ -34,6 +35,8 @@ export default function EditBasic() {
   const [range, setRange] = useState<AgeRangeText>({ min: '', max: '' });
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  /** The distance map's choice, when this is the distance editor. */
+  const [distance, setDistance] = useState<DistanceChoice | null>(null);
 
   // What it already says, so the screen opens on the current answer rather than blank.
   const load = useCallback(async () => {
@@ -67,12 +70,24 @@ export default function EditBasic() {
 
   const value = field.kind === 'one' || field.kind === 'many' ? chosen : text.trim();
   const parsedRange = field.kind === 'range' ? parseAgeRange(range.min, range.max) : null;
-  const ready = field.kind === 'range'
+  const ready = field.kind === 'distance'
+    ? distance !== null
+    : field.kind === 'range'
     ? parsedRange !== null
     : Array.isArray(value) ? value.length > 0 : value.length > 0;
 
   const save = async (answer: unknown): Promise<void> => {
     if (!token) return;
+    // The map saves where you moved to (if you did), then how far.
+    if (field.kind === 'distance' && answer !== null) {
+      if (!distance) return;
+      setBusy(true);
+      const ok = await saveDistance(token, distance);
+      setBusy(false);
+      if (!ok) { setNote('That did not save. Check your connection and try again.'); return; }
+      router.back();
+      return;
+    }
     // The server's own rule (shared firstName), said here as a sentence.
     if (field.key === 'first_name' && answer !== null && !firstName(String(answer))) {
       setNote('Just your first name, in letters.');
@@ -95,7 +110,8 @@ export default function EditBasic() {
             disabled={!ready || busy}
             loading={busy}
             onPress={() => void save(
-              field.kind === 'range' ? parsedRange
+              field.kind === 'distance' ? 'map'
+              : field.kind === 'range' ? parsedRange
               : field.kind === 'many' ? chosen : (value as string[])[0] ?? text.trim(),
             )}
           />
@@ -117,7 +133,9 @@ export default function EditBasic() {
         )}
       </View>
 
-      {field.kind === 'range' ? (
+      {field.kind === 'distance' ? (
+        <DistanceStep detect={false} onChange={setDistance} />
+      ) : field.kind === 'range' ? (
         <AgeRangeInput value={range} onChange={setRange} />
       ) : field.options ? (
         <ChipGroup>

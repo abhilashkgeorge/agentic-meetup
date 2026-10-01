@@ -8,6 +8,7 @@
  * only when it IS one of that field's chip values, so "I eat everything" or a sentence
  * learned in chat comes through untouched. Pure; no model.
  */
+import { ANYWHERE_KM } from '@clone/shared';
 import { QUESTIONS } from '../onboarding/questions.js';
 
 /** Fields no question names well on its own. Everything else falls back to its question's topic. */
@@ -47,7 +48,9 @@ export function fieldWords(predicate: string): string {
 export function valueWords(predicate: string, text: string): string {
   const chip = ANSWERS.get(predicate)?.get(norm(text));
   if (chip) return chip;
-  if (predicate === 'max_distance_km' && /^\d+$/.test(text.trim())) return `${text.trim()} km`;
+  if (predicate === 'max_distance_km' && /^\d+$/.test(text.trim())) {
+    return Number(text.trim()) >= ANYWHERE_KM ? 'Anywhere' : `${text.trim()} km`;
+  }
   if (predicate === 'height_cm' && /^\d+$/.test(text.trim())) return `${text.trim()} cm`;
   const range = predicate === 'age_range_sought' ? /^(\d+)\s*-\s*(\d+)$/.exec(text.trim()) : null;
   if (range) return `${range[1]} to ${range[2]}`;

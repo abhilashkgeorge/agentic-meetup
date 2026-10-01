@@ -234,6 +234,12 @@ const Env = z.object({
    * ws://localhost:7880 in development, down the USB cable (adb reverse); the server's
    * own calls go to LIVEKIT_API_URL, which defaults to it with http for ws.
    */
+  /**
+   * Where the distance map's tiles come from (api/tiles.ts), with {z}/{x}/{y} in it.
+   * OpenStreetMap's standard tiles when unset -- fine for a handful of people; real
+   * traffic wants a paid or self-hosted tile server here.
+   */
+  TILE_URL: z.string().url().optional(),
   LIVEKIT_URL: z.string().url().optional(),
   LIVEKIT_API_URL: z.string().url().optional(),
   LIVEKIT_API_KEY: z.string().optional(),

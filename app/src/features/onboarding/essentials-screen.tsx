@@ -23,6 +23,7 @@ import { useSession } from '../../store/session';
 import { ESSENTIAL_FIELDS, essentialSteps, type FieldKind } from '../profile/fields';
 import { ageRangeDefault, parseAgeRange } from '../profile/age-range';
 import { AgeRangeInput, type AgeRangeText } from '../profile/age-range-input';
+import { DistanceStep, saveDistance, type DistanceChoice } from '../distance/distance-step';
 import {
   Animation,
   Button, Card, Chip, ChipGroup, Field, Screen, StepsLeft, space, type, usePalette,
@@ -143,15 +144,19 @@ export default function EssentialsScreen() {
     { city: string; lat: number; lon: number; precisionKm: number } | null
   >(null);
   const [locating, setLocating] = useState(false);
+  /** The distance map's choice, as it stands: what Next saves on that step. */
+  const [distance, setDistance] = useState<DistanceChoice | null>(null);
 
   const q = list[at]!;
   const value = answers[q.key];
   const answered = useMemo(
-    () => (q.kind === 'range'
+    () => (q.kind === 'distance'
+      ? distance !== null
+      : q.kind === 'range'
       // Answered means a range the server will take: a half-typed box is not one.
       ? isRangeText(value) && parseAgeRange(value.min, value.max) !== null
       : Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== ''),
-    [value, q.kind],
+    [value, q.kind, distance],
   );
 
   /**
@@ -195,6 +200,24 @@ export default function EssentialsScreen() {
     const range = q.kind === 'range' && isRangeText(raw) ? parseAgeRange(raw.min, raw.max) : null;
     if (!skipped && q.kind === 'range' && !range) return;
 
+    // THE MAP SAVES ITSELF: where you moved to (if you did), then how far. A "Prefer not
+    // to say" still goes the ordinary way below, as a recorded refusal.
+    if (!skipped && q.kind === 'distance' && distance) {
+      setBusy(true);
+      const saved = await saveDistance(token, distance);
+      setBusy(false);
+      if (!saved) { setNote({ text: 'That did not save. Check your connection and try again.', bad: true }); return; }
+      // The map may have put you in a neighbourhood: then "Which part of town?" is answered.
+      let after = list;
+      if (distance.spot?.kind === 'area' && list.slice(at + 1).some((f) => f.key === 'area')) {
+        after = list.filter((f, i) => i <= at || f.key !== 'area');
+        setQuestions(after);
+      }
+      if (at + 1 < after.length) setAt(at + 1);
+      else routeOnward();
+      return;
+    }
+
     setBusy(true);
     // A refusal is sent too. "Declined" and "never asked" must not look the same, or
     // the clone asks the same question every week for ever.
@@ -218,7 +241,7 @@ export default function EssentialsScreen() {
     }
     if (at + 1 < next.length) setAt(at + 1);
     else routeOnward();
-  }, [token, q.key, answers, at, fix, list]);
+  }, [token, q.key, q.kind, answers, at, fix, list, distance]);
 
   const useMyLocation = async () => {
     setNote(null);
@@ -312,6 +335,8 @@ export default function EssentialsScreen() {
             })}
           </ChipGroup>
         )}
+
+        {q.kind === 'distance' && <DistanceStep detect onChange={setDistance} />}
 
         {q.kind === 'range' && (
           <AgeRangeInput

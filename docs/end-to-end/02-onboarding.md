@@ -58,7 +58,7 @@ In order, each sees:
 
 For a new person: start → (optional paste) → interview → essentials → voice → self-test →
 character → photos → Home ([app/src/features/onboarding/interview-screen.tsx:214] `router.replace(state.ready ? '/onboarding/stories' : '/onboarding/essentials');`,
-[app/src/features/onboarding/essentials-screen.tsx:73] `router.push('/onboarding/voice');`,
+[app/src/features/onboarding/essentials-screen.tsx:74] `router.push('/onboarding/voice');`,
 [app/src/features/onboarding/character-step.tsx:23] `const next = () => router.replace('/onboarding/photos');`).
 The Stories screen is shown only when someone is already in the pool when the interview ends, so a
 new person does not see it during setup; it is reached later from the You tab.
@@ -137,12 +137,24 @@ when someone else's want needs the answer (stages 3 and 5)
 **Essentials** (the setup wizard): "What should people call you?" (asked first; "Just your first
 name." and "People see it only after you share your profile with them."), "What year were you
 born?", "Who would you like to meet?" (age range), "Where are you now?" ("Your city is enough. Nobody
-sees your exact location."), "How far would you travel?" (10 km, 25 km, 50 km, 200 km, Anywhere).
+sees your exact location."), "How far would you travel?" -- since 2026-10-01 a map (before, five
+chips: 10, 25, 50, 200 km, Anywhere): the person's place at the centre, a circle for the
+distance that stays one size while the map zooms, a slider from 1 to 200 km (25 km to start),
+"Anywhere" for no limit, "Use my location", and a way to stand somewhere else -- search a city or
+a part of Bengaluru, or drag the map, and the centre lands on the nearest named place. Moving the
+circle moves where the person is matched from, both ways ("move you there", the founder's choice);
+a neighbourhood is saved as the city plus the area, so nothing finer than a neighbourhood is
+ever stored. In setup it starts on the person's neighbourhood when the pool has only their city
+and the phone already allows location (no dialog appears unasked). The map's pictures are
+OpenStreetMap's, fetched by our server and kept there, so the map provider never sees a person.
+The same map is the "How far you'd go" row on the You tab.
 Only the first name and distance can be declined here
 ([app/src/features/profile/fields.ts:59] `{ key: 'first_name', title: 'What should people call you?', kind: 'text', essential: true,`,
 [app/src/features/profile/fields.ts:62] `note: 'People see it only after you share your profile with them.' },`,
 ([app/src/features/profile/fields.ts:82] `hint: 'Your city is enough. Nobody sees your exact location.' },`,
-[app/src/features/profile/fields.ts:94] `{ value: '20000', label: 'Anywhere' },`).
+[app/src/features/profile/fields.ts:92] `{ key: 'max_distance_km', title: 'How far would you travel?', kind: 'distance', essential: true,`,
+[app/src/features/distance/geo.ts:180] `export function placeWrites(from: Spot | null, to: Spot): { predicate: 'lives_in' | 'area'; value: string; fix?: Spot['fix'] }[] {`,
+[server/src/api/tiles.ts:23] `const TILE_URL = env.TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';`).
 A city among 46 listed ones becomes that city's centre; an unlisted city becomes a point only if
 "Use my location" was used ([shared/src/places.ts:36] `export const PLACES: readonly Place[] = [`,
 [server/src/api/dating.ts:108] `if (place) return { city: place.city, lat: place.lat, lon: place.lon, precision_km: 20 };`).

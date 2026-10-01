@@ -12,7 +12,7 @@
 import { AREAS, DIETS, GENDERS, RELATIONSHIP_INTENTS } from '@clone/shared';
 
 /** `range` is a pair of numbers, from and to: today only the ages you would meet. */
-export type FieldKind = 'one' | 'many' | 'number' | 'text' | 'range';
+export type FieldKind = 'one' | 'many' | 'number' | 'text' | 'range' | 'distance';
 
 export interface Field {
   key: string;
@@ -87,12 +87,12 @@ export const FIELDS: Field[] = [
   { key: 'area', title: 'Which part of town?', kind: 'one', essential: true, rowLabel: 'Part of town',
     hint: 'Roughly. It puts your agent in that neighbourhood on the map.',
     options: AREAS.map((a) => ({ value: a.id, label: a.name })) },
-  { key: 'max_distance_km', title: 'How far would you travel?', kind: 'one', essential: true,
-    options: [
-      { value: '10', label: '10 km' }, { value: '25', label: '25 km' },
-      { value: '50', label: '50 km' }, { value: '200', label: '200 km' },
-      { value: '20000', label: 'Anywhere' },
-    ] },
+  // A MAP, not five chips (the founder, 2026-10-01): where you are, a circle for how far,
+  // a slider, "Anywhere", and a way to stand somewhere else (features/distance).
+  { key: 'max_distance_km', title: 'How far would you travel?', kind: 'distance', essential: true,
+    rowLabel: "How far you'd go",
+    hint: 'Move the slider. Anywhere means no limit.',
+    note: 'The other person\'s limit counts too: the shorter one wins.' },
 
   // ── settable from the profile, not asked during setup ────────────────────
   //

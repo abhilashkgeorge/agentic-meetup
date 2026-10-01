@@ -577,6 +577,14 @@ export const reviewFacts = (token: string, reject: string[]) =>
   );
 
 /**
+ * Where the pool has you (server api/place.ts): a city's or a Bengaluru neighbourhood's
+ * centre, and how far you said you would go (ANYWHERE_KM for "Anywhere"; null if never
+ * said). The distance map draws its circle around this point.
+ */
+export interface MyPlace { city: string | null; area: string | null; lat: number | null; lon: number | null; km: number | null }
+export const getMyPlace = (token: string) => get<MyPlace>('/v1/me/place', token);
+
+/**
  * One of the six structural answers, or a refusal.
  *
  * `null` means "prefer not to say" and is RECORDED. A declined field and a
