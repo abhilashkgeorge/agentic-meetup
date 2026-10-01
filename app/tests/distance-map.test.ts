@@ -13,13 +13,15 @@
  * term -> "the circle is the distance" fails; placeWrites never writing the city for a
  * neighbourhood -> "moving into Bengaluru" fails; fields.ts back on its five chips ->
  * "the screens use it" fails; the search box back under the map -> "a page of its own"
- * fails.
+ * fails; the step's old order (place, then slider) and the setup animation back over the
+ * map -> "how far right under the map" fails; the box focused on mount ->
+ * "once the search page is shown" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  CITY_SPOTS, DEFAULT_KM, MAX_KM, MIN_KM, TILE_DP, fromTile, kmAt, metresPerDp, nearestSpot, placeWrites,
+  CITY_SPOTS, DEFAULT_KM, MAX_KM, MIN_KM, TILE_DP, fromTile, kmAt, mapHeightFor, metresPerDp, nearestSpot, placeWrites,
   positionOf, searchSpots, shifted, spotOf, tilesFor, toTile, zoomFor,
 } from '../src/features/distance/geo';
 
@@ -148,6 +150,40 @@ describe('the screens use it', () => {
     expect(page).toContain('<Field');
     expect(page).toContain('onPress={() => pick(s)}');
     expect(step.split('<Field').length - 1, 'the only search box is the one on its page').toBe(1);
+  });
+
+  // The Pixel, 2026-10-01, three things a phone showed and a test cannot watch, pinned by
+  // shape: the slider sat below Save (the place controls came first, and setup put a 130 dp
+  // animation over the map), and the search box was focused before its page was shown, so
+  // the keyboard never opened.
+  it('puts how far right under the map, before where you are', () => {
+    const step = stripComments(src('features', 'distance', 'distance-step.tsx'));
+    const at = (s: string) => {
+      const i = step.indexOf(s);
+      expect(i, s).toBeGreaterThan(-1);
+      return i;
+    };
+    const slider = at('<Slider');
+    expect(at('<DistanceMap')).toBeLessThan(slider);
+    expect(at('label="Anywhere"')).toBeLessThan(at('📍'));
+    expect(slider).toBeLessThan(at('📍'));
+    expect(slider).toBeLessThan(at("'Use my location'"));
+    const setup = stripComments(src('features', 'onboarding', 'essentials-screen.tsx'));
+    expect(setup).toContain("{q.kind !== 'distance' && <Animation");
+  });
+
+  it('opens the keyboard only once the search page is shown', () => {
+    const step = stripComments(src('features', 'distance', 'distance-step.tsx'));
+    expect(step).toContain('onShow={() => setShown(true)}');
+    expect(step).toMatch(/<Field[^>]*autoFocus=\{shown\}/);
+  });
+});
+
+describe('the map on a short screen', () => {
+  it('is 280 tall where there is room and never under 200', () => {
+    expect(mapHeightFor(1000)).toBe(280);
+    expect(mapHeightFor(835)).toBe(251);
+    expect(mapHeightFor(500)).toBe(200);
   });
 });
 

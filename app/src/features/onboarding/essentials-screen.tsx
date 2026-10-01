@@ -304,7 +304,9 @@ export default function EssentialsScreen() {
       <StepsLeft left={list.length - at} total={list.length} />
 
       <View style={{ gap: space.sm }}>
-        <Animation mood="connecting" height={130} opacity={0.4} />
+        {/* Not over the distance map: the map is this step's picture, and the animation's
+            130 points pushed the slider under Next on the Pixel (2026-10-01). */}
+        {q.kind !== 'distance' && <Animation mood="connecting" height={130} opacity={0.4} />}
         <Text style={[type.display, { color: p.text }]}>{q.title}</Text>
         {q.hint && <Text style={[type.body, { color: p.textSecondary }]}>{q.hint}</Text>}
       </View>

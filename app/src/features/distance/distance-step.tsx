@@ -18,17 +18,17 @@
  * On its own page the results sit right under the box, above any keyboard.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Keyboard, Modal, Pressable, Text, View } from 'react-native';
+import { Keyboard, Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { ANYWHERE_KM } from '@clone/shared';
 import { getMyPlace, setEssential } from '../../lib/api';
 import { pointFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Chip, ChipGroup, Field, Header, Row, Screen, space, type, usePalette,
+  Button, Card, Chip, Field, Header, Row, Screen, space, type, usePalette,
 } from '../../components/ui';
 import { DistanceMap } from './distance-map';
 import {
-  DEFAULT_KM, kmAt, nearestSpot, placeWrites, positionOf, searchSpots, spotOf, type Spot,
+  DEFAULT_KM, kmAt, mapHeightFor, nearestSpot, placeWrites, positionOf, searchSpots, spotOf, type Spot,
 } from './geo';
 import { Slider } from './slider';
 
@@ -62,12 +62,15 @@ export function DistanceStep({ detect, onChange }: {
 }) {
   const p = usePalette();
   const token = useSession((s) => s.token);
+  const mapHeight = mapHeightFor(useWindowDimensions().height);
   const [from, setFrom] = useState<Spot | null>(null);
   const [spot, setSpot] = useState<Spot | null>(null);
   const [km, setKm] = useState(DEFAULT_KM);
   const [anywhere, setAnywhere] = useState(false);
   const [ready, setReady] = useState(false);
   const [searching, setSearching] = useState(false);
+  /** The search page has finished opening: only then can its box take the keyboard. */
+  const [shown, setShown] = useState(false);
   const [typed, setTyped] = useState('');
   const [note, setNote] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -106,6 +109,7 @@ export function DistanceStep({ detect, onChange }: {
   const closeSearch = useCallback(() => {
     Keyboard.dismiss();
     setSearching(false);
+    setShown(false);
     setTyped('');
   }, []);
 
@@ -140,8 +144,22 @@ export function DistanceStep({ detect, onChange }: {
   const results = searchSpots(typed);
   return (
     <View style={{ gap: space.md }}>
-      <DistanceMap token={token ?? null} spot={spot} km={km} anywhere={anywhere}
+      <DistanceMap token={token ?? null} spot={spot} km={km} anywhere={anywhere} height={mapHeight}
                    onSpot={pick} onMiss={() => setNote('No place near there. Search a city instead.')} />
+
+      {/* HOW FAR COMES FIRST, right under the map: it is the question. On the Pixel
+          (2026-10-01) the place line and "Use my location" came first and the slider was
+          below Save -- the screen said "Move the slider" over a slider nobody could see. */}
+      <View style={{ gap: space.xs }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+          <Text style={[type.bodyStrong, { color: p.text, flex: 1 }]}>
+            {anywhere ? 'No distance limit' : `Up to ${km} km`}
+          </Text>
+          <Chip label="Anywhere" selected={anywhere} onPress={() => setAnywhere((v) => !v)} />
+        </View>
+        <Slider value={positionOf(km)} onChange={(t) => setKm(kmAt(t))} disabled={anywhere}
+                label="How far" valueText={anywhere ? 'Anywhere' : `${km} kilometres`} />
+      </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <Text style={[type.bodyStrong, { color: p.text, flex: 1 }]} numberOfLines={1}>
@@ -158,10 +176,14 @@ export function DistanceStep({ detect, onChange }: {
         Drag the map to move it. You are matched from this place, both ways.
       </Text>
 
-      <Modal visible={searching} animationType="slide" onRequestClose={closeSearch}>
+      {/* The box is focused once the page is SHOWN, not when it mounts: on the Pixel
+          (2026-10-01) focus came before the page's window had it, so the box blinked and
+          the keyboard never opened. The Seeker happened to win that race. */}
+      <Modal visible={searching} animationType="slide" onShow={() => setShown(true)} onRequestClose={closeSearch}>
         <Screen>
           <Header title="Choose a place" onBack={closeSearch} />
-          <Field value={typed} onChangeText={setTyped} placeholder="Search a city or part of Bengaluru" autoFocus />
+          <Field value={typed} onChangeText={setTyped} placeholder="Search a city or part of Bengaluru"
+                 autoFocus={shown} />
           {results.length > 0 && (
             <Card>
               {results.map((s, i) => (
@@ -180,17 +202,6 @@ export function DistanceStep({ detect, onChange }: {
 
       <Button label={locating ? 'Finding you…' : 'Use my location'} variant="secondary"
               loading={locating} disabled={locating} onPress={() => void useMine()} />
-
-      <View style={{ gap: space.xs }}>
-        <Text style={[type.bodyStrong, { color: p.text }]}>
-          {anywhere ? 'Anywhere: no distance limit' : `Up to ${km} km`}
-        </Text>
-        <Slider value={positionOf(km)} onChange={(t) => setKm(kmAt(t))} disabled={anywhere}
-                label="How far" valueText={anywhere ? 'Anywhere' : `${km} kilometres`} />
-      </View>
-      <ChipGroup>
-        <Chip label="Anywhere" selected={anywhere} onPress={() => setAnywhere((v) => !v)} />
-      </ChipGroup>
 
       {note && <Text style={[type.callout, { color: p.textSecondary }]}>{note}</Text>}
     </View>

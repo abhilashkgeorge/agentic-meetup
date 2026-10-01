@@ -426,7 +426,7 @@ Only the first name and distance can be declined here
 `app/src/features/profile/fields.ts:62`,
 (`app/src/features/profile/fields.ts:82`,
 `app/src/features/profile/fields.ts:92`,
-`app/src/features/distance/geo.ts:180`,
+`app/src/features/distance/geo.ts:188`,
 `server/src/api/tiles.ts:23`).
 A city among 46 listed ones becomes that city's centre; an unlisted city becomes a point only if
 "Use my location" was used (`shared/src/places.ts:36`,
@@ -2665,7 +2665,7 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | **Hide anyone for a "Really want" or "Nice to have".** Only must-haves exclude. | Yes | `server/src/matching/candidates.ts:126` | — |
 | **Match the same two people twice.** | Yes | `server/migrations/0022_rendezvous.sql:44` | They can still appear to each other as strangers in the town. |
 | **Store your phone number** in the database. Only a keyed hash is kept. | Yes | `server/migrations/0045_phone_identity.sql:22` | In development, the console SMS sender writes full numbers to the server log. |
-| **Track your location.** Location is read only when you tap "Use my location", never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:372` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
+| **Track your location.** Location is read only on a screen asking where you are: when you tap "Use my location", and when the distance map opens in setup if you already allowed location (to start on your neighbourhood). Never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:374`, `app/src/features/distance/distance-step.tsx:89` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
 | **Act on reports automatically.** A person reviews each one. | Yes | `server/migrations/0039_trust_and_safety.sql:21` | — |
 | **Put a name or anybody's words on the lock screen.** Push notifications say only what kind of thing happened. | Yes | `server/src/push/index.ts:34` | Push reaches phones only after the founder's Expo setup (stage 9.5). |
 | **Hold free conversations between agents.** | Yes, by default | `server/src/matching/rendezvous.ts:75` | The code exists behind a switch ([AI-13](#ai-13)). |

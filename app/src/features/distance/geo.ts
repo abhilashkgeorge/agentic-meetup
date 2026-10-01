@@ -60,6 +60,14 @@ export function fromTile(x: number, y: number, z: number): { lat: number; lon: n
 export const metresPerDp = (zf: number, lat: number): number =>
   (156543.03392 * Math.cos((lat * Math.PI) / 180) * 256) / (TILE_DP * 2 ** zf);
 
+/**
+ * How tall the map is on a screen this tall: 280 where there is room, less on a short
+ * screen, so the slider under it stays above the screen's pinned button (the Pixel at its
+ * larger display size is 835 dp tall; the slider was under Save there, 2026-10-01).
+ */
+export const mapHeightFor = (screenHeight: number): number =>
+  Math.round(Math.min(280, Math.max(200, screenHeight * 0.3)));
+
 /** The fractional zoom at which `km` is `radiusDp` long: the circle always the same size on screen. */
 export function zoomFor(km: number, radiusDp: number, lat: number): number {
   const z = Math.log2((156543.03392 * Math.cos((lat * Math.PI) / 180) * 256) / (TILE_DP * ((km * 1000) / radiusDp)));

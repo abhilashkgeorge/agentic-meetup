@@ -153,7 +153,7 @@ Only the first name and distance can be declined here
 [app/src/features/profile/fields.ts:62] `note: 'People see it only after you share your profile with them.' },`,
 ([app/src/features/profile/fields.ts:82] `hint: 'Your city is enough. Nobody sees your exact location.' },`,
 [app/src/features/profile/fields.ts:92] `{ key: 'max_distance_km', title: 'How far would you travel?', kind: 'distance', essential: true,`,
-[app/src/features/distance/geo.ts:180] `export function placeWrites(from: Spot | null, to: Spot): { predicate: 'lives_in' | 'area'; value: string; fix?: Spot['fix'] }[] {`,
+[app/src/features/distance/geo.ts:188] `export function placeWrites(from: Spot | null, to: Spot): { predicate: 'lives_in' | 'area'; value: string; fix?: Spot['fix'] }[] {`,
 [server/src/api/tiles.ts:23] `const TILE_URL = env.TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';`).
 A city among 46 listed ones becomes that city's centre; an unlisted city becomes a point only if
 "Use my location" was used ([shared/src/places.ts:36] `export const PLACES: readonly Place[] = [`,
