@@ -28,7 +28,10 @@ const toPath = (p: readonly number[], path: readonly (readonly number[])[]) => {
 };
 
 describe('the garden', () => {
-  it('is the same garden every time, and a different one per neighbourhood', () => {
+  // Grows every neighbourhood's garden: 1.9 s alone, but 5.2 s in one of seven full app
+  // runs on 2026-10-01 (105 files at once), past vitest's 5 s default -- a red suite that
+  // said nothing about gardens. The limit is for the machine, not the code.
+  it('is the same garden every time, and a different one per neighbourhood', { timeout: 20_000 }, () => {
     expect(makeGarden('koramangala')).toEqual(makeGarden('koramangala'));
     const a = makeGarden('koramangala'); const b = makeGarden('whitefield');
     expect(a.path).not.toEqual(b.path);
