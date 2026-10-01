@@ -12,7 +12,8 @@
  * Negative controls, run by hand and recorded in the commit: zoomFor without the cos(lat)
  * term -> "the circle is the distance" fails; placeWrites never writing the city for a
  * neighbourhood -> "moving into Bengaluru" fails; fields.ts back on its five chips ->
- * "the screens use it" fails.
+ * "the screens use it" fails; the search box back under the map -> "a page of its own"
+ * fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -133,4 +134,25 @@ describe('the screens use it', () => {
     expect(editor).toContain('<DistanceStep detect={false} onChange={setDistance} />');
     expect(src('features', 'profile', 'profile-screen.tsx')).toContain("router.push('/edit/max_distance_km')");
   });
+
+  // The Seeker, 2026-10-01: searching under the map, the keyboard lifted Save over the
+  // results and Indiranagar could not be seen. Where a list lands under a keyboard is not
+  // something a test can watch without a phone, so this pins the shape that fixed it: the
+  // search box, and so its results, exist only on a page of their own.
+  it('searches on a page of its own, where the keyboard cannot cover the results', () => {
+    const step = stripComments(src('features', 'distance', 'distance-step.tsx'));
+    const open = step.indexOf('<Modal visible={searching}');
+    const close = step.indexOf('</Modal>', open);
+    expect(open).toBeGreaterThan(-1);
+    const page = step.slice(open, close);
+    expect(page).toContain('<Field');
+    expect(page).toContain('onPress={() => pick(s)}');
+    expect(step.split('<Field').length - 1, 'the only search box is the one on its page').toBe(1);
+  });
 });
+
+function stripComments(s: string): string {
+  return s
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1: string) => p1 + ' '.repeat(m.length - p1.length));
+}

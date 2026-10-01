@@ -10,14 +10,22 @@
  *
  * What it changes is saved by `saveDistance`, by the screen that holds it (setup's Next,
  * the editor's Save): moving the circle moves you (placeWrites), both ways.
+ *
+ * THE SEARCH IS A PAGE OF ITS OWN, not a box under the map. Under the map, the keyboard
+ * lifted the screen's pinned button over the results: on the Seeker (2026-10-01) typing
+ * "Indira" showed the box and Save, and Indiranagar was hidden beneath them. Setup puts an
+ * animation and a title above the step as well, so no place on this screen is high enough.
+ * On its own page the results sit right under the box, above any keyboard.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Keyboard, Modal, Pressable, Text, View } from 'react-native';
 import { ANYWHERE_KM } from '@clone/shared';
 import { getMyPlace, setEssential } from '../../lib/api';
 import { pointFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
-import { Button, Chip, ChipGroup, Field, space, type, usePalette } from '../../components/ui';
+import {
+  Button, Card, Chip, ChipGroup, Field, Header, Row, Screen, space, type, usePalette,
+} from '../../components/ui';
 import { DistanceMap } from './distance-map';
 import {
   DEFAULT_KM, kmAt, nearestSpot, placeWrites, positionOf, searchSpots, spotOf, type Spot,
@@ -95,12 +103,17 @@ export function DistanceStep({ detect, onChange }: {
     if (ready) onChange({ from, spot, km, anywhere });
   }, [ready, from, spot, km, anywhere, onChange]);
 
-  const pick = useCallback((s: Spot) => {
-    setSpot(s);
-    setNote(null);
+  const closeSearch = useCallback(() => {
+    Keyboard.dismiss();
     setSearching(false);
     setTyped('');
   }, []);
+
+  const pick = useCallback((s: Spot) => {
+    setSpot(s);
+    setNote(null);
+    closeSearch();
+  }, [closeSearch]);
 
   const useMine = async () => {
     setNote(null);
@@ -134,9 +147,10 @@ export function DistanceStep({ detect, onChange }: {
         <Text style={[type.bodyStrong, { color: p.text, flex: 1 }]} numberOfLines={1}>
           📍 {spot ? spotWords(spot) : 'No place yet'}
         </Text>
-        <Pressable onPress={() => setSearching((v) => !v)} accessibilityRole="button" hitSlop={8}>
+        <Pressable onPress={() => setSearching(true)} accessibilityRole="button"
+                   accessibilityLabel="Change the place" hitSlop={8}>
           <Text style={[type.callout, { color: p.accent, fontFamily: type.bodyStrong.fontFamily }]}>
-            {searching ? 'Close' : 'Change'}
+            Change
           </Text>
         </Pressable>
       </View>
@@ -144,20 +158,25 @@ export function DistanceStep({ detect, onChange }: {
         Drag the map to move it. You are matched from this place, both ways.
       </Text>
 
-      {searching && (
-        <View style={{ gap: space.xs }}>
+      <Modal visible={searching} animationType="slide" onRequestClose={closeSearch}>
+        <Screen>
+          <Header title="Choose a place" onBack={closeSearch} />
           <Field value={typed} onChangeText={setTyped} placeholder="Search a city or part of Bengaluru" autoFocus />
-          {results.map((s) => (
-            <Pressable key={`${s.kind}:${s.name}`} onPress={() => pick(s)} accessibilityRole="button"
-                       style={{ paddingVertical: space.sm }}>
-              <Text style={[type.body, { color: p.text }]}>{spotWords(s)}</Text>
-            </Pressable>
-          ))}
-          {typed.trim() !== '' && results.length === 0 && (
-            <Text style={[type.callout, { color: p.textSecondary }]}>No place by that name yet.</Text>
+          {results.length > 0 && (
+            <Card>
+              {results.map((s, i) => (
+                <Row key={`${s.kind}:${s.name}`} title={spotWords(s)} onPress={() => pick(s)}
+                     last={i === results.length - 1} />
+              ))}
+            </Card>
           )}
-        </View>
-      )}
+          <Text style={[type.callout, { color: p.textSecondary }]}>
+            {typed.trim() !== '' && results.length === 0
+              ? 'No place by that name yet.'
+              : 'You will be matched from the place you choose, both ways.'}
+          </Text>
+        </Screen>
+      </Modal>
 
       <Button label={locating ? 'Finding you…' : 'Use my location'} variant="secondary"
               loading={locating} disabled={locating} onPress={() => void useMine()} />

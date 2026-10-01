@@ -141,7 +141,7 @@ sees your exact location."), "How far would you travel?" -- since 2026-10-01 a m
 chips: 10, 25, 50, 200 km, Anywhere): the person's place at the centre, a circle for the
 distance that stays one size while the map zooms, a slider from 1 to 200 km (25 km to start),
 "Anywhere" for no limit, "Use my location", and a way to stand somewhere else -- search a city or
-a part of Bengaluru, or drag the map, and the centre lands on the nearest named place. Moving the
+a part of Bengaluru (on a page of its own, so the keyboard never hides the results), or drag the map, and the centre lands on the nearest named place. Moving the
 circle moves where the person is matched from, both ways ("move you there", the founder's choice);
 a neighbourhood is saved as the city plus the area, so nothing finer than a neighbourhood is
 ever stored. In setup it starts on the person's neighbourhood when the pool has only their city
