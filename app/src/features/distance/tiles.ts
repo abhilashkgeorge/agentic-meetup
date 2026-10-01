@@ -7,6 +7,7 @@
  * everybody, so there is nothing to forget about it, only memory to bound.
  */
 import { useEffect, useState } from 'react';
+import { dataUriOf } from '../../lib/data-uri';
 import { getApiBase } from '../../lib/env';
 
 const cache = new Map<string, string>();
@@ -26,20 +27,12 @@ async function load(token: string, z: number, x: number, y: number): Promise<str
         headers: { authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
-      const blob = await res.blob();
-      const data = await new Promise<string | null>((resolve) => {
-        const reader = new FileReader();
-        reader.onerror = () => resolve(null);
-        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-        reader.readAsDataURL(blob);
-      });
-      if (data) {
-        if (cache.size >= KEPT) {
-          const oldest = cache.keys().next().value;
-          if (oldest) cache.delete(oldest);
-        }
-        cache.set(key, data);
+      const data = await dataUriOf(res, 'image/png');
+      if (cache.size >= KEPT) {
+        const oldest = cache.keys().next().value;
+        if (oldest) cache.delete(oldest);
       }
+      cache.set(key, data);
       return data;
     } catch {
       return null;

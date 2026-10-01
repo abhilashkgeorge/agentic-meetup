@@ -19,6 +19,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Image, type ImageStyle, type StyleProp } from 'react-native';
+import { dataUriOf } from '../../lib/data-uri';
 import { getApiBase } from '../../lib/env';
 import { useSession } from '../../store/session';
 import { Avatar } from '../../components/ui';
@@ -50,23 +51,15 @@ async function load(
       // photo", so there is nothing to report and nothing to retry.
       if (!res.ok) return null;
 
-      const blob = await res.blob();
-      const data = await new Promise<string | null>((resolve) => {
-        const reader = new FileReader();
-        reader.onerror = () => resolve(null);
-        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-        reader.readAsDataURL(blob);
-      });
+      const data = await dataUriOf(res, 'image/jpeg');
 
-      if (data) {
-        // Oldest out first. A Map iterates in insertion order, which is all the
-        // eviction policy a list of faces needs.
-        if (cache.size >= MAX_CACHED) {
-          const oldest = cache.keys().next().value;
-          if (oldest) cache.delete(oldest);
-        }
-        cache.set(key, data);
+      // Oldest out first. A Map iterates in insertion order, which is all the
+      // eviction policy a list of faces needs.
+      if (cache.size >= MAX_CACHED) {
+        const oldest = cache.keys().next().value;
+        if (oldest) cache.delete(oldest);
       }
+      cache.set(key, data);
       return data;
     } catch {
       return null;
