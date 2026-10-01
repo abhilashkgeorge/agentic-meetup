@@ -593,7 +593,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **Where the question appears:** the YOU tab, one at a time ("Your agent heard something"), and "What it
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
   that.") (`app/src/features/knowledge/you-screen.tsx:112`,
-  `server/src/api/profile.ts:251`).
+  `server/src/api/profile.ts:256`).
 - **Before a Yes**, a held fact changes nothing in matching, cards, sheets, talk or want checks; the
   person's own clone still sees the sentence in its recent chat. Since 2026-09-29 that includes the
   background resolver ([AI-8](#ai-8)): only sentences that became true may retire an older answer on a

@@ -199,11 +199,11 @@ export default function YouScreen() {
                     if (token) setLineage(await getHistory(token, f.predicate));
                   })()}
                   accessibilityRole="button"
-                  accessibilityLabel={`${f.label}: ${f.value}. Tap for history.`}
+                  accessibilityLabel={`${f.label}: ${f.words ?? label(f.value)}. Tap for history.`}
                   style={{ minHeight: HIT, justifyContent: 'center' }}
                 >
                   <Text style={[type.label, { color: p.textTertiary }]}>{f.label.toUpperCase()}</Text>
-                  <Text style={[type.body, { color: p.text }]}>{label(f.value)}</Text>
+                  <Text style={[type.body, { color: p.text }]}>{f.words ?? label(f.value)}</Text>
                   <Text style={[type.callout, { color: p.textTertiary }]}>{f.because}</Text>
                 </Pressable>
               </View>

@@ -119,7 +119,12 @@ export const knowledgeRoutes = new Hono()
         id: f.id,
         predicate: f.predicate,
         label: fieldWords(f.predicate),
-        value: valueWords(f.predicate, f.objectText),
+        // TWO VALUES ON PURPOSE. `value` is the stored text -- the editors read it back as
+        // the answer to pre-select and send (edit-basic.tsx), so it must stay "man", not
+        // "Men"; `words` is what a person reads. Both were `value` for a day (ddc7e1f), and
+        // editing "You want to meet..." would have sent "Men" back.
+        value: f.objectText,
+        words: valueWords(f.predicate, f.objectText),
         // Plain English, because "corroboration_count: 2, stance: asserted" is a
         // database row and this screen is meant to be readable by a person.
         because:

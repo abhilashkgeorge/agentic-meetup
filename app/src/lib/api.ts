@@ -396,7 +396,12 @@ export interface VoiceResult {
 export const importChat = (token: string, messages: string[]) =>
   post<VoiceResult>('/v1/import/chat', token, { messages });
 
-export interface Known { id: string; predicate: string; label: string; value: string; because: string }
+/**
+ * `value` is the stored answer ("man", "long_term", "25") -- what an editor pre-selects and
+ * sends back; `words` is how a person reads it ("Men", "Something long-term", "25 km").
+ * Optional only so an older server's list still draws.
+ */
+export interface Known { id: string; predicate: string; label: string; value: string; words?: string; because: string }
 export interface Gap { id: string; question: string }
 export interface Changed { label: string; was: string; now: string; when: string }
 

@@ -70,7 +70,7 @@ export default function ChatScreen() {
                     <View key={f.id}>
                       {i > 0 && <Crease />}
                       <Text style={[type.label, { color: p.textTertiary }]}>{f.label.toUpperCase()}</Text>
-                      <Text style={[type.body, { color: p.text }]}>{label(f.value)}</Text>
+                      <Text style={[type.body, { color: p.text }]}>{f.words ?? label(f.value)}</Text>
                     </View>
                   ))}
                   {k.knows.length > 4 && (

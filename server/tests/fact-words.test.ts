@@ -69,7 +69,29 @@ describe('a fact, in words', () => {
       sourceQuote: 'Do you want children? yes', sourceEpisodeIds: [], extractorModel: 'interview', extractorVersion: '0', promptVersion: '0',
     }));
     const r = await (await knowledgeRoutes.request('/v1/knowledge', { headers: { Authorization: `Bearer ${me.token}` } })).json() as
-      { knows: { predicate: string; label: string; value: string }[] };
-    expect(r.knows.find((f) => f.predicate === 'wants_children')).toMatchObject({ label: 'Kids', value: 'Want kids' });
+      { knows: { predicate: string; label: string; value: string; words?: string }[] };
+    expect(r.knows.find((f) => f.predicate === 'wants_children')).toMatchObject({ label: 'Kids', words: 'Want kids' });
+  });
+
+  // THE STORED ANSWER STAYS `value`. The app's editors read it back to pre-select and send
+  // (edit-basic.tsx); for a day it was the words, and editing "You want to meet..." would
+  // have sent "Men" back. Negative control, run by hand: `value` set to the words -> fails.
+  it('keeps the stored answer as `value` for every field the app edits, beside the words', async () => {
+    const stored: [string, string, unknown][] = [
+      ['gender', 'woman', 'woman'], ['seeking_gender', 'man', 'man'], ['relationship_intent', 'long_term', 'long_term'],
+      ['diet', 'vegetarian', 'vegetarian'], ['age_range_sought', '24-34', { min: 24, max: 34 }], ['max_distance_km', '25', 25],
+    ];
+    for (const [predicate, objectText, objectValue] of stored) {
+      await tenantSession(me, (c) => commit(c, me, {
+        predicate, objectText, objectValue, stance: 'asserted', originClass: 'owner', sourceQuote: objectText,
+        sourceEpisodeIds: [], extractorModel: 'direct', extractorVersion: '0', promptVersion: '0',
+      }));
+    }
+    const r = await (await knowledgeRoutes.request('/v1/knowledge', { headers: { Authorization: `Bearer ${me.token}` } })).json() as
+      { knows: { predicate: string; value: string; words?: string }[] };
+    const got = (p: string) => r.knows.find((f) => f.predicate === p);
+    for (const [predicate, objectText] of stored) expect(got(predicate)?.value, predicate).toBe(objectText);
+    expect(got('seeking_gender')?.words).toBe('Men');
+    expect(got('max_distance_km')?.words).toBe('25 km');
   });
 });
