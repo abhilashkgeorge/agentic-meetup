@@ -60,6 +60,26 @@ export function micRefused(err: { name?: string; message?: string }): boolean {
   return err.name === 'NotAllowedError' || err.name === 'SecurityError'
     || /permission|not allowed/i.test(err.message ?? '');
 }
+/**
+ * THE LOUDSPEAKER, NEVER THE EARPIECE.
+ *
+ * WHAT WAS WRONG (the Pixel, 2026-10-03, read off Android's own audio log): turning the mic
+ * on puts the phone in call mode, and Android moved the sound to the EARPIECE -- the tiny
+ * speaker you hold to your ear -- at 04:05:38, and left it there. Held in front of you,
+ * the other person was as good as silent. Leaving the park's screen and coming back
+ * started voice afresh, on the loudspeaker: the founder's "the voice was not working
+ * unless I moved to a different screen and came back" (yesterday's log: earpiece, then
+ * loudspeaker at 23:06:53, when he came back).
+ *
+ * NOW: the earpiece is not on the list LiveKit chooses from, and the output is chosen
+ * again by hand whenever the mic comes on or a room is joined: a headset or bluetooth if
+ * one is connected, else the loudspeaker (`outputFor`).
+ */
+export const OUTPUTS = ['bluetooth', 'headset', 'speaker'] as const;
+export function outputFor(available: readonly string[]): string | null {
+  return OUTPUTS.find((o) => available.includes(o)) ?? null;
+}
+
 let lib: Promise<Lib | null> | null = null;
 
 function load(): Promise<Lib | null> {
@@ -112,6 +132,19 @@ export async function askForMic(): Promise<boolean> {
   } finally {
     // The app comes back to the front a moment after the answer: still asking till then.
     setTimeout(() => { asking = false; }, 1500);
+  }
+}
+
+/** Out of the loudspeaker (or what is worn), never the earpiece: see OUTPUTS. Android only. */
+async function toSpeaker(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  const loaded = await load();
+  if (!loaded) return;
+  try {
+    const pick = outputFor(await loaded.rn.AudioSession.getAudioOutputs());
+    if (pick) await loaded.rn.AudioSession.selectAudioOutput(pick);
+  } catch (err) {
+    console.warn('[voice] output', (err as Error).message);
   }
 }
 
@@ -192,7 +225,8 @@ export function startVoice(venueSim: WorldSim): () => void {
     if (mic !== l.mic) {
       l.mic = mic;
       l.room.localParticipant.setMicrophoneEnabled(mic, { echoCancellation: true, noiseSuppression: true, autoGainControl: true })
-        .then(() => { micFails = 0; })
+        // The mic on is the moment Android moves the sound to the earpiece: back out.
+        .then(() => { micFails = 0; if (mic) void toSpeaker(); })
         .catch((err: Error) => {
           console.warn('[voice] mic', err.message);
           if (micRefused(err)) { micFails = 0; useParkVoice.getState().setMicDenied(true); return; }
@@ -223,6 +257,12 @@ export function startVoice(venueSim: WorldSim): () => void {
     const { rn, lk } = loaded;
     // Lost and trying again, it stays "failed" -- and says so -- until it is back.
     if (useParkVoice.getState().link !== 'failed') useParkVoice.getState().setLink('connecting');
+    // The earpiece is not an output the park may choose (OUTPUTS); set before the session starts.
+    if (Platform.OS === 'android') {
+      await rn.AudioSession.configureAudio({
+        android: { preferredOutputList: [...OUTPUTS], audioTypeOptions: rn.AndroidAudioTypePresets.communication },
+      }).catch(() => {});
+    }
     await rn.AudioSession.startAudioSession().catch(() => {});
     const room = new lk.Room({ adaptiveStream: false, dynacast: false, disconnectOnPageLeave: false });
     const l: Link = { room, pass, allowed: '', mic: false, volumes: new Map() };
@@ -261,6 +301,7 @@ export function startVoice(venueSim: WorldSim): () => void {
     link = l;
     noRetry();
     useParkVoice.getState().setLink('on');
+    void toSpeaker();
     apply();
   };
 

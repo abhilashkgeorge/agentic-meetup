@@ -19,6 +19,11 @@
  * And the mic (the Pixel, 2026-10-02): a publish cancelled by a reconnect is tried again,
  * not called "Mic not allowed"; only a refusal is; after MIC_TRIES it is simply off.
  *
+ * And the loudspeaker (the Pixel, 2026-10-03): the mic on put the sound in the EARPIECE,
+ * where it stayed until voice started afresh -- "the voice was not working unless I moved
+ * to a different screen and came back". The earpiece is not allowed, and the output is
+ * chosen again after joining and after the mic comes on.
+ *
  * Negative controls, run by hand and recorded in the commit: retryLater() taken out of the
  * Disconnected handler -> "asks the park for a fresh pass" fails; stopping that forgets the
  * pass (left()) -> "takes the pass straight back up" fails; apply() setting micDenied on
@@ -46,7 +51,9 @@ const fake = vi.hoisted(() => {
     /** The voice server gone: LiveKit's own reconnecting has given up. */
     lose() { this.state = 'disconnected'; this.emit(RoomEvent.Disconnected); }
   }
-  return { FakeRoom, RoomEvent, askAgain: { calls: 0, ok: true }, told: [] as boolean[], kept: [] as boolean[] };
+  /** What the code asked of the phone's audio, in order. */
+  const audio = { calls: [] as string[], outputs: ['earpiece', 'speaker'] as string[] };
+  return { FakeRoom, RoomEvent, askAgain: { calls: 0, ok: true }, told: [] as boolean[], kept: [] as boolean[], audio };
 });
 
 vi.mock('react-native', () => ({
@@ -57,7 +64,14 @@ vi.mock('react-native', () => ({
 }));
 vi.mock('@livekit/react-native', () => ({
   registerGlobals: () => {},
-  AudioSession: { startAudioSession: async () => {}, stopAudioSession: async () => {} },
+  AndroidAudioTypePresets: { communication: { audioMode: 'inCommunication' } },
+  AudioSession: {
+    configureAudio: async (c: { android?: { preferredOutputList?: string[] } }) => { fake.audio.calls.push(`configure:${c.android?.preferredOutputList?.join(',')}`); },
+    startAudioSession: async () => { fake.audio.calls.push('start'); },
+    stopAudioSession: async () => {},
+    getAudioOutputs: async () => fake.audio.outputs,
+    selectAudioOutput: async (id: string) => { fake.audio.calls.push(`select:${id}`); },
+  },
 }));
 vi.mock('livekit-client', () => ({ Room: fake.FakeRoom, RoomEvent: fake.RoomEvent, setLogLevel: () => {} }));
 vi.mock('../src/lib/socket', () => ({
@@ -69,7 +83,7 @@ vi.mock('../src/lib/storage', () => ({
   getParkVoiceOpen: async () => false, setParkVoiceOpen: async (open: boolean) => { fake.kept.push(open); },
 }));
 
-const { MIC_TRIES, NEVER_ON_TRIES, RETRY_MS, VOICE_UNREACHABLE, micRefused, startVoice } = await import('../src/features/world/voice-room');
+const { MIC_TRIES, NEVER_ON_TRIES, RETRY_MS, VOICE_UNREACHABLE, micRefused, outputFor, startVoice } = await import('../src/features/world/voice-room');
 const { useParkVoice } = await import('../src/features/world/park-voice');
 
 const sim = { get: () => ({ x: 0, z: 0 }) } as never;
@@ -89,9 +103,35 @@ describe('voice after the voice server was lost', () => {
     fake.askAgain.ok = true;
     fake.told.length = 0;
     fake.kept.length = 0;
+    fake.audio.calls.length = 0;
+    fake.audio.outputs = ['earpiece', 'speaker'];
     useParkVoice.setState({ pass: null, micOn: false, hearing: true, open: false, muted: [], speaking: new Set(), link: 'off', everOn: false, micDenied: false });
   });
   afterEach(() => { stop(); vi.useRealTimers(); });
+
+  it('plays out of the loudspeaker, never the earpiece -- and goes back to it when the mic comes on', async () => {
+    stop = startVoice(sim);
+    useParkVoice.getState().gotPass(pass('t1'));
+    await settle();
+    expect(useParkVoice.getState().link).toBe('on');
+    const configure = fake.audio.calls.findIndex((c) => c.startsWith('configure:'));
+    expect(configure, 'the session started with the earpiece allowed').toBeGreaterThanOrEqual(0);
+    expect(configure).toBeLessThan(fake.audio.calls.indexOf('start'));
+    expect(fake.audio.calls[configure]).not.toContain('earpiece');
+    expect(fake.audio.calls, 'joined without choosing the loudspeaker').toContain('select:speaker');
+    // The mic on: Android moves the sound to the earpiece, and the code moves it back.
+    fake.audio.calls.length = 0;
+    useParkVoice.getState().setMic(true);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(fake.audio.calls, 'left in the earpiece after the mic came on').toContain('select:speaker');
+  });
+
+  it('prefers what is worn: bluetooth, then a headset, then the loudspeaker; never the earpiece', () => {
+    expect(outputFor(['earpiece', 'speaker', 'bluetooth', 'headset'])).toBe('bluetooth');
+    expect(outputFor(['earpiece', 'headset', 'speaker'])).toBe('headset');
+    expect(outputFor(['earpiece', 'speaker'])).toBe('speaker');
+    expect(outputFor(['earpiece'])).toBeNull();
+  });
 
   it('tells the park, and keeps on this phone, "Talk with people nearby" as it changes', async () => {
     stop = startVoice(sim);
