@@ -50,6 +50,18 @@ describe('the stories in onboarding', () => {
     expect(src('features/stories/stories-screen.tsx')).toMatch(/router\.replace\('\/onboarding\/character'\)/);
     expect(src('app/onboarding/_layout.tsx')).toMatch(/<Stack\.Screen name="stories" \/>/);
   });
+
+  // The two-phone test, 2026-10-02: first-time setup ends its questions on the essentials,
+  // never "ready", so the line above never ran -- the self-test went on to the character,
+  // a new person never saw the stories, and two new people's agents had nothing to say.
+  // The self-test's way out ("Done" and "Finish later" both) now leads to them.
+  it('come after the self-test in first-time setup, the way every new person goes', () => {
+    const test = src('features/onboarding/self-test-screen.tsx');
+    const finish = test.slice(test.indexOf('const finish'), test.indexOf('}, []);', test.indexOf('const finish')));
+    expect(finish).toContain("router.replace('/onboarding/stories')");
+    expect(test).not.toContain("router.replace('/onboarding/character')");
+    expect(test).toMatch(/label=\{ready\?\.ready \? 'Done' : 'Finish later'\}[\s\S]{0,120}onPress=\{\(\) => void finish\(\)\}/);
+  });
 });
 
 describe('a story with a contact detail', () => {

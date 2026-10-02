@@ -68,9 +68,13 @@ export default function SelfTestScreen() {
   }, [token, item, correcting, correction]);
 
   const finish = useCallback(async () => {
-    // Photos last, for everybody. A person who finishes setup with none has an agent
-    // that can go out and a profile nobody can say yes to.
-    router.replace('/onboarding/character');
+    // "THINGS TO TALK ABOUT" NEXT, then the character, then photos last. Setup used to go
+    // straight to the character, so a new person never saw the stories -- and those are
+    // the only sentences their agent may repeat when it meets another (talk.ts): the
+    // first agents to meet, two new accounts, had nothing to say at all (the two-phone
+    // test, 2026-10-02: no talk, no answer sheet, an empty card). Every answer there is
+    // optional; Next goes on to the character.
+    router.replace('/onboarding/stories');
   }, []);
 
   const passed = ready?.passed ?? 0;

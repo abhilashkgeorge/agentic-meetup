@@ -323,20 +323,24 @@ In order, each sees:
    (`app/src/features/profile/fields.ts:63`,
    `app/src/features/profile/age-range.ts:42`).
    Both type "Bangalore", which resolves to the city centre.
-7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Make your character"**, **"One
-   last thing"** (photos) — all skippable
+7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Things to talk about"** (the
+   stories its agent may repeat), **"Make your character"**, **"One last thing"** (photos) — all
+   skippable
    (`app/src/features/onboarding/voice-screen.tsx:162`,
    `app/src/features/onboarding/photos-step.tsx:114`).
 8. **Home**, the town, with "Send my agent out".
 
 ### 2.1 The screens in order
 
-For a new person: start → (optional paste) → interview → essentials → voice → self-test →
+For a new person: start → (optional paste) → interview → essentials → voice → self-test → stories →
 character → photos → Home (`app/src/features/onboarding/interview-screen.tsx:222`,
 `app/src/features/onboarding/essentials-screen.tsx:75`,
+`app/src/features/onboarding/self-test-screen.tsx:77`,
 `app/src/features/onboarding/character-step.tsx:23`).
-The Stories screen is shown only when someone is already in the pool when the interview ends, so a
-new person does not see it during setup; it is reached later from the You tab.
+Until 2026-10-02 the self-test went straight to the character, so a new person never saw the stories
+during setup -- and they are the only sentences an agent may repeat when it meets another, so the
+first two new people's agents had nothing at all to say. Someone already in the pool when the
+interview ends still goes straight to the stories.
 "Setup done" is remembered on the phone only after the photos step; closing the app earlier
 restarts setup at the first screen (`app/src/features/onboarding/photos-step.tsx:95`).
 
@@ -434,8 +438,9 @@ A city among 46 listed ones becomes that city's centre; an unlisted city becomes
 "Use my location" was used (`shared/src/places.ts:36`,
 `server/src/api/dating.ts:108`).
 
-**Wants** are not asked during setup. "What would you love in someone?" is on the Stories screen and
-"What you're looking for" is reached from the You tab or Settings (stage 5)
+**Wants** are not asked on their own during setup. "What would you love in someone?" is on the Stories
+screen, which setup shows after the self-test (optional, like every story there), and "What you're
+looking for" is reached from the You tab or Settings (stage 5)
 (`app/src/features/settings/settings-screen.tsx:245`).
 
 **The name others see comes only from that screen** (since 2026-09-28). One word of letters is kept
@@ -466,7 +471,7 @@ these hold (`server/src/matching/profile.ts:209`,
 
 Not required: photos, a name, age range, distance, neighbourhood, faith, the sentence, stories,
 voice, self-test, character. The self-test's "It's ready. It can go out and meet people for you."
-is a separate notion and gates nothing (`app/src/features/onboarding/self-test-screen.tsx:145`).
+is a separate notion and gates nothing (`app/src/features/onboarding/self-test-screen.tsx:149`).
 
 **When someone is not ready:** the Home's big button reads "Finish setup" and the status line names the
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
