@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import { PARK_QUESTS, PARK_SIGHTS, type Look, type ParkFly, type ParkPerson, type ParkQuestId, type ParkSight } from '@clone/shared';
 import { flightEffects } from './park-effects';
-import type { WorldSim } from './sim';
+import { sameFlight, type WorldSim } from './sim';
 
 export interface LivePerson {
   ref: string;
@@ -200,10 +200,8 @@ export function livePeople(sim: WorldSim, people: ReadonlyMap<string, LivePerson
   for (const p of people.values()) {
     // A flight this phone has not seen yet: its beams and its smoke, timed from when it
     // really took off (park-effects.ts).
-    const was = sim.get(p.ref)?.fly?.f;
-    if (p.fly && !(was && was.fx === p.fly.fx && was.fz === p.fly.fz && was.tx === p.fly.tx && was.tz === p.fly.tz)) {
-      flightEffects(p.fly, Date.now() - p.fly.t);
-    }
+    const was = sim.get(p.ref);
+    if (p.fly && !sameFlight(was?.fly?.f, p.fly) && !sameFlight(was?.flown, p.fly)) flightEffects(p.fly, Date.now() - p.fly.t);
     sim.live(p.ref, p.look, p.x, p.z, p.facing, p.moving, p.sitting, p.riding, p.fly);
     const a = sim.get(p.ref);
     if (a) a.ring = p.ref === partner;

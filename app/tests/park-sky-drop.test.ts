@@ -23,7 +23,9 @@
  *   - flyStep not setting `lift` -> "lifts you off the ground" fails;
  *   - `live` ignoring `fly` -> "another phone flies them too" fails;
  *   - landingBeside ignoring `clear` -> "never lands inside" fails;
- *   - `flies` always true -> "near enough to walk" fails.
+ *   - `flies` always true -> "near enough to walk" fails;
+ *   - sim.flying without the `flown` check -> "a late word ... does not take off again"
+ *     fails; livePeople without it -> "... brings no second smoke" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -34,6 +36,8 @@ import { WorldSim } from '../src/features/world/sim';
 import { venueGarden, CUBBON_PARK } from '../src/features/world/venue';
 import { gardenSpots } from '../src/features/world/garden';
 import { MAX_LIFT, animFlags } from '../src/features/world/crowd-gpu';
+import { livePeople, type LivePerson } from '../src/features/world/park-live';
+import { clearEffects, effectsNow } from '../src/features/world/park-effects';
 
 const look: Look = { ...STARTER, hat: 2 };
 const REF = (n: number) => n.toString(16).padStart(32, '0');
@@ -225,5 +229,36 @@ describe('near enough to walk', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(presence).toMatch(/if \(!flies\(\[me\.x, me\.z\], \[lx, lz\]\)\) \{ venueSim\.walkTo\('you', lx, lz\); done\(\); return; \}/);
     expect(presence.indexOf('venueSim.walkTo(')).toBeLessThan(presence.indexOf('venueSim.flyTo('));
+  });
+});
+
+describe('a late word about a flight already down', () => {
+  // The flier's last moves can reach the server after this phone has them landed (the
+  // park bot's were three seconds late, 2026-10-03): the same flight, a little before
+  // its end. Taken as a new one it bounced them back into the air for the last of the
+  // drop, and lit a second puff where they landed.
+  function landed(): WorldSim {
+    const s = new WorldSim(5);
+    s.live(REF(5), look, 0, 0, 0, false, false, false, { ...hop, t: 0 });
+    for (let i = 0; i < 60 * 3; i++) s.step(1 / 60);
+    expect(s.get(REF(5))!.fly).toBeUndefined();
+    return s;
+  }
+
+  it('does not take off again', () => {
+    const s = landed();
+    s.live(REF(5), look, 12, 5, 0, false, false, false, { ...hop, t: flightMs(hop) - 100 });
+    s.step(1 / 60);
+    expect(s.get(REF(5))!.lift ?? 0, 'back up in the air').toBe(0);
+    expect([s.get(REF(5))!.x, s.get(REF(5))!.z]).toEqual([12, 5]);
+  });
+
+  it('brings no second smoke', () => {
+    const s = landed();
+    clearEffects();
+    const late: LivePerson = { ref: REF(5), x: 12, z: 5, facing: 0, moving: false, look, sitting: false, riding: false, voice: null, fly: { ...hop, t: flightMs(hop) - 100 } };
+    livePeople(s, new Map([[REF(5), late]]), null);
+    expect(effectsNow(), 'a second landing puff').toHaveLength(0);
+    clearEffects();
   });
 });

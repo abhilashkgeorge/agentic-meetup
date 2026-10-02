@@ -375,6 +375,11 @@ export interface SimAgent {
    * until they land.
    */
   fly?: { f: Flight; ms: number; done?: (() => void) | undefined };
+  /**
+   * The flight they last landed from, here. A word from the server that is late -- still
+   * carrying it after this phone has them down -- is not a new flight to take off on.
+   */
+  flown?: Flight;
   /** How far off the ground: up in the sky drop, 0 (or unset) otherwise. */
   lift?: number;
   /** On a bicycle (bike.ts): drawn on one, pedalling as they go, and wider to steer. */
@@ -410,6 +415,11 @@ export const HOME: readonly [number, number] = [0, PLAZA * 0.55];
  * agents speedrunning . they are walking at around 200kmph" (2026-09-22).
  */
 const WALK = 0.2;
+/** Whether two flights are the same one: from and to alike. */
+export function sameFlight(a: Flight | undefined, b: Flight | undefined): boolean {
+  return !!a && !!b && a.fx === b.fx && a.fz === b.fz && a.tx === b.tx && a.tz === b.tz;
+}
+
 /** A live person reaches where the server put them in about this many seconds. */
 export const LIVE_CATCH_UP = 0.25;
 /**
@@ -693,8 +703,9 @@ export class WorldSim {
    * when the two drift apart by more than a few frames.
    */
   private flying(a: SimAgent, fly: ParkFly): void {
+    if (sameFlight(a.flown, fly)) return;
     const f = a.fly?.f;
-    if (f && f.fx === fly.fx && f.fz === fly.fz && f.tx === fly.tx && f.tz === fly.tz) {
+    if (sameFlight(f, fly)) {
       if (Math.abs(a.fly!.ms - fly.t) > 300) a.fly!.ms = fly.t;
       return;
     }
@@ -749,6 +760,7 @@ export class WorldSim {
     a.state = 'idle'; a.stuck = 0;
     if (fl.ms < flightMs(fl.f)) return;
     a.fly = undefined;
+    a.flown = fl.f;
     a.lift = 0;
     a.wait = 2;
     fl.done?.();
