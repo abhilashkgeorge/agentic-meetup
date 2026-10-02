@@ -100,6 +100,21 @@ function inRing(p: Pt, ring: readonly Pt[]): boolean {
   return inside;
 }
 
+interface Box { minX: number; maxX: number; minZ: number; maxZ: number }
+function boxOf(ring: readonly Pt[]): Box {
+  const b = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  for (const [x, z] of ring) {
+    if (x < b.minX) b.minX = x; if (x > b.maxX) b.maxX = x;
+    if (z < b.minZ) b.minZ = z; if (z > b.maxZ) b.maxZ = z;
+  }
+  return b;
+}
+/** Whether p is within `pad` of the box (or in it). */
+const nearBox = (p: Pt, b: Box, pad: number): boolean =>
+  p[0] >= b.minX - pad && p[0] <= b.maxX + pad && p[1] >= b.minZ - pad && p[1] <= b.maxZ + pad;
+/** A grid cell as one number rather than a string: no string built per lookup. */
+const cellKey = (cx: number, cz: number): number => (cx + 32768) * 65536 + (cz + 32768);
+
 /** Distance from a point to a polyline. */
 function toLine(p: Pt, line: readonly Pt[]): number {
   let best = Infinity;
@@ -217,8 +232,8 @@ function clearOf(line: readonly Pt[], rings: readonly (readonly Pt[])[], clear: 
  * answer is identical because a path in a cell four cells away cannot be the nearest.
  */
 function pathIndex(paths: readonly Pt[][], cell: number) {
-  const grid = new Map<string, number[]>();
-  const key = (x: number, z: number) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
+  const grid = new Map<number, number[]>();
+  const key = (x: number, z: number) => cellKey(Math.floor(x / cell), Math.floor(z / cell));
   paths.forEach((line, i) => {
     for (let k = 0; k + 1 < line.length; k++) {
       const a = line[k]!;
@@ -240,7 +255,7 @@ function pathIndex(paths: readonly Pt[][], cell: number) {
     let best = Infinity;
     for (let dx = -span; dx <= span; dx++) {
       for (let dz = -span; dz <= span; dz++) {
-        for (const i of grid.get(`${cx + dx},${cz + dz}`) ?? []) {
+        for (const i of grid.get(cellKey(cx + dx, cz + dz)) ?? []) {
           if (seen.has(i)) continue;
           seen.add(i);
           best = Math.min(best, toLine(p, paths[i]!));
@@ -261,8 +276,8 @@ function pathIndex(paths: readonly Pt[][], cell: number) {
  * of comparisons each and the answer is identical.
  */
 function pointIndex(cell: number) {
-  const grid = new Map<string, { x: number; z: number; r: number }[]>();
-  const key = (x: number, z: number) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
+  const grid = new Map<number, { x: number; z: number; r: number }[]>();
+  const key = (x: number, z: number) => cellKey(Math.floor(x / cell), Math.floor(z / cell));
   return {
     add(x: number, z: number, r: number) {
       const k = key(x, z);
@@ -276,7 +291,7 @@ function pointIndex(cell: number) {
       const cz = Math.floor(p[1] / cell);
       for (let dx = -span; dx <= span; dx++) {
         for (let dz = -span; dz <= span; dz++) {
-          for (const q of grid.get(`${cx + dx},${cz + dz}`) ?? []) {
+          for (const q of grid.get(cellKey(cx + dx, cz + dz)) ?? []) {
             if (Math.hypot(q.x - p[0], q.z - p[1]) < q.r + pad) return true;
           }
         }
@@ -368,9 +383,16 @@ export function makeCubbon(): Garden {
 
   const near = pathIndex(lines, 4);
   const inPark = (p: Pt) => inRing(p, outline);
-  const inWater = (p: Pt, pad = 0) => ponds.some((w) => inRing(p, w) || toLine(p, w) < pad);
+  // A pond or a building is only asked about when the point is within `pad` of the box
+  // round it: nowhere else can it be inside it or that near its edge. The answers are the
+  // same; this whole park took the better part of eight seconds to lay out on the Pixel,
+  // most of it here, before the town could draw at all (2026-10-03).
+  const pondBoxes = ponds.map(boxOf);
+  const buildingBoxes = buildings.map((b) => boxOf(b.ring));
+  const inWater = (p: Pt, pad = 0) =>
+    ponds.some((w, i) => nearBox(p, pondBoxes[i]!, pad) && (inRing(p, w) || toLine(p, w) < pad));
   const inBuilding = (p: Pt, pad = 0) =>
-    buildings.some((b) => inRing(p, b.ring) || toLine(p, b.ring) < pad);
+    buildings.some((b, i) => nearBox(p, buildingBoxes[i]!, pad) && (inRing(p, b.ring) || toLine(p, b.ring) < pad));
 
   const bounds = outline.reduce(
     (a, [x, z]) => ({

@@ -73,7 +73,26 @@ import {
 const sim = new WorldSim(20260918);
 sim.setMap(spotsFrom(MAP));
 
+/**
+ * THE TOWN'S FIRST FRAME IS ITS SHAPE. Everything below builds Cubbon Park's layout and
+ * its sim in its first render -- under a second on a laptop, the better part of eight on
+ * the Pixel -- and nothing at all reached the screen until it was done: a white page from
+ * launch (2026-10-03, read off the Pixel's log: JS running at 15.75 s, first screen at
+ * 24.11 s). So the placeholder is put up first, and the town is built a frame later,
+ * under it; the placeholder keeps breathing meanwhile, its animation being native.
+ */
 export default function WorldScreen() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const id = requestAnimationFrame(() => { t = setTimeout(() => setReady(true), 30); });
+    return () => { cancelAnimationFrame(id); if (t) clearTimeout(t); };
+  }, []);
+  if (!ready) return <TownLoading />;
+  return <TownScreen />;
+}
+
+function TownScreen() {
   const p = usePalette();
   const night = useIsDark();
   const token = useSession((s) => s.token);

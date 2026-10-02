@@ -95,6 +95,17 @@ describe('a placeholder looks like what it stands for', () => {
     expect(town).toContain('<MapGround />');
   });
 
+  it('the town\'s first frame is its placeholder: the park is built a frame later, under it', () => {
+    // Building Cubbon Park's layout in the town's first render kept the screen white for
+    // the better part of eight seconds on the Pixel (its log, 2026-10-03).
+    const world = src('features', 'world', 'world-screen.tsx');
+    const outer = world.slice(world.indexOf('export default function WorldScreen()'), world.indexOf('function TownScreen()'));
+    expect(outer).toContain('if (!ready) return <TownLoading />;');
+    expect(outer).toContain('return <TownScreen />;');
+    expect(outer, 'the park built before the first frame').not.toContain('venueGarden(');
+    expect(world.indexOf('venueGarden(CUBBON_PARK)')).toBeGreaterThan(world.indexOf('function TownScreen()'));
+  });
+
   it('opening the app shows the town\'s shape while it checks, not a blank page', () => {
     // The launch screen was held until the session check finished: a white page for nine
     // seconds and more on the Pixel over a slow connection (2026-10-03).
