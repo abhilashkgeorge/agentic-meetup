@@ -147,6 +147,16 @@ export function Screen({
         <View style={{ flex: 1 }}>{body}</View>
       )}
 
+      {/* THE STATUS BAR'S OWN GROUND, while the content slides under it. On an iPhone
+          the bar is blurred over whatever passes beneath; on Android, drawn edge to
+          edge, it is see-through, and scrolled text ran straight through the clock and
+          the battery (the You tab on the Pixel, 2026-10-03). The page's own grey, a
+          shade short of solid, so the content still reads as passing under it. */}
+      {scroll && topInset && insets.top > 0 && (
+        <View pointerEvents="none"
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: p.bg, opacity: 0.94 }} />
+      )}
+
       {footer && (
         <View
           style={{
