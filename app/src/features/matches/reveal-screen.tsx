@@ -23,7 +23,7 @@ import { decideMatch, getPhotosOf, getReveal, type Photo, type Reveal } from '..
 import { Portrait } from '../photos/photo';
 import { useSession } from '../../store/session';
 import {
-  Button, ButtonRow, Card, Chip, ChipGroup, Crease, Header, Screen, Skeleton, Surface,
+  Button, Card, Chip, ChipGroup, Crease, Header, Screen, Skeleton, Surface,
   radius, space, type, usePalette,
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
@@ -145,13 +145,13 @@ export default function RevealScreen() {
           <Button label="Message" variant="primary" onPress={() => router.replace(`/dm/${String(id)}`)} />
         ) : them?.youAnswered ? undefined : (
           <>
-            <ButtonRow>
-              <Button label={them?.practice ? WORDS.shareBackPractice : WORDS.shareBack} variant="primary"
-                      disabled={busy}
-                      onPress={() => void answer(true)} style={{ flex: 1 }} />
-              <Button label={WORDS.notForMe} disabled={busy}
-                      onPress={() => void answer(false)} style={{ flex: 1 }} />
-            </ButtonRow>
+            {/* ONE ABOVE THE OTHER, each the full width. Side by side, "Yes, share mine
+                back" had half the row and was cut to "Yes, share mine b..." on the Pixel at its
+                larger display size (2026-10-02) -- the one button this screen is for. "Not for
+                me" stays a full button, not a faint one: both answers weigh the same. */}
+            <Button label={them?.practice ? WORDS.shareBackPractice : WORDS.shareBack} variant="primary"
+                    disabled={busy} onPress={() => void answer(true)} />
+            <Button label={WORDS.notForMe} disabled={busy} onPress={() => void answer(false)} />
             {failed && <Text style={[type.callout, { color: p.warning, textAlign: 'center' }]}>{WORDS.failed}</Text>}
             <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
               {them?.practice ? WORDS.practiceNote : WORDS.shareBackNote}

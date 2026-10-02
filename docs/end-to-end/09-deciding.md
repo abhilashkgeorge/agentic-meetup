@@ -76,7 +76,7 @@ under them "Yes shows them your photos and first name, and opens a chat. If you 
 are not told."
 ([app/src/features/matches/matches-screen.tsx:441] `<Button label={m.practice ? WORDS.seeThemPractice : WORDS.seeThem}`,
 [app/src/features/matches/reveal-screen.tsx:227] `<Card label="Who they are">`,
-[app/src/features/matches/reveal-screen.tsx:149] `<Button label={them?.practice ? WORDS.shareBackPractice : WORDS.shareBack} variant="primary"`,
+[app/src/features/matches/reveal-screen.tsx:152] `<Button label={them?.practice ? WORDS.shareBackPractice : WORDS.shareBack} variant="primary"`,
 [app/src/features/matches/turn.ts:47] `shareBackNote: 'Yes shows them your photos and first name, and opens a chat. If you say no, they are not told.',`).
 
 **Step 4 — Arjun taps "Yes, share mine back".** They are introduced (stage 10). Only now can
@@ -132,7 +132,7 @@ with them." and "Only people you share your profile with"
 ### 9.4 What "no" does
 
 - **One tap, final**, no confirmation: "Not this one" on the card or "Not for me" on the
-  profile screen ([app/src/features/matches/reveal-screen.tsx:152] `<Button label={WORDS.notForMe} disabled={busy}`).
+  profile screen ([app/src/features/matches/reveal-screen.tsx:154] `<Button label={WORDS.notForMe} disabled={busy}`).
   It cannot be undone ([server/src/matching/orchestrator.ts:574] `WHERE rendezvous_id = $1 AND for_user = $2 AND human_says_yes IS NULL`).
 - **The person saying no** sees "Done" / "They are not told anything. Your agent keeps
   looking." ([app/src/features/matches/reveal-screen.tsx:87] `They are not told anything. Your agent keeps looking.`).
