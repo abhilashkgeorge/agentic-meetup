@@ -41,7 +41,12 @@ export function Bubble({
           opacity: pending ? 0.7 : 1,
         }}
       >
-        <Text style={[type.body, { color: mine ? p.accentText : p.text }]}>
+        {/* SIMPLE LINE BREAKING. With Android's default ("highQuality") and the app's own
+            font, a message that only just fitted one line was measured as one line and drawn
+            as two -- the bubble one line high, the last words cut off: "Yes! Saturday 11am
+            at Third Wave," for "..., Indiranagar?" (the Seeker at 85% text size,
+            2026-10-02). The same fault as the button labels (button.tsx). */}
+        <Text style={[type.body, { color: mine ? p.accentText : p.text }]} textBreakStrategy="simple">
           {text || (pending ? '…' : '')}
         </Text>
       </View>
