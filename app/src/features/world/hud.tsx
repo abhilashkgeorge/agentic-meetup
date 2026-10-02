@@ -12,7 +12,9 @@ import { CENTRAL_AREA } from '@clone/shared';
 import type { World } from '../../lib/api';
 import { countLabel } from '../../lib/counts';
 import { missingLabel } from '../profile/fields';
-import { Button, radius, raised, space, type, usePalette } from '../../components/ui';
+import {
+  Button, Skeleton, SkeletonBlock, radius, raised, space, type, usePalette,
+} from '../../components/ui';
 import { roundActive } from './bridge';
 import { Stick } from './stick';
 import { cityPose, placeLabels, toScreen, type Band, type Size } from './camera';
@@ -21,6 +23,8 @@ import { MAX_VENUE_AGENTS, type Venue } from './venue';
 import { useLiveCount, useQuestsDone } from './park-hud';
 import { PARK_WHO_MEANS, parkWho } from './park-top';
 import { nudgeFor, townCounts } from './town-bar';
+import { useWorld } from './store';
+import { TownBarSkeleton } from './town-loading';
 
 export function Hud({
   world,
@@ -132,8 +136,12 @@ export function Hud({
     question: () => onQuestion?.(), name: onName, area: onArea,
   }) : null;
 
+  // NOT "Finding the square…" while it is on its way: the bar, the line and the button in
+  // their own shape (town-loading.tsx). With nothing from before and the server out of
+  // reach, it says so -- the screen tries again every minute.
+  const failed = useWorld((s) => s.failed);
   const status = !world
-    ? 'Finding the square…'
+    ? (failed ? 'Cannot reach the server. Trying again…' : '')
     : active
       ? world.round?.status === 'queued'
         ? 'Your agent is heading out…'
@@ -160,6 +168,8 @@ export function Hud({
       {venue ? (
         <ParkBar onBack={onLeaveVenue} agents={Math.min(here + 1, MAX_VENUE_AGENTS)} crowd={crowd}
                  onQuests={onQuests} onCrowd={onCrowd} />
+      ) : !world ? (
+        <TownBarSkeleton />
       ) : (
         <TownBar title={title} inPool={!!world?.me.inPool} area={areaName(myArea)} here={here} band={band}
                  onPeople={onPeople} onHome={onHome} onCity={onCity} onEnterVenue={onEnterVenue}
@@ -191,14 +201,18 @@ export function Hud({
               </Pressable>
             )}
             {/* What your agent is doing, or knows: said once, over the map, not in a card. */}
+            {!world && !failed ? <View style={{ alignSelf: 'center', width: '55%' }}><Skeleton height={22} /></View> : (
             <Text numberOfLines={1}
                   style={[type.callout, { color: p.text, alignSelf: 'center', paddingHorizontal: space.md, paddingVertical: 2,
                                           borderRadius: radius.pill, backgroundColor: p.bg, opacity: 0.94, overflow: 'hidden' }]}>
               {status}
             </Text>
+            )}
           </>
         )}
-        {walking || transitioning ? null : world && !world.me.inPool ? (
+        {walking || transitioning ? null : !world ? (
+          <SkeletonBlock height={52} radius={radius.xl} />
+        ) : !world.me.inPool ? (
           <Button label="Finish setup" variant="primary" onPress={onFinishSetup} />
         ) : (
           <Button label={active ? 'Your agent is out…' : 'Send my agent out'} variant="primary"
@@ -239,7 +253,7 @@ function ParkBar({ onBack, agents, crowd, onQuests, onCrowd }: {
   const insets = useSafeAreaInsets();
   // People here in person, besides you (the park, live).
   const live = useLiveCount();
-  const [questsDone, questsAll] = useQuestsDone();
+  const [questsDone, questsAll, questsKnown] = useQuestsDone();
   // What the count means, said when it is tapped, and gone again by itself.
   const [explain, setExplain] = useState(false);
   useEffect(() => {
@@ -281,9 +295,11 @@ function ParkBar({ onBack, agents, crowd, onQuests, onCrowd }: {
                      style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, height: 36, paddingHorizontal: space.md,
                               borderRadius: radius.pill, backgroundColor: p.bg, boxShadow: raised(p, 3) }}>
             <Text style={[type.callout, { color: p.text, fontFamily: type.bodyStrong.fontFamily }]}>Things to do</Text>
-            <Text style={[type.callout, { color: questsDone > 0 ? p.accent : p.textSecondary, fontFamily: type.bodyStrong.fontFamily }]}>
-              {`${questsDone}/${questsAll}`}
-            </Text>
+            {questsKnown ? (
+              <Text style={[type.callout, { color: questsDone > 0 ? p.accent : p.textSecondary, fontFamily: type.bodyStrong.fontFamily }]}>
+                {`${questsDone}/${questsAll}`}
+              </Text>
+            ) : <View style={{ width: 28 }}><Skeleton height={14} /></View>}
           </Pressable>
         )}
         {onCrowd && (

@@ -16,7 +16,7 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, AppState, BackHandler, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Animated, AppState, BackHandler, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatScreen from '../chat/chat-screen';
 import { getMatches, getQuestionOfDay, runRound, type MatchCard, type WorldAgent } from '../../lib/api';
@@ -58,6 +58,7 @@ import { MAP, spotsFrom } from './map';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { CROWD_TEST, WorldSim, isCrowd } from './sim';
 import { roundNote } from '../matches/round-note';
+import { TownLoading } from './town-loading';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
 import {
   CITY_REALM, CUBBON_PARK, agentsForVenue, transitionRealm, venueGarden,
@@ -121,7 +122,10 @@ export default function WorldScreen() {
     })();
     return () => { live = false; void setGlFuse(null); };
   }, []);
-  const firstFrame = useCallback(() => { void setGlFuse(null); }, []);
+  // Drawn once: the town's placeholder lifts (town-loading.tsx). Only the first time --
+  // a canvas brought back from the background keeps its scene and draws at once.
+  const [drawn, setDrawn] = useState(false);
+  const firstFrame = useCallback(() => { setDrawn(true); void setGlFuse(null); }, []);
 
   // "Easier on the battery", from Settings: read on every focus so a change there
   // is seen on the way back, without a store for one boolean.
@@ -407,13 +411,7 @@ export default function WorldScreen() {
   }), [p, night]);
 
   if (renderer === null) return <ChatScreen />;
-  if (renderer === undefined) {
-    return (
-      <Screen center>
-        <ActivityIndicator color={p.textTertiary} />
-      </Screen>
-    );
-  }
+  if (renderer === undefined) return <TownLoading />;
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }} onLayout={onLayout}>
@@ -426,6 +424,7 @@ export default function WorldScreen() {
                             slots={crowd + cityCrowd ? crowd + cityCrowd + 64 : undefined}
                             inVenue={realm.phase === 'venue' || realm.phase === 'leaving'}
                             onTapVenue={() => enterVenue()} />
+      {!drawn && <TownLoading overlay />}
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
            onAppearance={() => router.push('/appearance')}
            question={question} onQuestion={() => router.push('/question')}

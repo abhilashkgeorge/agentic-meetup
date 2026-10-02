@@ -30,7 +30,7 @@
  */
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import {
   answerQuestion, getNextQuestion, markQuestionDone, setWhoFine, skipQuestionOfDay,
   type InterviewState, type WhoFine,
@@ -45,7 +45,8 @@ import {
 } from './sentence-proposal';
 import { questionsOver, straightOn } from './questions-end';
 import {
-  Animation, Button, Card, Chip, ChipGroup, Field, Screen, space, type, usePalette,
+  Animation, Button, Card, Chip, ChipGroup, Field, LoadFailed, Screen, SkeletonQuestion, space, type,
+  useLate, usePalette,
 } from '../../components/ui';
 
 export default function InterviewScreen() {
@@ -75,8 +76,20 @@ export default function InterviewScreen() {
   /** After the sentence, when there is nothing to confirm: said, then Next. */
   const [told, setTold] = useState<string | null>(null);
 
+  /**
+   * Waiting for the next question. The first has nothing on screen yet and shows the
+   * question's shape at once; a next one keeps the last on screen and shows it only if the
+   * answer is slow (useLate) -- it used to leave the old question up, with its taps
+   * cleared, which looked as if they had been ignored. A question that could not be had
+   * is said, with a way to try again: it used to be a spinner for good.
+   */
+  const [fetching, setFetching] = useState(true);
+  const [failedLoad, setFailedLoad] = useState(false);
+  const late = useLate(fetching);
   const load = useCallback(async () => {
     if (!token) return;
+    setFetching(true);
+    setFailedLoad(false);
     setPicked([]);
     // Every card opens empty, both rows. Carrying the last card's Who's-fine choice
     // over would be exactly the pre-ticked row this screen exists not to have.
@@ -86,7 +99,10 @@ export default function InterviewScreen() {
     setProposal(null);
     setTold(null);
     // ONE CARD (the question of the day): that card, opened again, then back.
-    setState(await getNextQuestion(token, one));
+    const next = await getNextQuestion(token, one);
+    setFetching(false);
+    if (!next) { setFailedLoad(true); return; }
+    setState(next);
   }, [token, one]);
 
   useEffect(() => { void load(); }, [load]);
@@ -136,10 +152,17 @@ export default function InterviewScreen() {
     if (onward) router.replace(onward as Href);
   }, [onward]);
 
-  if (!state || onward) {
+  if (failedLoad) {
     return (
       <Screen topInset={false} center>
-        <ActivityIndicator color={p.accent} size="large" />
+        <LoadFailed what="the next question" onRetry={() => void load()} />
+      </Screen>
+    );
+  }
+  if (!state || onward || late) {
+    return (
+      <Screen topInset={false}>
+        <SkeletonQuestion />
       </Screen>
     );
   }

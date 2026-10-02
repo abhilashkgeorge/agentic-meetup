@@ -30,7 +30,8 @@ import {
 } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Chip, ChipGroup, Crease, Header, Screen, ScreenTitle, Skeleton, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Screen, ScreenTitle, Skeleton,
+  SkeletonChips, SkeletonGroup, space, type, usePalette,
 } from '../../components/ui';
 import { everyCardSays, hideAsk, sheetView, withHidden, withShared } from './appearance-state';
 
@@ -39,16 +40,22 @@ export default function AppearanceScreen() {
   const token = useSession((s) => s.token);
   const [look, setLook] = useState<Appearance | null>(null);
   const [rules, setRules] = useState<Readback | null>(null);
-  const [loading, setLoading] = useState(true);
+  /**
+   * Whether the page is here. A failed read used to end "loading" with nothing to show,
+   * and "What someone sees about you" kept its placeholder for good.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const loading = status === 'loading';
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
     const [a, r] = await Promise.all([getAppearance(token), getReadback(token)]);
+    if (!a) { setStatus((s) => (s === 'ready' ? s : 'failed')); return; }
     setLook(a);
-    setRules(r);
-    setLoading(false);
+    if (r) setRules(r);
+    setStatus('ready');
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
@@ -85,9 +92,16 @@ export default function AppearanceScreen() {
       <ScreenTitle title="How you appear" subtitle="What your agent looks for, and what others see." />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
+        {status === 'failed' ? (
+          <LoadFailed what="how you appear" onRetry={() => { setStatus('loading'); void load(); }} />
+        ) : (<>
         <Card label="Your agent only brings you people who">
           {loading ? (
-            <Skeleton height={60} width="80%" />
+            <SkeletonGroup label="Loading your rules">
+              <Skeleton height={14} width="85%" />
+              <Skeleton height={14} width="70%" />
+              <Skeleton height={14} width="60%" />
+            </SkeletonGroup>
           ) : rules && rules.lines.length ? (
             <>
               {rules.lines.map((l) => (
@@ -105,7 +119,11 @@ export default function AppearanceScreen() {
 
         <Card label="What someone sees about you">
           {loading || !look ? (
-            <Skeleton height={80} width="90%" />
+            <SkeletonGroup label="Loading what others see">
+              <Skeleton height={18} width="75%" />
+              <Skeleton height={14} width="90%" />
+              <SkeletonChips count={3} />
+            </SkeletonGroup>
           ) : (
             <>
               <Text style={[type.bodyStrong, { color: p.text }]}>{look.headline}</Text>
@@ -166,7 +184,11 @@ export default function AppearanceScreen() {
         {(loading || look?.sheet) && (
           <Card label="When another agent asks yours">
             {loading || !look ? (
-              <Skeleton height={80} width="90%" />
+              <SkeletonGroup label="Loading what others see">
+                <Skeleton height={18} width="75%" />
+                <Skeleton height={14} width="90%" />
+                <SkeletonChips count={3} />
+              </SkeletonGroup>
             ) : (
               <SheetAnswers look={look} busy={busy} onToggle={(id, hidden) => void toggle(id, hidden)} />
             )}
@@ -193,6 +215,7 @@ export default function AppearanceScreen() {
         )}
 
         {note && <Text style={[type.callout, { color: p.danger }]}>{note}</Text>}
+        </>)}
       </View>
     </Screen>
   );

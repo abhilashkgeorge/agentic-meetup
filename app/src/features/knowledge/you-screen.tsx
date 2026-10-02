@@ -23,8 +23,8 @@ import {
 import { useSession } from '../../store/session';
 import { label } from '../profile/fields';
 import {
-  Button, ButtonRow, Card, Crease, Empty, Field, Header, Screen, ScreenTitle,
-  Surface, HIT, radius, space, type, usePalette,
+  Button, ButtonRow, Card, Crease, Empty, Field, HIT, Header, LoadFailed, Screen, ScreenTitle,
+  Skeleton, SkeletonGroup, Surface, radius, space, type, usePalette,
 } from '../../components/ui';
 
 export default function YouScreen() {
@@ -38,8 +38,13 @@ export default function YouScreen() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [lineage, setLineage] = useState<{ label: string; entries: HistoryEntry[] } | null>(null);
 
+  /** The list could not be had: said, with a way to try again -- not an empty card. */
+  const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
-    if (token) setK(await getKnowledge(token));
+    if (!token) return;
+    setFailed(false);
+    const kk = await getKnowledge(token);
+    if (kk) setK(kk); else setFailed(true);
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
@@ -186,6 +191,19 @@ export default function YouScreen() {
           )}
 
           <Card label="It knows">
+            {/* Not an empty card while the list is on its way: rows in its shape. */}
+            {!k && !failed && (
+              <SkeletonGroup label="Loading what it knows">
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={{ gap: space.xs, paddingVertical: space.xs }}>
+                    <Skeleton height={10} width="30%" />
+                    <Skeleton height={16} width={i % 2 ? '55%' : '70%'} />
+                    <Skeleton height={12} width="45%" />
+                  </View>
+                ))}
+              </SkeletonGroup>
+            )}
+            {!k && failed && <LoadFailed what="what it knows" onRetry={() => void load()} />}
             {k && k.knows.length === 0 && (
               <Text style={[type.body, { color: p.textSecondary }]}>
                 Nothing yet. Talk to it and it will start.

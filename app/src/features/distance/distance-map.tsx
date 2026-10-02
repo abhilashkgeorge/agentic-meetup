@@ -8,9 +8,9 @@
  * under the circle; let go and the centre lands on the nearest named place -- a Bengaluru
  * neighbourhood or a listed city (geo.ts nearestSpot) -- or springs back if there is none.
  */
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Image, PanResponder, Text, View, type LayoutChangeEvent } from 'react-native';
-import { radius, type, usePalette } from '../../components/ui';
+import { SkeletonBlock, radius, type, usePalette } from '../../components/ui';
 import { nearestSpot, shifted, tilesFor, zoomFor, type PlacedTile, type Spot } from './geo';
 import { useTile } from './tiles';
 
@@ -21,8 +21,15 @@ const WIDE_ZOOM = 3.6;
 /** The circle's radius as a share of the map's shorter side. */
 const CIRCLE = 0.38;
 
-const Tile = memo(function Tile({ token, t }: { token: string | null; t: PlacedTile }) {
+const Tile = memo(function Tile({ token, t, onSettled }: {
+  token: string | null;
+  t: PlacedTile;
+  /** Told once this tile has its picture, or has given up on it. */
+  onSettled: (key: string, settled: boolean) => void;
+}) {
   const data = useTile(token, t.z, t.x, t.y);
+  const settled = data !== undefined;
+  useEffect(() => { onSettled(t.key, settled); }, [onSettled, t.key, settled]);
   if (!data) return null;
   // Half a dp of overlap, so fractional sizes never leave a hairline between tiles.
   return <Image source={{ uri: data }} fadeDuration={0}
@@ -47,6 +54,21 @@ export function DistanceMap({ token, spot, km, anywhere, onSpot, onMiss, height 
   const r = Math.min(width || 300, height) * CIRCLE;
   const zf = spot && !anywhere ? zoomFor(km, r, at.lat) : WIDE_ZOOM;
   const tiles = useMemo(() => (width ? tilesFor(at.lat, at.lon, zf, width, height) : []), [at.lat, at.lon, zf, width, height]);
+
+  // THE MAP BREATHES UNTIL ITS PICTURES ARE HERE (the founder, 2026-10-02: "a skeleton
+  // ... even the maps"). Tiles come one by one, through the server; a placeholder under
+  // them pulses wherever one is still on its way, and goes once every tile in view has
+  // arrived or been given up on -- never left pulsing over a map that is not coming.
+  const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
+  const onSettled = useCallback((key: string, done: boolean) => {
+    setSettled((had) => {
+      if (had.has(key) === done) return had;
+      const next = new Set(had);
+      if (done) next.add(key); else next.delete(key);
+      return next;
+    });
+  }, []);
+  const waiting = token !== null && (width === 0 || tiles.some((t) => !settled.has(t.key)));
 
   // Kept in refs so the responder, made once, always reads the current map.
   const now = useRef({ at, zf, spot });
@@ -75,15 +97,18 @@ export function DistanceMap({ token, spot, km, anywhere, onSpot, onMiss, height 
   return (
     <View
       onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
-      style={{ height, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#e9e6df' }}
+      style={{ height, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: waiting ? p.bg : '#e9e6df' }}
       accessible
       accessibilityLabel={spot
         ? (anywhere ? `Map around ${spot.name}. Anywhere: no distance limit.` : `Map around ${spot.name}, a circle of ${km} kilometres.`)
         : 'Map of India. No place chosen yet.'}
       {...responder.panHandlers}
     >
+      {waiting && (
+        <SkeletonBlock height={height} radius={0} style={{ position: 'absolute', left: 0, top: 0 }} />
+      )}
       <Animated.View style={{ position: 'absolute', left: 0, top: 0, width, height, transform: pan.getTranslateTransform() }}>
-        {tiles.map((t) => <Tile key={t.key} token={token} t={t} />)}
+        {tiles.map((t) => <Tile key={t.key} token={token} t={t} onSettled={onSettled} />)}
       </Animated.View>
 
       {spot && !anywhere && (

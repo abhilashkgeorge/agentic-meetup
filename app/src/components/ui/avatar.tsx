@@ -9,6 +9,7 @@
  * shape rather than a hole.
  */
 import { Image, Text, View } from 'react-native';
+import { SkeletonShape } from './skeleton';
 import { radius, raised, sunk, type, usePalette } from './theme';
 
 export function Avatar({
@@ -16,6 +17,7 @@ export function Avatar({
   name,
   size = 52,
   ring,
+  loading,
 }: {
   /** Carries the credential with it -- see PhotoSlot. */
   source?: { uri: string; headers?: Record<string, string> } | null;
@@ -23,6 +25,8 @@ export function Avatar({
   size?: number;
   /** A coloured ring, Instagram-style: something is new here. */
   ring?: boolean;
+  /** Their photo is on its way: a breathing circle, not initials that then turn into a face. */
+  loading?: boolean;
 }) {
   const uri = source?.uri;
   const p = usePalette();
@@ -49,6 +53,8 @@ export function Avatar({
     >
       {source ? (
         <Image source={source} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      ) : loading ? (
+        <SkeletonShape width={size} height={size} radius={size / 2} />
       ) : (
         <Text style={[type.bodyStrong, { color: p.textTertiary, fontSize: size * 0.34 }]}>
           {initials}
@@ -72,9 +78,12 @@ export function PhotoSlot({
   source,
   onPress,
   large,
+  loading,
 }: {
   source?: { uri: string; headers?: Record<string, string> } | null;
   onPress: () => void;
+  /** A photo is on its way into this slot: a breathing block, not the "+" of an empty one. */
+  loading?: boolean;
   /**
    * The hero slot: sets the height of the row, and the others divide it.
    *
@@ -110,6 +119,8 @@ export function PhotoSlot({
     >
       {source ? (
         <Image source={source} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      ) : loading ? (
+        <SkeletonShape width="100%" height="100%" radius={radius.lg} />
       ) : (
         <Text style={{ color: p.textTertiary, fontSize: 26 }}>+</Text>
       )}

@@ -22,7 +22,8 @@ import { acceptConsent, getConsent, type ConsentDoc } from '../../lib/api';
 import { isOnboarded } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import {
-  Animation, Button, Card, Crease, Screen, space, type, usePalette,
+  Animation, Button, Card, Crease, LoadFailed, Screen, Skeleton, SkeletonGroup, space, type,
+  usePalette,
 } from '../../components/ui';
 
 /**
@@ -64,10 +65,13 @@ export default function ConsentScreen() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
+  /** The terms could not be had: said with a way to try again (it was a red line, and no way on). */
+  const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
+    setFailed(false);
     const state = await getConsent(token);
-    if (!state) { setNote('Could not reach the server.'); return; }
+    if (!state) { setFailed(true); return; }
     // Already settled -- somebody arrived here by navigating, not by being sent.
     if (state.settled) { router.replace('/'); return; }
     setDocs(state.outstanding);
@@ -112,6 +116,22 @@ export default function ConsentScreen() {
           Three things, in plain words. They are short on purpose.
         </Text>
       </View>
+
+      {/* The three cards' shape while they are on their way: the page was a header and
+          nothing, with "I agree" greyed out below it. */}
+      {!docs && !failed && (
+        <SkeletonGroup label="Loading the terms" style={{ gap: space.lg }}>
+          {[0, 1, 2].map((i) => (
+            <Card key={i}>
+              <Skeleton height={12} width="40%" />
+              <Skeleton height={14} />
+              <Skeleton height={14} width="85%" />
+              <Skeleton height={14} width="70%" />
+            </Card>
+          ))}
+        </SkeletonGroup>
+      )}
+      {!docs && failed && <LoadFailed what="the terms" onRetry={() => void load()} />}
 
       {(docs ?? []).map((d, i) => (
         <Card key={`${d.document}@${d.version}`}>

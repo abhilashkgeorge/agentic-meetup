@@ -44,16 +44,21 @@ async function load(token: string, z: number, x: number, y: number): Promise<str
   return work;
 }
 
-/** One tile's picture, or undefined while it loads (or if it cannot). */
-export function useTile(token: string | null, z: number, x: number, y: number): string | undefined {
+/**
+ * One tile's picture: undefined while it is on its way, null if it could not be had (so
+ * the map's placeholder stops breathing over a tile that is not coming -- offline, a
+ * server error), the picture once it is here. A tile that failed is tried again the next
+ * time it is shown.
+ */
+export function useTile(token: string | null, z: number, x: number, y: number): string | null | undefined {
   const key = `${z}/${x}/${y}`;
-  const [data, setData] = useState<string | undefined>(() => cache.get(key));
+  const [data, setData] = useState<string | null | undefined>(() => cache.get(key));
   useEffect(() => {
     const now = cache.get(key);
     setData(now);
     if (now || !token) return;
     let alive = true;
-    void load(token, z, x, y).then((d) => { if (alive && d) setData(d); });
+    void load(token, z, x, y).then((d) => { if (alive) setData(d ?? null); });
     return () => { alive = false; };
   }, [token, key, z, x, y]);
   return data;

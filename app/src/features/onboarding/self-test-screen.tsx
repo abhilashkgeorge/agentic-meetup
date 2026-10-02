@@ -20,8 +20,8 @@ import {
 } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Animation,
-  Bubble, Button, ButtonRow, Card, Field, Meter, Screen, space, type, usePalette,
+  Animation, Bubble, Button, ButtonRow, Card, Field, Meter, Screen, Skeleton, SkeletonGroup, space,
+  type, usePalette,
 } from '../../components/ui';
 
 export default function SelfTestScreen() {
@@ -34,8 +34,12 @@ export default function SelfTestScreen() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
+  /** The count could not be had: said, not left as a placeholder breathing for ever. */
+  const [readyFailed, setReadyFailed] = useState(false);
   const refresh = useCallback(async () => {
-    if (token) setReady(await getReadiness(token));
+    if (!token) return;
+    const r = await getReadiness(token);
+    if (r) setReady(r); else setReadyFailed(true);
   }, [token]);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -136,10 +140,20 @@ export default function SelfTestScreen() {
       </View>
 
       <Card label="So far">
-        <Text style={[type.title, { color: p.text }]}>
-          {passed} of {ready?.graded ?? 0} right
-        </Text>
-        <Meter value={size ? passed / size : 0} />
+        {/* Not "0 of 0 right" before the count is here: a zero that is only a wait. */}
+        {ready ? (
+          <Text style={[type.title, { color: p.text }]}>
+            {passed} of {ready.graded ?? 0} right
+          </Text>
+        ) : readyFailed ? (
+          <Text style={[type.callout, { color: p.textSecondary }]}>Could not load how it has done so far.</Text>
+        ) : (
+          <SkeletonGroup label="Loading how it did">
+            <Skeleton height={24} width="45%" />
+            <Skeleton height={8} />
+          </SkeletonGroup>
+        )}
+        {ready && <Meter value={size ? passed / size : 0} />}
         {/* Named, never scored. A percentage turns this into a form to max out. */}
         {ready?.missing.map((m) => (
           <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {m}</Text>

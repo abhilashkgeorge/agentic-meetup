@@ -15,6 +15,8 @@ interface WorldStore {
   world: World | null;
   /** True while a fetch is in flight. */
   loading: boolean;
+  /** The square could not be had and there is none from before: said, not a placeholder for good. */
+  failed: boolean;
   /** Set by "Send my agent out", so the round's finish can be announced once. */
   announce: string | null;
   /** Motion the socket asked for, waiting for the screen to hand it to the sim. */
@@ -31,6 +33,7 @@ interface WorldStore {
 export const useWorld = create<WorldStore>((set) => ({
   world: null,
   loading: false,
+  failed: false,
   announce: null,
   live: [],
   nudge: 0,
@@ -41,8 +44,9 @@ export const useWorld = create<WorldStore>((set) => ({
   load: async (token) => {
     set({ loading: true });
     const w = await getWorld(token);
-    // Offline keeps the last picture rather than blanking the square.
-    set((s) => ({ loading: false, world: w ?? s.world }));
+    // Offline keeps the last picture rather than blanking the square. With no picture
+    // at all, the town says it cannot reach the server, rather than a placeholder for good.
+    set((s) => ({ loading: false, world: w ?? s.world, failed: !w && !s.world }));
     return w;
   },
 }));

@@ -9,7 +9,7 @@ details), and **database roles** that limit what each part of the server can rea
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
 | A fact is written | It gets a level: public, match-only or private | Code | `facts.disclosure` | Public: can be quoted to others. Match-only: used for matching, never said. Private: hidden by the person | [server/migrations/0018_dating_schema.sql:39] `CHECK (disclosure IN ('public', 'matchable_only', 'private'))` |
-| "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | [app/src/features/appearance/appearance-screen.tsx:187] `<Chip label="OK to share"` |
+| "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | [app/src/features/appearance/appearance-screen.tsx:209] `<Chip label="OK to share"` |
 | "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | [server/src/api/me.ts:177] `const to = hidden ? 'private' : 'public';` |
 | A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | [server/src/matching/brief.ts:204] `return !namesCoreValue(text) && contactDetail(text) === null;` |
 | A sentence naming a company, college or building | A suggestion: "This names a company. Hide this?" | Code | Nothing unless hidden | The person | [app/src/features/appearance/appearance-state.ts:81] `This names a ${names}. Hide this?` |
@@ -65,7 +65,7 @@ details), and **database roles** that limit what each part of the server can rea
   wants, her card answers as values, her check-in answers, her reports or blocks, her exact location,
   her birth year or her phone number
   ([server/src/matching/brief.ts:266] `AND f.disclosure = ANY($3::text[])`,
-  [app/src/features/consent/consent-screen.tsx:38] `'We keep the year you were born. Other people only ever see your age.',`).
+  [app/src/features/consent/consent-screen.tsx:39] `'We keep the year you were born. Other people only ever see your age.',`).
 
 ### 4.1 The three levels
 
@@ -108,7 +108,7 @@ details), and **database roles** that limit what each part of the server can rea
   saved but never repeated ([server/src/matching/brief.ts:192] `export function namesCoreValue(text: string): boolean {`,
   [server/src/matching/brief.ts:177] `'church', 'temple', 'mosque', 'gurdwara', 'pray', 'relig', 'faith',`).
   The stories screen says so as you type: "This one mentions something private, like kids or drinking,
-  so your agent will not repeat it." ([app/src/features/stories/stories-screen.tsx:94] `This one mentions something private, like kids or drinking, so your agent will not repeat it.`).
+  so your agent will not repeat it." ([app/src/features/stories/stories-screen.tsx:109] `This one mentions something private, like kids or drinking, so your agent will not repeat it.`).
 - **Contact details** ("when unsure, block"): phone numbers (8+ digits, or spelled out), emails
   including "at … dot", @handles and "my insta is…", links and domains, "dm me on…", street addresses,
   pin codes ([shared/src/contact.ts:12] `WHEN UNSURE, BLOCK. A false alarm costs one sentence not being quoted`,
@@ -130,12 +130,12 @@ details), and **database roles** that limit what each part of the server can rea
   2026-09-30, when shown bare it read as being about the owner's own rules; tags; up to eight
   sentences each marked "On your card", "Not on a card now" or "Hidden"), "When another agent asks yours" (their answer sheet), and "Learned in chat" ("Only
   you see these. Your agent uses them to find people, but never says them until you tap OK to share.")
-  ([app/src/features/appearance/appearance-screen.tsx:88] `<Card label="Your agent only brings you people who">`,
+  ([app/src/features/appearance/appearance-screen.tsx:98] `<Card label="Your agent only brings you people who">`,
   [server/src/matching/readback.ts:29] `yes: 'want kids', no: "don't want kids", maybe: "aren't sure about kids yet",`,
   [app/src/features/appearance/appearance-state.ts:25] `export function everyCardSays(line: string): string {`,
-  [app/src/features/appearance/appearance-screen.tsx:106] `<Card label="What someone sees about you">`,
-  [app/src/features/appearance/appearance-screen.tsx:167] `<Card label="When another agent asks yours">`,
-  [app/src/features/appearance/appearance-screen.tsx:181] `Only you see these. Your agent uses them to find people`).
+  [app/src/features/appearance/appearance-screen.tsx:120] `<Card label="What someone sees about you">`,
+  [app/src/features/appearance/appearance-screen.tsx:185] `<Card label="When another agent asks yours">`,
+  [app/src/features/appearance/appearance-screen.tsx:203] `Only you see these. Your agent uses them to find people`).
   Opening it can refresh the answer sheet, one model call ({AI:sheet}).
 - **Not shown there**, though others see it: the reveal (first name, tags, photos), the character, the
   neighbourhood, and "Matches"/"Doesn't match" on wants tied to a question ([server/src/api/me.ts:89] `const quotes = all.slice(0, 8).map((q) => {`).
@@ -146,8 +146,8 @@ details), and **database roles** that limit what each part of the server can rea
   matching ([server/src/matching/brief.ts:764] `const date = talk.date && keep(talk.date.theirs) ? talk.date : null;`).
 - **Other controls:** remove a photo ("It is deleted from the server as well."); answer a story again
   (the old answer is kept but replaced); no per-fact delete; no message unsend
-  ([app/src/features/photos/photos-screen.tsx:110] `'Remove this photo?', 'It is deleted from the server as well.'`,
-  [app/src/features/knowledge/you-screen.tsx:183] `It keeps the old answer. It just stops saying it.`).
+  ([app/src/features/photos/photos-screen.tsx:118] `'Remove this photo?', 'It is deleted from the server as well.'`,
+  [app/src/features/knowledge/you-screen.tsx:188] `It keeps the old answer. It just stops saying it.`).
 
 ### 4.4 Who can read what in the database
 
@@ -200,7 +200,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
   If it fails part way, the phone says only what it knows: "Only partly deleted", or "Not sure it was
   deleted" when the server did not answer; "Nothing was removed" only when the server refused before
   touching anything ([app/src/features/settings/delete-outcome.ts:12] `export function eraseMessage(outcome: EraseOutcome): { title: string; body: string } | null {`)
-  ([app/src/features/settings/settings-screen.tsx:292] `subtitle="Cannot be undone. The clone and all of its memory go."`,
+  ([app/src/features/settings/settings-screen.tsx:312] `subtitle="Cannot be undone. The clone and all of its memory go."`,
   [server/src/memory/erasure.ts:35] `'answer_sheets', 'unknown_asks', 'question_prompts', 'look_items', 'looks', 'photo_checks',`,
   [server/src/memory/erasure.ts:295] `if (!remaining.length) await c.query('DELETE FROM app_users WHERE id = $1'`).
 - **It leaves:** a receipt with counts, invites, reports they filed (without their name), reports about
@@ -211,7 +211,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
   or written to server logs ([server/migrations/0007_erasure.sql:12] `counts, never rows.`).
 - **"Download everything"** exports their facts, all their messages with their clone, their profile,
   questions, their own messages to matches and their model usage, as plain text to the share sheet
-  ([app/src/features/settings/settings-screen.tsx:121] `await Share.share({ message: data });`).
+  ([app/src/features/settings/settings-screen.tsx:127] `await Share.share({ message: data });`).
 
 ### 4.6 Operators, logs and AI providers
 
@@ -239,7 +239,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
   [server/src/memory/erasure.ts:41] `'push_tokens',`).
 - **The Settings promise** reads "Nobody sees your photos or first name until you say yes to them."
   (since 2026-09-29; it used to say "Nobody else has ever seen what your clone knows about you", which
-  was broader than the code) ([app/src/features/settings/settings-screen.tsx:299] `Nobody sees your photos or first name until you say yes to them.`).
+  was broader than the code) ([app/src/features/settings/settings-screen.tsx:319] `Nobody sees your photos or first name until you say yes to them.`).
 
 ### Docs vs code
 

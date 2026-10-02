@@ -11,14 +11,18 @@ import { useEffect, useState } from 'react';
 import { getGlFuse } from '../../lib/storage';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 
-export function useRenderer(): WorldRenderer | null {
-  const [renderer, setRenderer] = useState<WorldRenderer | null>(null);
+/**
+ * Undefined while it is still being looked for (a preview shows the figure's shape then,
+ * not a flat drawing that turns into the real one); null when there is none to have.
+ */
+export function useRenderer(): WorldRenderer | null | undefined {
+  const [renderer, setRenderer] = useState<WorldRenderer | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
     void (async () => {
-      if ((await getGlFuse()) === 'off') return;
+      if ((await getGlFuse()) === 'off') { if (live) setRenderer(null); return; }
       const r = await loadWorldRenderer();
-      if (live && r) setRenderer(r);
+      if (live) setRenderer(r ?? null);
     })();
     return () => { live = false; };
   }, []);

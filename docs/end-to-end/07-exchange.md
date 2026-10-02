@@ -112,7 +112,7 @@ shareable sentences change ({AI:sheet};
 Only fact ids are stored. When there is no talk, the card shows "WHAT YOUR AGENTS ASKED EACH
 OTHER": questions both answered, then only theirs, then up to two the reader answered and
 they did not ([server/src/matching/answer-sheet.ts:348] `const answered = [...both, ...onlyTheirs].slice(0, LINES);`,
-[app/src/features/matches/matches-screen.tsx:384] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
+[app/src/features/matches/matches-screen.tsx:409] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
 
 ### 7.5 What is saved, and what people can read
 

@@ -19,10 +19,8 @@ import type { WantView } from './wants-state';
 import { FEW_ON_THE_APP, costLabel, countLabel, fewOnTheApp, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import {
-  Header,
-  StatRow,
-  Button, Card, Chip, ChipGroup, Crease, Row, Screen, ScreenTitle,
-  Skeleton, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Row, Screen, ScreenTitle, Skeleton,
+  SkeletonGroup, SkeletonRows, StatRow, space, type, usePalette,
 } from '../../components/ui';
 
 
@@ -31,17 +29,23 @@ export default function PreferencesScreen() {
   const token = useSession((s) => s.token);
   const [prefs, setPrefs] = useState<Preference[]>([]);
   const [pool, setPool] = useState<{ total: number | null; steps: PoolStep[]; inPool: boolean } | null>(null);
-  const [loading, setLoading] = useState(true);
+  /**
+   * Whether the rules and the pool are here. Before they were, the page said "Must have
+   * · 0 / None. Good." and "Want · 0 / Nothing yet" to somebody with rules; and a failed
+   * read said the same, for good.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [busy, setBusy] = useState<string | null>(null);
   const [myWants, setMyWants] = useState<WantView[]>([]);
 
   const load = useCallback(async () => {
     if (!token) return;
     const [pr, po, wa] = await Promise.all([getPreferences(token), getPool(token), getWants(token)]);
-    setPrefs(pr?.preferences ?? []);
-    setPool(po);
-    setMyWants(wa?.wants ?? []);
-    setLoading(false);
+    if (!pr) { setStatus((s) => (s === 'ready' ? s : 'failed')); return; }
+    setPrefs(pr.preferences ?? []);
+    if (po) setPool(po);
+    if (wa) setMyWants(wa.wants ?? []);
+    setStatus('ready');
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
@@ -81,10 +85,20 @@ export default function PreferencesScreen() {
       <ScreenTitle title="Looking for" subtitle="Only must-haves remove anybody. Everything else just ranks." />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
+        {status === 'loading' ? (
+          <SkeletonGroup label="Loading what you are looking for" style={{ gap: space.lg }}>
+            <Card>
+              <Skeleton height={12} width="45%" />
+              <Skeleton height={34} width="40%" />
+              <Skeleton height={14} width="65%" />
+            </Card>
+            <Card><Skeleton height={12} width="30%" /><SkeletonRows count={2} /></Card>
+            <Card><Skeleton height={12} width="25%" /><SkeletonRows count={3} /></Card>
+          </SkeletonGroup>
+        ) : status === 'failed' ? (
+          <LoadFailed what="what you are looking for" onRetry={() => { setStatus('loading'); void load(); }} />
+        ) : (<>
         <Card label="Who your agent can reach">
-          {loading ? (
-            <Skeleton height={40} width="50%" />
-          ) : (
             <>
               <Text style={[type.display, { color: pool && isUnder20(pool.total) ? p.warning : p.text }]}>
                 {countLabel(pool?.total)}
@@ -118,7 +132,6 @@ export default function PreferencesScreen() {
                 </Text>
               )}
             </>
-          )}
         </Card>
 
         {/* Each want beside the question the other person answers (2026-09-26). A
@@ -191,6 +204,7 @@ export default function PreferencesScreen() {
           Must-haves come from your cards. Your agent never adds one by itself: what you
           say in chat is checked with you first.
         </Text>
+        </>)}
       </View>
     </Screen>
   );

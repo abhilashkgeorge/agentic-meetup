@@ -21,7 +21,8 @@ import { ageRangeDefault, parseAgeRange, rangeFromText } from './age-range';
 import { AgeRangeInput, type AgeRangeText } from './age-range-input';
 import { DistanceStep, saveDistance, type DistanceChoice } from '../distance/distance-step';
 import {
-  Button, Chip, ChipGroup, Field, Header, Screen, space, type, usePalette,
+  Button, Chip, ChipGroup, Field, Header, LoadFailed, Screen, SkeletonBlock, SkeletonChips,
+  SkeletonGroup, radius, space, type, usePalette,
 } from '../../components/ui';
 
 export default function EditBasic() {
@@ -38,10 +39,19 @@ export default function EditBasic() {
   /** The distance map's choice, when this is the distance editor. */
   const [distance, setDistance] = useState<DistanceChoice | null>(null);
 
+  /**
+   * Whether the current answer is here. Until it was, the editor showed blank chips or an
+   * empty box that the answer then dropped into -- over anything already typed -- and Save
+   * could store a blank over an answer nobody had seen. The distance map loads its own.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
+
   // What it already says, so the screen opens on the current answer rather than blank.
   const load = useCallback(async () => {
     if (!token || !field) return;
     const k = await getKnowledge(token);
+    if (!k) { setStatus('failed'); return; }
+    setStatus('ready');
     const mine = (k?.knows ?? []).filter((f) => f.predicate === field.key);
     // The age range opens on the stored range, or -- when there is none -- on the same
     // own-age pre-fill setup offers, so this screen never opens on two blank boxes for
@@ -70,7 +80,8 @@ export default function EditBasic() {
 
   const value = field.kind === 'one' || field.kind === 'many' ? chosen : text.trim();
   const parsedRange = field.kind === 'range' ? parseAgeRange(range.min, range.max) : null;
-  const ready = field.kind === 'distance'
+  const ready = (status !== 'ready' && field.kind !== 'distance') ? false
+    : field.kind === 'distance'
     ? distance !== null
     : field.kind === 'range'
     ? parsedRange !== null
@@ -135,6 +146,21 @@ export default function EditBasic() {
 
       {field.kind === 'distance' ? (
         <DistanceStep detect={false} onChange={setDistance} />
+      ) : status === 'failed' ? (
+        <LoadFailed what="your answer" onRetry={() => { setStatus('loading'); void load(); }} />
+      ) : status === 'loading' ? (
+        <SkeletonGroup label="Loading your answer">
+          {field.kind === 'range' ? (
+            <View style={{ flexDirection: 'row', gap: space.md }}>
+              <SkeletonBlock height={56} width="45%" radius={radius.md} />
+              <SkeletonBlock height={56} width="45%" radius={radius.md} />
+            </View>
+          ) : field.options ? (
+            <SkeletonChips count={Math.min(6, field.options.length)} />
+          ) : (
+            <SkeletonBlock height={52} radius={radius.md} />
+          )}
+        </SkeletonGroup>
       ) : field.kind === 'range' ? (
         <AgeRangeInput value={range} onChange={setRange} />
       ) : field.options ? (

@@ -5,7 +5,7 @@ Both are for the **reviewer** only: an account listed in `ADMIN_USER_IDS`. For a
 ([server/src/api/admin.ts:44] `return admins().has(ctx.userId) ? ctx : null;`,
 [server/src/env.ts:190] `ADMIN_USER_IDS: z.string().default(''),`).
 The way in: YOU → Manage → Settings → "Help and safety" → "Numbers" ("How far matches get, real people only")
-([app/src/features/settings/settings-screen.tsx:274] `<Row title="Numbers" subtitle="How far matches get, real people only"`).
+([app/src/features/settings/settings-screen.tsx:294] `<Row title="Numbers" subtitle="How far matches get, real people only"`).
 
 ### At a glance
 
@@ -32,8 +32,8 @@ A **pair** counts only when both people are real and the round has finished
 ### 11.2 The numbers, top to bottom
 
 Title "Numbers", "Real people only"; card "HOW FAR MATCHES GET"; counts only, no percentages
-([app/src/features/admin/funnel-screen.tsx:32] `<ScreenTitle title="Numbers" subtitle="Real people only" />`,
-[app/src/features/admin/funnel-screen.tsx:36] `<Card label="HOW FAR MATCHES GET">`):
+([app/src/features/admin/funnel-screen.tsx:39] `<ScreenTitle title="Numbers" subtitle="Real people only" />`,
+[app/src/features/admin/funnel-screen.tsx:47] `<Card label="HOW FAR MATCHES GET">`):
 
 | Row | Counts | Code |
 |---|---|---|
@@ -42,11 +42,11 @@ Title "Numbers", "Real people only"; card "HOW FAR MATCHES GET"; counts only, no
 | First message | Introduced pairs with at least one message | [server/migrations/0070_founder_funnel.sql:40] `AND EXISTS (SELECT 1 FROM messages m WHERE m.rendezvous_id = x.id))::int,` |
 | Date proposed | Pairs where someone tapped "Propose this date" | [server/migrations/0070_founder_funnel.sql:42] `m.kind = 'date_idea'` |
 | Met | Pairs where either person said yes to "Did you two meet up?" | [server/migrations/0070_founder_funnel.sql:45] `OR EXISTS (SELECT 1 FROM date_checkins c WHERE c.rendezvous_id = x.id AND c.met)` |
-| People | Real people, including those still setting up | [app/src/features/admin/funnel-screen.tsx:42] `<Row title="People" value={String(f.people)} />` |
+| People | Real people, including those still setting up | [app/src/features/admin/funnel-screen.tsx:53] `<Row title="People" value={String(f.people)} />` |
 | Expired, nobody answered | Pairs that ran out of time | [server/migrations/0070_founder_funnel.sql:46] `(SELECT count(*) FROM pairs WHERE status = 'expired')::int` |
 
 Footer: "Invented people, test accounts and anybody who never signed in on a phone are left out. Met counts either
-check-in." ([app/src/features/admin/funnel-screen.tsx:46] `Invented people, test accounts and anybody who never signed in on a phone are left out.`).
+check-in." ([app/src/features/admin/funnel-screen.tsx:57] `Invented people, test accounts and anybody who never signed in on a phone are left out.`).
 
 **Today's values** on the development database (queried 2026-09-28): People 11; Matches 0; every later step 0.
 Of the 11, 4 are ready to be sent out. The pool also holds 5,008 practice profiles, which these numbers leave out.
@@ -66,8 +66,8 @@ Of the 11, 4 are ready to be sent out. The pool also holds 5,008 practice profil
 - **What is shown:** card "WANTS WITH NO QUESTION YET": the 10 most common topic words ("theatre · 2 people"),
   then up to 10 whole wants that two or more people share, most people first; "Every want so far fits a
   question." when empty; footer "A want only one person has shows as its topic, never their words."
-  ([app/src/features/admin/funnel-screen.tsx:51] `<Card label="WANTS WITH NO QUESTION YET">`,
-  [app/src/features/admin/funnel-screen.tsx:58] `A want only one person has shows as its topic, never their words.`).
+  ([app/src/features/admin/funnel-screen.tsx:62] `<Card label="WANTS WITH NO QUESTION YET">`,
+  [app/src/features/admin/funnel-screen.tsx:69] `A want only one person has shows as its topic, never their words.`).
 - **Why:** to tell the founder which situation questions to add next. It measures demand, not accuracy.
 
 ### 11.4 The want-check accuracy test (not in the app)

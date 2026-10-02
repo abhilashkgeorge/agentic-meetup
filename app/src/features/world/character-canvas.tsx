@@ -30,12 +30,13 @@
  */
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { ActivityIndicator, PanResponder, View } from 'react-native';
+import { PanResponder, View } from 'react-native';
 import * as THREE from 'three';
 import { lookKey, type Look } from '@clone/shared';
 import { loadGpuCrowd, type CrowdFrame, type GpuCrowd } from './crowd-gpu';
 import { FRAMING, type Focus } from './framing';
 import { honourSubDataRanges } from './gl-subdata';
+import { FigureSkeleton } from '../look/figure-skeleton';
 
 export type { Focus };
 
@@ -94,9 +95,10 @@ export function CharacterCanvas({
         <Figure look={look} background={background} focus={focus} yaw={yaw} clock={clock}
                 onReady={() => setReady(true)} onFail={onFail} />
       </Canvas>
+      {/* The figure's shape while its model loads: a spinner on an empty well, before. */}
       {!ready && (
         <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator />
+          <FigureSkeleton height={height ?? 240} />
         </View>
       )}
     </View>

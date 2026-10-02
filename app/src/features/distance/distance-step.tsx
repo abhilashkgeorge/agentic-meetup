@@ -24,7 +24,8 @@ import { getMyPlace, setEssential } from '../../lib/api';
 import { pointFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Chip, Field, Header, Row, Screen, space, type, usePalette,
+  Button, Card, Chip, Field, Header, LoadFailed, Row, Screen, Skeleton, SkeletonBlock, SkeletonGroup,
+  radius, space, type, usePalette,
 } from '../../components/ui';
 import { DistanceMap } from './distance-map';
 import {
@@ -74,6 +75,13 @@ export function DistanceStep({ detect, onChange }: {
   const [typed, setTyped] = useState('');
   const [note, setNote] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  /**
+   * Where you are could not be had. Until then the step said "No place yet", "Up to 25 km"
+   * and "Choose a place below" over a map of India -- to somebody whose place was on its
+   * way -- and a failed read said the same for good.
+   */
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!token) return;
@@ -81,6 +89,8 @@ export function DistanceStep({ detect, onChange }: {
     void (async () => {
       const place = await getMyPlace(token);
       if (!alive) return;
+      if (!place) { setFailed(true); return; }
+      setFailed(false);
       const had = place ? spotOf(place) : null;
       let start = had;
       // Setup only, and only a sharper point in the SAME city: never moves somebody
@@ -100,7 +110,7 @@ export function DistanceStep({ detect, onChange }: {
       setReady(true);
     })();
     return () => { alive = false; };
-  }, [token, detect]);
+  }, [token, detect, attempt]);
 
   useEffect(() => {
     if (ready) onChange({ from, spot, km, anywhere });
@@ -142,6 +152,23 @@ export function DistanceStep({ detect, onChange }: {
   };
 
   const results = searchSpots(typed);
+
+  if (failed) {
+    return <LoadFailed what="where you are" onRetry={() => { setFailed(false); setAttempt((a) => a + 1); }} />;
+  }
+  if (!ready) {
+    // The step's own shape while your place is on its way: the map, how far, where.
+    return (
+      <SkeletonGroup label="Loading the map" style={{ gap: space.md }}>
+        <SkeletonBlock height={mapHeight} radius={radius.lg} />
+        <Skeleton height={18} width="40%" />
+        <Skeleton height={28} />
+        <Skeleton height={18} width="60%" />
+        <SkeletonBlock height={52} radius={radius.xl} />
+      </SkeletonGroup>
+    );
+  }
+
   return (
     <View style={{ gap: space.md }}>
       <DistanceMap token={token ?? null} spot={spot} km={km} anywhere={anywhere} height={mapHeight}

@@ -22,7 +22,7 @@ import { Image, type ImageStyle, type StyleProp } from 'react-native';
 import { dataUriOf } from '../../lib/data-uri';
 import { getApiBase } from '../../lib/env';
 import { useSession } from '../../store/session';
-import { Avatar } from '../../components/ui';
+import { Avatar, SkeletonBlock } from '../../components/ui';
 
 /** Data URIs by `${photoId}:${size}`. Small: a thumb is a couple of kilobytes. */
 const cache = new Map<string, string>();
@@ -72,24 +72,31 @@ async function load(
   return work;
 }
 
-/** The photo as something `Image` will render, or nothing while it is on its way. */
+/**
+ * The photo as something `Image` will render: the data once it is here, undefined while
+ * it is on its way (so the screen can show a placeholder breathing where it will be),
+ * null when there is no photo to load or it could not be had -- never a placeholder
+ * breathing for ever over a photo that is not coming.
+ */
 export function usePhoto(
   userId: string | null | undefined,
   photoId: string | null | undefined,
   size: 'full' | 'thumb' = 'thumb',
-): string | undefined {
+): string | null | undefined {
   const token = useSession((s) => s.token);
   const key = photoId ? `${photoId}:${size}` : '';
-  const [data, setData] = useState<string | undefined>(() => cache.get(key));
+  const [data, setData] = useState<string | null | undefined>(() => (photoId ? cache.get(key) : null));
 
   useEffect(() => {
+    // A different photo starts from what is known of IT, not from the last one's picture.
+    setData(photoId ? cache.get(key) : null);
     if (!token || !userId || !photoId) return;
     let alive = true;
     void load(token, userId, photoId, size).then((uri) => {
-      if (alive && uri) setData(uri);
+      if (alive) setData(uri ?? null);
     });
     return () => { alive = false; };
-  }, [token, userId, photoId, size]);
+  }, [token, userId, photoId, size, key]);
 
   return data;
 }
@@ -105,7 +112,8 @@ export function PhotoAvatar({
   ring?: boolean;
 }) {
   const uri = usePhoto(userId, photoId, 'thumb');
-  return <Avatar name={name} size={size} ring={ring} source={uri ? { uri } : undefined} />;
+  return <Avatar name={name} size={size} ring={ring} source={uri ? { uri } : undefined}
+                 loading={Boolean(photoId) && uri === undefined} />;
 }
 
 /** A photo at full size, for the reveal. */
@@ -119,6 +127,9 @@ export function Portrait({
   label?: string;
 }) {
   const uri = usePhoto(userId, photoId, size);
+  // On its way: a placeholder breathing where it will be. It used to be nothing at all,
+  // an empty well on the reveal and the photos screen.
+  if (uri === undefined) return <SkeletonBlock height="100%" radius={0} />;
   if (!uri) return null;
   return (
     <Image source={{ uri }} style={style} resizeMode="cover" accessibilityLabel={label} />

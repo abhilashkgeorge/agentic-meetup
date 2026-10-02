@@ -24,9 +24,8 @@ import { useSession } from '../../store/session';
 import { useTheme } from '../../store/theme';
 import { getApiBase } from '../../lib/env';
 import {
-  Chip, ChipGroup,
-  Header,
-  Button, Card, Row, Screen, ScreenTitle, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Header, LoadFailed, Row, Screen, ScreenTitle, Skeleton, SkeletonBlock,
+  SkeletonGroup, radius, space, type, usePalette,
 } from '../../components/ui';
 
 export default function SettingsScreen() {
@@ -52,12 +51,19 @@ export default function SettingsScreen() {
     void getFps30().then(setFps30State);
   }, []);
 
+  /**
+   * Whether the invites are here. Until they were, the card said "0 left" with its button
+   * off -- to somebody with three to give -- and a failed read said the same for good.
+   */
+  const [invitesStatus, setInvitesStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const load = useCallback(async () => {
     if (!token) return;
     const r = await getInvites(token);
-    setInvites(r?.invites ?? []);
-    setRemaining(r ? r.remaining : 0);
-    if (r?.perPerson) setPerPerson(r.perPerson);
+    if (!r) { setInvitesStatus((s) => (s === 'ready' ? s : 'failed')); return; }
+    setInvites(r.invites ?? []);
+    setRemaining(r.remaining);
+    if (r.perPerson) setPerPerson(r.perPerson);
+    setInvitesStatus('ready');
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
@@ -187,6 +193,7 @@ export default function SettingsScreen() {
       <ScreenTitle title="Settings" />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
+        {invitesStatus === 'ready' ? (
         <Card label={inviteCard(remaining, perPerson).label}>
           <Text style={[type.callout, { color: p.textSecondary }]}>
             {inviteCard(remaining, perPerson).line}
@@ -199,6 +206,19 @@ export default function SettingsScreen() {
           <Button label="Make an invite" variant="primary" onPress={() => void invite()}
                   disabled={!inviteCard(remaining, perPerson).canMake} loading={busy} />
         </Card>
+        ) : (
+          <Card>
+            {invitesStatus === 'loading' ? (
+              <SkeletonGroup label="Loading your invites">
+                <Skeleton height={12} width="35%" />
+                <Skeleton height={14} width="80%" />
+                <SkeletonBlock height={52} radius={radius.xl} />
+              </SkeletonGroup>
+            ) : (
+              <LoadFailed what="your invites" onRetry={() => { setInvitesStatus('loading'); void load(); }} />
+            )}
+          </Card>
+        )}
 
         {/* Appearance first: it is the setting people come here to change, and it is
             the only one whose effect is visible the instant it is chosen. */}

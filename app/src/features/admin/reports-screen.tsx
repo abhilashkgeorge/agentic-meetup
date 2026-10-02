@@ -15,7 +15,8 @@ import { Alert, Text, View } from 'react-native';
 import { decideReport, getAdminReports, getReportChat, type AdminReport, type ReportChatLine } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Button, ButtonRow, Card, Chip, ChipGroup, Empty, Header, Screen, ScreenTitle, space, type, usePalette,
+  Button, ButtonRow, Card, Chip, ChipGroup, Empty, Header, LoadFailed, Screen, ScreenTitle,
+  SkeletonBlock, SkeletonCard, SkeletonGroup, radius, space, type, usePalette,
 } from '../../components/ui';
 import { chatButtonLabel, chatLineLabel, contextLine, outcomeLabel, reasonLabel, reportedLabel } from './queue';
 
@@ -27,11 +28,15 @@ export default function ReportsScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   // The chat kept with a report (server 0080), once the reviewer opens it.
   const [chats, setChats] = useState<Record<string, ReportChatLine[] | undefined>>({});
+  /** The queue could not be had: said, never "Nothing to review" (it was, for a failure). */
+  const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
+    setFailed(false);
     const r = await getAdminReports(token, all);
-    setReports(r?.reports ?? []);
+    if (!r) { setFailed(true); return; }
+    setReports(r.reports ?? []);
   }, [token, all]);
   useEffect(() => { void load(); }, [load]);
 
@@ -65,6 +70,12 @@ export default function ReportsScreen() {
           <Chip label="Open" selected={!all} onPress={() => setAll(false)} />
           <Chip label="All" selected={all} onPress={() => setAll(true)} />
         </ChipGroup>
+        {!reports && !failed && (
+          <SkeletonGroup label="Loading the reports" style={{ gap: space.lg }}>
+            {[0, 1].map((i) => <Card key={i}><SkeletonCard /><SkeletonBlock height={44} radius={radius.xl} /></Card>)}
+          </SkeletonGroup>
+        )}
+        {!reports && failed && <LoadFailed what="the reports" onRetry={() => void load()} />}
         {reports && reports.length === 0 && (
           <Empty title="Nothing to review" body="When somebody reports somebody, it shows up here." />
         )}

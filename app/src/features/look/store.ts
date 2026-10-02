@@ -19,6 +19,11 @@ interface LookStore {
   owned: ReadonlySet<string>;
   balance: number;
   loaded: boolean;
+  /**
+   * The first load could not be had. Until a look is loaded the builder shows its shape,
+   * not the default character -- one Save on that used to put the default over the real one.
+   */
+  failed: boolean;
   load: (token: string) => Promise<void>;
   setLook: (look: Look) => void;
   /** Drop the draft: back to what was last loaded or saved. */
@@ -34,15 +39,16 @@ export const useLook = create<LookStore>((set, get) => ({
   owned: NONE,
   balance: 0,
   loaded: false,
+  failed: false,
   load: async (token) => {
     const r = await getLook(token);
-    if (!r) return;                                  // offline keeps the last picture
+    if (!r) { if (!get().loaded) set({ failed: true }); return; }   // offline keeps the last picture
     // CLAMPED ON THE WAY IN. An app that has been updated before the server behind it
     // gets a look with parts it has never heard of and none of the ones it needs --
     // and `look.legs.toString()` on an undefined is a red screen over a pair of
     // trousers. `clampLook` is the same function the server uses on stored rows.
     const look = clampLook(r.look);
-    set({ look, kept: look, saved: r.saved, owned: new Set(r.owned), balance: r.balance, loaded: true });
+    set({ look, kept: look, saved: r.saved, owned: new Set(r.owned), balance: r.balance, loaded: true, failed: false });
   },
   setLook: (look) => set({ look }),
   discard: () => set({ look: get().kept }),

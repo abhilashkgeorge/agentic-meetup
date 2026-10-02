@@ -81,34 +81,3 @@ export function Stats({ items }: { items: { value: string; label: string }[] }) 
     </View>
   );
 }
-
-/**
- * A loading placeholder shaped like the thing that is coming.
- *
- * A spinner says "wait"; a skeleton says "a list of four things is arriving", which is
- * the difference between a screen that feels slow and one that feels broken.
- */
-export function Skeleton({ height = 16, width = '100%' }: { height?: number; width?: number | `${number}%` }) {
-  const p = usePalette();
-  return (
-    <View
-      style={{
-        height,
-        width,
-        borderRadius: height / 2,
-        backgroundColor: p.sunken,
-        opacity: 0.7,
-      }}
-    />
-  );
-}
-
-export function SkeletonCard() {
-  return (
-    <View style={{ gap: space.sm }}>
-      <Skeleton height={12} width="40%" />
-      <Skeleton height={20} width="85%" />
-      <Skeleton height={14} width="60%" />
-    </View>
-  );
-}

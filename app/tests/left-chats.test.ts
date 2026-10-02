@@ -39,7 +39,8 @@ describe('a chat whose other person left', () => {
 
   it('shows each held chat in the list, and tapping it opens the report', () => {
     const screen = code('features/dm/conversations-screen.tsx');
-    expect(screen).toMatch(/setLeft\(list\?\.left \?\? \[\]\)/);
+    // Read once the list is here (a failed read keeps what is on screen, since 2026-10-02).
+    expect(screen).toMatch(/setLeft\(list\.left \?\? \[\]\)/);
     expect(screen).toMatch(/\{left\.map\(\(l, i\) => \(/);
     expect(screen).toMatch(/subtitle=\{LEFT_LINE\}/);
     expect(screen).toMatch(/onPress=\{\(\) => openLeft\(l\)\}/);

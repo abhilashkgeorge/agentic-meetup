@@ -32,9 +32,9 @@ used only to **extract** facts from what a person typed, to **point** at their o
   ([server/src/onboarding/questions.ts:433] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
-  ([app/src/features/profile/profile-screen.tsx:132] `<Card label="Your agent heard something">`,
-  [app/src/features/profile/profile-screen.tsx:138] `Is that right? Nothing changes until you say so.`,
-  [app/src/features/profile/profile-screen.tsx:141] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
+  ([app/src/features/profile/profile-screen.tsx:200] `<Card label="Your agent heard something">`,
+  [app/src/features/profile/profile-screen.tsx:206] `Is that right? Nothing changes until you say so.`,
+  [app/src/features/profile/profile-screen.tsx:209] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
 - **If the card cannot read the words** (since 2026-09-29): a Yes on words a card has no answer for -- "socially"
   for how often you drink -- or on a place with no map point keeps the card's answer, drops the words, and says
   "Your card answer stays: Sometimes. If it has changed, change it on the card." Before, the Yes replaced the
@@ -99,7 +99,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   ([server/src/matching/brief.ts:109] `return TAPPED_PREDICATES.has(predicate) && !QUOTABLE.has(predicate) ? {} : { disclosure: 'matchable_only' };`).
 - **Where the question appears:** the YOU tab, one at a time ("Your agent heard something"), and "What it
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
-  that.") ([app/src/features/knowledge/you-screen.tsx:112] `<Card label="Is this right?">`,
+  that.") ([app/src/features/knowledge/you-screen.tsx:117] `<Card label="Is this right?">`,
   [server/src/api/profile.ts:256] `message: verdict === 'yes' ? 'Good. It believes you now.' : 'Dropped. It will not use that.',`).
 - **Before a Yes**, a held fact changes nothing in matching, cards, sheets, talk or want checks; the
   person's own clone still sees the sentence in its recent chat. Since 2026-09-29 that includes the
@@ -119,7 +119,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **Where:** a chip "A question for you" in the town. For a bank question: "Other agents asked yours this"
   … "Answer it, and next time it can say what you said.", with "Save and share" / "Not now"
   ([app/src/features/question/question-state.ts:10] `Answer it, and next time it can say what you said.`,
-  [app/src/features/question/question-screen.tsx:104] `<Button label="Save and share" variant="primary" loading={busy}`).
+  [app/src/features/question/question-screen.tsx:120] `<Button label="Save and share" variant="primary" loading={busy}`).
   For a card or tied question it opens that one question in the interview.
 - **What an answer writes:** a shareable fact in the person's own words, put straight on their answer
   sheet. An answer naming a private topic or a contact detail is kept but never said: "Those are only ever

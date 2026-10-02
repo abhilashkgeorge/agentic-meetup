@@ -15,7 +15,8 @@ import {
 } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Field, Header, Screen, ScreenTitle, Skeleton, space, type, usePalette,
+  Button, Card, Field, Header, LoadFailed, Screen, ScreenTitle, Skeleton, SkeletonBlock, SkeletonGroup,
+  radius, space, type, usePalette,
 } from '../../components/ui';
 import { canSave, contactNote, tooShort } from '../stories/stories-state';
 import { askReason, cardReason, isAskQuestion, questionReason, unusedNote } from './question-state';
@@ -31,10 +32,16 @@ export default function QuestionScreen() {
   // Saved, but never to be repeated: said, and the form stays shut.
   const [unused, setUnused] = useState<string | null>(null);
 
+  /**
+   * The question could not be had. It used to set "no question", and the screen said
+   * "Nothing for now" under "Cannot reach the server" -- an empty state for a failure.
+   */
+  const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
+    setFailed(false);
     const r = await getQuestionOfDay(token);
-    if (!r) { setNote('Cannot reach the server.'); setQ(null); return; }
+    if (!r) { setFailed(true); return; }
     setQ(r.question);
     setLimits({ min: r.min, max: r.max });
   }, [token]);
@@ -67,8 +74,17 @@ export default function QuestionScreen() {
       <Header title="" onBack={() => router.back()} />
       <ScreenTitle title="A question for you" />
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
-        {q === undefined ? (
-          <Skeleton height={120} width="100%" />
+        {failed && q === undefined ? (
+          <LoadFailed what="today's question" onRetry={() => void load()} />
+        ) : q === undefined ? (
+          <SkeletonGroup label="Loading today's question">
+            <Card>
+              <Skeleton height={12} width="30%" />
+              <Skeleton height={22} width="85%" />
+              <Skeleton height={14} width="60%" />
+              <SkeletonBlock height={52} radius={radius.xl} />
+            </Card>
+          </SkeletonGroup>
         ) : unused ? (
           <Card>
             <Text style={[type.body, { color: p.text }]}>{unused}</Text>

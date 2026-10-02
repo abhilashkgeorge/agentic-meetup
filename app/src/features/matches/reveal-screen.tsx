@@ -23,8 +23,8 @@ import { decideMatch, getPhotosOf, getReveal, type Photo, type Reveal } from '..
 import { Portrait } from '../photos/photo';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Chip, ChipGroup, Crease, Header, Screen, Skeleton, Surface,
-  radius, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Screen, Skeleton, SkeletonBlock, SkeletonChips,
+  SkeletonGroup, Surface, radius, space, type, usePalette,
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
 import { SafetySheet } from '../safety/safety-sheet';
@@ -50,18 +50,28 @@ export default function RevealScreen() {
   // The person's own character, if the town has loaded it: for the moment below.
   const myLook = useWorld((s) => s.world?.me.look ?? null);
 
-  useEffect(() => {
-    void (async () => {
-      if (!token || !id) return;
-      const reveal = await getReveal(token, String(id));
-      setThem(reveal);
-      if (reveal && !reveal.waiting && reveal.userId) {
-        setOwnerId(reveal.userId);
-        const theirs = await getPhotosOf(token, reveal.userId);
-        setPics(theirs?.photos ?? []);
-      }
-    })();
+  /**
+   * Whether who they are -- and their photos -- are here. Until they were, this screen
+   * said "No photos yet / They have not added any" over a photo well, and its two answers
+   * already worked: somebody could share their profile, or turn somebody down, before
+   * seeing who it was. A photo read that fails is a failed load, not "no photos": the
+   * decision is made on what is shown here.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const load = useCallback(async () => {
+    if (!token || !id) return;
+    const reveal = await getReveal(token, String(id));
+    if (!reveal) { setStatus('failed'); return; }
+    if (!reveal.waiting && reveal.userId) {
+      const theirs = await getPhotosOf(token, reveal.userId);
+      if (!theirs) { setStatus('failed'); return; }
+      setOwnerId(reveal.userId);
+      setPics(theirs.photos ?? []);
+    }
+    setThem(reveal);
+    setStatus('ready');
   }, [token, id]);
+  useEffect(() => { void load(); }, [load]);
 
   const answer = useCallback(
     async (yes: boolean) => {
@@ -119,6 +129,30 @@ export default function RevealScreen() {
       <Screen center footer={<Button label="Back to matches" onPress={() => router.back()} />}>
         <Text style={[type.display, { color: p.text, textAlign: 'center' }]}>Shared</Text>
         <Text style={[type.body, { color: p.textSecondary, textAlign: 'center' }]}>{WORDS.youShared}</Text>
+      </Screen>
+    );
+  }
+
+  // Loading: the shape of a profile, and no answers to give until it is here.
+  if (status !== 'ready') {
+    return (
+      <Screen padded={false}>
+        <Header onBack={() => router.back()} />
+        <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
+          {status === 'loading' ? (
+            <SkeletonGroup label="Loading their profile" style={{ gap: space.lg }}>
+              <SkeletonBlock height={CARD_W * 4 / 3} width={CARD_W} radius={radius.xl} />
+              <Card>
+                <Skeleton height={12} width="35%" />
+                <Skeleton height={24} width="55%" />
+                <Skeleton height={14} width="40%" />
+                <SkeletonChips count={3} />
+              </Card>
+            </SkeletonGroup>
+          ) : (
+            <LoadFailed what="their profile" onRetry={() => { setStatus('loading'); void load(); }} />
+          )}
+        </View>
       </Screen>
     );
   }
@@ -221,9 +255,7 @@ export default function RevealScreen() {
           </Surface>
         )}
 
-        {!them ? (
-          <Skeleton height={120} />
-        ) : (
+        {!them ? null : (
           <Card label="Who they are">
             <Text style={[type.title, { color: p.text }]}>
               {them.name}{them.age ? `, ${them.age}` : ''}

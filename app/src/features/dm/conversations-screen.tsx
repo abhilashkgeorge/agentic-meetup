@@ -20,7 +20,7 @@ import { QUIET_LINE } from './date-idea';
 import { LEFT_LINE, leftNotice } from './left';
 import { SafetySheet } from '../safety/safety-sheet';
 import {
-  Crease, Empty, Row, Screen, ScreenTitle, Surface,
+  Crease, Empty, LoadFailed, Row, Screen, ScreenTitle, SkeletonGroup, SkeletonRows, Surface,
   radius, space, type, usePalette,
 } from '../../components/ui';
 
@@ -34,16 +34,27 @@ export default function ConversationsScreen() {
   // Chats whose other person deleted their account (server 0082): "They left".
   const [left, setLeft] = useState<LeftChatRow[]>([]);
   const [reporting, setReporting] = useState<LeftChatRow | null>(null);
+  /**
+   * Whether the list is here. NOT "the list is empty": before the first answer the screen
+   * said "No conversations yet" to somebody with three chats, for as long as the network
+   * took. A list kept from earlier counts as here (it is shown at once and refreshed).
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>(
+    () => (useDm.getState().conversations.length > 0 ? 'ready' : 'loading'));
 
   const load = useCallback(async () => {
     if (!token) return;
     const [list, matches] = await Promise.all([getConversations(token), getMatches(token)]);
+    // A failed read keeps what is on screen. It used to put an empty list in its place,
+    // which read as "no conversations" until the next try.
+    if (!list) { setStatus((s) => (s === 'ready' ? s : 'failed')); return; }
     // Our own id, so a pushed message can be told apart from one of theirs. History
     // rows carry `mine`; live events carry only a sender.
-    if (list?.me) setMe(list.me);
-    setConversations(list?.conversations ?? []);
-    setLeft(list?.left ?? []);
-    setWaiting((matches?.matches ?? []).filter((m) => m.waitingOnYou).length);
+    if (list.me) setMe(list.me);
+    setConversations(list.conversations);
+    setLeft(list.left ?? []);
+    if (matches) setWaiting(matches.matches.filter((m) => m.waitingOnYou).length);
+    setStatus('ready');
   }, [token, setConversations, setMe]);
 
   // Re-read on every focus, not once on mount. Coming back from a conversation with
@@ -76,7 +87,15 @@ export default function ConversationsScreen() {
           </Surface>
         )}
 
-        {conversations.length === 0 && left.length === 0 ? (
+        {status === 'loading' ? (
+          <Surface radius={radius.lg} style={{ padding: space.screen }}>
+            <SkeletonGroup label="Loading your chats">
+              <SkeletonRows count={4} avatar={52} />
+            </SkeletonGroup>
+          </Surface>
+        ) : status === 'failed' ? (
+          <LoadFailed what="your chats" onRetry={() => { setStatus('loading'); void load(); }} />
+        ) : conversations.length === 0 && left.length === 0 ? (
           <Empty
             title="No conversations yet"
             body="When you and someone else both say yes, the conversation opens here. Nobody can message you before that."

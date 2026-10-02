@@ -18,7 +18,8 @@ import { Text, View } from 'react-native';
 import { getStories, saveStory, type Story } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Field, Header, Screen, ScreenTitle, Skeleton, space, type, usePalette,
+  Button, Card, Field, Header, LoadFailed, Screen, ScreenTitle, Skeleton, SkeletonBlock, SkeletonGroup,
+  radius, space, type, usePalette,
 } from '../../components/ui';
 import { canSave, contactNote, tooShort } from './stories-state';
 
@@ -30,11 +31,14 @@ export default function StoriesScreen({ onboarding = false }: { onboarding?: boo
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  /** The questions could not be had: said with a way to try again, never a placeholder for good. */
+  const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
+    setFailed(false);
     const r = await getStories(token);
-    if (!r) { setNote('Cannot reach the server.'); return; }
+    if (!r) { setFailed(true); return; }
     setStories(r.stories);
     setLimits({ min: r.min, max: r.max });
     // A draft already typed survives a reload; an untouched one shows what is saved.
@@ -68,8 +72,19 @@ export default function StoriesScreen({ onboarding = false }: { onboarding?: boo
           Answer any you like. Tip: tap the mic on your keyboard to talk instead of type.
         </Text>
 
-        {!stories ? (
-          <Skeleton height={120} width="100%" />
+        {!stories && failed ? (
+          <LoadFailed what="the questions" onRetry={() => void load()} />
+        ) : !stories ? (
+          // The shape of what is coming: a few question cards, each a box to write in.
+          <SkeletonGroup label="Loading the questions" style={{ gap: space.lg }}>
+            {[0, 1, 2].map((i) => (
+              <Card key={i}>
+                <Skeleton height={16} width={i === 1 ? '60%' : '75%'} />
+                <Skeleton height={12} width="45%" />
+                <SkeletonBlock height={80} radius={radius.md} />
+              </Card>
+            ))}
+          </SkeletonGroup>
         ) : stories.map((s) => {
           const draft = drafts[s.id] ?? '';
           const saved = s.answer?.text ?? null;

@@ -486,9 +486,11 @@ export function QuestsSheet({ onClose }: { onClose: () => void }) {
 }
 
 /** How many of today's things to do are done, of how many. */
-export function useQuestsDone(): [number, number] {
+/** Today's count: done, of all -- and whether it is here yet (a "0/5" before it was is a wait, not a zero). */
+export function useQuestsDone(): [number, number, boolean] {
   const done = useParkLive((s) => s.quests?.done.length ?? 0);
-  return [done, PARK_QUESTS.length];
+  const known = useParkLive((s) => s.quests != null);
+  return [done, PARK_QUESTS.length, known];
 }
 
 const CHEER: Record<ParkQuestId, string> = {

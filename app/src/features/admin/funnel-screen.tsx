@@ -9,7 +9,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { getFunnel, getUnmatchedWants } from '../../lib/api';
 import { useSession } from '../../store/session';
-import { Card, Header, Row, Screen, ScreenTitle, Skeleton, space, type, usePalette } from '../../components/ui';
+import {
+  Card, Header, LoadFailed, Row, Screen, ScreenTitle, Skeleton, SkeletonGroup, SkeletonRows, space,
+  type, usePalette,
+} from '../../components/ui';
 import { funnelRows, gapRows, type Funnel } from './funnel';
 
 export default function FunnelScreen() {
@@ -17,9 +20,13 @@ export default function FunnelScreen() {
   const token = useSession((s) => s.token);
   const [f, setF] = useState<Funnel | null>(null);
   const [gaps, setGaps] = useState<Awaited<ReturnType<typeof getUnmatchedWants>>>(null);
+  /** The numbers could not be had: said, not a placeholder for good. */
+  const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
+    setFailed(false);
     const [fu, ga] = await Promise.all([getFunnel(token), getUnmatchedWants(token)]);
+    if (!fu) { setFailed(true); return; }
     setF(fu);
     setGaps(ga);
   }, [token]);
@@ -31,7 +38,11 @@ export default function FunnelScreen() {
       <Header title="" onBack={() => router.back()} />
       <ScreenTitle title="Numbers" subtitle="Real people only" />
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
-        {!f ? <Skeleton height={240} /> : (
+        {!f && failed ? <LoadFailed what="the numbers" onRetry={() => void load()} /> : !f ? (
+          <SkeletonGroup label="Loading the numbers">
+            <Card><Skeleton height={12} width="40%" /><SkeletonRows count={5} /></Card>
+          </SkeletonGroup>
+        ) : (
           <>
             <Card label="HOW FAR MATCHES GET">
               {rows.map((r, i) => (

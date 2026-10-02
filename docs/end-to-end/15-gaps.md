@@ -50,7 +50,7 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     every chat of somebody who deletes is held hidden for 30 days, for the other person to report: section 4.5.)
 8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
     again by everybody) and the Settings line now say what the code does
-    ([app/src/features/settings/settings-screen.tsx:299] `Nobody sees your photos or first name until you say yes to them.`).
+    ([app/src/features/settings/settings-screen.tsx:319] `Nobody sees your photos or first name until you say yes to them.`).
 9. **Closed on 2026-09-29: the matchmaker and the profile summaries.** The round's role could read every profile
     summary, written from all facts including private ones. It now has no access to that table at all; the one thing
     a round took from it -- a person's style note, for the agent conversations -- is read as that person, and only
@@ -89,7 +89,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.
 19. **Closed on 2026-09-29: a waiting card running out unseen.** The one waiting card on screen is the one that fades
     soonest, and "2 more waiting" says how many are behind it; each card also wakes the phone when it arrives and the
-    day it fades, once push is set up ([app/src/features/matches/matches-screen.tsx:329] `[...soonestFirst(matches.filter((m) => m.waitingOnYou)).slice(0, 1),`).
+    day it fades, once push is set up ([app/src/features/matches/matches-screen.tsx:354] `[...soonestFirst(matches.filter((m) => m.waitingOnYou)).slice(0, 1),`).
 20. **Check-in details.** "Not yet" is final. Closed on 2026-09-29: a Block from "Did you feel safe?" sends the unsafe
     answer first, and "Not sure" no longer counts toward "Confirmed by N people"
     ([app/src/features/dm/checkin-flow.ts:58] `export function blocked(f: Flow): Flow {`,

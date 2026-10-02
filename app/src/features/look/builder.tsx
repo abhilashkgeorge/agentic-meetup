@@ -25,7 +25,10 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { Animated, Easing, Pressable, ScrollView, Text, View } from 'react-native';
 import { itemAt, lockedIn, starterLookFor, type Look, type LookPart } from '@clone/shared';
 import { useSession } from '../../store/session';
-import { Button, radius, raised, space, sunk, type, usePalette } from '../../components/ui';
+import {
+  Button, LoadFailed, Skeleton, SkeletonBlock, SkeletonCircle, SkeletonGroup, radius, raised, space,
+  sunk, type, usePalette,
+} from '../../components/ui';
 import type { Focus } from '../world/framing';
 import { CharacterAvatar } from './character-avatar';
 import { PieceThumb } from './piece-thumb';
@@ -62,6 +65,8 @@ export function CharacterBuilder({
   const setLook = useLook((s) => s.setLook);
   const save = useLook((s) => s.save);
   const buy = useLook((s) => s.buy);
+  const loaded = useLook((s) => s.loaded);
+  const loadFailed = useLook((s) => s.failed);
 
   // The beard row comes and goes with the face, so the tabs follow the face.
   const tabs = useMemo(() => tabsFor(look), [look]);
@@ -126,6 +131,41 @@ export function CharacterBuilder({
         : r.error === 'offline' ? 'Cannot reach the server.' : 'That did not go through. Try again.');
     }
   };
+
+  // NOT THE DEFAULT CHARACTER WHILE YOURS IS ON ITS WAY. The builder drew the starter look,
+  // nothing owned and 0 points until the saved one arrived -- and Save in that moment put the
+  // starter over the character somebody had built.
+  if (!loaded) {
+    return (
+      <View style={[{ gap: space.md }, fill && { flex: 1 }]}>
+        {loadFailed ? (
+          <LoadFailed what="your character" onRetry={() => {
+            useLook.setState({ failed: false });
+            if (token) void useLook.getState().load(token);
+          }} />
+        ) : (
+          <SkeletonGroup label="Loading your character" style={[{ gap: space.md }, fill ? { flex: 1 } : {}]}>
+            <View style={fill ? { flex: 1, minHeight: 240 } : { height: STAGE }}>
+              <SkeletonBlock height="100%" radius={radius.xl} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 4, paddingVertical: space.xs }}>
+              {Array.from({ length: 7 }, (_, i) => (
+                <View key={i} style={{ flex: 1 }}><SkeletonBlock height={34} radius={radius.pill} /></View>
+              ))}
+            </View>
+            {[0, 1].map((r) => (
+              <View key={r} style={{ gap: space.sm }}>
+                <Skeleton height={12} width="25%" />
+                <View style={{ flexDirection: 'row', gap: space.sm }}>
+                  {Array.from({ length: 5 }, (_, i) => <SkeletonCircle key={i} size={60} />)}
+                </View>
+              </View>
+            ))}
+          </SkeletonGroup>
+        )}
+      </View>
+    );
+  }
 
   const first = locked[0];
   const rows = (

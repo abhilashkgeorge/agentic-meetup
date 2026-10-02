@@ -33,8 +33,8 @@ import { roundNote } from './round-note';
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import {
-  Button, Card, Crease, Empty, Screen, ScreenTitle, StatRow, Surface,
-  radius, space, type, usePalette,
+  Button, Card, Crease, Empty, LoadFailed, Screen, ScreenTitle, Skeleton, SkeletonBlock, SkeletonCard,
+  SkeletonGroup, StatRow, Surface, radius, space, type, usePalette,
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
 import { chatRows, exchangeRows, sayOnCard, sharedSaid, wantRowsView, type Said } from './exchange';
@@ -117,13 +117,22 @@ export default function MatchesScreen() {
   // The card whose Block-or-report sheet is open. A card names the match, never a
   // person: the server works out who the other half is.
   const [safetyFor, setSafetyFor] = useState<string | null>(null);
+  /**
+   * Whether the cards and the pool are here. Before the first answer the screen said
+   * "Nothing waiting" -- and "cannot go out yet, finish the bits above", with nothing
+   * above -- to somebody whose card was on its way. Once here, a failed refresh keeps
+   * what is on screen rather than emptying it.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
 
   const load = useCallback(async () => {
     if (!token) return;
     const [m, po] = await Promise.all([getMatches(token), getPool(token)]);
-    setMatches(m?.matches ?? []);
-    setRound(m?.round ?? null);
-    setPool(po);
+    if (!m) { setStatus((s) => (s === 'ready' ? s : 'failed')); return; }
+    setMatches(m.matches);
+    setRound(m.round ?? null);
+    if (po) setPool(po);
+    setStatus('ready');
   }, [token]);
 
   // RE-READ ON EVERY FOCUS, not once on mount. A tab stays mounted, so the setup flow
@@ -226,6 +235,22 @@ export default function MatchesScreen() {
       <ScreenTitle title="Matches" />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
+        {status === 'loading' && (
+          // The shape of what is coming: the pool card, the button, a card.
+          <SkeletonGroup label="Loading your matches" style={{ gap: space.lg }}>
+            <Card>
+              <Skeleton height={12} width="45%" />
+              <Skeleton height={34} width="40%" />
+              <Skeleton height={14} width="70%" />
+            </Card>
+            <SkeletonBlock height={52} radius={radius.xl} />
+            <Card><SkeletonCard /></Card>
+          </SkeletonGroup>
+        )}
+        {status === 'failed' && (
+          <LoadFailed what="your matches" onRetry={() => { setStatus('loading'); void load(); }} />
+        )}
+        {status === 'ready' && (<>
         {/* The agent cannot go out until it can answer the five questions the
             candidate query asks. Four out of five is the same as none. */}
         {pool && !pool.inPool && (
@@ -463,6 +488,7 @@ export default function MatchesScreen() {
             </Surface>
           ))
         )}
+        </>)}
       </View>
 
       {safetyFor && (

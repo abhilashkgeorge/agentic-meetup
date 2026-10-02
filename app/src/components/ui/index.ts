@@ -14,5 +14,6 @@ export * from './screen';
 export * from './bubble';
 export * from './avatar';
 export * from './row';
+export * from './skeleton';
 export * from './animation';
 export * from './stat-row';

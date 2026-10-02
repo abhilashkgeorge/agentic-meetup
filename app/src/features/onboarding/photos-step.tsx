@@ -23,7 +23,8 @@ import { Portrait } from '../photos/photo';
 import { useSession } from '../../store/session';
 import { setOnboarded } from '../../lib/storage';
 import {
-  Animation, Button, Screen, Surface, radius, space, type, usePalette,
+  Animation, Button, LoadFailed, Screen, SkeletonBlock, SkeletonGroup, Surface, radius, space, type,
+  usePalette,
 } from '../../components/ui';
 
 /**
@@ -47,11 +48,19 @@ export default function PhotosStep() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Whether the photos are here. Before they were, six empty wells, "Add a photo" and "Your
+   * agent can do everything except this" said there were none, and the button below
+   * switched to "Done" a moment later.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const load = useCallback(async () => {
     if (!token) return;
     const mine = await getMyPhotos(token);
-    setPhotos(mine?.photos ?? []);
-    setMe(mine?.me ?? null);
+    if (!mine) { setStatus((s) => (s === 'ready' ? s : 'failed')); return; }
+    setPhotos(mine.photos ?? []);
+    setMe(mine.me ?? null);
+    setStatus('ready');
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
@@ -107,7 +116,7 @@ export default function PhotosStep() {
             label={has ? 'Done' : 'Add a photo'}
             variant="primary"
             onPress={() => void (has ? finish() : add())}
-            disabled={busy}
+            disabled={busy || status !== 'ready'}
           />
           {/* Skippable, and honest about the cost rather than nagging. */}
           {!has && (
@@ -125,8 +134,21 @@ export default function PhotosStep() {
         </Text>
       </View>
 
-      {!has && <Animation mood="camera" height={130} opacity={0.45} />}
+      {status === 'ready' && !has && <Animation mood="camera" height={130} opacity={0.45} />}
 
+      {status === 'loading' && (
+        <SkeletonGroup label="Loading your photos" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <View key={i} style={{ width: '31%', aspectRatio: 3 / 4 }}>
+              <SkeletonBlock height="100%" radius={radius.md} />
+            </View>
+          ))}
+        </SkeletonGroup>
+      )}
+      {status === 'failed' && (
+        <LoadFailed what="your photos" onRetry={() => { setStatus('loading'); void load(); }} />
+      )}
+      {status === 'ready' && (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
         {slots.map((photo, i) => (
           <Pressable
@@ -155,6 +177,7 @@ export default function PhotosStep() {
           </Pressable>
         ))}
       </View>
+      )}
 
       {busy && (
         <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'center' }}>

@@ -18,7 +18,8 @@ import {
 import { Portrait } from './photo';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Header, Screen, Surface, radius, space, sunk, type, usePalette,
+  Button, Card, Header, LoadFailed, Screen, SkeletonBlock, SkeletonGroup, Surface, radius, space, sunk,
+  type, usePalette,
 } from '../../components/ui';
 
 /**
@@ -40,16 +41,23 @@ export default function PhotosScreen() {
   const [error, setError] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(null);
   const [selfie, setSelfie] = useState<SelfieStatus | null>(null);
+  /**
+   * Whether the photos are here. Before they were, six "+" wells and "Add your first
+   * photo" said there were none, to somebody with three.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
 
   const load = useCallback(async () => {
     if (!token) return;
     void getSelfieStatus(token).then(setSelfie);
     const mine = await getMyPhotos(token);
-    setPhotos(mine?.photos ?? []);
-    setMax(mine?.max ?? PHOTO_SLOTS);
+    if (!mine) { setStatus((s) => (s === 'ready' ? s : 'failed')); return; }
+    setPhotos(mine.photos ?? []);
+    setMax(mine.max ?? PHOTO_SLOTS);
     // The serving route is keyed on the owner as well as the photo, so even showing
     // your own pictures needs your own id. It comes back with the list.
-    setMe(mine?.me ?? null);
+    setMe(mine.me ?? null);
+    setStatus('ready');
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
@@ -160,6 +168,19 @@ export default function PhotosScreen() {
           </Card>
         )}
 
+        {status === 'loading' && (
+          <SkeletonGroup label="Loading your photos" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+            {Array.from({ length: PHOTO_SLOTS }, (_, i) => (
+              <View key={i} style={{ width: `${100 / COLUMNS - 3}%`, aspectRatio: 3 / 4 }}>
+                <SkeletonBlock height="100%" radius={radius.md} />
+              </View>
+            ))}
+          </SkeletonGroup>
+        )}
+        {status === 'failed' && (
+          <LoadFailed what="your photos" onRetry={() => { setStatus('loading'); void load(); }} />
+        )}
+        {status === 'ready' && (<>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
           {slots.map((photo, i) => (
             <Pressable
@@ -230,6 +251,7 @@ export default function PhotosScreen() {
         <Text style={[type.callout, { color: p.textTertiary, textAlign: 'center' }]}>
           Tap one to make it first. Hold to remove.
         </Text>
+        </>)}
       </View>
     </Screen>
   );

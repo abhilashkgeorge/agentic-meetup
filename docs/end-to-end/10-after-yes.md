@@ -28,7 +28,7 @@ words are the date idea, written earlier (stage 7).
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
    [server/src/matching/orchestrator.ts:617] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
-   [app/src/features/dm/conversations-screen.tsx:107] `: 'Say something'`). If her app is closed,
+   [app/src/features/dm/conversations-screen.tsx:126] `: 'Say something'`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
    ([server/src/api/chat.ts:293] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,
@@ -37,8 +37,8 @@ words are the date idea, written earlier (stage 7).
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
    both said yes. Nobody else can message you here."
    ([app/src/features/dm/date-idea.ts:39] `title: "YOUR AGENTS' DATE IDEA", line: s.idea!`,
-   [app/src/features/dm/thread-screen.tsx:258] `It goes as a message from you. You two pick the day.`,
-   [app/src/features/dm/thread-screen.tsx:282] `You both said yes. Nobody else can message you here.`).
+   [app/src/features/dm/thread-screen.tsx:270] `It goes as a message from you. You two pick the day.`,
+   [app/src/features/dm/thread-screen.tsx:303] `You both said yes. Nobody else can message you here.`).
 4. **Arjun taps "Propose this date".** Meera receives an ordinary message from Arjun, for example
    "How about this: Sunrise walk in Cubbon Park, then filter coffee?". The idea card disappears
    for both.
@@ -66,7 +66,7 @@ words are the date idea, written earlier (stage 7).
   ([server/src/matching/brief.ts:199] `street address (shared/src/contact.ts). People swap those themselves, in chat, after`,
   [app/src/features/stories/stories-state.ts:29] `Swap those in chat after you both say yes.`).
 - **Receipts:** "Sent", "Delivered", "Read", "typing…", always on
-  ([app/src/features/dm/thread-screen.tsx:41] `state === 'queued' ? 'waiting to send'`).
+  ([app/src/features/dm/thread-screen.tsx:42] `state === 'queued' ? 'waiting to send'`).
 - **Messages are never deleted by the app**; there is no delete route
   ([server/migrations/0025_messaging_fixes.sql:57] `-- No DELETE grant on messages, deliberately. "Delete for everyone" is`).
 
@@ -141,7 +141,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 
 - **Where:** every card ("Block or report"), the reveal and chat headers ("⋯"), a met
   person's sheet in the town, and the check-in's "felt unsafe" step
-  ([app/src/features/dm/thread-screen.tsx:230] `right={{ glyph: '⋯', label: 'Block or report', onPress: stop }}`).
+  ([app/src/features/dm/thread-screen.tsx:242] `right={{ glyph: '⋯', label: 'Block or report', onPress: stop }}`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
   are not told." ([app/src/features/safety/safety-sheet.tsx:55] `'You will never see each other again, anywhere in the app. They are not told.',`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
@@ -177,7 +177,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 
 - **Who:** only accounts listed in `ADMIN_USER_IDS` (the reviewer), from the "Reports to review"
   screen in Settings: "Ban <name>?" / "They are signed out, taken out of the pool and hidden from
-  everybody, for good." ([app/src/features/admin/reports-screen.tsx:54] `'They are signed out, taken out of the pool and hidden from everybody, for good.',`).
+  everybody, for good." ([app/src/features/admin/reports-screen.tsx:59] `'They are signed out, taken out of the pool and hidden from everybody, for good.',`).
 - **What it does:** hides all their photos; records the ban; remembers the account's phone-number
   hash and the hashed id of every phone they signed in on; revokes every session; takes them
   out of the pool for good ([server/migrations/0065_bans_stick.sql:61] `SELECT banned, 'phone', u.phone_hmac FROM app_users u`,

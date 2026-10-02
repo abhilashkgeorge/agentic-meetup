@@ -31,7 +31,8 @@ import { readDm, sendDm, sendTyping } from '../../lib/socket';
 import { useSession } from '../../store/session';
 import { useDm, type Dm } from '../../store/dm';
 import {
-  Bubble, Button, Field, Header, Surface, radius, space, type, usePalette,
+  Bubble, Button, Field, Header, LoadFailed, SkeletonBubbles, SkeletonGroup, Surface, radius, space, type,
+  usePalette,
 } from '../../components/ui';
 
 /** Sent, delivered, read — shown only on your own messages, like every other app. */
@@ -93,6 +94,14 @@ export default function ThreadScreen() {
   const clearUnread = useDm((s) => s.clearUnread);
 
   const [draft, setDraft] = useState('');
+  /**
+   * Whether the messages are here. Before the first page the list was empty, and an
+   * empty list draws "You both said yes. Nobody else can message you here." -- the opening
+   * of a conversation that already had messages in it. A thread kept from earlier counts
+   * as here: it is shown at once and refreshed.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>(
+    () => ((useDm.getState().threads[rendezvousId]?.length ?? 0) > 0 ? 'ready' : 'loading'));
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,31 +111,34 @@ export default function ThreadScreen() {
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboardPad();
 
-  useEffect(() => {
-    void (async () => {
-      if (!token) return;
-      const page = await getMessages(token, rendezvousId);
-      if (page?.me) setMe(page.me);
-      if (page) setWho({ id: page.otherId, name: page.name, photoId: page.photoId, look: page.look });
-      setThread(
+  const loadThread = useCallback(async () => {
+    if (!token) return;
+    const page = await getMessages(token, rendezvousId);
+    // A failed read keeps what is on screen; it used to replace the thread with nothing.
+    if (!page) { setStatus((s) => (s === 'ready' ? s : 'failed')); return; }
+    if (page.me) setMe(page.me);
+    setWho({ id: page.otherId, name: page.name, photoId: page.photoId, look: page.look });
+    setThread(
+      rendezvousId,
+      page.messages.map((m) => ({
+        id: m.id,
         rendezvousId,
-        (page?.messages ?? []).map((m) => ({
-          id: m.id,
-          rendezvousId,
-          text: m.text,
-          mine: m.mine,
-          seq: Number(m.seq),
-          sentAt: m.sentAt,
-          state: m.readAt ? 'read' : m.deliveredAt ? 'delivered' : 'sent',
-        })),
-      );
-      setHasMore(page?.hasMore ?? false);
-      // Opening the conversation IS reading it. Doing this on scroll instead produces
-      // the state where a message stays bold after you have plainly read it.
-      readDm(rendezvousId);
-      clearUnread(rendezvousId);
-    })();
+        text: m.text,
+        mine: m.mine,
+        seq: Number(m.seq),
+        sentAt: m.sentAt,
+        state: m.readAt ? 'read' : m.deliveredAt ? 'delivered' : 'sent',
+      })),
+    );
+    setHasMore(page.hasMore ?? false);
+    setStatus('ready');
+    // Opening the conversation IS reading it. Doing this on scroll instead produces
+    // the state where a message stays bold after you have plainly read it.
+    readDm(rendezvousId);
+    clearUnread(rendezvousId);
   }, [token, rendezvousId, setThread, clearUnread, setMe]);
+
+  useEffect(() => { void loadThread(); }, [loadThread]);
 
   const older = useCallback(async () => {
     if (!token || !hasMore || loadingOlder || !messages.length) return;
@@ -262,6 +274,15 @@ export default function ThreadScreen() {
         </Surface>
       )}
 
+      {status !== 'ready' && messages.length === 0 ? (
+        // Not the list's empty view: that one opens a conversation, and this one may
+        // already have messages on their way.
+        <View style={{ flex: 1, justifyContent: 'flex-end', padding: space.screen }}>
+          {status === 'loading'
+            ? <SkeletonGroup label="Loading the conversation"><SkeletonBubbles count={5} /></SkeletonGroup>
+            : <LoadFailed what="this conversation" onRetry={() => { setStatus('loading'); void loadThread(); }} />}
+        </View>
+      ) : (
       <FlatList
         inverted
         data={data}
@@ -293,6 +314,7 @@ export default function ThreadScreen() {
           </View>
         )}
       />
+      )}
 
       {typing && (
         <Text style={[type.label, { color: p.textTertiary, paddingHorizontal: space.screen }]}>

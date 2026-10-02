@@ -26,8 +26,9 @@ import { PHOTO_SLOTS } from '../photos/photos-screen';
 import { label, setupRoute } from './fields';
 import { rangeFromText, rangeLabel } from './age-range';
 import {
-  Avatar, Button, Card, Chip, ChipGroup, Crease, PhotoSlot, Row, Screen, ScreenTitle,
-  Skeleton, SkeletonCard, Stats, space, sunk, type, usePalette,
+  Avatar, Button, Card, Chip, ChipGroup, Crease, LoadFailed, PhotoSlot, Row, Screen, ScreenTitle,
+  Skeleton, SkeletonBlock, SkeletonGroup, SkeletonRows, SkeletonTitle, Stats, radius, space, sunk, type,
+  usePalette,
 } from '../../components/ui';
 
 /**
@@ -54,7 +55,59 @@ function Slot({
 }) {
   const photo = pics.photos[n];
   const uri = usePhoto(pics.me, photo?.id, 'thumb');
-  return <PhotoSlot onPress={onPress} large={large} source={uri ? { uri } : undefined} />;
+  return <PhotoSlot onPress={onPress} large={large} source={uri ? { uri } : undefined}
+                    loading={Boolean(photo) && uri === undefined} />;
+}
+
+/**
+ * THE YOU TAB WHILE IT LOADS, in its own shape: the name, the three numbers, the photo
+ * wells, the character, the basics. It used to draw the real page at once, wrong -- "You"
+ * for a title, "—" for every number, empty photo wells saying "Add one", Points 0 and a
+ * character "not built yet" -- and then correct itself.
+ */
+function ProfileSkeleton() {
+  return (
+    <SkeletonGroup label="Loading your profile" style={{ gap: space.lg }}>
+      <View style={{ gap: space.sm }}>
+        <SkeletonTitle width="45%" />
+        <Skeleton height={14} width="35%" />
+      </View>
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ alignItems: 'center', gap: space.sm, width: '28%' }}>
+              <Skeleton height={22} width="50%" />
+              <Skeleton height={10} width="90%" />
+            </View>
+          ))}
+        </View>
+      </Card>
+      <Card>
+        <Skeleton height={12} width="25%" />
+        <View style={{ flexDirection: 'row', gap: space.sm }}>
+          <View style={{ flex: 2 }}><SkeletonBlock height={220} radius={radius.md} /></View>
+          <View style={{ flex: 1, gap: space.sm }}>
+            <SkeletonBlock height={106} radius={radius.md} />
+            <SkeletonBlock height={106} radius={radius.md} />
+          </View>
+        </View>
+      </Card>
+      <Card>
+        <Skeleton height={12} width="35%" />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          <SkeletonBlock width={112} height={150} radius={20} />
+          <View style={{ flex: 1, gap: space.sm }}>
+            <Skeleton height={14} />
+            <Skeleton height={14} width="80%" />
+          </View>
+        </View>
+      </Card>
+      <Card>
+        <Skeleton height={12} width="30%" />
+        <SkeletonRows count={5} />
+      </Card>
+    </SkeletonGroup>
+  );
 }
 
 /** Reads a single value out of the knowledge list, so the layout can stay declarative. */
@@ -71,7 +124,11 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [pool, setPool] = useState<{ total: number | null; inPool: boolean; missing: string[]; need: string[] } | null>(null);
   const [pics, setPics] = useState<{ me: string | null; photos: Photo[] }>({ me: null, photos: [] });
-  const [loading, setLoading] = useState(true);
+  /**
+   * Whether the page is here. Once it is, a refresh that fails keeps what is on screen:
+   * it used to replace it with nulls, and every number read 0 and every basic "Not set".
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [judging, setJudging] = useState(false);
 
   const load = useCallback(async () => {
@@ -80,13 +137,14 @@ export default function ProfileScreen() {
       getKnowledge(token), getProfile(token), getPool(token), getMyPhotos(token),
       useLook.getState().load(token),
     ]);
-    setPics({ me: ph?.me ?? null, photos: ph?.photos ?? [] });
+    if (!kk) { setStatus((s) => (s === 'ready' ? s : 'failed')); return; }
+    if (ph) setPics({ me: ph.me ?? null, photos: ph.photos ?? [] });
     setK(kk);
-    setProfile(pr);
+    if (pr) setProfile(pr);
     // `missing` is kept because the Finish setup button routes on it: when the
     // missing thing is consent, the essentials flow is the wrong destination.
-    setPool(po ? { total: po.total, inPool: po.inPool, missing: po.missing, need: po.need } : null);
-    setLoading(false);
+    if (po) setPool({ total: po.total, inPool: po.inPool, missing: po.missing, need: po.need });
+    setStatus('ready');
   }, [token]);
 
   // Every focus, not once on mount: the tab stays mounted, and its Finish setup card
@@ -123,6 +181,16 @@ export default function ProfileScreen() {
   const interests = allOf(k, 'interest');
   const prompts = (k?.knows ?? []).filter((f) => f.predicate === 'prompt_answer');
 
+  if (status !== 'ready') {
+    return (
+      <Screen onRefresh={() => void load()}>
+        {status === 'loading'
+          ? <ProfileSkeleton />
+          : <LoadFailed what="your profile" onRetry={() => { setStatus('loading'); void load(); }} />}
+      </Screen>
+    );
+  }
+
   return (
     <Screen onRefresh={() => void load()} padded={false}>
       <ScreenTitle title={name ?? 'You'} subtitle={[city, work].filter(Boolean).join(' · ') || undefined} />
@@ -151,9 +219,9 @@ export default function ProfileScreen() {
             items={[
               // Said as what they count: "17 KNOWN" and "40 CAN REACH" left the reader to
               // guess known what, and reach whom (on the Pixel, 2026-09-30).
-              { value: loading ? '—' : String(k?.knows.length ?? 0), label: 'Things known' },
-              { value: loading ? '—' : String(k?.wontGuess.length ?? 0), label: "Won't guess" },
-              { value: loading ? '—' : countLabel(pool?.total), label: 'People in reach' },
+              { value: String(k?.knows.length ?? 0), label: 'Things known' },
+              { value: String(k?.wontGuess.length ?? 0), label: "Won't guess" },
+              { value: countLabel(pool?.total), label: 'People in reach' },
             ]}
           />
         </Card>
@@ -217,9 +285,7 @@ export default function ProfileScreen() {
         {/* Three sentence-stems in the person's own words. The only free text another
             agent reasons over, and the only part of a profile that sounds human. */}
         <Card label="In your words">
-          {loading ? (
-            <SkeletonCard />
-          ) : prompts.length === 0 ? (
+          {prompts.length === 0 ? (
             <>
               <Text style={[type.body, { color: p.textSecondary }]}>
                 Three short answers. Your clone drafts them from things you have actually
@@ -238,13 +304,7 @@ export default function ProfileScreen() {
         </Card>
 
         <Card label="The basics">
-          {loading ? (
-            <>
-              <Skeleton height={18} />
-              <Skeleton height={18} width="70%" />
-            </>
-          ) : (
-            <>
+          <>
               {/* Every row here opens an editor. They used to be inert: Height and
                   Diet read "Not set" with nothing in the app able to set them. */}
               <Row title="First name" value={name ?? 'Not set'}
@@ -276,8 +336,7 @@ export default function ProfileScreen() {
               <Row title="Diet"
                    value={(() => { const v = valueOf(k, 'diet'); return v ? label(v) : 'Not set'; })()} last
                    onPress={() => router.push('/edit/diet')} />
-            </>
-          )}
+          </>
         </Card>
 
         {interests.length > 0 && (

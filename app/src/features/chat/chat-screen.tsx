@@ -14,7 +14,7 @@ import { getConfig, getKnowledge, getPool, type Config, type Knowledge } from '.
 import { countLabel, isUnder20 } from '../../lib/counts';
 import { label, setupRoute, missingLabel } from '../profile/fields';
 import {
-  Button, Card, Chip, ChipGroup, Crease, Screen, Skeleton, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Screen, Skeleton, SkeletonGroup, space, type, usePalette,
 } from '../../components/ui';
 
 /** One tap instead of a blank box. */
@@ -33,6 +33,8 @@ export default function ChatScreen() {
   const [config, setConfig] = useState<Config | null>(null);
   const [k, setK] = useState<Knowledge | null>(null);
   const [pool, setPool] = useState<{ total: number | null; inPool: boolean; missing: string[]; need: string[] } | null>(null);
+  /** What it knows could not be had: said, rather than "Getting ready" breathing for good. */
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -42,8 +44,8 @@ export default function ChatScreen() {
       // somebody where they stand -- what it knows, what it is still missing, and
       // what happens next -- rather than being a void with a text box at the bottom.
       const [kk, po] = await Promise.all([getKnowledge(token), getPool(token)]);
-      setK(kk);
-      setPool(po ? { total: po.total, inPool: po.inPool, missing: po.missing, need: po.need } : null);
+      if (kk) { setK(kk); setFailed(false); } else setFailed(true);
+      if (po) setPool({ total: po.total, inPool: po.inPool, missing: po.missing, need: po.need });
     })();
   }, [token, bubbles.length]);
 
@@ -55,11 +57,15 @@ export default function ChatScreen() {
           <>
             {/* Where the person actually stands, before they have said anything. */}
             <Card label={k ? `It knows ${k.knows.length} things about you` : 'Getting ready'}>
-              {!k ? (
-                <>
+              {!k && failed ? (
+                <Text style={[type.body, { color: p.textSecondary }]}>
+                  Could not load what it knows. You can still talk to it.
+                </Text>
+              ) : !k ? (
+                <SkeletonGroup label="Loading what it knows">
                   <Skeleton height={18} />
                   <Skeleton height={18} width="70%" />
-                </>
+                </SkeletonGroup>
               ) : k.knows.length === 0 ? (
                 <Text style={[type.body, { color: p.textSecondary }]}>
                   Nothing yet. Say one true thing and it starts from there.
