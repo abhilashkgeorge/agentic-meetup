@@ -16,13 +16,14 @@
  * behaves when the keyboard opens.
  */
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardPad } from '../../lib/keyboard';
 import { getDateIdea, getMessages, nudgeSeen, proposeDate, type Look } from '../../lib/api';
 import * as Crypto from 'expo-crypto';
 import { chatCard, type DateIdeaState } from './date-idea';
+import { typingSignal } from './typing-signal';
 import { SafetySheet } from '../safety/safety-sheet';
 import { PersonAvatar } from '../look/person-avatar';
 import { Checkin } from './checkin';
@@ -145,20 +146,23 @@ export default function ThreadScreen() {
     setLoadingOlder(false);
   }, [token, hasMore, loadingOlder, messages, rendezvousId, prepend]);
 
+  // Said when typing starts and when it stops, not on every keystroke (typing-signal.ts).
+  const sayTyping = useMemo(() => typingSignal((t) => sendTyping(rendezvousId, t)), [rendezvousId]);
+
   const onType = (text: string) => {
     setDraft(text);
-    sendTyping(rendezvousId, text.length > 0);
+    sayTyping(text.length > 0);
     // Stops by itself. A typing indicator that sticks because somebody closed the app
     // mid-word is worse than none.
     if (typingTimer.current) clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(() => sendTyping(rendezvousId, false), 4_000);
+    typingTimer.current = setTimeout(() => sayTyping(false), 4_000);
   };
 
   const submit = () => {
     if (!draft.trim()) return;
     sendDm(rendezvousId, draft);
     setDraft('');
-    sendTyping(rendezvousId, false);
+    sayTyping(false);
   };
 
   // Block, or report with one of the fixed reasons: the same sheet as on every card

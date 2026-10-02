@@ -531,7 +531,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 
 - **Arjun tells his clone** "I work in AI and run most mornings." His phone sends it over the live
   chat connection; the server stores it, and the clone replies. No fact is written yet
-  (`server/src/api/chat.ts:315`).
+  (`server/src/api/chat.ts:339`).
 - **About five minutes after he stops**, a background sweep runs the extractor over the whole
   session ([AI-1](#ai-1)) (`server/src/index.ts:154`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
@@ -649,7 +649,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 |---|---|---|---|---|
 | Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:152` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | `server/src/memory/consolidate.ts:26` |
-| Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:460` |
+| Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:484` |
 | Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:160` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs
@@ -1434,7 +1434,7 @@ words: "That's all for today. Chat, learning and your agent's rounds share 10 tu
 today's are used up. Your clone can talk again tomorrow." (since 2026-09-29; before, nothing was
 shown, and the clone's previous reply was blanked)
 (`server/src/metering.ts:34`,
-`app/src/lib/socket.ts:197`).
+`app/src/lib/socket.ts:205`).
 
 ### 6.3 The rules: who the agent may meet
 
@@ -2065,14 +2065,14 @@ words are the date idea, written earlier (stage 7).
    `app/src/features/dm/conversations-screen.tsx:107`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
-   (`server/src/api/chat.ts:281`,
+   (`server/src/api/chat.ts:293`,
    `server/src/push/index.ts:39`).
 3. **The chat** opens with the agents' date idea at the top: "YOUR AGENTS' DATE IDEA", the idea,
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
    both said yes. Nobody else can message you here."
    (`app/src/features/dm/date-idea.ts:39`,
-   `app/src/features/dm/thread-screen.tsx:254`,
-   `app/src/features/dm/thread-screen.tsx:278`).
+   `app/src/features/dm/thread-screen.tsx:258`,
+   `app/src/features/dm/thread-screen.tsx:282`).
 4. **Arjun taps "Propose this date".** Meera receives an ordinary message from Arjun, for example
    "How about this: Sunrise walk in Cubbon Park, then filter coffee?". The idea card disappears
    for both.
@@ -2086,16 +2086,21 @@ words are the date idea, written earlier (stage 7).
 - **Only introduced pairs can write**, enforced by the database policy and by the live
   connection; a message can only be addressed to a pair, never to a person, so nobody can
   message a stranger (`server/migrations/0024_messages.sql:12`,
-  `server/src/api/chat.ts:233`).
+  `server/src/api/chat.ts:245`).
 - **Limits:** 1 to 4,000 characters; 60 events a minute per person ("Slow down a moment."); no
-  daily cap (`shared/src/events.ts:54`,
-  `server/src/ratelimit.ts:216`).
+  daily cap. "Typing…" has its own 120 a minute and never uses up a message's: the app says it
+  when typing starts, every four seconds while it goes on, and when it stops (since 2026-10-02:
+  it was sent on every keystroke, so a long first message used the minute up and was refused),
+  and a refused message is sent again a few seconds later instead of waiting on "sending"
+  (`shared/src/events.ts:54`,
+  `server/src/ratelimit.ts:216`,
+  `server/src/ratelimit.ts:222`).
 - **Contact details are allowed in chat.** The contact-detail filter guards what agents say,
   not what people type to each other; the app itself tells people to swap details in chat
   (`server/src/matching/brief.ts:199`,
   `app/src/features/stories/stories-state.ts:29`).
 - **Receipts:** "Sent", "Delivered", "Read", "typing…", always on
-  (`app/src/features/dm/thread-screen.tsx:40`).
+  (`app/src/features/dm/thread-screen.tsx:41`).
 - **Messages are never deleted by the app**; there is no delete route
   (`server/migrations/0025_messaging_fixes.sql:57`).
 
@@ -2170,7 +2175,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 
 - **Where:** every card ("Block or report"), the reveal and chat headers ("⋯"), a met
   person's sheet in the town, and the check-in's "felt unsafe" step
-  (`app/src/features/dm/thread-screen.tsx:226`).
+  (`app/src/features/dm/thread-screen.tsx:230`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
   are not told." (`app/src/features/safety/safety-sheet.tsx:55`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
@@ -2198,7 +2203,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   both; sends are refused; they are never matched again
   (`server/migrations/0064_bans_and_apart.sql:54`).
   The blocked person is told nothing; a message they try to send shows "not sent"
-  (`server/src/api/chat.ts:253`).
+  (`server/src/api/chat.ts:265`).
 - **No automatic action on reports**; a reviewer looks at them
   (`server/migrations/0039_trust_and_safety.sql:21`).
 
@@ -2461,8 +2466,8 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-6"></a>
 ### AI-6. Own-clone chat reply
 
-- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens (`server/src/api/chat.ts:372`,
-  `server/src/api/chat.ts:397`).
+- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens (`server/src/api/chat.ts:396`,
+  `server/src/api/chat.ts:421`).
 - **When:** every message a person sends to their own clone.
 - **In:** the profile summary, style note, last 20 messages, **every** live fact (including private ones: it
   talks only to its own person), up to 5 recalled old messages. Instructions: "You are this person's clone: an
@@ -2472,7 +2477,7 @@ $0.02; not measured, because no round has run since the talk was added.
   `server/src/api/chat.ts:41`,
   `server/src/api/chat.ts:43`).
 - **Out:** free text. **Checks:** none; streamed straight to the phone
-  (`server/src/api/chat.ts:404`).
+  (`server/src/api/chat.ts:428`).
 - **Stored:** the reply, as a message in the person's history.
 
 <a id="ai-7"></a>
@@ -2481,7 +2486,7 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Model:** Gemini Embedding 001, 768 numbers per text (`server/src/llm/adapters/google.ts:216`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
   are embedded and stored (`server/src/memory/retrieval.ts:64`,
-  `server/src/api/chat.ts:470`).
+  `server/src/api/chat.ts:494`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   (`server/src/llm/embeddings.ts:26`).
 

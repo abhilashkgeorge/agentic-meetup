@@ -120,6 +120,18 @@ export function attachChat(ws: WebSocket, ctx: TenantCtx): void {
       void handleParkFrame(ws, ctx, raw).catch((err: unknown) => log.error({ err, userId: ctx.userId }, 'park frame failed'));
       return;
     }
+    // "IS TYPING" HAS ITS OWN ALLOWANCE, outside the message limit. The app sent it on
+    // every keystroke, and each one counted against the sixty a minute below -- so typing
+    // one long message used the minute up and the message itself was refused: "Slow down
+    // a moment", and the bubble sat on "sending" with nothing to send it again (the
+    // Pixel, 2026-10-02). A typing dot is worth nothing late and nothing twice, so past
+    // its own limit it is dropped without a word. Parsed and checked here: a frame that
+    // only STARTS like a typing frame cannot spend this allowance on anything else.
+    if (isTypingFrame(raw)) {
+      if (!take(`typing:${ctx.userId}`, LIMITS.typing).ok) return;
+      void handleTyping(ws, ctx, raw).catch((err: unknown) => log.error({ err, userId: ctx.userId }, 'typing frame failed'));
+      return;
+    }
     // PER SOCKET, PER USER, and separate from every budget in the system. The daily
     // cost cap is keyed on the user, which is the right shape for spend and the wrong
     // shape for volume: a client stuck in a send loop, or one person flooding a
@@ -279,6 +291,18 @@ async function handleDm(
   // Offline: no receipt, and a push notification is what wakes them. Marking it
   // delivered here would show two ticks for a message nobody has received.
   if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);
+}
+
+/** Cheap enough to run on every frame before parsing: the app writes `type` first. */
+export const isTypingFrame = (raw: string): boolean => raw.startsWith('{"type":"dm.typing"');
+
+/** A typing frame, and only that: anything else that arrives this way is dropped. */
+async function handleTyping(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void> {
+  let json: unknown;
+  try { json = JSON.parse(raw); } catch { return; }
+  const parsed = ClientMessage.safeParse(json);
+  if (!parsed.success || parsed.data.type !== 'dm.typing') return;
+  await handleDm(ws, ctx, parsed.data);
 }
 
 async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void> {

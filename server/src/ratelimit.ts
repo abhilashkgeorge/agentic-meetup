@@ -214,4 +214,10 @@ export const LIMITS = {
   socket: { max: 60, windowMs: 5 * 60_000 },
   /** Messages pushed down one socket. */
   message: { max: 60, windowMs: 60_000 },
+  /**
+   * "Is typing", counted apart from the above so it can never use up a real message's
+   * allowance (api/chat.ts). The app says it when typing starts and stops; an older app
+   * said it on every keystroke, and this is two keystrokes a second of that.
+   */
+  typing: { max: 120, windowMs: 60_000 },
 } as const;

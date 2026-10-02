@@ -24,7 +24,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 
 - **Arjun tells his clone** "I work in AI and run most mornings." His phone sends it over the live
   chat connection; the server stores it, and the clone replies. No fact is written yet
-  ([server/src/api/chat.ts:315] `const stored = await episodes.append(c, {`).
+  ([server/src/api/chat.ts:339] `const stored = await episodes.append(c, {`).
 - **About five minutes after he stops**, a background sweep runs the extractor over the whole
   session ({AI:extract}) ([server/src/index.ts:154] `}, Math.min(SESSION_IDLE_MS, 60_000));`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
@@ -142,7 +142,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 |---|---|---|---|---|
 | Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | {AI:extract}, {AI:resolve}, {AI:profile}, {AI:sheet} | [server/src/index.ts:152] `const sweeper = setInterval(() => {` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | [server/src/memory/consolidate.ts:26] `Deliberately deterministic: every step here is SQL.` |
-| Embeddings | After each chat reply | Turns both messages into vectors for recall | {AI:embed} (not metered) | [server/src/api/chat.ts:460] `void embedPair(ctx, [` |
+| Embeddings | After each chat reply | Turns both messages into vectors for recall | {AI:embed} (not metered) | [server/src/api/chat.ts:484] `void embedPair(ctx, [` |
 | Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | [server/src/index.ts:160] `const rounds = setInterval(() => {` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs

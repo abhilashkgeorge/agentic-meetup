@@ -140,8 +140,8 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-6"></a>
 ### AI-6. Own-clone chat reply
 
-- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens ([server/src/api/chat.ts:372] `const model = modelFor('chat');`,
-  [server/src/api/chat.ts:397] `maxOutputTokens: 2048,`).
+- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens ([server/src/api/chat.ts:396] `const model = modelFor('chat');`,
+  [server/src/api/chat.ts:421] `maxOutputTokens: 2048,`).
 - **When:** every message a person sends to their own clone.
 - **In:** the profile summary, style note, last 20 messages, **every** live fact (including private ones: it
   talks only to its own person), up to 5 recalled old messages. Instructions: "You are this person's clone: an
@@ -151,7 +151,7 @@ $0.02; not measured, because no round has run since the talk was added.
   [server/src/api/chat.ts:41] `Never invent a detail about them that is not in the fragments.`,
   [server/src/api/chat.ts:43] `Speak plainly, in their register. No preamble, no hedging, no restating the question.`).
 - **Out:** free text. **Checks:** none; streamed straight to the phone
-  ([server/src/api/chat.ts:404] `send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });`).
+  ([server/src/api/chat.ts:428] `send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });`).
 - **Stored:** the reply, as a message in the person's history.
 
 <a id="ai-7"></a>
@@ -160,7 +160,7 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Model:** Gemini Embedding 001, 768 numbers per text ([server/src/llm/adapters/google.ts:216] `model: env.EMBEDDING_MODEL.replace(/^google:/, ''),`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
   are embedded and stored ([server/src/memory/retrieval.ts:64] `[vector] = await embed([query]);`,
-  [server/src/api/chat.ts:470] `const vectors = await embed(todo.map(([, t]) => t));`).
+  [server/src/api/chat.ts:494] `const vectors = await embed(todo.map(([, t]) => t));`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   ([server/src/llm/embeddings.ts:26] `export async function embed(texts: readonly string[]): Promise<number[][]> {`).
 

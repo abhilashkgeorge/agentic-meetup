@@ -22,6 +22,10 @@ import type { Look } from '@clone/shared';
  */
 import { create } from 'zustand';
 
+/** How long "typing..." stays up without being said again. Longer than TYPING_RENEW_MS. */
+export const TYPING_SHOWN_MS = 7_000;
+const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export type DmState = 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Dm {
@@ -171,8 +175,22 @@ export const useDm = create<DmStore>((set, get) => ({
       return { threads: { ...s.threads, [rendezvousId]: thread } };
     }),
 
-  setTyping: (rendezvousId, typing) =>
-    set((s) => ({ typing: { ...s.typing, [rendezvousId]: typing } })),
+  setTyping: (rendezvousId, typing) => {
+    // "typing..." GOES BY ITSELF, unless it is said again (features/dm/typing-signal.ts
+    // says it every TYPING_RENEW_MS while typing goes on). It used to stay until a "stopped"
+    // came, and one that never came -- refused by the server, or a phone closed mid-word --
+    // left it up for good (the Seeker, 2026-10-02).
+    const had = typingTimers.get(rendezvousId);
+    if (had) clearTimeout(had);
+    typingTimers.delete(rendezvousId);
+    if (typing) {
+      typingTimers.set(rendezvousId, setTimeout(() => {
+        typingTimers.delete(rendezvousId);
+        set((s) => ({ typing: { ...s.typing, [rendezvousId]: false } }));
+      }, TYPING_SHOWN_MS));
+    }
+    set((s) => ({ typing: { ...s.typing, [rendezvousId]: typing } }));
+  },
 
   clearUnread: (rendezvousId) =>
     set((s) => ({

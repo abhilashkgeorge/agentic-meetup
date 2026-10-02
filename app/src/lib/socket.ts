@@ -19,6 +19,7 @@ import { useWorld } from '../features/world/store';
 import { useParkLive } from '../features/world/park-live';
 import { useParkVoice } from '../features/world/park-voice';
 import { noteFor } from '../features/chat/turn-note';
+import { retrySoon } from './retry-soon';
 
 /** Two missed heartbeats and we assume the socket is dead, whatever it claims. */
 const DEAD_AFTER_MS = HEARTBEAT_MS * 2 + 5_000;
@@ -40,6 +41,12 @@ const armDeadTimer = (): void => {
 };
 
 const open = (): boolean => ws?.readyState === WebSocket.OPEN;
+
+/**
+ * The outbox again, a little later, when the server refused a message with
+ * "Slow down a moment" (retry-soon.ts says why). Started over once one gets through.
+ */
+const outboxAgain = retrySoon(() => flushOutbox());
 
 function push(msg: ClientMessage): boolean {
   if (!open()) return false;
@@ -110,6 +117,7 @@ function connect(): void {
       // ── a person ──────────────────────────────────────────────────────
       case 'dm.message':
         d.received(ev.message);
+        outboxAgain.reset();
         break;
       case 'dm.receipt':
         d.receipt(ev.rendezvousId, ev.messageIds, ev.state);
@@ -197,6 +205,9 @@ function connect(): void {
         if (pendingTurn || ev.code === 'budget_exceeded') s.failTurn(pendingTurn, noteFor(ev.code, ev.message));
         pendingTurn = null;
         s.setQuestion(null);
+        // A refused message would otherwise sit on "sending" until a reconnect that a
+        // working connection never makes.
+        if (ev.code === 'rate_limited') outboxAgain.soon();
         console.warn(`[socket] ${ev.code}: ${ev.message}`);
         break;
     }
