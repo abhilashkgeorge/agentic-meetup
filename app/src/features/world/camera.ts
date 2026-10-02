@@ -86,12 +86,49 @@ export interface Follow { eye: [number, number, number]; look: [number, number, 
  * in against a wall it has to come back toward them, or the camera is a hand's width
  * behind somebody while staring at the building in front of them.
  */
-export function followPose(x: number, z: number, yaw: number, back = WALK_BACK, rise = WALK_RISE, aim = WALK_AIM): Follow {
+export function followPose(
+  x: number, z: number, yaw: number, back = WALK_BACK, rise = WALK_RISE, aim = WALK_AIM, lookY = WALK_EYE,
+): Follow {
   const fx = Math.sin(yaw); const fz = Math.cos(yaw);
   return {
     eye: [x - fx * back, rise, z - fz * back],
-    look: [x + fx * aim, WALK_EYE, z + fz * aim],
+    look: [x + fx * aim, lookY, z + fz * aim],
   };
+}
+
+/**
+ * SEATED, THE CAMERA COMES ROUND IN FRONT OF THE TWO OF YOU, AND LOOKS DOWN ON YOU FROM
+ * HIGHER UP THE SCREEN (the founder, 2026-10-03: "when both of us sit ... the user
+ * characters are covered by the [cards] and all the ui buttons").
+ *
+ * WHAT WAS WRONG. Sitting kept the walking camera: behind your head, looking at a spot
+ * well past you, which puts you in the lower half of the screen -- exactly where the
+ * park's cards, the chat line and the voice buttons are. On the Pixel, with its bigger
+ * display size, they covered both of you.
+ *
+ * NOW: in front of the bench, facing the two of you, BENCH_BACK out and BENCH_RISE up,
+ * tipped down just enough that the pair sits BENCH_SCREEN_Y of the way down the screen --
+ * above everything the park draws over the bottom. Given as the walking camera's own
+ * numbers (followPose with the camera's yaw facing back at the bench), so the canvas
+ * can ease from one to the other rather than cut.
+ */
+export const BENCH_BACK = 1.2;
+export const BENCH_RISE = 0.55;
+/** The pair's middle, seated: about hip-to-shoulder height. */
+export const BENCH_SUBJECT_Y = 0.1;
+/** How far down the screen the pair sits, from the top: clear of the cards below. */
+export const BENCH_SCREEN_Y = 0.3;
+
+export interface BenchFrame { yaw: number; back: number; rise: number; aim: number; lookY: number }
+
+/** The bench camera for two sitting facing `facing`, as followPose's numbers. */
+export function benchFrame(facing: number, back = BENCH_BACK, fov = WALK_FOV, at = BENCH_SCREEN_Y): BenchFrame {
+  // Down to the pair from the lens, and then further down by as much as puts them `at`.
+  const down = Math.atan2(BENCH_RISE - BENCH_SUBJECT_Y, back);
+  const half = (fov * Math.PI) / 360;
+  const above = Math.atan(((0.5 - at) / 0.5) * Math.tan(half));
+  // Looking at the pair's own column (aim 0), so the height there is the whole tilt.
+  return { yaw: facing + Math.PI, back, rise: BENCH_RISE, aim: 0, lookY: BENCH_RISE - back * Math.tan(down + above) };
 }
 
 /**
@@ -142,11 +179,6 @@ export interface WorldControl {
    * park's speech bubbles a few dozen times a second.
    */
   headOnScreen(ref: string): [number, number] | null;
-  /**
-   * Take you by car to beside `to` in the park (ride.ts). `done` is called once you
-   * are out of the car. A second call while riding is ignored.
-   */
-  ride(to: readonly [number, number], done: () => void): void;
 }
 
 const SQ2 = Math.SQRT2;

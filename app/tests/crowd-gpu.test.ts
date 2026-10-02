@@ -469,8 +469,10 @@ describe('a frame', () => {
     // The shader: riding is 4 and up, sitting is 2 without it; the cranks turn only
     // while the rider moves (the walk weight), and rest on the first frame otherwise.
     const src = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'crowd-gpu.ts'), 'utf8');
-    expect(src).toContain('bool crowdRiding = aAnim.w > 3.5;');
-    expect(src).toContain('bool crowdSitting = !crowdRiding && aAnim.w > 1.5;');
+    // The flags are read from below the height in aAnim.w (animFlags): eight and up is lift.
+    expect(src).toContain('float crowdFlags = mod(aAnim.w, 8.0);');
+    expect(src).toContain('bool crowdRiding = crowdFlags > 3.5;');
+    expect(src).toContain('bool crowdSitting = !crowdRiding && crowdFlags > 1.5;');
     expect(src).toContain('int crowdRideRow = int(uRide.x + (aAnim.z > 0.5 ? mod(floor((uTime + aAnim.x) * uFps), uRide.y) : 0.0));');
     expect(src).toContain('mat4 crowdSkin = crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))');
     crowd.dispose();

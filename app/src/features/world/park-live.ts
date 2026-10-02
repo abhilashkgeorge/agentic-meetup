@@ -10,7 +10,8 @@
  * NO REACT NATIVE HERE: tests/park-live.test.ts holds the merging and the bubbles.
  */
 import { create } from 'zustand';
-import { PARK_QUESTS, PARK_SIGHTS, type Look, type ParkPerson, type ParkQuestId, type ParkSight } from '@clone/shared';
+import { PARK_QUESTS, PARK_SIGHTS, type Look, type ParkFly, type ParkPerson, type ParkQuestId, type ParkSight } from '@clone/shared';
+import { flightEffects } from './park-effects';
 import type { WorldSim } from './sim';
 
 export interface LivePerson {
@@ -24,6 +25,8 @@ export interface LivePerson {
   riding: boolean;
   /** Within earshot: who they are to the voice server (park-voice.ts). */
   voice: string | null;
+  /** Mid sky drop (flight.ts): their x and z are the sky's until they land. */
+  fly?: ParkFly;
 }
 
 export interface Line {
@@ -126,6 +129,53 @@ export function nearestSight(sights: readonly ParkSight[], x: number, z: number)
   return best;
 }
 
+/**
+ * In the park, and away from it: in while the park is on screen, and for PARK_AWAY_MS
+ * after it leaves (`held`, park-presence.ts) -- away, all that time.
+ */
+export function parkPresence(inVenue: boolean, onScreen: boolean, held: boolean): { inPark: boolean; away: boolean } {
+  const inPark = inVenue && (onScreen || held);
+  return { inPark, away: inPark && !onScreen };
+}
+
+/**
+ * MOVING IS MOVING, however it happens: the stick, or the walk to a bench -- not the
+ * sky drop, which every phone plays from its own numbers.
+ *
+ * It was the stick alone, so a walk to a bench went out as standing still; the server,
+ * seeing somebody with a bench who was not moving, sent them as sitting, and everybody
+ * else saw them sit down in the middle of the path and slide to the bench seated (the
+ * founder, 2026-10-03: "the users sometimes sit in an invisible bench").
+ */
+export function movingNow(me: { state: string; fly?: unknown }, driven: boolean): boolean {
+  return !me.fly && (driven || me.state === 'walking');
+}
+
+/**
+ * THE BENCH BUTTON HOLDS STILL UNDER A FINGER.
+ *
+ * WHAT WAS WRONG. "Sit on a bench" and "Get up" are one button in one place, and it
+ * swapped the instant the bench changed -- so the second tap of a double tap, or a tap
+ * on a slow walk to a bench, landed on the other one. In the founder's own session
+ * (2026-10-02, the voice server's log) the two of them sat and stood five times in
+ * twenty seconds, and every time both voices left one room and joined another: "the
+ * voice was not working unless I moved to a different screen and came back" -- which
+ * walked them in again with no bench, and it held.
+ *
+ * NOW: tapped, it says "Sitting down…" and does nothing more until the server answers;
+ * and for BENCH_SWAP_LOCK_MS after the bench changes, either way, it does nothing.
+ */
+export const BENCH_SWAP_LOCK_MS = 1_200;
+export function benchPill(
+  bench: number | null, asking: boolean, changedAt: number, now: number,
+): { label: string; action: 'sit' | 'stand' | null } {
+  if (asking && bench === null) return { label: 'Sitting down…', action: null };
+  const locked = now - changedAt < BENCH_SWAP_LOCK_MS;
+  return bench === null
+    ? { label: 'Sit on a bench', action: locked ? null : 'sit' }
+    : { label: 'Get up', action: locked ? null : 'stand' };
+}
+
 /** This frame's people, their looks carried over from the last. Nobody without a look yet. */
 export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readonly ParkPerson[]): Map<string, LivePerson> {
   const out = new Map<string, LivePerson>();
@@ -135,6 +185,7 @@ export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readon
     out.set(p.ref, {
       ref: p.ref, x: p.x, z: p.z, facing: p.facing, moving: p.moving, look,
       sitting: p.sitting === true, riding: p.riding === true, voice: p.voice ?? null,
+      ...(p.fly ? { fly: p.fly } : {}),
     });
   }
   return out;
@@ -147,7 +198,13 @@ export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readon
  */
 export function livePeople(sim: WorldSim, people: ReadonlyMap<string, LivePerson>, partner: string | null): void {
   for (const p of people.values()) {
-    sim.live(p.ref, p.look, p.x, p.z, p.facing, p.moving, p.sitting, p.riding);
+    // A flight this phone has not seen yet: its beams and its smoke, timed from when it
+    // really took off (park-effects.ts).
+    const was = sim.get(p.ref)?.fly?.f;
+    if (p.fly && !(was && was.fx === p.fly.fx && was.fz === p.fly.fz && was.tx === p.fly.tx && was.tz === p.fly.tz)) {
+      flightEffects(p.fly, Date.now() - p.fly.t);
+    }
+    sim.live(p.ref, p.look, p.x, p.z, p.facing, p.moving, p.sitting, p.riding, p.fly);
     const a = sim.get(p.ref);
     if (a) a.ring = p.ref === partner;
   }
@@ -164,6 +221,16 @@ export function bubbles(lines: readonly Line[], now: number): Line[] {
 interface ParkLive {
   /** In the park and sending where you are. */
   inPark: boolean;
+  /**
+   * In the park, but the park is not on screen: another tab, the phone put away. The
+   * server holds you, standing, for AWAY_MS (server park/room.ts) before you leave.
+   */
+  away: boolean;
+  /**
+   * Where the server said you stand, the last time it did (park.arrived); `n` counts
+   * them. Null from walking in until it says: nothing is sent about where you are till then.
+   */
+  arrived: { x: number; z: number; n: number } | null;
   people: ReadonlyMap<string, LivePerson>;
   lines: readonly Line[];
   refused: Refusal | null;
@@ -173,7 +240,7 @@ interface ParkLive {
   asked: { ref: string; why?: string; at: number } | null;
   /**
    * Who you are talking with: `rideTo` is where to be taken (beside them) when you were
-   * the one who asked -- the car -- and null when they are coming to you.
+   * the one who asked -- the sky drop, flight.ts -- and null when they are coming to you.
    */
   partner: { ref: string; rideTo: readonly [number, number] | null; asker: boolean } | null;
   /** The bench the two of you took, while you sit on it. */
@@ -186,6 +253,8 @@ interface ParkLive {
   /** Your points, as of the last payment: shown with the things to do. */
   balance: number | null;
   setIn: (on: boolean) => void;
+  setAway: (away: boolean) => void;
+  gotArrived: (x: number, z: number) => void;
   gotPeople: (frame: readonly ParkPerson[]) => void;
   gotLine: (ref: string, text: string, at: number, priv?: boolean) => void;
   gotRefused: (reason: Refusal) => void;
@@ -210,6 +279,8 @@ let nextId = 1;
 
 export const useParkLive = create<ParkLive>((set, get) => ({
   inPark: false,
+  away: false,
+  arrived: null,
   people: new Map(),
   lines: [],
   refused: null,
@@ -223,10 +294,13 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   balance: null,
   // Leaving forgets everybody -- and ends whatever you were in the middle of, which the
   // server ends too: the next visit starts from what it sends.
-  setIn: (on) => set(on ? { inPark: true } : {
-    inPark: false, people: new Map(), lines: [], refused: null, finding: null, asked: null, partner: null, bench: null,
+  setIn: (on) => set(on ? { inPark: true, away: false, arrived: null } : {
+    inPark: false, away: false, arrived: null,
+    people: new Map(), lines: [], refused: null, finding: null, asked: null, partner: null, bench: null,
     riding: false, quests: null, cheer: null,
   }),
+  setAway: (away) => set({ away }),
+  gotArrived: (x, z) => set({ arrived: { x, z, n: (get().arrived?.n ?? 0) + 1 } }),
   gotPeople: (frame) => { if (get().inPark) set({ people: mergePeople(get().people, frame) }); },
   // Timed by the phone's own clock, not the server's: a bubble is how long something
   // stays on THIS screen, and the two clocks need not agree.
@@ -238,7 +312,7 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   setFinding: (finding) => set({ finding }),
   gotAsked: (ref, why) => set({ asked: { ref, ...(why ? { why } : {}), at: Date.now() } }),
   gotUnasked: () => set({ asked: null }),
-  // The car takes the one who asked: off the bike for it.
+  // The sky drop takes the one who asked: off the bike for it.
   gotPaired: (ref, rideTo) => set({
     partner: { ref, rideTo, asker: rideTo !== null }, finding: null, asked: null, ...(rideTo ? { riding: false } : {}),
   }),
@@ -246,7 +320,7 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   gotParted: () => set({ partner: null, bench: null }),
   // Sitting down gets you off the bike: nobody sits on a bench astride one.
   gotBench: (bench) => set(bench !== null ? { bench, riding: false } : { bench }),
-  rejoined: () => set({ partner: null, bench: null, finding: null, asked: null, people: new Map() }),
+  rejoined: () => set({ partner: null, bench: null, finding: null, asked: null, people: new Map(), arrived: null }),
   // A payment is cheered; one that paid nothing (already done today) is not.
   gotQuests: (quests, just, balance) => set({
     quests,

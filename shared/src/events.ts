@@ -80,14 +80,41 @@ export const PARK_SAY_MAX = 200;
 export const PARK_VIEW = 45;
 /** How far what you say carries: about twenty metres. */
 export const PARK_EARSHOT = 2.5;
+/**
+ * How long the park keeps you after it leaves your screen -- another tab, the phone put
+ * away -- before you leave it (the founder, 2026-10-03: "add a 10 sec delay when i leave
+ * for another screen"). Come back before then and nobody saw you go.
+ */
+export const PARK_AWAY_MS = 10_000;
 
 const ParkCoord = z.number().finite().min(-500).max(500);
+/**
+ * A sky drop in progress (the app's flight.ts): from where to where, and how far into it
+ * the flier is, in ms. Every phone that can see them plays the same flight from it.
+ */
+export const ParkFly = z.object({
+  fx: ParkCoord, fz: ParkCoord, tx: ParkCoord, tz: ParkCoord,
+  t: z.number().finite().min(0).max(10_000),
+});
+export type ParkFly = z.infer<typeof ParkFly>;
 export const ClientParkEnter = z.object({
   type: z.literal('park.enter'),
   /** "Talk with people nearby" on (park-voice.ts): off unless the person turned it on. */
   voiceOpen: z.boolean().optional(),
+  /**
+   * Where the phone already has you standing: back after a dropped connection, or back
+   * from another screen within the grace (server park/room.ts AWAY_MS). Without it the
+   * server puts you on a free spot at the arrival (shared/park-arrival.ts).
+   */
+  at: z.object({ x: ParkCoord, z: ParkCoord }).optional(),
 });
 export const ClientParkLeave = z.object({ type: z.literal('park.leave') });
+/**
+ * The park left the screen -- another tab, the phone put away. You stay in the park,
+ * standing where you were, for AWAY_MS; a park.enter before then and nothing changed,
+ * else you leave as with park.leave (the founder, 2026-10-03).
+ */
+export const ClientParkAway = z.object({ type: z.literal('park.away') });
 export const ClientParkMove = z.object({
   type: z.literal('park.move'),
   x: ParkCoord,
@@ -96,6 +123,8 @@ export const ClientParkMove = z.object({
   moving: z.boolean(),
   /** On a bicycle (the app's bike.ts): the people near see you on one. */
   riding: z.boolean().optional(),
+  /** Flying to somebody who said yes (the sky drop): everybody near sees the flight. */
+  fly: ParkFly.optional(),
 });
 export const ClientParkSay = z.object({
   type: z.literal('park.say'),
@@ -130,7 +159,7 @@ export const ClientParkVoiceOpen = z.object({ type: z.literal('park.voice_open')
 
 export const ClientMessage = z.discriminatedUnion('type', [
   ClientHello, ClientTurn, ClientDm, ClientDmRead, ClientTyping,
-  ClientParkEnter, ClientParkLeave, ClientParkMove, ClientParkSay,
+  ClientParkEnter, ClientParkLeave, ClientParkAway, ClientParkMove, ClientParkSay,
   ClientParkFind, ClientParkAnswer, ClientParkPart, ClientParkSit, ClientParkStand, ClientParkVoiceAgain,
   ClientParkVoiceOpen,
 ]);
@@ -174,6 +203,8 @@ export const ParkPerson = z.object({
   riding: z.boolean().optional(),
   /** Within earshot: who they are to the voice server, to listen to them (server park/voice.ts). */
   voice: z.string().optional(),
+  /** Mid sky drop: the flight, with `t` as of this frame. Their x and z wait for it to land. */
+  fly: ParkFly.optional(),
 });
 export type ParkPerson = z.infer<typeof ParkPerson>;
 
@@ -249,6 +280,11 @@ export const ServerEvent = z.discriminatedUnion('type', [
   // ── the park, live ────────────────────────────────────────────────────
   /** Everybody within PARK_VIEW of you, a few times a second, you excluded. */
   z.object({ type: z.literal('park.people'), people: z.array(ParkPerson) }),
+  /**
+   * You are in: where you stand. A free spot at the arrival on walking in, nobody else
+   * on it (shared/park-arrival.ts); where you were, coming back (park.enter `at`).
+   */
+  z.object({ type: z.literal('park.arrived'), x: z.number(), z: z.number() }),
   /** Something said within earshot. `you` when it was you, so it shows over your head. */
   z.object({
     type: z.literal('park.said'), ref: z.union([AgentRef, z.literal('you')]), text: z.string(), at: z.number(),

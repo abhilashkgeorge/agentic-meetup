@@ -18,7 +18,9 @@
  * `home()` are the only two places a position is chosen, so the map is one branch
  * in each and nothing else knows.
  */
-import { lookFor, pointInPolygon, type Look } from '@clone/shared';
+import { lookFor, pointInPolygon, type Look, type ParkFly } from '@clone/shared';
+import { flightAt, flightMs, type Flight } from './flight';
+import { puff } from './park-effects';
 
 /**
  * `live` is a real person walking in the park right now (park-live.ts): the server
@@ -361,10 +363,20 @@ export interface SimAgent {
   liveFacing?: number;
   liveMoving?: boolean;
   liveSitting?: boolean;
-  /** Not drawn: you, inside the car that is taking you to somebody (ride.ts). */
+  /** Not drawn. */
   hidden?: boolean;
   /** The bench seat they are walking to, or sitting on (`sitOn`). */
   seat?: { x: number; z: number; facing: number };
+  /** Seconds left to reach that seat on foot before they are put on it (BENCH_SECS). */
+  seatWait?: number;
+  /**
+   * Mid sky drop (flight.ts): the flight and how far into it, in ms. Your own from
+   * `flyTo`; somebody else's as their phone sends it (`live`). Nothing else moves them
+   * until they land.
+   */
+  fly?: { f: Flight; ms: number; done?: (() => void) | undefined };
+  /** How far off the ground: up in the sky drop, 0 (or unset) otherwise. */
+  lift?: number;
   /** On a bicycle (bike.ts): drawn on one, pedalling as they go, and wider to steer. */
   riding?: boolean;
 }
@@ -400,6 +412,16 @@ export const HOME: readonly [number, number] = [0, PLAZA * 0.55];
 const WALK = 0.2;
 /** A live person reaches where the server put them in about this many seconds. */
 export const LIVE_CATCH_UP = 0.25;
+/**
+ * HOW LONG GETTING TO A BENCH MAY TAKE (the founder, 2026-10-03: "make sure it doesn't
+ * take them more than 3 secs to get to a bench"). Walked at whatever pace gets them
+ * there in this -- brisk, up to a run -- and a bench further than a run in this time is
+ * stepped to by magic, in a puff of smoke. Somebody slowed on the way (a hedge, a
+ * crowd) is put on the seat when it is up, the same way.
+ */
+export const BENCH_SECS = 2.6;
+/** The longest time a walk to a bench is allowed before the magic takes over. */
+export const BENCH_MAX_SECS = 3;
 /** Further than this and they are put there: a gap that size is a lost connection, not a walk. */
 export const LIVE_JUMP = 3;
 /** The spot in front of a bench seat, where somebody stands to sit down or on getting up. */
@@ -631,33 +653,95 @@ export class WorldSim {
    * a few times a second, and a jump each time would look like a stutter. Somebody the
    * square was drawing as an agent becomes the person: one body each, never two.
    */
-  live(ref: string, look: Look, x: number, z: number, facing: number, moving: boolean, sitting = false, riding = false): void {
+  live(
+    ref: string, look: Look, x: number, z: number, facing: number, moving: boolean, sitting = false, riding = false,
+    fly?: ParkFly,
+  ): void {
     const have = this.byRef.get(ref);
     if (have) {
       if (have.kind !== 'live') {
         have.kind = 'live'; have.ghost = false; have.partner = null; have.bubble = null; have.ring = false;
         this.visits.delete(ref);
       }
-      have.look = look; have.tx = x; have.tz = z; have.liveFacing = facing; have.liveMoving = moving; have.liveSitting = sitting;
+      have.look = look; have.liveFacing = facing; have.liveMoving = moving; have.liveSitting = sitting;
       have.riding = riding;
+      if (fly) this.flying(have, fly);
+      // Mid-air here, landed on their own phone: this one lands too, in its own time
+      // (a drop is half a second), where they did.
+      if (have.fly) { have.tx = have.fly.f.tx; have.tz = have.fly.f.tz; return; }
+      have.tx = x; have.tz = z;
       // One steady pace per word from the server, set to arrive as the next one does:
       // closing a share of the gap each frame instead eased in, and was always late.
       have.speed = Math.max(WALK, Math.hypot(x - have.x, z - have.z) / LIVE_CATCH_UP);
       return;
     }
-    this.byRef.set(ref, {
+    const a: SimAgent = {
       ref, kind: 'live', seed: seedOf(ref), ghost: false, look, area: null, x, z, tx: x, tz: z, speed: WALK,
       facing, state: moving ? 'walking' : 'idle', wait: 0, stuck: 0, dodge: 1, dodgeFor: 0,
       driveX: 0, driveZ: 0, partner: null, bubble: null, ring: false, liveFacing: facing, liveMoving: moving,
       liveSitting: sitting, riding,
-    });
+    };
+    if (fly) this.flying(a, fly);
+    this.byRef.set(ref, a);
     this.order.push(ref);
     this.list = null;
   }
 
   /**
-   * Put somebody down here, now, standing: the car's ride moves you this way (ride.ts),
-   * and nothing else may walk you while it does.
+   * Somebody else's flight, as their phone says it is going: a new one starts where it
+   * is; the same one carries on in this phone's own time, pulled back into step only
+   * when the two drift apart by more than a few frames.
+   */
+  private flying(a: SimAgent, fly: ParkFly): void {
+    const f = a.fly?.f;
+    if (f && f.fx === fly.fx && f.fz === fly.fz && f.tx === fly.tx && f.tz === fly.tz) {
+      if (Math.abs(a.fly!.ms - fly.t) > 300) a.fly!.ms = fly.t;
+      return;
+    }
+    a.fly = { f: { fx: fly.fx, fz: fly.fz, tx: fly.tx, tz: fly.tz }, ms: fly.t };
+    a.seat = undefined;
+    this.flyStep(a, 0);
+  }
+
+  /**
+   * THE SKY DROP (flight.ts): up on a beam, over the trees, down beside (tx, tz). Off a
+   * bench and off a bicycle first; the stick does nothing until you land, and `done` is
+   * called then. A second flight while one is under way is ignored. False if not here.
+   */
+  flyTo(ref: string, tx: number, tz: number, done?: () => void): boolean {
+    const a = this.byRef.get(ref);
+    if (!a || a.fly) return false;
+    if (a.seat) this.standUp(ref);
+    a.seat = undefined;
+    a.riding = false;
+    a.driveX = 0; a.driveZ = 0;
+    a.fly = { f: { fx: a.x, fz: a.z, tx, tz }, ms: 0, done };
+    return true;
+  }
+
+  /** Whether somebody is up in a sky drop right now. */
+  inFlight(ref: string): boolean {
+    return !!this.byRef.get(ref)?.fly;
+  }
+
+  /** A flight's frame: where it says, facing along it; landed, back on the ground. */
+  private flyStep(a: SimAgent, dt: number): void {
+    const fl = a.fly!;
+    fl.ms += dt * 1000;
+    const pose = flightAt(fl.f, fl.ms);
+    a.x = pose.x; a.z = pose.z; a.tx = pose.x; a.tz = pose.z;
+    a.lift = pose.y;
+    a.facing = pose.heading;
+    a.state = 'idle'; a.stuck = 0;
+    if (fl.ms < flightMs(fl.f)) return;
+    a.fly = undefined;
+    a.lift = 0;
+    a.wait = 2;
+    fl.done?.();
+  }
+
+  /**
+   * Put somebody down here, now, standing: where the park says you arrive (park.arrived).
    */
   place(ref: string, x: number, z: number, facing?: number): void {
     const a = this.byRef.get(ref);
@@ -689,11 +773,25 @@ export class WorldSim {
     a.riding = false;
     const [fx, fz] = frontOf(seat);
     a.driveX = 0; a.driveZ = 0;
-    // Briskly: somebody is waiting to talk (at a stroll, a bench forty metres off took
-    // half a minute on the phone).
-    this.setTarget(a, fx, fz, WALK * 1.8);
-    a.state = 'walking';
     a.seat = seat;
+    // Briskly, at the least: somebody is waiting to talk (at a stroll, a bench forty
+    // metres off took half a minute on the phone). Faster the further, up to a run --
+    // and further than a run gets there in BENCH_SECS, by magic.
+    const d = Math.hypot(fx - a.x, fz - a.z);
+    if (d > RUN_MAX * BENCH_SECS) { this.magicSeat(a); return; }
+    this.setTarget(a, fx, fz, Math.min(RUN_MAX, Math.max(WALK * 1.8, d / BENCH_SECS)));
+    a.state = 'walking';
+    a.seatWait = BENCH_MAX_SECS;
+  }
+
+  /** Onto their seat at once: a puff where they stood, and one on the bench. */
+  private magicSeat(a: SimAgent): void {
+    const seat = a.seat;
+    if (!seat) return;
+    puff(a.x, a.z);
+    a.x = seat.x; a.z = seat.z; a.tx = seat.x; a.tz = seat.z; a.facing = seat.facing;
+    a.state = 'sitting'; a.seatWait = undefined; a.stuck = 0;
+    puff(seat.x, seat.z);
   }
 
   /** Up off the bench, and a step forward off it, standing. */
@@ -702,6 +800,7 @@ export class WorldSim {
     if (!a?.seat) return;
     const seat = a.seat;
     a.seat = undefined;
+    a.seatWait = undefined;
     if (a.state === 'sitting') {
       const [fx, fz] = frontOf(seat);
       a.x = fx; a.z = fz; a.tx = fx; a.tz = fz;
@@ -884,6 +983,7 @@ export class WorldSim {
   }
 
   private stepOne(a: SimAgent, dt: number): void {
+    if (a.fly) { this.flyStep(a, dt); return; }
     if (a.kind === 'live') { this.glide(a, dt); return; }
     // Somebody is driving: their hand beats the state machine. They still face where
     // they push even when a wall stops them, which is what tells you it is a wall.
@@ -906,8 +1006,12 @@ export class WorldSim {
       case 'walking':
         if (this.moveToward(a, dt)) {
           // In front of their bench: onto the seat, facing out from it.
-          if (a.seat) { a.x = a.seat.x; a.z = a.seat.z; a.tx = a.x; a.tz = a.z; a.facing = a.seat.facing; a.state = 'sitting'; }
+          if (a.seat) { a.x = a.seat.x; a.z = a.seat.z; a.tx = a.x; a.tz = a.z; a.facing = a.seat.facing; a.state = 'sitting'; a.seatWait = undefined; }
           else { a.state = 'idle'; a.wait = 4 + this.rnd() * 5; }
+        } else if (a.seat && a.seatWait !== undefined) {
+          // Held up on the way: past BENCH_MAX_SECS, onto the seat by magic.
+          a.seatWait -= dt;
+          if (a.seatWait <= 0) this.magicSeat(a);
         }
         break;
       case 'sitting':
@@ -1079,7 +1183,13 @@ export class WorldSim {
     }
     // Every way is blocked: wait a moment, then want to be somewhere else.
     a.stuck += dt;
-    if (a.stuck > 1.2) { a.stuck = 0; a.dodgeFor = 0; this.wander(a); }
+    if (a.stuck > 1.2) {
+      a.stuck = 0; a.dodgeFor = 0;
+      // Boxed in on the way to a bench: onto it by magic, not off somewhere else -- the
+      // seat would have snapped them back onto it from wherever they ended up.
+      if (a.seat) { this.magicSeat(a); return false; }
+      this.wander(a);
+    }
     return false;
   }
 

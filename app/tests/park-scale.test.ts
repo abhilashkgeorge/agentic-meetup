@@ -48,7 +48,7 @@ import { buildAuto, buildBus, buildTwoWheeler } from '../src/features/world/vehi
 import { buildGarden } from '../src/features/world/garden-mesh';
 import { gardenSpots } from '../src/features/world/garden';
 import { WorldSim } from '../src/features/world/sim';
-import { seatOn } from '../src/features/world/ride';
+import { seatOn } from '../src/features/world/bench';
 import { CUBBON_PARK, venueGarden } from '../src/features/world/venue';
 import { makeVenueFurniture, type FurnitureKind } from '../src/features/world/venue-mesh';
 import type * as Gpu from '../src/features/world/crowd-gpu';

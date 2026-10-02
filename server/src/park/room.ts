@@ -21,10 +21,18 @@
  * One room, in process, because there is one replica; the seam to move it (to Redis,
  * say) is this class.
  */
-import { PARK_EARSHOT, PARK_VIEW, contactDetail, type Look, type ParkPerson } from '@clone/shared';
+import { PARK_AWAY_MS, PARK_EARSHOT, PARK_VIEW, arrivalSlot, contactDetail, type Look, type ParkPerson } from '@clone/shared';
 
 /** Silence this long and you have left the park: a phone put away mid-walk. */
 export const STALE_MS = 30_000;
+/**
+ * HOW LONG THE PARK HOLDS YOU WHEN IT LEAVES YOUR SCREEN (the founder, 2026-10-03: "when
+ * i move to a different screen ... it disappears from the other users screen instantly
+ * ... add a 10 sec delay"). A quick look at your chats and back, and nobody saw you go.
+ */
+export const AWAY_MS = PARK_AWAY_MS;
+/** The longest a flight is held as one: well past any sky drop (the app's flight.ts). */
+export const FLY_MAX_MS = 10_000;
 /**
  * How far a voice carries: earshot, as for what is typed, and a little over so a phone
  * does not drop and pick up a voice at the edge with every step. The phone's own volume
@@ -50,6 +58,10 @@ export interface Member {
   voiceOpen: boolean;
   /** When they last sent anything: moving or standing, the app says so every few seconds. */
   seen: number;
+  /** The park left their screen: they stay, standing, until this time (AWAY_MS). */
+  awayUntil?: number | undefined;
+  /** Mid sky drop: from, to, and when it started by this clock. */
+  fly?: { fx: number; fz: number; tx: number; tz: number; startedAt: number } | undefined;
 }
 
 export type Said =
@@ -85,15 +97,44 @@ export class ParkRoom {
    */
   enter(
     userId: string, look: Look, apartFrom: readonly string[], at?: { x: number; z: number }, voice?: string, voiceOpen?: boolean,
-  ): void {
+  ): { x: number; z: number } {
     for (const other of apartFrom) this.apart.add(pair(userId, other));
     const was = this.members.get(userId);
+    // WHERE THEY STAND: where their phone says, coming back (a dropped connection, back
+    // from another screen); where they were, if still here; else a free place at the
+    // arrival, nobody on it (shared/park-arrival.ts) -- never on top of somebody.
+    const others = [...this.members.values()].filter((m) => m.userId !== userId);
+    const [x, z] = at ? [at.x, at.z] : was ? [was.x, was.z] : arrivalSlot(others);
     this.members.set(userId, {
-      userId, look,
-      x: at?.x ?? was?.x ?? 0, z: at?.z ?? was?.z ?? 0,
+      userId, look, x, z,
       facing: was?.facing ?? 0, moving: false, riding: was?.riding ?? false,
       voice: voice ?? was?.voice ?? '', voiceOpen: voiceOpen ?? was?.voiceOpen ?? false, seen: this.now(),
     });
+    return { x, z };
+  }
+
+  /**
+   * The park left their screen: they stay where they stand for AWAY_MS, seen standing
+   * still, and then go (`expireAway`). Coming back before then is a park.enter. False if
+   * they are not here.
+   */
+  away(userId: string): boolean {
+    const m = this.members.get(userId);
+    if (!m) return false;
+    m.awayUntil = this.now() + AWAY_MS;
+    m.moving = false;
+    m.fly = undefined;
+    m.seen = this.now();
+    return true;
+  }
+
+  /** Away longer than AWAY_MS: gone. Returns who, so the caller can tidy up as for a leave. */
+  expireAway(): string[] {
+    const now = this.now();
+    const gone: string[] = [];
+    for (const m of this.members.values()) if (m.awayUntil !== undefined && m.awayUntil <= now) gone.push(m.userId);
+    for (const id of gone) this.members.delete(id);
+    return gone;
   }
 
   /** "Talk with people nearby", on or off. False if they are not here. */
@@ -119,10 +160,21 @@ export class ParkRoom {
     return this.apart.has(pair(a, b));
   }
 
-  move(userId: string, x: number, z: number, facing: number, moving: boolean, riding = false): boolean {
+  move(
+    userId: string, x: number, z: number, facing: number, moving: boolean, riding = false,
+    fly?: { fx: number; fz: number; tx: number; tz: number; t: number },
+  ): boolean {
     const m = this.members.get(userId);
     if (!m) return false;
     m.x = x; m.z = z; m.facing = facing; m.moving = moving; m.riding = riding; m.seen = this.now();
+    // Moving again is being back, whatever the last word was.
+    m.awayUntil = undefined;
+    // A flight is timed from when it started by THIS clock: the same one keeps its start,
+    // a new one (other ends) starts `t` ago.
+    if (!fly) m.fly = undefined;
+    else if (!m.fly || m.fly.fx !== fly.fx || m.fly.fz !== fly.fz || m.fly.tx !== fly.tx || m.fly.tz !== fly.tz) {
+      m.fly = { fx: fly.fx, fz: fly.fz, tx: fly.tx, tz: fly.tz, startedAt: this.now() - fly.t };
+    }
     return true;
   }
 
@@ -161,6 +213,7 @@ export class ParkRoom {
       const mayTalk = (me?.voiceOpen === true && m.voiceOpen) || m.userId === partner;
       const heard = me && m.voice && mayTalk && !benched(viewerId) && !benched(m.userId)
         && (m.x - me.x) ** 2 + (m.z - me.z) ** 2 <= reach2;
+      const flying = m.fly ? Math.min(FLY_MAX_MS, this.now() - m.fly.startedAt) : null;
       return {
         ref: this.refOf(viewerId, m.userId),
         x: round(m.x), z: round(m.z), facing: round(m.facing), moving: m.moving, look: m.look,
@@ -168,6 +221,9 @@ export class ParkRoom {
         // they are sitting there is not a secret.
         ...(benched(m.userId) && !m.moving ? { sitting: true } : m.riding ? { riding: true } : {}),
         ...(heard ? { voice: m.voice } : {}),
+        ...(m.fly && flying !== null
+          ? { fly: { fx: round(m.fly.fx), fz: round(m.fly.fz), tx: round(m.fly.tx), tz: round(m.fly.tz), t: Math.max(0, flying) } }
+          : {}),
       };
     });
   }

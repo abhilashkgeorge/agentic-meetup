@@ -165,7 +165,11 @@ export function startVoice(venueSim: WorldSim): () => void {
     const v = useParkVoice.getState();
     const live = useParkLive.getState();
     const me = venueSim.get('you');
-    const hear = voicesToHear(l.pass, live.people, me ? { x: me.x, z: me.z } : null, new Set(v.muted), v.hearing, live.partner?.ref ?? null);
+    // AWAY (another tab, within the grace: park-presence.ts) you neither hear nor are
+    // heard: the park is not on your screen, so nobody should be talking into your
+    // pocket, nor you into theirs. Back, both come back as they were.
+    const hear = live.away ? new Map<string, number>()
+      : voicesToHear(l.pass, live.people, me ? { x: me.x, z: me.z } : null, new Set(v.muted), v.hearing, live.partner?.ref ?? null);
     for (const p of l.room.remoteParticipants.values()) {
       const volume = hear === 'all' ? 1 : hear.get(p.identity) ?? 0;
       for (const pub of p.audioTrackPublications.values()) {
@@ -184,7 +188,7 @@ export function startVoice(venueSim: WorldSim): () => void {
         allow === 'all' ? [] : allow.map((participantIdentity) => ({ participantIdentity, allowAll: true })),
       );
     }
-    const mic = v.micOn && l.pass.canTalk;
+    const mic = v.micOn && l.pass.canTalk && !live.away;
     if (mic !== l.mic) {
       l.mic = mic;
       l.room.localParticipant.setMicrophoneEnabled(mic, { echoCancellation: true, noiseSuppression: true, autoGainControl: true })
@@ -282,7 +286,7 @@ export function startVoice(venueSim: WorldSim): () => void {
     if (s.pass !== prev.pass) onPass(s.pass);
     else if (s.micOn !== prev.micOn || s.hearing !== prev.hearing || s.muted !== prev.muted) apply();
   });
-  const unLive = useParkLive.subscribe((s, prev) => { if (s.people !== prev.people) apply(); });
+  const unLive = useParkLive.subscribe((s, prev) => { if (s.people !== prev.people || s.away !== prev.away) apply(); });
   // Your own steps change how loud everybody is, between their frames.
   const tick = setInterval(apply, 250);
   // Put away, the mic goes with it: the park walks you out (park-presence.ts) and the

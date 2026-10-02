@@ -70,7 +70,7 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
   switch (msg.type) {
     case 'park.move':
       if (!take(`park-move:${me}`, MOVE_LIMIT).ok) return;
-      if (!park.move(me, msg.x, msg.z, msg.facing, msg.moving, msg.riding === true)) send(ws, { type: 'park.refused', reason: 'not_in_park' });
+      if (!park.move(me, msg.x, msg.z, msg.facing, msg.moving, msg.riding === true, msg.fly)) send(ws, { type: 'park.refused', reason: 'not_in_park' });
       return;
     case 'park.say': {
       if (!take(`park-say:${me}`, SAY_LIMIT).ok) { send(ws, { type: 'park.refused', reason: 'too_fast' }); return; }
@@ -144,13 +144,20 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
     }
     case 'park.enter': {
       if (!take(`park:${me}`, OTHER_LIMIT).ok) return;
-      await enter(ctx, msg.voiceOpen === true);
+      const at = await enter(ctx, msg.voiceOpen === true, msg.at);
+      // Where they stand: the phone puts them there before it says where it is.
+      send(ws, { type: 'park.arrived', x: at.x, z: at.z });
       pushPeople(me);
       return;
     }
     case 'park.leave':
       if (!take(`park:${me}`, OTHER_LIMIT).ok) return;
       leavePark(me);
+      return;
+    case 'park.away':
+      // Another screen, the phone put away: held AWAY_MS, then gone (tick).
+      if (!take(`park:${me}`, OTHER_LIMIT).ok) return;
+      if (park.away(me)) log.info({ userId: me }, 'park: away');
       return;
     case 'park.voice_again':
       if (!take(`park-voice:${me}`, VOICE_AGAIN_LIMIT).ok) return;
@@ -166,8 +173,12 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
   }
 }
 
-/** Walk in: their look, and who here they are kept apart from, from the database. */
-async function enter(ctx: TenantCtx, voiceOpen: boolean): Promise<void> {
+/**
+ * Walk in: their look, and who here they are kept apart from, from the database. Returns
+ * where they stand: `at` when the phone already had them somewhere (back after a dropped
+ * connection or another screen), else a free spot at the arrival (room.ts).
+ */
+async function enter(ctx: TenantCtx, voiceOpen: boolean, at?: { x: number; z: number }): Promise<{ x: number; z: number }> {
   const here = [...park.members.keys()].filter((id) => id !== ctx.userId);
   const { look, apart } = await matchSession(async (c) => {
     const look = await lookOf(c, ctx.userId);
@@ -179,7 +190,7 @@ async function enter(ctx: TenantCtx, voiceOpen: boolean): Promise<void> {
   });
   // A voice id for this visit: random, never the user id (the voice server lists who is
   // in its room to everybody in it). Kept across a reconnect within the visit.
-  park.enter(ctx.userId, look, apart, undefined, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'), voiceOpen);
+  const stand = park.enter(ctx.userId, look, apart, at, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'), voiceOpen);
   // What they have already been paid for today: the ledger's word, on their own session.
   tenantOf.set(ctx.userId, ctx.tenantId);
   const day = parkDay(Date.now());
@@ -192,6 +203,7 @@ async function enter(ctx: TenantCtx, voiceOpen: boolean): Promise<void> {
   pushQuests(ctx.userId, undefined, points);
   await refreshVoice(ctx.userId);
   log.info({ userId: ctx.userId, here: park.members.size }, 'park: entered');
+  return stand;
 }
 
 /**
@@ -368,6 +380,11 @@ export function tick(): void {
   for (const gone of park.sweep()) {
     sentLooks.delete(gone); unpair(gone); quests.leave(gone); tenantOf.delete(gone);
     log.info({ userId: gone }, 'park: timed out');
+  }
+  // Away past the grace (room.ts AWAY_MS): gone, exactly as a leave.
+  for (const gone of park.expireAway()) {
+    sentLooks.delete(gone); unpair(gone); quests.leave(gone); tenantOf.delete(gone);
+    log.info({ userId: gone, here: park.members.size }, 'park: left (away)');
   }
   for (const { from, to } of pairs.expire()) {
     hub.pushTo(from, { type: 'park.finding', status: 'no_answer' } satisfies ServerEvent);

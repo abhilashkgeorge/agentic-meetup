@@ -3,15 +3,19 @@
  * are, and putting whoever else is here into the park's own sim.
  *
  * In the park means the park is on screen: on the Town tab, the app in front. Put the
- * phone away or open another tab and you walk out; come back and you walk in again.
- * Nothing is sent from anywhere else in the app.
+ * phone away or open another tab and you are AWAY: still in the park, standing where you
+ * were, for PARK_AWAY_MS; back before then and nobody saw you go, else you walk out (the
+ * founder, 2026-10-03: "it disappears from the other users screen instantly ... add a 10
+ * sec delay"). Nothing is sent from anywhere else in the app.
  */
-import { useEffect, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { parkEnter, parkLeave, parkMove, parkStand } from '../../lib/socket';
-import type { WorldControl } from './camera';
-import { livePeople, useParkLive, type LivePerson } from './park-live';
-import { seatOn } from './ride';
+import { PARK_AWAY_MS } from '@clone/shared';
+import { parkAway, parkBack, parkEnter, parkLeave, parkMove, parkStand, parkWalkBackIn } from '../../lib/socket';
+import { landingBeside } from './flight';
+import { clearEffects, flightEffects, puff, puffsFor } from './park-effects';
+import { livePeople, movingNow, parkPresence, useParkLive, type LivePerson } from './park-live';
+import { seatOn } from './bench';
 import type { WorldSim } from './sim';
 import { askingForMic, startVoice } from './voice-room';
 
@@ -19,49 +23,108 @@ import { askingForMic, startVoice } from './voice-room';
 const EVERY_MS = 200;
 /** Standing still, it is still sent this often: the server lets the silent go (STALE_MS). */
 const STILL_MS = 2_000;
+/**
+ * How long to wait for the server to say where you stand (park.arrived) before saying
+ * where you are anyway: a server from before it said so never will.
+ */
+const ARRIVE_WAIT_MS = 3_000;
+/** Nobody lands closer than this to somebody already standing there. */
+const PERSONAL = 0.22;
 
 export function useParkPresence(
-  inPark: boolean,
+  inVenue: boolean,
+  focused: boolean,
   venueSim: WorldSim,
-  control: MutableRefObject<WorldControl | null>,
   benches: readonly { x: number; z: number; rot: number }[],
 ): void {
-  // In and out, with the app's own comings and goings.
+  // The app in front, as this park counts it: not iOS's passing "inactive" (a pulled-down
+  // notice, the mic prompt), nor Android's pause for the phone's "Allow the mic?"
+  // (voice-room.ts), either of which walked you out of the park and ended your bench.
+  const [front, setFront] = useState(AppState.currentState !== 'background');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' && askingForMic()) return;
+      setFront(state !== 'background');
+    });
+    return () => sub.remove();
+  }, []);
+  const onScreen = focused && front;
+
+  // THE GRACE: off screen, still here for PARK_AWAY_MS.
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!inVenue) { setHeld(false); return; }
+    if (onScreen) { setHeld(true); return; }
+    const t = setTimeout(() => setHeld(false), PARK_AWAY_MS);
+    return () => clearTimeout(t);
+  }, [inVenue, onScreen]);
+  const { inPark, away } = parkPresence(inVenue, onScreen, held);
+
+  // Walked in from the city, the server finds you a free spot at the arrival; back after
+  // the grace ran out, you come back where you stood.
+  const fresh = useRef(true);
+  useEffect(() => { if (!inVenue) fresh.current = true; }, [inVenue]);
+
+  // In and out.
   useEffect(() => {
     if (!inPark) return;
-    let front = AppState.currentState !== 'background';
-    if (front) parkEnter();
-    const sub = AppState.addEventListener('change', (state) => {
-      // Only really put away: not iOS's passing "inactive" (a pulled-down notice, the mic
-      // prompt), nor Android's pause for the phone's "Allow the mic?" (voice-room.ts),
-      // either of which walked you out of the park and ended your bench.
-      if (state === 'background' && askingForMic()) return;
-      const now = state !== 'background';
-      if (now === front) return;
-      front = now;
-      if (now) parkEnter(); else parkLeave();
+    const me = venueSim.get('you');
+    parkEnter(!fresh.current && me ? { x: me.x, z: me.z } : undefined);
+    fresh.current = false;
+    return () => { parkLeave(); clearEffects(); };
+  }, [inPark, venueSim]);
+
+  // Away and back: the server holds you, standing; back, the next move says so -- or,
+  // away for the whole grace, the server may have let you go, so in again where you are.
+  const awaySince = useRef<number | null>(null);
+  useEffect(() => {
+    if (!inPark) { awaySince.current = null; return; }
+    if (away) { awaySince.current = Date.now(); parkAway(); return; }
+    if (awaySince.current === null) return;
+    const gone = Date.now() - awaySince.current;
+    awaySince.current = null;
+    parkBack();
+    if (gone >= PARK_AWAY_MS - 500) parkWalkBackIn();
+  }, [inPark, away]);
+
+  // Where the server says you stand: put there, in a puff of smoke.
+  useEffect(() => {
+    if (!inPark) return;
+    return useParkLive.subscribe((s, prev) => {
+      if (!s.arrived || s.arrived === prev.arrived) return;
+      const me = venueSim.get('you');
+      if (me?.fly) return;
+      venueSim.place('you', s.arrived.x, s.arrived.z);
+      puff(s.arrived.x, s.arrived.z);
     });
-    return () => { sub.remove(); parkLeave(); };
-  }, [inPark]);
+  }, [inPark, venueSim]);
 
   // Where you are: whenever it changed, checked five times a second.
   useEffect(() => {
     if (!inPark) return;
-    let last = { x: NaN, z: NaN, facing: NaN, moving: false, riding: false, at: 0 };
+    const entered = Date.now();
+    let last = { x: NaN, z: NaN, facing: NaN, moving: false, riding: false, flying: false, at: 0 };
     const t = setInterval(() => {
       const me = venueSim.get('you');
       if (!me) return;
-      const moving = venueSim.driven('you');
+      const live = useParkLive.getState();
+      // Away, nothing: a move would tell the server you were back.
+      if (live.away) return;
+      // Not till the server has said where you stand: a move first would put you back
+      // where this phone had you, on top of whoever the server kept you clear of.
+      if (!live.arrived && Date.now() - entered < ARRIVE_WAIT_MS) return;
+      const flying = !!me.fly;
+      const moving = movingNow(me, venueSim.driven('you'));
       const riding = me.riding === true;
       const now = Date.now();
       const changed = Math.hypot(me.x - last.x, me.z - last.z) > 0.01
-        || Math.abs(me.facing - last.facing) > 0.05 || moving !== last.moving || riding !== last.riding;
+        || Math.abs(me.facing - last.facing) > 0.05 || moving !== last.moving || riding !== last.riding || flying !== last.flying;
       // Walked off the bench with the stick: up, for the server too, so talk is heard
       // nearby again rather than staying between two people no longer sitting.
-      if (useParkLive.getState().bench !== null && !me.seat && me.state !== 'sitting') parkStand();
+      if (live.bench !== null && !me.seat && me.state !== 'sitting' && !flying) parkStand();
       if (!changed && now - last.at < STILL_MS) return;
-      parkMove(me.x, me.z, me.facing, moving, riding);
-      last = { x: me.x, z: me.z, facing: me.facing, moving, riding, at: now };
+      parkMove(me.x, me.z, me.facing, moving, riding, me.fly ? { ...me.fly.f, t: Math.round(me.fly.ms) } : undefined);
+      last = { x: me.x, z: me.z, facing: me.facing, moving, riding, flying, at: now };
     }, EVERY_MS);
     return () => clearInterval(t);
   }, [inPark, venueSim]);
@@ -74,15 +137,30 @@ export function useParkPresence(
     return () => { unsubscribe(); venueSim.setRiding('you', false); };
   }, [inPark, venueSim]);
 
-  // A yes to your "Find someone": the car takes you over (ride.ts, in the canvas). The
-  // one who said yes stays where they are and watches you arrive.
+  // A yes to your "Find someone": the sky drop takes you over (flight.ts) -- beside them,
+  // never inside a tree, a bench or somebody. The one who said yes stays where they are
+  // and watches you come down.
   useEffect(() => {
     if (!inPark) return;
     return useParkLive.subscribe((s, prev) => {
       const to = s.partner?.rideTo;
-      if (to && s.partner !== prev.partner) control.current?.ride(to, () => useParkLive.getState().rode());
+      if (!to || s.partner === prev.partner) return;
+      const me = venueSim.get('you');
+      const done = () => useParkLive.getState().rode();
+      if (!me) { done(); return; }
+      const clear = (x: number, z: number) => venueSim.standable(x, z)
+        && !venueSim.agents().some((a) => a.ref !== 'you' && Math.hypot(a.x - x, a.z - z) < PERSONAL);
+      const [lx, lz] = landingBeside([me.x, me.z], to, clear);
+      const from = { fx: me.x, fz: me.z, tx: lx, tz: lz };
+      const flying = venueSim.flyTo('you', lx, lz, () => {
+        // Down: facing them.
+        const a = venueSim.get('you');
+        if (a) a.facing = Math.atan2(to[0] - a.x, to[1] - a.z);
+        done();
+      });
+      if (flying) flightEffects(from, Date.now()); else done();
     });
-  }, [inPark, control]);
+  }, [inPark, venueSim]);
 
   // The bench: to your seat and down, when it is yours; up, when it is not. The one
   // who asked takes the left seat, so the two phones agree without saying so.
@@ -102,12 +180,26 @@ export function useParkPresence(
     return startVoice(venueSim);
   }, [inPark, venueSim]);
 
-  // Whoever is here, into the sim; whoever has gone, out of it.
+  // Whoever is here, into the sim; whoever has gone, out of it -- and a puff of smoke for
+  // whoever appears or vanishes near you, except the crowd already here as you walk in.
   useEffect(() => {
     if (!inPark) return;
+    let first = true;
     const apply = (people: ReadonlyMap<string, LivePerson>) => livePeople(venueSim, people, useParkLive.getState().partner?.ref ?? null);
     apply(useParkLive.getState().people);
-    const unsubscribe = useParkLive.subscribe((s, prev) => { if (s.people !== prev.people || s.partner !== prev.partner) apply(s.people); });
+    const unsubscribe = useParkLive.subscribe((s, prev) => {
+      if (s.people !== prev.people) {
+        // Waiting to be told where you stand -- walking in, or back after a dropped
+        // connection, which forgets everybody -- the next frame is everybody already here.
+        if (!s.arrived) first = true;
+        else {
+          const me = venueSim.get('you');
+          for (const [x, z] of puffsFor(prev.people, s.people, me ? { x: me.x, z: me.z } : null, first)) puff(x, z);
+          first = false;
+        }
+      }
+      if (s.people !== prev.people || s.partner !== prev.partner) apply(s.people);
+    });
     return () => {
       unsubscribe();
       for (const a of venueSim.agents()) if (a.kind === 'live') venueSim.unlive(a.ref);

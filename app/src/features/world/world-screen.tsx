@@ -336,7 +336,7 @@ export default function WorldScreen() {
   const transitioning = realm.phase === 'entering' || realm.phase === 'leaving';
 
   // In the park, live: while it is on screen, you are in it for everybody else too.
-  useParkPresence(realm.phase === 'venue' && focused, venueSim, control, venueLayout.benches);
+  useParkPresence(realm.phase === 'venue', focused, venueSim, venueLayout.benches);
 
   const enterVenue = useCallback(() => {
     if (realm.phase !== 'city' || !world) return;

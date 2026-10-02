@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
 import { STARTER, type Look, type ParkPerson } from '@clone/shared';
 import { BUBBLE_MS, bubbles, mergePeople, useParkLive, type Line } from '../src/features/world/park-live';
 import { LIVE_CATCH_UP, LIVE_JUMP, WorldSim } from '../src/features/world/sim';
-import { SEAT, benchFor, seatOn } from '../src/features/world/ride';
+import { SEAT, benchFor, seatOn } from '../src/features/world/bench';
 import { BIKE_PACE } from '../src/features/world/bike';
 
 const REF = (n: number) => n.toString(16).padStart(32, '0');
@@ -145,7 +145,7 @@ describe('talking with somebody in the park', () => {
     const src = readFileSync(join(import.meta.dirname, '..', 'src', 'lib', 'socket.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     // Walking back in carries "Talk with people nearby" (park-voice.ts); the order is the point.
-    expect(src).toMatch(/useParkLive\.getState\(\)\.rejoined\(\);\s*push\(\{ type: 'park\.enter'[^}]*\}\)/);
+    expect(src).toMatch(/useParkLive\.getState\(\)\.rejoined\(\);\s*push\(\{ type: 'park\.enter', voiceOpen: useParkVoice\.getState\(\)\.open, \.\.\.\(parkHere \? \{ at: parkHere \} : \{\}\) \}\)/);
     expect(src).toMatch(/export function parkPart\(\): void \{[^}]*gotParted\(\)/);
     expect(src).toMatch(/export function parkStand\(\): void \{[^}]*gotBench\(null\)/);
   });
@@ -272,7 +272,7 @@ describe('a bicycle in the park sim', () => {
   it('sends the server that you ride, and rides at BIKE_PACE times a walk (SOURCE SHAPE: the canvas needs GL)', () => {
     const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     const presence = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-presence.ts'), 'utf8'));
-    expect(presence).toContain('parkMove(me.x, me.z, me.facing, moving, riding);');
+    expect(presence).toContain('parkMove(me.x, me.z, me.facing, moving, riding, me.fly ? { ...me.fly.f, t: Math.round(me.fly.ms) } : undefined);');
     const canvas = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8'));
     expect(canvas).toContain("* (walking && live.get('you')?.riding ? BIKE_PACE : 1)");
     expect(BIKE_PACE).toBeGreaterThan(1.5);

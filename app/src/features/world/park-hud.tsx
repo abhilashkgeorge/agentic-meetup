@@ -17,9 +17,12 @@ import { useKeyboardHeight } from '../../lib/keyboard';
 import { Button, Surface, radius, raised, space, type, usePalette } from '../../components/ui';
 import { SafetySheet } from '../safety/safety-sheet';
 import type { WorldControl } from './camera';
-import { BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, bubbles, dockWidth, nearestSight, nextQuest, questProgress, sightsToMark, useParkLive, type Line } from './park-live';
+import {
+  BENCH_SWAP_LOCK_MS, BUBBLE_MS, FIND_TEXT, REFUSAL_TEXT, benchPill, bubbles, dockWidth, nearestSight, nextQuest, questProgress, sightsToMark,
+  useParkLive, type Line,
+} from './park-live';
 import { STICK_RING } from './stick';
-import { benchFor } from './ride';
+import { benchFor } from './bench';
 import type { WorldSim } from './sim';
 import { useParkVoice } from './park-voice';
 import { VoiceButtons, useVoiceHere, wearing } from './park-voice-hud';
@@ -285,6 +288,24 @@ export function ParkActions({ venueSim, benches }: {
     return () => clearTimeout(t);
   }, [finding, setFinding]);
 
+  // The bench button holds still under a finger (park-live.ts benchPill): "Sitting
+  // down…" until the server answers, and nothing at all just after the bench changes.
+  const [asking, setAsking] = useState(false);
+  const [changedAt, setChangedAt] = useState(0);
+  const [, redraw] = useState(0);
+  useEffect(() => {
+    setAsking(false);
+    setChangedAt(Date.now());
+    const t = setTimeout(() => redraw((n) => n + 1), BENCH_SWAP_LOCK_MS);
+    return () => clearTimeout(t);
+  }, [bench]);
+  useEffect(() => { if (refused === 'bench_taken') setAsking(false); }, [refused]);
+  useEffect(() => {
+    if (!asking) return;
+    const t = setTimeout(() => setAsking(false), 4_000);
+    return () => clearTimeout(t);
+  }, [asking]);
+
   const sit = () => {
     const me = venueSim.get('you');
     const them = partner ? people.get(partner.ref) : undefined;
@@ -292,8 +313,10 @@ export function ParkActions({ venueSim, benches }: {
     const b = benchFor(benches, [me.x, me.z], [them.x, them.z], taken);
     if (b === null) return;
     lastAsked.current = b;
+    setAsking(true);
     parkSit(b);
   };
+  const pill = benchPill(bench, asking, changedAt, Date.now());
 
   const quests = useParkLive((s) => s.quests);
   const riding = useParkLive((s) => s.riding);
@@ -331,11 +354,9 @@ export function ParkActions({ venueSim, benches }: {
             </Text>
           )}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
-            {bench === null ? (
-              <Pill label="Sit on a bench" primary onPress={sit} disabled={!!partner.rideTo} />
-            ) : (
-              <Pill label="Get up" onPress={parkStand} />
-            )}
+            <Pill label={pill.label} primary={bench === null}
+                  onPress={() => { if (pill.action === 'sit') sit(); else if (pill.action === 'stand') parkStand(); }}
+                  disabled={!pill.action || !!partner.rideTo} />
             <Pill label="End" onPress={parkPart} />
           </View>
         </View>

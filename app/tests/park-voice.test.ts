@@ -192,7 +192,7 @@ describe('"Talk with people nearby"', () => {
     const tap = hud.slice(hud.indexOf('const tapMic = async'), hud.indexOf('const pulse = useRef'));
     expect(tap).toMatch(/if \(!micReaches\(v\.open, useParkLive\.getState\(\)\.partner !== null\)\) \{\s*if \(!\(await confirmOpenVoice\(\)\)\) return;/);
     expect(tap.indexOf('confirmOpenVoice'), 'the mic opened before asking').toBeLessThan(tap.indexOf('askForMic'));
-    expect(read('lib/socket.ts')).toMatch(/export function parkEnter\(\): void \{[^}]*push\(\{ type: 'park\.enter', voiceOpen: useParkVoice\.getState\(\)\.open \}\)/);
+    expect(read('lib/socket.ts')).toMatch(/export function parkEnter\(at\?: \{ x: number; z: number \}\): void \{[^}]*push\(\{ type: 'park\.enter', voiceOpen: useParkVoice\.getState\(\)\.open,/);
   });
 });
 
@@ -228,7 +228,8 @@ describe('voice-room.ts (source shape: only a voice server sees what it does)', 
     const mic = apply.indexOf('setMicrophoneEnabled(');
     expect(perms, 'no listener list').toBeGreaterThan(0);
     expect(mic, 'the mic opened before anybody was told who may listen').toBeGreaterThan(perms);
-    expect(apply).toMatch(/const mic = v\.micOn && l\.pass\.canTalk;/);
+    // ...and never while the park is off the screen (away, within the grace).
+    expect(apply).toMatch(/const mic = v\.micOn && l\.pass\.canTalk && !live\.away;/);
   });
 
   it('goes when the app does: put away, the pass and the mic go', () => {
@@ -240,9 +241,9 @@ describe('voice-room.ts (source shape: only a voice server sees what it does)', 
     // on iOS the prompt, like a pulled-down notice, is "inactive". Neither is leaving.
     const presence = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-presence.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    const handler = presence.slice(presence.indexOf("AppState.addEventListener('change'"), presence.indexOf('return () => { sub.remove(); parkLeave(); };'));
+    const handler = presence.slice(presence.indexOf("AppState.addEventListener('change'"), presence.indexOf('return () => sub.remove();'));
     expect(handler, 'the mic prompt walks you out').toMatch(/if \(state === 'background' && askingForMic\(\)\) return;/);
-    expect(handler, 'iOS\'s passing "inactive" walks you out').toMatch(/const now = state !== 'background';/);
+    expect(handler, 'iOS\'s passing "inactive" walks you out').toMatch(/setFront\(state !== 'background'\);/);
     expect(src).toMatch(/asking = true;[\s\S]*PermissionsAndroid\.request\(/);
   });
 });

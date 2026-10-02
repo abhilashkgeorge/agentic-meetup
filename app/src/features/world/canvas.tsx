@@ -40,7 +40,7 @@ import { LogBox, PanResponder, View, type LayoutChangeEvent } from 'react-native
 import * as THREE from 'three';
 import { CENTRAL_AREA, HAIR_HEX, HEIGHT_SCALE, OUTFIT_HEX, PARK_SIGHTS, SKIN_HEX, pointInPolygon, type Look } from '@clone/shared';
 import {
-  CITY_BAND, FLY_SECS, MIST_NEAR, PERSON, VIEW, WALK_AIM, WALK_BACK, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, cityPose, clampTarget,
+  CITY_BAND, FLY_SECS, MIST_NEAR, PERSON, VIEW, WALK_AIM, WALK_BACK, WALK_EYE, WALK_FOV, WALK_RISE, ZOOM_MAX, bandOf, benchFrame, cityPose, clampTarget,
   driveVector, groundReach, mapDistance,
   elevationFor, eyeOffset, flyAt, followPose, orthographicBounds, pan, pinch, tileZoom, turnToward, verticalOf,
   type Band, type Bounds, type Fly, type Pose, type Size, type WorldControl,
@@ -55,14 +55,14 @@ import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
 import { Viewport, nearestFirst, pickAlong, visible } from './visible';
-import { buildCar } from './car-mesh';
+import { buildEffects } from './effects-mesh';
+import { effectsNow } from './park-effects';
 import { BIKE_PACE } from './bike';
 import { buildBike } from './bike-mesh';
 import { buildScale } from './character';
 import { sightsToMark, useParkLive } from './park-live';
 import type { CityPlan } from './city-plan';
 import { buildCity, type BuiltCity } from './city-mesh';
-import { besideThem, rideAt, type Ride } from './ride';
 import { CUBBON_PARK, venueGarden, type Venue } from './venue';
 import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
 
@@ -199,6 +199,16 @@ const BACK_OUT = 3.2;
  * with every step. A little lag turns that into a follow.
  */
 const TRACK = 14;
+/** How quickly the camera swings round to the bench view on sitting down, and back. */
+const SEAT_SWING = 2.5;
+/** How far the stick has to go to get you up off a bench, or off the way to one: half. */
+const STAND_PUSH = 0.5;
+
+/** The one you are talking with, as this frame has them: the sim's ring is theirs alone (park-live.ts). */
+function shownPartner(sim: WorldSim): SimAgent | undefined {
+  for (const a of sim.agents()) if (a.ring && a.kind === 'live') return a;
+  return undefined;
+}
 
 /**
  * How far behind somebody the camera can sit without being inside a building.
@@ -285,8 +295,15 @@ interface CamState {
   lastDx: number; lastDy: number; pinchDist: number | null;
   /** The camera being drawn through, set by the frame loop: what `headOnScreen` projects with. */
   camera?: THREE.Camera;
-  /** A car ride in the park under way (ride.ts), and whom to tell when it is over. */
-  ride?: { ride: Ride; done: () => void; told?: boolean } | null;
+  /**
+   * How far the camera has come round to the bench view, 0 walking to 1 seated
+   * (camera.ts benchFrame): eased, so sitting down swings it round rather than cutting.
+   */
+  seated: number;
+  /** The bench view last aimed at: where it eases back from on getting up. */
+  bench: { x: number; z: number; facing: number } | null;
+  /** Up in the sky drop last frame: on landing the camera turns with you to face them. */
+  wasFlying: boolean;
 }
 
 function startFly(cam: CamState, to: Pose, followAfter: boolean): void {
@@ -562,6 +579,7 @@ export function WorldCanvas(props: WorldCanvasProps) {
       pose: { tx: hx, tz: hz, zoom: ZOOM_START }, walking: false, back: WALK_BACK, at: null, yaw: 0,
       fly: null, follow: true, followAfterFly: true, band: null,
       size, city: cityPose(MAP.outline, size, frame), clock: 0, lastDx: 0, lastDy: 0, pinchDist: null,
+      seated: 0, bench: null, wasFlying: false,
     };
   }
   const c = cam.current;
@@ -645,15 +663,10 @@ export function WorldCanvas(props: WorldCanvasProps) {
         startFly(c, { tx: hx, tz: hz, zoom: ZOOM_START }, true);
       },
       flyCity: () => { c.walking = false; sim.drive('you', 0, 0); startFly(c, c.city, false); },
-      ride: (to, done) => {
-        const me = venueSim?.get('you');
-        if (!venueSim || !me || c.ride) return;
-        c.ride = { ride: { from: [me.x, me.z], to: besideThem([me.x, me.z], to), start: c.clock }, done };
-      },
       headOnScreen: (ref) => {
         const a = (c.walking ? venueSim ?? sim : sim).get(ref);
         if (!a || !c.camera) return null;
-        head.set(a.x, BODY_H * (HEIGHT_SCALE[a.look.height] ?? 1) * 1.12, a.z).project(c.camera);
+        head.set(a.x, (a.lift ?? 0) + BODY_H * (HEIGHT_SCALE[a.look.height] ?? 1) * 1.12, a.z).project(c.camera);
         // Behind the lens, or off the screen by more than a bubble's width.
         if (head.z > 1 || head.x < -1.3 || head.x > 1.3 || head.y < -1.3 || head.y > 1.3) return null;
         return [(head.x + 1) / 2 * c.size.width, (1 - head.y) / 2 * c.size.height];
@@ -810,14 +823,9 @@ function Town({
   // the camera, plain stand-ins further out (venue-mesh.ts). If the bundle ever fails,
   // terrain and people remain usable; only the benches, lamps and bins are absent.
   const furnitureHolder = useMemo(() => new THREE.Group(), []);
-  // The car that drives you to somebody who said yes (ride.ts), in the accent colour.
-  const car = useMemo(() => {
-    const m = new THREE.Mesh(buildCar(colors.accent), new THREE.MeshLambertMaterial({ vertexColors: true }));
-    m.visible = false;
-    m.name = 'car';
-    return m;
-  }, [colors.accent]);
-  useEffect(() => () => { car.geometry.dispose(); (car.material as THREE.Material).dispose(); }, [car]);
+  // The puffs of smoke and the beams of light (park-effects.ts), in the accent colour.
+  const effects = useMemo(() => buildEffects(colors.accent), [colors.accent]);
+  useEffect(() => () => effects.dispose(), [effects]);
   // THE SIGHTS STILL TO SEE, marked (park-live.ts sightsToMark): a diamond in the accent
   // colour high over each, bobbing, drawn through the mist and over the trees so it can
   // be steered by from anywhere in the park -- "see the sights" is no use if you cannot
@@ -1067,39 +1075,25 @@ function Town({
     const you = live.get('you');
     if (!walking && you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area ?? CENTRAL_AREA); }
 
+    // The puffs and the beams: whatever is running, in the park only.
+    effects.group.visible = walking;
+    if (walking) effects.update(effectsNow(), Date.now());
     // The stick, if a thumb is on it: it steers in the camera's bearing, not the
-    // agent's, so "up" always means away from you however they are facing.
-    // THE CAR (ride.ts): while it takes you to somebody, it is where you are, you are
-    // inside it, and the stick does nothing.
-    const riding = walking && cam.ride ? rideAt(cam.ride.ride, t) : null;
-    if (riding && cam.ride) {
-      live.place('you', riding.you.x, riding.you.z, riding.phase === 'driving' ? riding.car.heading : undefined);
-      const me = live.get('you');
-      if (me) me.hidden = !riding.you.visible;
-      car.visible = riding.car.visible;
-      car.position.set(riding.car.x, 0, riding.car.z);
-      car.rotation.y = riding.car.heading;
-      // Out of the car: you are there, facing them, whatever the car does next.
-      if (!cam.ride.told && (riding.phase === 'departing' || riding.phase === 'done')) {
-        cam.ride.told = true;
-        if (me) { me.hidden = false; me.facing = riding.car.heading; }
-        cam.yaw = riding.car.heading;
-        cam.ride.done();
-      }
-      if (riding.phase === 'done') {
-        cam.ride = null;
-        car.visible = false;
-      }
-    } else if (car.visible) car.visible = false;
+    // agent's, so "up" always means away from you however they are facing. Not in the
+    // sky drop (flight.ts): up there the stick does nothing.
+    const flying = walking && !!you?.fly;
     // The sights still to see, bobbing gently, only while walking the park.
     for (const m of marks.group.children) {
       m.visible = walking && marked.current.has(m.name);
       if (m.visible) { m.position.y = SIGHT_MARK_Y + Math.sin(t * 2 + m.position.x) * 0.08; m.rotation.y = t * 0.8; }
     }
-    if (cam.walking && stick && !riding) {
+    if (cam.walking && stick && !flying) {
       const { x: jx, y: jy } = stick.current;
       const push = Math.min(1, Math.hypot(jx, jy));
-      if (push > 0.08) {
+      // ON A BENCH, OR ON THE WAY TO ONE, ONLY A FIRM PUSH GETS YOU UP. A thumb resting
+      // on the stick, or brushing it, stood you up and ended the bench for both of you
+      // -- and moved both voices to another room (park-live.ts benchPill).
+      if (push > (you?.seat ? STAND_PUSH : 0.08)) {
         const [dx, dz] = driveVector(jx, jy, cam.yaw);
         const len = Math.hypot(dx, dz) || 1;
         // On a bicycle, BIKE_PACE times a walk.
@@ -1169,22 +1163,48 @@ function Town({
     }
 
     if (want === 'walk' && you) {
+      // SEATED: round in front of the bench, the two of you high on the screen (camera.ts
+      // benchFrame). Eased both ways, so sitting down swings the camera round.
+      const sitting = walking && you.state === 'sitting' && !!you.seat;
+      if (sitting && you.seat) {
+        // Between the two of you when they sit beside you; your own seat otherwise.
+        const partner = shownPartner(live);
+        const both = partner && partner.state === 'sitting' && Math.hypot(partner.x - you.x, partner.z - you.z) < 0.3;
+        cam.bench = { x: both ? (you.x + partner.x) / 2 : you.x, z: both ? (you.z + partner.z) / 2 : you.z, facing: you.seat.facing };
+      }
+      cam.seated += ((sitting ? 1 : 0) - cam.seated) * (1 - Math.exp(-SEAT_SWING * clamped));
+      if (!sitting && cam.seated < 0.01) { cam.seated = 0; cam.bench = null; }
+      const s = cam.bench ? cam.seated : 0;
+      const bench = cam.bench ? benchFrame(cam.bench.facing) : null;
       // Behind the head, swinging round to where they are facing. The drag offset
       // rides on top, so you can look about without turning them.
       // Only while they are walking: a drag to look around must stay where it was put.
-      if (you.driveX !== 0 || you.driveZ !== 0) {
+      // Up in the sky drop, along the flight; down, facing whoever you came to.
+      if (sitting && bench) cam.yaw = turnToward(cam.yaw, bench.yaw, 1 - Math.exp(-SEAT_SWING * clamped));
+      else if (you.driveX !== 0 || you.driveZ !== 0 || flying) {
         cam.yaw = turnToward(cam.yaw, you.facing, 1 - Math.exp(-TURN * clamped));
       }
+      if (cam.wasFlying && !flying) cam.yaw = you.facing;
+      cam.wasFlying = flying;
       if (!cam.at) cam.at = [you.x, you.z];
-      const t2 = 1 - Math.exp(-TRACK * clamped);
-      cam.at[0] += (you.x - cam.at[0]) * t2;
-      cam.at[1] += (you.z - cam.at[1]) * t2;
+      // Flying, bolted on: at that speed a lag would leave you a speck ahead of the lens.
+      const t2 = flying ? 1 : 1 - Math.exp(-TRACK * clamped);
+      const tx = cam.bench && s > 0 ? you.x + (cam.bench.x - you.x) * s : you.x;
+      const tz = cam.bench && s > 0 ? you.z + (cam.bench.z - you.z) * s : you.z;
+      cam.at[0] += (tx - cam.at[0]) * t2;
+      cam.at[1] += (tz - cam.at[1]) * t2;
       const [ax, az] = cam.at;
-      const want = clearBack(live, ax, az, cam.yaw, WALK_BACK);
+      // Nothing is in the way up in the sky, and in front of a bench only a wall would be.
+      const want = flying ? WALK_BACK : clearBack(live, ax, az, cam.yaw, bench && s > 0.5 ? bench.back : WALK_BACK);
       const k = 1 - Math.exp(-(want < cam.back ? BACK_IN : BACK_OUT) * clamped);
       cam.back += (want - cam.back) * k;
       const back = cam.back;
-      const { eye, look } = followPose(ax, az, cam.yaw, back, riseFor(back), aimFor(back));
+      const lift = you.lift ?? 0;
+      const mix = (walk: number, seat: number | undefined) => (bench && seat !== undefined ? walk + (seat - walk) * s : walk);
+      const { eye, look } = followPose(
+        ax, az, cam.yaw, back,
+        mix(riseFor(back), bench?.rise) + lift, mix(aimFor(back), bench?.aim), mix(WALK_EYE, bench?.lookY) + lift,
+      );
       camera.position.set(eye[0], eye[1], eye[2]);
       camera.lookAt(look[0], look[1], look[2]);
       focus.set(look[0], 0, look[2]);
@@ -1454,7 +1474,7 @@ function Town({
       <primitive object={garden.group} />
       {city && <primitive object={city.group} />}
       <primitive object={furnitureHolder} />
-      <primitive object={car} />
+      <primitive object={effects.group} />
       <primitive object={bikes} />
       <primitive object={marks.group} />
       <primitive object={crowdHolder} />

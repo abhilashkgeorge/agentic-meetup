@@ -7,8 +7,24 @@
  * navigation state is shown by depth.
  */
 import { Tabs } from 'expo-router';
-import { Text, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
 import { radius, space, sunk, type, usePalette } from '../../components/ui';
+import { LEAVE_PARK, asksBeforeLeaving } from '../../features/world/leave-park';
+import { useParkLive } from '../../features/world/park-live';
+
+/** In the park, another tab asks first (features/world/leave-park.ts). */
+function leavingParkFirst({ navigation, route }: { navigation: { navigate: (name: string) => void }; route: { name: string } }) {
+  return {
+    tabPress: (e: { preventDefault: () => void }) => {
+      if (!asksBeforeLeaving(useParkLive.getState())) return;
+      e.preventDefault();
+      Alert.alert(LEAVE_PARK.title, LEAVE_PARK.body, [
+        { text: LEAVE_PARK.stay, style: 'cancel' },
+        { text: LEAVE_PARK.leave, onPress: () => navigation.navigate(route.name) },
+      ]);
+    },
+  };
+}
 
 function TabIcon({ glyph, focused, label }: { glyph: string; focused: boolean; label: string }) {
   const p = usePalette();
@@ -63,6 +79,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="matches"
+        listeners={leavingParkFirst}
         options={{
           tabBarIcon: ({ focused }) => <TabIcon glyph="◈" focused={focused} label="MATCHES" />,
           tabBarAccessibilityLabel: 'People your agent found',
@@ -72,6 +89,7 @@ export default function TabsLayout() {
           your agent learns you, it finds somebody, you talk. */}
       <Tabs.Screen
         name="chats"
+        listeners={leavingParkFirst}
         options={{
           tabBarIcon: ({ focused }) => <TabIcon glyph="◎" focused={focused} label="CHATS" />,
           tabBarAccessibilityLabel: 'Your conversations',
@@ -79,6 +97,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="profile"
+        listeners={leavingParkFirst}
         options={{
           tabBarIcon: ({ focused }) => <TabIcon glyph="◐" focused={focused} label="YOU" />,
           tabBarAccessibilityLabel: 'Your profile',

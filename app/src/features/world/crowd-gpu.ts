@@ -892,8 +892,11 @@ else if (crowdRole < 8.5) crowdPaint = color * crowdUnpack(aCol2.z);
 else if (crowdRole < 9.5) crowdPaint = color * crowdUnpack(aCol2.w);
 else crowdPaint = color * crowdUnpack(aShape.w);
 vColor = vec4(crowdPaint, 1.0);
-// aAnim.w: 1 for see-through, plus 2 for sitting, plus 4 for riding a bicycle.
-vGhost = mod(aAnim.w, 2.0);
+// aAnim.w: 1 for see-through, plus 2 for sitting, plus 4 for riding a bicycle, plus 8
+// for each hundredth of a unit off the ground (animFlags). A power of two divides exactly.
+float crowdFlags = mod(aAnim.w, 8.0);
+float crowdLift = floor(aAnim.w / 8.0) / 100.0;
+vGhost = mod(crowdFlags, 2.0);
 `;
 
 /** Where in their walk (or idle) they are, and where they stand: one matrix. */
@@ -901,8 +904,8 @@ const VERTEX_SKIN = /* glsl */`
 int crowdWalkRow = int(uClips.x + mod(floor((uTime + aAnim.x) * uFps), uClips.y));
 int crowdIdleRow = int(uClips.z + mod(floor((uTime + aAnim.y) * uFps), uClips.w));
 // Riding: the cranks turn while they move and rest level while they stand.
-bool crowdRiding = aAnim.w > 3.5;
-bool crowdSitting = !crowdRiding && aAnim.w > 1.5;
+bool crowdRiding = crowdFlags > 3.5;
+bool crowdSitting = !crowdRiding && crowdFlags > 1.5;
 int crowdRideRow = int(uRide.x + (aAnim.z > 0.5 ? mod(floor((uTime + aAnim.x) * uFps), uRide.y) : 0.0));
 mat4 crowdSkin = crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))
   : aAnim.z > 0.995 ? crowdPose(crowdWalkRow) : aAnim.z < 0.005 ? crowdPose(crowdIdleRow)
@@ -912,7 +915,7 @@ float crowdS = sin(aPos.z);
 mat4 crowdPlace = mat4(crowdC * aPos.w * aShape.x, 0.0, -crowdS * aPos.w * aShape.x, 0.0,
                        0.0, aPos.w * aShape.z, 0.0, 0.0,
                        crowdS * aPos.w * aShape.y, 0.0, crowdC * aPos.w * aShape.y, 0.0,
-                       aPos.x, 0.0, aPos.y, 1.0);
+                       aPos.x, crowdLift, aPos.y, 1.0);
 mat4 crowdWorld = crowdPlace * crowdSkin;
 `;
 
@@ -971,6 +974,23 @@ export interface CrowdPerson {
   readonly state: string;
   /** On a bicycle: pedalling while they move, still on it while they stand. */
   readonly riding?: boolean;
+  /** Off the ground, in world units: up in the sky drop (flight.ts). */
+  readonly lift?: number;
+}
+
+/**
+ * How high off the ground anybody is drawn: over the flight's top (flight.ts SKY plus its
+ * arc) with room to spare. The height rides in aAnim.w beside the flags, in hundredths.
+ */
+export const MAX_LIFT = 8;
+/**
+ * aAnim.w for a person: 1 for see-through, plus 2 for sitting, plus 4 for riding a
+ * bicycle, plus 8 for each hundredth of a unit they are off the ground. Whole numbers
+ * all, and below 2^24, so a float carries them exactly.
+ */
+export function animFlags(ghost: boolean, riding: boolean, sitting: boolean, lift = 0): number {
+  const up = Math.round(Math.min(MAX_LIFT, Math.max(0, lift)) * 100);
+  return (ghost ? 1 : 0) + (riding ? 4 : sitting ? 2 : 0) + 8 * up;
 }
 
 /** One frame's camera and clock. The caller keeps one and rewrites it each frame. */
@@ -1171,7 +1191,7 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
         const at = l.n * STRIDE;
         arr[at] = a.x; arr[at + 1] = a.z; arr[at + 2] = a.facing; arr[at + 3] = s;
         arr[at + 4] = offset * walkDur; arr[at + 5] = offset * idleDur; arr[at + 6] = w;
-        arr[at + 7] = (a.ghost ? 1 : 0) + (a.riding ? 4 : a.state === 'sitting' ? 2 : 0);
+        arr[at + 7] = animFlags(a.ghost, a.riding === true, a.state === 'sitting', a.lift);
         arr.set(f, at + 8);
         l.n++;
         drawn++;

@@ -86,7 +86,7 @@ export interface Piece { kind: FurnitureKind; x: number; z: number; rot: number;
  *   - a BENCH's seat is where a sitting person's seat is: the GLB's seat top is 0.505
  *     of its units and the rig's sitting seat 0.402 of its own, so 0.402 x the
  *     person's scale / 0.505. Stretched a fifth along its length, so the two of a pair
- *     sit side by side without hanging off the ends (SEAT in ride.ts): 1.55 m long,
+ *     sit side by side without hanging off the ends (SEAT in bench.ts): 1.55 m long,
  *     the back 0.77 m high;
  *   - a TABLE's top at 0.75 m;
  *   - a LAMP at 4.0 m and a BIN at 0.95 m, which they already were.

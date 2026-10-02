@@ -26,14 +26,14 @@ details), and **database roles** that limit what each part of the server can rea
   they are within about 20 m. Nothing said is written anywhere; a line holding a phone number, email,
   handle or link is not sent; people blocked either way never see or hear each other there
   ([shared/src/events.ts:82] `export const PARK_EARSHOT = 2.5;`,
-  [server/src/park/room.ts:181] `if (contactDetail(text)) return { ok: false, reason: 'contact' };`).
+  [server/src/park/room.ts:237] `if (contactDetail(text)) return { ok: false, reason: 'contact' };`).
   "Find someone to talk to" ranks the free people there by what they have in common, with matching's
   own reading of both files, but tells the one asked only one thing both of them made public ("You both
   like climbing"), never a word from a fact only matching may use. On a bench the two of them see and
   hear only each other; people near see that they sit, never what they say. For "Sit and talk" the
   server counts how many things each says there -- a number, never the words
   ([server/src/park/quests.ts:90] `said(userId: string, partner: string | null, onBench: boolean): Done[] {`,
-  [server/src/park/socket.ts:333] `const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];`).
+  [server/src/park/socket.ts:345] `const [a, b] = [tagWords(await publicTags(c, me), LIKED), tagWords(await publicTags(c, to), LIKED)];`).
   Voice (since 2026-09-29) keeps the same rule, and asks more. Two strangers hear each other only if both
   turned "Talk with people nearby" on -- it is off until a person turns it on, after being told "People
   nearby can hear you, and could record it" -- and the two who said yes to talking hear each other either
@@ -45,11 +45,11 @@ details), and **database roles** that limit what each part of the server can rea
   marked "said out loud" counts towards a mic ban: three different people within 24 hours. A block or a
   report -- in the park, or from a card or a chat while both are there -- ends whatever is between the two
   at once: an invitation either way, their chat, their bench, and the voice server puts both out of the
-  bench's room ([server/src/park/room.ts:161] `const mayTalk = (me?.voiceOpen === true && m.voiceOpen) || m.userId === partner;`,
-  [server/src/park/room.ts:162] `const heard = me && m.voice && mayTalk && !benched(viewerId) && !benched(m.userId)`,
-  [server/src/park/socket.ts:283] `export async function separate(a: string, b: string): Promise<void> {`,
+  bench's room ([server/src/park/room.ts:213] `const mayTalk = (me?.voiceOpen === true && m.voiceOpen) || m.userId === partner;`,
+  [server/src/park/room.ts:214] `const heard = me && m.voice && mayTalk && !benched(viewerId) && !benched(m.userId)`,
+  [server/src/park/socket.ts:295] `export async function separate(a: string, b: string): Promise<void> {`,
   [server/src/park/voice.ts:82] `at.addGrant({ roomJoin: true, room, canPublish: canTalk, canSubscribe: true, canPublishData: false });`,
-  [server/src/park/socket.ts:182] `park.enter(ctx.userId, look, apart, undefined, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'), voiceOpen);`).
+  [server/src/park/socket.ts:193] `const stand = park.enter(ctx.userId, look, apart, at, park.members.get(ctx.userId)?.voice || randomBytes(12).toString('hex'), voiceOpen);`).
 - **When the agents meet**, up to 20 of Meera's **public**, verified sentences are read under her own
   database session and sent to the model for the talk and for Arjun's want check
   ([server/src/matching/orchestrator.ts:378] `loadQuotes(pair.b, { predicates: TALK_SOURCES, limit: TALK_SENTENCES })`).

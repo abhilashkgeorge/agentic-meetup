@@ -11,7 +11,7 @@
  * which is precisely when a message is most likely to arrive.
  */
 import * as Crypto from 'expo-crypto';
-import { HEARTBEAT_MS, ServerEvent, type ClientMessage } from '@clone/shared';
+import { HEARTBEAT_MS, ServerEvent, type ClientMessage, type ParkFly } from '@clone/shared';
 import { getWsBase } from './env';
 import { useSession } from '../store/session';
 import { useDm } from '../store/dm';
@@ -75,7 +75,10 @@ function connect(): void {
       // The old voice id went with the old socket: walking in brings a new pass.
       useParkVoice.getState().left();
       useParkLive.getState().rejoined();
-      push({ type: 'park.enter', voiceOpen: useParkVoice.getState().open });
+      // Where we were: back on the same spot, not at the arrival.
+      push({ type: 'park.enter', voiceOpen: useParkVoice.getState().open, ...(parkHere ? { at: parkHere } : {}) });
+      // Still off screen (another tab): still away, for the rest of the grace.
+      if (useParkLive.getState().away) push({ type: 'park.away' });
     }
     // Anything typed while the connection was down goes now. Every message carries the
     // id the phone generated, so a message that actually did arrive before the socket
@@ -156,10 +159,20 @@ function connect(): void {
       case 'park.people':
         useParkLive.getState().gotPeople(ev.people);
         break;
+      case 'park.arrived':
+        parkHere = { x: ev.x, z: ev.z };
+        useParkLive.getState().gotArrived(ev.x, ev.z);
+        break;
       case 'park.said':
         useParkLive.getState().gotLine(ev.ref, ev.text, ev.at, ev.private);
         break;
       case 'park.refused':
+        // The park let us go -- away past the grace while the phone was asleep, say --
+        // but this phone is still in it: walk back in where we stand, once in a while.
+        if (ev.reason === 'not_in_park' && useParkLive.getState().inPark && !useParkLive.getState().away) {
+          parkWalkBackIn();
+          break;
+        }
         useParkLive.getState().gotRefused(ev.reason);
         break;
       case 'park.finding':
@@ -172,7 +185,7 @@ function connect(): void {
         useParkLive.getState().gotUnasked();
         break;
       case 'park.paired':
-        // The one who asked rides over (the car); the one who said yes stays put.
+        // The one who asked flies over (the sky drop, flight.ts); the one who said yes stays put.
         useParkLive.getState().gotPaired(ev.ref, ev.asked ? null : [ev.x, ev.z]);
         break;
       case 'park.parted':
@@ -285,9 +298,45 @@ export function sendTyping(rendezvousId: string, typing: boolean): void {
  * down: where you were a minute ago is worth nothing, and a line said into a dead
  * connection is better not said late.
  */
-export function parkEnter(): void {
+export function parkEnter(at?: { x: number; z: number }): void {
   useParkLive.getState().setIn(true);
-  push({ type: 'park.enter', voiceOpen: useParkVoice.getState().open });
+  push({ type: 'park.enter', voiceOpen: useParkVoice.getState().open, ...(at ? { at } : {}) });
+}
+
+/** Where we last told the park we stood: what a walk back in comes back to. */
+let parkHere: { x: number; z: number } | null = null;
+let walkedBackAt = 0;
+
+/**
+ * Back in where we stand, as after a dropped connection: the server had let us go, so
+ * whatever we were doing with somebody is over there too. At most every few seconds.
+ */
+export function parkWalkBackIn(): void {
+  if (Date.now() - walkedBackAt < 5_000) return;
+  walkedBackAt = Date.now();
+  useParkVoice.getState().left();
+  useParkLive.getState().rejoined();
+  push({ type: 'park.enter', voiceOpen: useParkVoice.getState().open, ...(parkHere ? { at: parkHere } : {}) });
+}
+
+/**
+ * The park left the screen: still in it, standing, for PARK_AWAY_MS (park-presence.ts),
+ * and nothing more is sent until it is back.
+ */
+export function parkAway(): void {
+  if (!useParkLive.getState().inPark) return;
+  useParkLive.getState().setAway(true);
+  push({ type: 'park.away' });
+}
+
+/**
+ * Back on screen within the grace. The next move tells the park so; if the voice pass
+ * went while away (the phone put away lets go of it), a fresh one is asked for.
+ */
+export function parkBack(): void {
+  if (!useParkLive.getState().inPark) return;
+  useParkLive.getState().setAway(false);
+  if (!useParkVoice.getState().pass) parkVoiceAgain();
 }
 
 /** "Talk with people nearby", on or off (features/world/park-voice.ts). */
@@ -308,11 +357,13 @@ export function parkLeave(): void {
   if (!useParkLive.getState().inPark) return;
   useParkLive.getState().setIn(false);
   useParkVoice.getState().left();
+  parkHere = null;
   push({ type: 'park.leave' });
 }
 
-export function parkMove(x: number, z: number, facing: number, moving: boolean, riding = false): void {
-  push({ type: 'park.move', x, z, facing, moving, ...(riding ? { riding: true } : {}) });
+export function parkMove(x: number, z: number, facing: number, moving: boolean, riding = false, fly?: ParkFly): void {
+  parkHere = fly ? { x: fly.tx, z: fly.tz } : { x, z };
+  push({ type: 'park.move', x, z, facing, moving, ...(riding ? { riding: true } : {}), ...(fly ? { fly } : {}) });
 }
 
 /** Find someone free to talk to: the server picks and asks them. */
