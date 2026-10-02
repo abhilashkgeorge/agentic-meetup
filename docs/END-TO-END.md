@@ -113,10 +113,10 @@ When the app opens, it first checks the server answers (4 seconds); if not, a "C
 server" screen lets the person type an address. With no saved sign-in it goes to the phone
 screen. After sign-in it sends the person to consent if that is not settled, then to setup until
 setup is finished on this phone
-(`app/src/app/_layout.tsx:58`,
-`app/src/app/_layout.tsx:93`,
-`app/src/app/_layout.tsx:146`,
-`app/src/app/_layout.tsx:152`).
+(`app/src/app/_layout.tsx:63`,
+`app/src/app/_layout.tsx:98`,
+`app/src/app/_layout.tsx:151`,
+`app/src/app/_layout.tsx:157`).
 
 ### At a glance
 
@@ -2631,7 +2631,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **"What it knows"** | Every fact, its history, and the confirm questions. Since 2026-09-30 each reads in words -- the field as a person says it and a tapped answer by its chip: "Kids: Want kids", "One person or open: One person", "How far you would go: 25 km" (it was the column and the stored value: "wants children: yes"); what the person typed is shown exactly as typed | Everyone | `app/src/features/knowledge/you-screen.tsx:91`, `server/src/memory/fact-words.ts:48` |
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:98` |
 | **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:238` |
-| **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable | Everyone | `app/src/features/settings/connect-screen.tsx:36` |
+| **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable, and once an address answers it runs its whole start-up check again (account, consent, setup) instead of opening the town (since 2026-10-02: it used to open the town with no account loaded) | Everyone | `app/src/features/settings/connect-screen.tsx:37` |
 | **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only). A report on two people who had messages shows "Read their chat (12 messages)": their chat as it stood when the report was made, "Them:" or "Reporter:" on each line, still there after either deletes their account (since 2026-09-29; before, no reviewer could read a reported chat) | Reviewer | `app/src/features/settings/settings-screen.tsx:272`, `server/src/api/admin.ts:80`, `app/src/features/admin/reports-screen.tsx:88` |
 | **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:91` |
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |

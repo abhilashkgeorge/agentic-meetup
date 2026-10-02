@@ -8,15 +8,16 @@
  * Two rules: always show the address it actually tried, and never save one without
  * testing it — otherwise this screen just moves the dead end one step along.
  */
-import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { defaultBase, getApiBase, normaliseBase, pingServer, setApiBase } from '../../lib/env';
 import { clearServerUrl, setServerUrl } from '../../lib/storage';
+import { useLaunch } from '../../store/launch';
 import { Button, Card, Field, Screen, space, type, usePalette } from '../../components/ui';
 
 export default function ConnectScreen() {
   const p = usePalette();
+  const again = useLaunch((s) => s.again);
   const [url, setUrl] = useState('');
   const [tried] = useState(getApiBase());
   const [busy, setBusy] = useState(false);
@@ -34,8 +35,10 @@ export default function ConnectScreen() {
     if (!ok) return setNote(`Nothing answered at ${candidate}.`);
     setApiBase(candidate);
     await setServerUrl(candidate);
-    router.replace('/');
-  }, [url]);
+    // The whole launch check again, not '/': reached at launch, this screen came before
+    // the account was even looked for (store/launch.ts).
+    again();
+  }, [url, again]);
 
   return (
     <Screen

@@ -16,10 +16,10 @@ When the app opens, it first checks the server answers (4 seconds); if not, a "C
 server" screen lets the person type an address. With no saved sign-in it goes to the phone
 screen. After sign-in it sends the person to consent if that is not settled, then to setup until
 setup is finished on this phone
-([app/src/app/_layout.tsx:58] `let reachable = await pingServer(getApiBase());`,
-[app/src/app/_layout.tsx:93] `setRoute('phone');`,
-[app/src/app/_layout.tsx:146] `if (!consent || !consent.settled) {`,
-[app/src/app/_layout.tsx:152] `setRoute((await isOnboarded()) ? null : 'onboarding');`).
+([app/src/app/_layout.tsx:63] `let reachable = await pingServer(getApiBase());`,
+[app/src/app/_layout.tsx:98] `setRoute('phone');`,
+[app/src/app/_layout.tsx:151] `if (!consent || !consent.settled) {`,
+[app/src/app/_layout.tsx:157] `setRoute((await isOnboarded()) ? null : 'onboarding');`).
 
 ### At a glance
 

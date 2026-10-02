@@ -7,6 +7,7 @@ import {
 import { getConsent, isLegacyToken, onTokenRejected, upgradeToken } from '../lib/api';
 import { defaultBase, getApiBase, pingServer, setApiBase } from '../lib/env';
 import { useSession } from '../store/session';
+import { launchTarget, useLaunch, type LaunchRoute } from '../store/launch';
 import { startSocket } from '../lib/socket';
 import { listenForTaps, registerForPush } from '../lib/push';
 import {
@@ -40,11 +41,15 @@ export default function RootLayout() {
     SourceSans3_400Regular, SourceSans3_600SemiBold, SourceSans3_700Bold,
   });
   const [checked, setChecked] = useState(false);
-  const [route, setRoute] = useState<'phone' | 'invite' | 'consent' | 'onboarding' | 'connect' | null>(null);
+  const [route, setRoute] = useState<LaunchRoute | null>(null);
+  // Bumped by "Can't reach the server" once the address works: the check runs again
+  // from the top (store/launch.ts says why).
+  const attempt = useLaunch((s) => s.attempt);
 
   // Accounts come from invite codes now. No self-signup, so a device with no
   // credential goes to the door rather than quietly minting a tenant.
   useEffect(() => {
+    if (attempt > 0) setChecked(false);
     void (async () => {
       // The address the person saved, if they ever had to set one. Applied before any
       // request is made, or the first call goes to the wrong place and the app decides
@@ -152,28 +157,24 @@ export default function RootLayout() {
       setRoute((await isOnboarded()) ? null : 'onboarding');
       setChecked(true);
     })();
-  }, [setToken]);
+  }, [setToken, attempt]);
 
-  // Redirect ONCE, after the check. Reading state first avoids the flash of the chat
+  // Redirect ONCE per check, after it. Reading state first avoids the flash of the chat
   // screen that a render-time redirect would produce.
   //
-  // The `sent` ref is what makes "once" true. Without it this fires again every time
-  // the route changes, so finishing onboarding and navigating to the app immediately
-  // bounced back here -- the decision was made at launch and then enforced for ever,
-  // against a person who had since done the thing it was waiting for.
-  const sent = useRef(false);
+  // The `sent` ref is what makes "once" true: it holds the check whose answer was carried
+  // out. Without it this fires again every time the route changes, so finishing
+  // onboarding and navigating to the app immediately bounced back here -- the decision
+  // was made at launch and then enforced for ever, against a person who had since done
+  // the thing it was waiting for. A check run again is a new decision, carried out once.
+  const sent = useRef(-1);
   useEffect(() => {
-    if (!checked || !route || sent.current) return;
-    if (segments[0] === route) return;
-    sent.current = true;
-    router.replace(
-      route === 'connect' ? '/connect'
-      : route === 'phone' ? '/phone'
-      : route === 'invite' ? '/invite'
-      : route === 'consent' ? '/consent'
-      : '/onboarding',
-    );
-  }, [checked, route, segments, router]);
+    if (!checked || sent.current === attempt) return;
+    if (route && segments[0] === route) return;
+    sent.current = attempt;
+    const to = launchTarget(route, attempt);
+    if (to) router.replace(to);
+  }, [checked, route, segments, router, attempt]);
 
   useEffect(() => {
     if (fontsReady && checked) void SplashScreen.hideAsync();
