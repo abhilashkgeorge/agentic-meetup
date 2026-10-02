@@ -13,8 +13,10 @@
  * it walks in, and on your yes flies over to you by the sky drop, as a phone does
  * (the app's flight.ts). Told the two of you have a bench, it gets to its own seat --
  * the one the app gives it, from the same park layout -- inside three seconds, as the
- * app's sim does, and sits. `kill -USR1` sends it away (another tab, as a phone does:
- * held PARK_AWAY_MS), `kill -USR2` brings it back. NO MODEL: every line is
+ * app's sim does, and sits; with --sit it asks for the bench itself, a few seconds after
+ * the two of you are together. `kill -USR1` sends it away (another tab, as a phone
+ * does: held PARK_AWAY_MS), `kill -USR2` brings it back. It says what it sees of the
+ * others: who appears and goes, who flies, who sits. NO MODEL: every line is
  * written here. With --ride it is on a bicycle, and rides round you in a circle rather
  * than standing by you. Once you are talking with it, it keeps beside you wherever you
  * go -- walking when you walk, on a bike when you ride -- so the things to do together
@@ -28,8 +30,8 @@ import WebSocket from 'ws';
 import { env } from '../src/env.js';
 import { mintToken, newSessionId } from '../src/tokens.js';
 // The park the phones draw, so the bot sits where the app would sit it.
-import { seatOn } from '../../app/src/features/world/bench.js';
-import { flightAt, flightMs, landingBeside } from '../../app/src/features/world/flight.js';
+import { benchFor, seatOn } from '../../app/src/features/world/bench.js';
+import { flies, flightAt, flightMs, landingBeside } from '../../app/src/features/world/flight.js';
 import { CUBBON_PARK, venueGarden } from '../../app/src/features/world/venue.js';
 
 if (process.env.NODE_ENV === 'production') throw new Error('park-bot is for development');
@@ -52,6 +54,15 @@ let flight: { fx: number; fz: number; tx: number; tz: number; at: number } | nul
 /** Away (USR1) until back (USR2): nothing sent meanwhile, as a phone on another tab. */
 let away = false;
 const ask = process.argv.includes('--ask');
+const sitDown = process.argv.includes('--sit');
+/** When the bot started, for the times in what it says it sees. */
+const started = Date.now();
+const secs = () => ((Date.now() - started) / 1000).toFixed(1);
+/** What it last saw of each person: to say who appears, goes, flies and sits. */
+const seen = new Map<string, { flying: boolean; sitting: boolean }>();
+let sitAt = 0;
+let walkedBackAt = 0;
+let finished = false;
 const ride = process.argv.includes('--ride');
 const voice = process.argv.includes('--voice')
   ? new (await import('./park-bot-voice.js')).BotVoice()
@@ -123,6 +134,18 @@ ws.on('message', (data) => {
   }
   if (ev.type === 'park.people') {
     people = ev.people ?? [];
+    const now = new Set<string>();
+    for (const p of people as { ref: string; x: number; z: number; fly?: unknown; sitting?: boolean }[]) {
+      now.add(p.ref);
+      const was = seen.get(p.ref);
+      const flying = !!p.fly, sitting = p.sitting === true;
+      if (!was) console.log(`park-bot [${secs()}s] sees ${p.ref.slice(0, 6)} appear at (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+      if (flying && !was?.flying) console.log(`park-bot [${secs()}s] sees ${p.ref.slice(0, 6)} flying ${JSON.stringify(p.fly)}`);
+      if (!flying && was?.flying) console.log(`park-bot [${secs()}s] sees ${p.ref.slice(0, 6)} land at (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+      if (sitting !== (was?.sitting ?? false)) console.log(`park-bot [${secs()}s] sees ${p.ref.slice(0, 6)} ${sitting ? 'sitting' : 'standing'} at (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+      seen.set(p.ref, { flying, sitting });
+    }
+    for (const ref of [...seen.keys()]) if (!now.has(ref)) { seen.delete(ref); console.log(`park-bot [${secs()}s] sees ${ref.slice(0, 6)} gone`); }
     voice?.setNear(people.flatMap((p) => (p.voice ? [p.voice] : [])));
   }
   if (ev.type === 'park.voice' && voice) {
@@ -135,6 +158,13 @@ ws.on('message', (data) => {
   }
   if (ev.type === 'park.said' && ev.ref === 'you') console.log(`park-bot said: ${ev.text}`);
   if (ev.type === 'park.refused') console.log(`park-bot: refused (${ev.reason})`);
+  // Let go of while away past the grace, as a phone does: back in where it stands.
+  if (ev.type === 'park.refused' && ev.reason === 'not_in_park' && Date.now() - walkedBackAt > 5000) {
+    walkedBackAt = Date.now();
+    paired = false; partnerRef = null; seat = null;
+    send({ type: 'park.enter', ...(voice ? { voiceOpen: true } : {}), at: { x, z } });
+    console.log('park-bot: walked back in');
+  }
   if (ev.type === 'park.asked') {
     console.log(`park-bot: asked to talk${(ev as { why?: string }).why ? ` (both like ${(ev as { why?: string }).why})` : ''}; saying yes`);
     setTimeout(() => send({ type: 'park.answer', yes: true }), 1500);
@@ -145,6 +175,8 @@ ws.on('message', (data) => {
     partnerRef = ev.ref ?? null;
     asker = !(ev as { asked?: boolean }).asked;
     console.log(`park-bot: talking with someone (${asker ? 'it asked' : 'it was asked'})`);
+    // --sit: asks for the bench a few seconds after, as somebody tapping "Sit on a bench".
+    if (sitDown) sitAt = Date.now() + 6000;
     // It asked: over to them by the sky drop, as the asker's phone does -- beside them,
     // clear of trunks and benches.
     if (asker) {
@@ -152,9 +184,12 @@ ws.on('message', (data) => {
       const clear = (px: number, pz: number) => !garden.trees.some((t) => Math.hypot(t.x - px, t.z - pz) < 0.25)
         && !garden.benches.some((b) => Math.hypot(b.x - px, b.z - pz) < 0.35);
       const [tx, tz] = landingBeside([x, z], [them.x, them.z], clear);
-      flight = { fx: x, fz: z, tx, tz, at: Date.now() };
       riding = false;
-      console.log(`park-bot: flying over (${flightMs(flight)} ms)`);
+      // Near enough to walk, it walks (keeping beside them, below), as a phone does.
+      if (flies([x, z], [tx, tz])) {
+        flight = { fx: x, fz: z, tx, tz, at: Date.now() };
+        console.log(`park-bot: flying over (${flightMs(flight)} ms)`);
+      } else console.log('park-bot: near enough to walk over');
     }
   }
   if (ev.type === 'park.parted') { paired = false; partnerRef = null; seat = null; riding = false; console.log('park-bot: parted'); }
@@ -186,6 +221,13 @@ const walk = setInterval(() => {
   // Not till the server says where it stands, and nothing at all while away.
   if (!arrived && !placed) return;
   if (away) return;
+  // --sit: the bench nearest halfway between the two of them, as the app's button picks.
+  if (sitAt && Date.now() >= sitAt && !flight && paired) {
+    sitAt = 0;
+    const them = people.find((p) => p.ref === partnerRef);
+    const b = them ? benchFor(garden.benches, [x, z], [them.x, them.z]) : null;
+    if (b !== null) { send({ type: 'park.sit', bench: b }); console.log(`park-bot [${secs()}s]: asks for bench ${b}`); }
+  }
   // Up in the sky drop: where the flight says, telling the park how far into it.
   if (flight) {
     const t = Date.now() - flight.at;
@@ -269,6 +311,9 @@ const walk = setInterval(() => {
 }, 200);
 
 async function done(): Promise<void> {
+  // Once: a signal can come to it twice (to npx and to it), and the pool ends only once.
+  if (finished) return;
+  finished = true;
   clearInterval(walk);
   send({ type: 'park.leave' });
   ws.close();
