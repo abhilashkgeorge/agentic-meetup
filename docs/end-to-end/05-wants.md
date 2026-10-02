@@ -208,12 +208,14 @@ three shapes:
   rounded to the nearest 10; below 20 it says "Under 20" and a warning such as "Very few
   people fit. Turn a must-have into a want to reach more." When the whole app has fewer
   than 20 people you could meet before any rule of yours applies, it says so instead: "Very
-  few people are on the app yet. That is not because of anything you asked for." (since
-  2026-09-30; before, a new person on a near-empty app was told to loosen their rules)
+  few people are on the app yet. As more join, your agent will have more people to meet."
+  (since 2026-09-30; before, a new person on a near-empty app was told to loosen their rules;
+  until 2026-10-02 it added "That is not because of anything you asked for", which was false
+  when the asks were why nobody was left, and sat under "nobody fits what you have asked for")
   ([server/src/matching/candidates.ts:279] `export const SHOWN_FLOOR = 20;`,
   [app/src/lib/counts.ts:12] `return n === null || n === undefined ? 'Under 20' : n.toLocaleString();`,
   [app/src/features/preferences/preferences-screen.tsx:116] `Very few people fit. Turn a must-have into a want to reach more.`,
-  [app/src/lib/counts.ts:35] `export const FEW_ON_THE_APP = 'Very few people are on the app yet. That is not because of anything you asked for.';`).
+  [app/src/lib/counts.ts:38] `export const FEW_ON_THE_APP = 'Very few people are on the app yet. As more join, your agent will have more people to meet.';`).
 
 ### 5.4 When the other person has not answered
 
@@ -281,7 +283,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-([app/src/features/matches/matches-screen.tsx:399] `WHAT YOU ASKED FOR`):
+([app/src/features/matches/matches-screen.tsx:400] `WHAT YOU ASKED FOR`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|

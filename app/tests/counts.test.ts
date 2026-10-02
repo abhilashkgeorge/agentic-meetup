@@ -82,6 +82,9 @@ describe('a small pool, when the app itself is small', () => {
       const src = readFileSync(join(SRC, 'features', ...f), 'utf8');
       expect(src, f[1]).toMatch(/fewOnTheApp\(pool\.steps\) \? FEW_ON_THE_APP/);
     }
-    expect(FEW_ON_THE_APP).toContain('not because of anything you asked for');
+    expect(FEW_ON_THE_APP).toContain('Very few people are on the app yet');
+    // It makes no claim about what was asked: on a near-empty app the asks may well be
+    // why nobody is left, and it sat under "Nobody fits what you asked for" (2026-10-02).
+    expect(FEW_ON_THE_APP).not.toMatch(/asked/i);
   });
 });

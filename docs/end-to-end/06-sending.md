@@ -21,7 +21,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") ([app/src/app/(tabs)/index.tsx:1] `export { default } from '../../features/world/world-screen';`,
    [app/src/features/world/hud.tsx:204] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
-   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:278] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:279] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
    is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
@@ -47,7 +47,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   ([app/src/features/world/world-screen.tsx:278] `Your agent met ${r.met} people. See Matches.`,
+   ([app/src/features/world/world-screen.tsx:279] `Your agent met ${r.met} people. See Matches.`,
    [app/src/features/world/exchange-strip.tsx:83] `label="See the card" variant="primary" onPress={onSeeCard}`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).
@@ -179,7 +179,7 @@ off ([server/src/matching/profile.ts:207] `if (!agreed) missing.push('consent');
 - **How they are labelled.** "Practice match — this one is not a real person." on the card,
   "Practice match / Not a real person" in lists, their lines marked "(practice)", and the
   reveal says "This is not a real person. The pool is invented until enough people have
-  joined…" ([app/src/features/matches/matches-screen.tsx:352] `Practice match — this one is not a real person.`,
+  joined…" ([app/src/features/matches/matches-screen.tsx:353] `Practice match — this one is not a real person.`,
   [app/src/features/matches/exchange.ts:47] `${s.text} (practice)`,
   [app/src/features/matches/reveal-screen.tsx:179] `This is not a real person. The pool is invented until enough people have`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a

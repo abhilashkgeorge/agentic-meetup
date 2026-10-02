@@ -47,7 +47,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 
 - "Yes, share my profile with them" and "Not this one", and the note "This shows them your
   photos and first name. Nothing is shared until you tap it."
-  ([app/src/features/matches/matches-screen.tsx:429] `<Button label={m.practice ? WORDS.shareFirstPractice : WORDS.shareFirst}`,
+  ([app/src/features/matches/matches-screen.tsx:430] `<Button label={m.practice ? WORDS.shareFirstPractice : WORDS.shareFirst}`,
   [app/src/features/matches/turn.ts:37] `shareFirstNote: 'This shows them your photos and first name. Nothing is shared until you tap it.',`).
 - If she opens his profile screen anyway, it says "Not yet — Their photos and name show only after
   they share them. You decide first, on the card."
@@ -74,7 +74,7 @@ at 0), tag chips; "Your agent never decided whether you would find them attracti
 opinion about that and does not keep one."; then "Yes, share mine back" and "Not for me", and
 under them "Yes shows them your photos and first name, and opens a chat. If you say no, they
 are not told."
-([app/src/features/matches/matches-screen.tsx:441] `<Button label={m.practice ? WORDS.seeThemPractice : WORDS.seeThem}`,
+([app/src/features/matches/matches-screen.tsx:442] `<Button label={m.practice ? WORDS.seeThemPractice : WORDS.seeThem}`,
 [app/src/features/matches/reveal-screen.tsx:227] `<Card label="Who they are">`,
 [app/src/features/matches/reveal-screen.tsx:152] `<Button label={them?.practice ? WORDS.shareBackPractice : WORDS.shareBack} variant="primary"`,
 [app/src/features/matches/turn.ts:47] `shareBackNote: 'Yes shows them your photos and first name, and opens a chat. If you say no, they are not told.',`).
@@ -160,7 +160,7 @@ Each moment that asks something of a person wakes their phone, whether or not th
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
 ([server/src/push/index.ts:31] `turn: { title: 'Your agent met someone'`). The phone asks for
 permission when the person first sends their agent out, not at launch
-([app/src/features/world/world-screen.tsx:293] `void registerForPush(token, { ask: true });`), and a
+([app/src/features/world/world-screen.tsx:294] `void registerForPush(token, { ask: true });`), and a
 tap opens the card, their profile or the chat
 ([app/src/features/push/route.ts:14] `export function routeForPush(data: Record<string, unknown> | null | undefined): string | null {`).
 **Not yet reaching phones:** the app has no Expo project id yet and the server sends with

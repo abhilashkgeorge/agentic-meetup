@@ -32,7 +32,10 @@ export function fewOnTheApp(steps: readonly { step: string; remaining: number | 
   return everyone !== undefined && everyone.remaining === null;
 }
 
-export const FEW_ON_THE_APP = 'Very few people are on the app yet. That is not because of anything you asked for.';
+// No claim about what was asked: on a near-empty app the asks may well be why nobody is
+// left -- "That is not because of anything you asked for" sat under "Nobody fits what you
+// asked for" on one screen (the Pixel, 2026-10-02).
+export const FEW_ON_THE_APP = 'Very few people are on the app yet. As more join, your agent will have more people to meet.';
 
 /** True when the server said "under 20": a small pool, which may be none at all. */
 export const isUnder20 = (n: number | null | undefined): boolean => n === null || n === undefined;

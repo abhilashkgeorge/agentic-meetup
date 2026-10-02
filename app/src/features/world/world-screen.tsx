@@ -57,6 +57,7 @@ import { gardenSpots } from './garden';
 import { MAP, spotsFrom } from './map';
 import { loadWorldRenderer, type WorldRenderer } from './r3f';
 import { CROWD_TEST, WorldSim, isCrowd } from './sim';
+import { roundNote } from '../matches/round-note';
 import { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter, useWorld } from './store';
 import {
   CITY_REALM, CUBBON_PARK, agentsForVenue, transitionRealm, venueGarden,
@@ -272,7 +273,7 @@ export default function WorldScreen() {
     setSaid(
       r.error === 'budget_exceeded' ? SHARED_LIMIT
       : r.error ? 'Something went wrong while your agent was out.'
-      : r.skipped ? r.skipped
+      : r.skipped ? roundNote(r.skipped)
       : r.met === 0 ? 'It found nobody new to meet.'
       : r.met === 1 ? 'Your agent met one person. See Matches.'
       : `Your agent met ${r.met} people. See Matches.`,

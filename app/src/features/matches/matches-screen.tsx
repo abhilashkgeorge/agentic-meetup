@@ -29,6 +29,7 @@ import {
   decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep, type RoundState, type Talk,
 } from '../../lib/api';
 import { FEW_ON_THE_APP, costLabel, countLabel, fewOnTheApp, isUnder20 } from '../../lib/counts';
+import { roundNote } from './round-note';
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import {
@@ -152,7 +153,7 @@ export default function MatchesScreen() {
         : round.error
           ? 'Something went wrong while your agent was out. Try again.'
           : round.skipped
-            ? round.skipped
+            ? roundNote(round.skipped)
             // The recap card says what happened (item 11), in words and without a count.
             : round.recap
               ? null

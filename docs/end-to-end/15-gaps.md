@@ -89,7 +89,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.
 19. **Closed on 2026-09-29: a waiting card running out unseen.** The one waiting card on screen is the one that fades
     soonest, and "2 more waiting" says how many are behind it; each card also wakes the phone when it arrives and the
-    day it fades, once push is set up ([app/src/features/matches/matches-screen.tsx:328] `[...soonestFirst(matches.filter((m) => m.waitingOnYou)).slice(0, 1),`).
+    day it fades, once push is set up ([app/src/features/matches/matches-screen.tsx:329] `[...soonestFirst(matches.filter((m) => m.waitingOnYou)).slice(0, 1),`).
 20. **Check-in details.** "Not yet" is final. Closed on 2026-09-29: a Block from "Did you feel safe?" sends the unsafe
     answer first, and "Not sure" no longer counts toward "Confirmed by N people"
     ([app/src/features/dm/checkin-flow.ts:58] `export function blocked(f: Flow): Flow {`,

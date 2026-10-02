@@ -42,9 +42,9 @@ person ever reads are the **date idea**, and code checks those.
 - **What Arjun reads on his card** (when it is his turn): "DATE IDEA", "SOMETHING YOU SHARE",
   and "Read what your agents said", which opens the lines as "Your agent" and "Their agent".
   Every answer line is Meera's or Arjun's own sentence, word for word
-  ([app/src/features/matches/matches-screen.tsx:60] `{ color: p.textSecondary }]}>DATE IDEA</Text>`,
-  [app/src/features/matches/matches-screen.tsx:69] `SOMETHING YOU SHARE</Text>`,
-  [app/src/features/matches/matches-screen.tsx:81] `open ? 'Hide the chat' : 'Read what your agents said'`,
+  ([app/src/features/matches/matches-screen.tsx:61] `{ color: p.textSecondary }]}>DATE IDEA</Text>`,
+  [app/src/features/matches/matches-screen.tsx:70] `SOMETHING YOU SHARE</Text>`,
+  [app/src/features/matches/matches-screen.tsx:82] `open ? 'Hide the chat' : 'Read what your agents said'`,
   [app/src/features/matches/exchange.ts:153] `speaker: l.who === 'you' ? 'Your agent' : 'Their agent',`).
 - **Meera reads the same talk** with the sides swapped, on her own card
   ([server/src/matching/talk.ts:286] `const who = (by: 'a' | 'b'): TalkLine['who'] => (by === reader ? 'you' : 'them');`).
@@ -112,7 +112,7 @@ shareable sentences change ({AI:sheet};
 Only fact ids are stored. When there is no talk, the card shows "WHAT YOUR AGENTS ASKED EACH
 OTHER": questions both answered, then only theirs, then up to two the reader answered and
 they did not ([server/src/matching/answer-sheet.ts:348] `const answered = [...both, ...onlyTheirs].slice(0, LINES);`,
-[app/src/features/matches/matches-screen.tsx:383] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
+[app/src/features/matches/matches-screen.tsx:384] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
 
 ### 7.5 What is saved, and what people can read
 
