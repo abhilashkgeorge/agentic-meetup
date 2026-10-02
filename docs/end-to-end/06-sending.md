@@ -102,7 +102,7 @@ words: "That's all for today. Chat, learning and your agent's rounds share 10 tu
 today's are used up. Your clone can talk again tomorrow." (since 2026-09-29; before, nothing was
 shown, and the clone's previous reply was blanked)
 ([server/src/metering.ts:34] `export function budgetMessage(err: BudgetExceeded): string {`,
-[app/src/lib/socket.ts:218] `if (pendingTurn || ev.code === 'budget_exceeded') s.failTurn(pendingTurn, noteFor(ev.code, ev.message));`).
+[app/src/lib/socket.ts:219] `if (pendingTurn || ev.code === 'budget_exceeded') s.failTurn(pendingTurn, noteFor(ev.code, ev.message));`).
 
 ### 6.3 The rules: who the agent may meet
 

@@ -311,7 +311,11 @@ export const ServerEvent = z.discriminatedUnion('type', [
   /** They stopped asking, or the time ran out. */
   z.object({ type: z.literal('park.unasked') }),
   /** You are talking with them now: where they stand, for the ride over. */
-  z.object({ type: z.literal('park.paired'), ref: AgentRef, x: z.number(), z: z.number(), asked: z.boolean() }),
+  z.object({
+    type: z.literal('park.paired'), ref: AgentRef, x: z.number(), z: z.number(), asked: z.boolean(),
+    /** Already together: back on a new connection within the grace. No flight over. */
+    again: z.boolean().optional(),
+  }),
   /** It ended: either of you, or one of you left the park. */
   z.object({ type: z.literal('park.parted') }),
   /** The bench is yours: walk there and sit. Private from now on. */

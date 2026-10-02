@@ -132,6 +132,24 @@ describe('talking with somebody in the park', () => {
     expect(useParkLive.getState()).toMatchObject({ partner: null, bench: null, asked: null, finding: null });
   });
 
+  it('takes a pair back after a new connection as already together: no flight, its own side of the bench', () => {
+    // The server holds somebody away through a dropped connection and, when they come
+    // back, says who they are with again (`again`) -- socket.ts passes `asked || again`
+    // as "nobody flies" and `!asked` as the side of the bench (server park-away-socket.test.ts).
+    const s = useParkLive.getState();
+    s.setIn(true);
+    s.gotPaired(REF(9), null, true);
+    expect(useParkLive.getState().partner).toEqual({ ref: REF(9), rideTo: null, asker: true });
+    s.gotPaired(REF(9), null, false);
+    expect(useParkLive.getState().partner?.asker).toBe(false);
+    // Without the flag, as before: whoever flies over is the one who asked.
+    s.gotPaired(REF(9), [1, 2]);
+    expect(useParkLive.getState().partner).toMatchObject({ rideTo: [1, 2], asker: true });
+    const src = readFileSync(join(import.meta.dirname, '..', 'src', 'lib', 'socket.ts'), 'utf8');
+    expect(src).toContain('gotPaired(ev.ref, ev.asked || ev.again ? null : [ev.x, ev.z], !ev.asked);');
+    s.setIn(false);
+  });
+
   it('forgets the pair after a dropped connection, and on "End" without waiting', () => {
     const s = useParkLive.getState();
     s.setIn(true);

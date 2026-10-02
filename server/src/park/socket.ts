@@ -147,6 +147,9 @@ export async function handleParkFrame(ws: WebSocket, ctx: TenantCtx, raw: string
       const at = await enter(ctx, msg.voiceOpen === true, msg.at);
       // Where they stand: the phone puts them there before it says where it is.
       send(ws, { type: 'park.arrived', x: at.x, z: at.z });
+      // Back on a new connection within the grace: still with somebody, maybe on a bench.
+      // The phone forgot both when its old connection went; this is what it had.
+      restorePair(ws, me);
       pushPeople(me);
       return;
     }
@@ -348,9 +351,35 @@ async function findFor(me: string): Promise<{ to: string; why: string | null } |
   return { to, why };
 }
 
-/** A socket closed: if it was their last, they have left the park too. */
+/**
+ * A socket closed: if it was their last, they have left the park too -- unless they are
+ * AWAY (another screen, the phone put away: room.ts AWAY_MS). A phone in the background
+ * loses its connection within seconds (the Seeker's went 5.7 s after the park left its
+ * screen, 2026-10-03), and leaving then broke the grace: their partner saw them vanish
+ * and the bench end. Held, they go when the grace does (tick), or come back on a new
+ * connection and find it all as it was (restorePair).
+ */
 export function socketClosed(userId: string): void {
-  if (!hub.isOnline(userId)) leavePark(userId);
+  if (hub.isOnline(userId)) return;
+  if (park.members.get(userId)?.awayUntil !== undefined) {
+    log.info({ userId }, 'park: connection gone while away; held');
+    return;
+  }
+  leavePark(userId);
+}
+
+/**
+ * Tell somebody walking (back) in who they are with, if anybody: `again`, so the phone
+ * takes them as already together -- no flight over -- and which side of the bench is
+ * theirs; and the bench, if they sit on one.
+ */
+function restorePair(ws: WebSocket, me: string): void {
+  const partner = pairs.partnerOf(me);
+  const them = partner ? park.members.get(partner) : undefined;
+  if (!partner || !them) return;
+  send(ws, { type: 'park.paired', ref: agentRef(me, partner), x: them.x, z: them.z, asked: !pairs.didAsk(me), again: true });
+  const bench = pairs.benchOf(me);
+  if (bench !== null) send(ws, { type: 'park.sat', bench });
 }
 
 /** Per viewer: whose look they have been sent, and which look it was. */

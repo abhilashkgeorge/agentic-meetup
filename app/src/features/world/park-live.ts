@@ -265,7 +265,8 @@ interface ParkLive {
   setFinding: (f: ParkLive['finding']) => void;
   gotAsked: (ref: string, why?: string) => void;
   gotUnasked: () => void;
-  gotPaired: (ref: string, rideTo: readonly [number, number] | null) => void;
+  /** `asker`: whether you asked (your side of the bench); by default, whether you fly over. */
+  gotPaired: (ref: string, rideTo: readonly [number, number] | null, asker?: boolean) => void;
   /** The ride is over: nothing left to drive to. */
   rode: () => void;
   gotParted: () => void;
@@ -316,8 +317,8 @@ export const useParkLive = create<ParkLive>((set, get) => ({
   gotAsked: (ref, why) => set({ asked: { ref, ...(why ? { why } : {}), at: Date.now() } }),
   gotUnasked: () => set({ asked: null }),
   // The sky drop takes the one who asked: off the bike for it.
-  gotPaired: (ref, rideTo) => set({
-    partner: { ref, rideTo, asker: rideTo !== null }, finding: null, asked: null, ...(rideTo ? { riding: false } : {}),
+  gotPaired: (ref, rideTo, asker) => set({
+    partner: { ref, rideTo, asker: asker ?? rideTo !== null }, finding: null, asked: null, ...(rideTo ? { riding: false } : {}),
   }),
   rode: () => { const p = get().partner; if (p) set({ partner: { ...p, rideTo: null } }); },
   gotParted: () => set({ partner: null, bench: null }),

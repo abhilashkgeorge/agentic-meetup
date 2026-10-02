@@ -186,7 +186,8 @@ function connect(): void {
         break;
       case 'park.paired':
         // The one who asked flies over (the sky drop, flight.ts); the one who said yes stays put.
-        useParkLive.getState().gotPaired(ev.ref, ev.asked ? null : [ev.x, ev.z]);
+        // `again`: already together, back on a new connection -- nobody flies anywhere.
+        useParkLive.getState().gotPaired(ev.ref, ev.asked || ev.again ? null : [ev.x, ev.z], !ev.asked);
         break;
       case 'park.parted':
         useParkLive.getState().gotParted();

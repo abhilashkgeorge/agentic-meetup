@@ -40,6 +40,8 @@ export class ParkPairs {
   /** Bench -> the two sitting on it; person -> their bench. */
   private readonly benches = new Map<number, [string, string]>();
   private readonly seat = new Map<string, number>();
+  /** Of each pair, the one who asked: their side of the bench, and whether they flew over. */
+  private readonly askers = new Set<string>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -83,10 +85,16 @@ export class ParkPairs {
     if (yes) {
       this.partners.set(from, to);
       this.partners.set(to, from);
+      this.askers.add(from);
     } else {
       this.declined.set(`${from}|${to}`, this.now() + DECLINED_MS);
     }
     return from;
+  }
+
+  /** Whether they were the one who asked, of the pair they are in. */
+  didAsk(userId: string): boolean {
+    return this.askers.has(userId) && this.partners.has(userId);
   }
 
   /** Who `from` is asking now, if anybody. */
@@ -120,6 +128,8 @@ export class ParkPairs {
     this.stand(userId);
     this.partners.delete(userId);
     this.partners.delete(other);
+    this.askers.delete(userId);
+    this.askers.delete(other);
     return other;
   }
 
