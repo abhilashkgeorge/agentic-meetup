@@ -122,15 +122,27 @@ describe('seen from another phone', () => {
 
 describe('the bench button', () => {
   it('holds still under a finger: nothing for a moment after the bench changes, either way', () => {
-    const t = 50_000;
     // Just sat down: the button now says "Get up", and does nothing yet.
-    expect(benchPill(4, false, t, t + 100)).toEqual({ label: 'Get up', action: null });
-    expect(benchPill(4, false, t, t + BENCH_SWAP_LOCK_MS)).toEqual({ label: 'Get up', action: 'stand' });
+    expect(benchPill(4, false, true)).toEqual({ label: 'Get up', action: null });
+    expect(benchPill(4, false, false)).toEqual({ label: 'Get up', action: 'stand' });
     // Just got up: "Sit on a bench", nothing yet.
-    expect(benchPill(null, false, t, t + 300)).toEqual({ label: 'Sit on a bench', action: null });
-    expect(benchPill(null, false, t, t + BENCH_SWAP_LOCK_MS + 1)).toEqual({ label: 'Sit on a bench', action: 'sit' });
+    expect(benchPill(null, false, true)).toEqual({ label: 'Sit on a bench', action: null });
+    expect(benchPill(null, false, false)).toEqual({ label: 'Sit on a bench', action: 'sit' });
     // Tapped, waiting for the server: says so, and a second tap does nothing.
-    expect(benchPill(null, true, 0, t)).toEqual({ label: 'Sitting down…', action: null });
+    expect(benchPill(null, true, false)).toEqual({ label: 'Sitting down…', action: null });
+    expect(BENCH_SWAP_LOCK_MS).toBeLessThanOrEqual(1_500);
+  });
+
+  it('comes free again by a timer, not by reading the clock while drawing (SOURCE SHAPE: needs React Native)', () => {
+    // The app builds with the React Compiler, which keeps a component's working-out until
+    // its inputs change. The clock is not an input: worked out from Date.now() in render,
+    // the lock never ended and the button stayed grey on both phones (2026-10-03).
+    const hud = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-hud.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const actions = hud.slice(hud.indexOf('export function ParkActions'), hud.indexOf('function Pill('));
+    expect(actions).toMatch(/setLocked\(true\);\s*const t = setTimeout\(\(\) => setLocked\(false\), BENCH_SWAP_LOCK_MS\);/);
+    expect(actions).toContain('const pill = benchPill(bench, asking, locked);');
+    expect(actions, 'the clock read while drawing').not.toMatch(/benchPill\([^)]*Date\.now\(\)/);
   });
 
   it('gets you up off a bench only for a firm push of the stick (SOURCE SHAPE: the canvas needs GL)', () => {
@@ -139,7 +151,7 @@ describe('the bench button', () => {
     expect(canvas).toContain("if (push > (you?.seat ? STAND_PUSH : 0.08)) {");
     expect(canvas).toMatch(/const STAND_PUSH = 0\.5;/);
     const hud = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-hud.tsx'), 'utf8');
-    expect(hud).toContain('const pill = benchPill(bench, asking, changedAt, Date.now());');
+    expect(hud).toContain('const pill = benchPill(bench, asking, locked);');
     expect(hud).toMatch(/disabled=\{!pill\.action \|\| !!partner\.rideTo\}/);
   });
 });

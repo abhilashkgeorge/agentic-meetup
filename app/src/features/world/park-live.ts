@@ -164,13 +164,18 @@ export function movingNow(me: { state: string; fly?: unknown }, driven: boolean)
  *
  * NOW: tapped, it says "Sitting down…" and does nothing more until the server answers;
  * and for BENCH_SWAP_LOCK_MS after the bench changes, either way, it does nothing.
+ *
+ * `locked` IS STATE, SET AND CLEARED BY A TIMER -- never worked out from the clock while
+ * drawing. The app builds with the React Compiler, which keeps what a component worked
+ * out until its inputs change; the clock is not an input, so the first version, which
+ * compared Date.now() with when the bench changed, stayed locked for good: "Sit on a
+ * bench" greyed out on both phones, and tapping it did nothing (2026-10-03).
  */
 export const BENCH_SWAP_LOCK_MS = 1_200;
 export function benchPill(
-  bench: number | null, asking: boolean, changedAt: number, now: number,
+  bench: number | null, asking: boolean, locked: boolean,
 ): { label: string; action: 'sit' | 'stand' | null } {
   if (asking && bench === null) return { label: 'Sitting down…', action: null };
-  const locked = now - changedAt < BENCH_SWAP_LOCK_MS;
   return bench === null
     ? { label: 'Sit on a bench', action: locked ? null : 'sit' }
     : { label: 'Get up', action: locked ? null : 'stand' };

@@ -291,12 +291,11 @@ export function ParkActions({ venueSim, benches }: {
   // The bench button holds still under a finger (park-live.ts benchPill): "Sitting
   // down…" until the server answers, and nothing at all just after the bench changes.
   const [asking, setAsking] = useState(false);
-  const [changedAt, setChangedAt] = useState(0);
-  const [, redraw] = useState(0);
+  const [locked, setLocked] = useState(true);
   useEffect(() => {
     setAsking(false);
-    setChangedAt(Date.now());
-    const t = setTimeout(() => redraw((n) => n + 1), BENCH_SWAP_LOCK_MS);
+    setLocked(true);
+    const t = setTimeout(() => setLocked(false), BENCH_SWAP_LOCK_MS);
     return () => clearTimeout(t);
   }, [bench]);
   useEffect(() => { if (refused === 'bench_taken') setAsking(false); }, [refused]);
@@ -316,7 +315,7 @@ export function ParkActions({ venueSim, benches }: {
     setAsking(true);
     parkSit(b);
   };
-  const pill = benchPill(bench, asking, changedAt, Date.now());
+  const pill = benchPill(bench, asking, locked);
 
   const quests = useParkLive((s) => s.quests);
   const riding = useParkLive((s) => s.riding);
