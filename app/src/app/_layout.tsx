@@ -1,5 +1,6 @@
 import { Stack, useRouter, useSegments, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { View } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
   clearToken, getToken, setToken as persistToken, isOnboarded, getServerUrl, setServerUrl,
@@ -17,6 +18,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { usePalette, useIsDark } from '../components/ui';
 import { useTheme } from '../store/theme';
 import { ErrorBoundary } from '../components/error-boundary';
+import { TownLoading } from '../features/world/town-loading';
 
 /**
  * Root stack. The tabs are one screen inside it; onboarding is another, so it can be
@@ -176,9 +178,13 @@ export default function RootLayout() {
     if (to) router.replace(to);
   }, [checked, route, segments, router, attempt]);
 
+  // The launch screen goes as soon as the type is in; the check that follows can take
+  // seconds over a slow connection, and it was a blank white page all that time (the
+  // Pixel, 2026-10-03: nine seconds and more). The town's own shape stands there instead,
+  // since the town is where nearly every launch lands (town-loading.tsx).
   useEffect(() => {
-    if (fontsReady && checked) void SplashScreen.hideAsync();
-  }, [fontsReady, checked]);
+    if (fontsReady && themeLoaded) void SplashScreen.hideAsync();
+  }, [fontsReady, themeLoaded]);
 
   // ONE socket for the whole app, opened here rather than by whichever screen happens
   // to need it. A socket owned by a screen closes when you navigate away from it --
@@ -245,6 +251,9 @@ export default function RootLayout() {
         {/* Hidden: the 3D frame-rate check, reached from Settings. Draws its own header. */}
         <Stack.Screen name="dev/gl" options={{ headerShown: false }} />
       </Stack>
+      {/* Over everything until the launch check has decided where to go: the town's
+          shape, not a white page, and not a screen the check may be about to leave. */}
+      {!checked && <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}><TownLoading /></View>}
     </ErrorBoundary>
   );
 }

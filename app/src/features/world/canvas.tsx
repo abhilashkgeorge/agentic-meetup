@@ -55,12 +55,11 @@ import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
 import { Viewport, nearestFirst, pickAlong, visible } from './visible';
-import { buildEffects } from './effects-mesh';
-import { effectsNow } from './park-effects';
+import { buildRigs } from './rig-mesh';
 import { BIKE_PACE } from './bike';
 import { buildBike } from './bike-mesh';
 import { buildScale } from './character';
-import { sightsToMark, useParkLive } from './park-live';
+import { RING_COLOR, ringShown, sightsToMark, useParkLive } from './park-live';
 import type { CityPlan } from './city-plan';
 import { buildCity, type BuiltCity } from './city-mesh';
 import { CUBBON_PARK, venueGarden, type Venue } from './venue';
@@ -340,9 +339,13 @@ function buildGeometry() {
     stud: new THREE.SphereGeometry(0.03, 5, 4),
     disc: new THREE.CylinderGeometry(0.45, 0.45, 0.04, 16),
     dot: new THREE.SphereGeometry(0.07, 6, 4),
-    ring: new THREE.TorusGeometry(0.55, 0.05, 6, 24),
+    // A thin flat outline on the ground, not a tube: it read as a solid blue band
+    // (the founder, 2026-10-03: "make it a hollow type instead of a solid shape").
+    ring: new THREE.RingGeometry(0.5, 0.58, 48),
   };
 }
+
+
 type Geometry = ReturnType<typeof buildGeometry>;
 
 /** One instanced mesh per part; `per` instances per slot for the paired ones. */
@@ -823,9 +826,10 @@ function Town({
   // the camera, plain stand-ins further out (venue-mesh.ts). If the bundle ever fails,
   // terrain and people remain usable; only the benches, lamps and bins are absent.
   const furnitureHolder = useMemo(() => new THREE.Group(), []);
-  // The puffs of smoke and the beams of light (park-effects.ts), in the accent colour.
-  const effects = useMemo(() => buildEffects(colors.accent), [colors.accent]);
-  useEffect(() => () => effects.dispose(), [effects]);
+  // The emergency pickup's gear (rig-mesh.ts): balloons, ropes, and parachutes striped
+  // in the accent colour.
+  const rigs = useMemo(() => buildRigs(colors.accent), [colors.accent]);
+  useEffect(() => () => rigs.dispose(), [rigs]);
   // THE SIGHTS STILL TO SEE, marked (park-live.ts sightsToMark): a diamond in the accent
   // colour high over each, bobbing, drawn through the mist and over the trees so it can
   // be steered by from anywhere in the park -- "see the sights" is no use if you cannot
@@ -948,6 +952,8 @@ function Town({
     const g = buildGeometry();
     const solid = new THREE.MeshLambertMaterial({ color: '#ffffff' });
     const ghost = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.5 });
+    // White, and the yellow given per ring (setColorAt): instance colours multiply.
+    const ringMat = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide, depthWrite: false });
     const mk = (geo: THREE.BufferGeometry, n: number) => {
       const im = new THREE.InstancedMesh(geo, solid, n);
       im.count = 0;
@@ -961,9 +967,18 @@ function Town({
       capsules: fallback ? { solid: buildParts(g, solid, slots), ghost: buildParts(g, ghost, slots) } : null,
       discs: mk(g.disc, slots),
       dots: mk(g.dot, slots * DOTS_PER),
-      rings: mk(g.ring, slots),
+      rings: (() => {
+        const im = new THREE.InstancedMesh(g.ring, ringMat, slots);
+        im.count = 0;
+        im.visible = false;
+        im.frustumCulled = false;
+        im.boundingSphere = worldSphere();
+        im.raycast = () => {};
+        im.renderOrder = 2;
+        return im;
+      })(),
       geometries: Object.values(g),
-      materials: [solid, ghost],
+      materials: [solid, ghost, ringMat],
     };
   }, [slots, fallback]);
 
@@ -973,6 +988,7 @@ function Town({
   }, [meshes]);
 
   const col = useMemo(() => buildColours(colors), [colors]);
+  const ringYellow = useMemo(() => new THREE.Color(RING_COLOR), []);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const hidden = useMemo(() => {
     const o = new THREE.Object3D();
@@ -1075,9 +1091,7 @@ function Town({
     const you = live.get('you');
     if (!walking && you && you.area !== yourArea.current) { yourArea.current = you.area; map.setYourTile(you.area ?? CENTRAL_AREA); }
 
-    // The puffs and the beams: whatever is running, in the park only.
-    effects.group.visible = walking;
-    if (walking) effects.update(effectsNow(), Date.now());
+    rigs.group.visible = walking;
     // The stick, if a thumb is on it: it steers in the camera's bearing, not the
     // agent's, so "up" always means away from you however they are facing. Not in the
     // sky drop (flight.ts): up there the stick does nothing.
@@ -1274,6 +1288,8 @@ function Town({
       crowdFrame.dt = clamped;
       crowdFrame.scale = PERSON;
       bodied.current = bodies.update(shown, used, crowdFrame);
+      // Whoever of them is flying: their balloon, rope or parachute (flight.ts).
+      if (walking) rigs.update(shown, bodied.current);
       // A bicycle under each rider the crowd drew, nearest first, at the rider's own build.
       let nb = 0;
       for (let i = 0; walking && i < bodied.current && nb < BIKES_DRAWN; i++) {
@@ -1366,14 +1382,14 @@ function Town({
         nt++;
       }
 
-      if (a.ring) {
+      if (ringShown(a)) {
         const pulse = (1 + 0.12 * Math.sin(t * 4)) * PERSON;
         dummy.position.set(a.x, 0.03 * PERSON, a.z);
         dummy.rotation.set(-Math.PI / 2, 0, 0);
         dummy.scale.setScalar(pulse);
         dummy.updateMatrix();
         rings.setMatrixAt(nr, dummy.matrix);
-        rings.setColorAt(nr, col.accent);
+        rings.setColorAt(nr, ringYellow);
         nr++;
       }
     }
@@ -1474,7 +1490,7 @@ function Town({
       <primitive object={garden.group} />
       {city && <primitive object={city.group} />}
       <primitive object={furnitureHolder} />
-      <primitive object={effects.group} />
+      <primitive object={rigs.group} />
       <primitive object={bikes} />
       <primitive object={marks.group} />
       <primitive object={crowdHolder} />

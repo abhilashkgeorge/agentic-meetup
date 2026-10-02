@@ -61,3 +61,23 @@ describe('the bench view', () => {
     expect(onScreen(eye, look, [10, BENCH_SUBJECT_Y, -4]).y).toBeGreaterThan(0.5);
   });
 });
+
+describe('the ring round the one you are with', () => {
+  it('is a thin yellow outline, not a solid band, and is gone while they sit', async () => {
+    const { RING_COLOR, ringShown } = await import('../src/features/world/park-live');
+    expect(RING_COLOR).toBe('#ffee02');
+    expect(ringShown({ ring: true, state: 'idle' })).toBe(true);
+    expect(ringShown({ ring: true, state: 'walking' })).toBe(true);
+    expect(ringShown({ ring: true, state: 'sitting' }), 'shown on the bench').toBe(false);
+    expect(ringShown({ ring: false, state: 'idle' })).toBe(false);
+    // SOURCE SHAPE (the canvas needs GL): a flat ring of a thin band, unlit, drawn by the rule.
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const canvas = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(canvas).toContain('ring: new THREE.RingGeometry(0.5, 0.58, 48),');
+    expect(canvas).toMatch(/new THREE\.InstancedMesh\(g\.ring, ringMat, slots\)/);
+    expect(canvas).toMatch(/const ringMat = new THREE\.MeshBasicMaterial\(/);
+    expect(canvas).toContain('if (ringShown(a)) {');
+  });
+});

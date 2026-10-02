@@ -13,10 +13,11 @@
  *   - walking to a bench is moving; sitting on it, or flying, is not (park-live.ts
  *     movingNow, which is what the phone sends);
  *   - a near bench is walked to, faster the further, and sat on inside BENCH_MAX_SECS;
- *   - a bench further than a run in BENCH_SECS is stepped to by magic: on it at once,
- *     with a puff where you stood and one on the bench;
- *   - held up on the way (a hedge, boxed in), you are put on it when the time is up,
- *     never walked off somewhere else;
+ *   - a bench further than a run in BENCH_SECS is reached by the emergency pickup (the
+ *     founder chose it over the smoke, 2026-10-03): up on the balloon, down by parachute
+ *     at the bench, and seated -- no smoke;
+ *   - held up on the way (a hedge, boxed in), the pickup takes you when the time is up,
+ *     never a walk off somewhere else;
  *   - another phone draws somebody sitting only once they are on the seat;
  *   - THE BUTTON HOLDS STILL UNDER A FINGER: "Sit on a bench" and "Get up" swapped the
  *     instant the bench changed, so a double tap sat and stood; in the founder's own
@@ -37,7 +38,7 @@ import { describe, expect, it } from 'vitest';
 import { STARTER, type Look } from '@clone/shared';
 import { BENCH_SWAP_LOCK_MS, benchPill, movingNow } from '../src/features/world/park-live';
 import { BENCH_MAX_SECS, WorldSim } from '../src/features/world/sim';
-import { clearEffects, effectsNow } from '../src/features/world/park-effects';
+import { flightMs } from '../src/features/world/flight';
 
 const look: Look = { ...STARTER };
 const REF = (n: number) => n.toString(16).padStart(32, '0');
@@ -81,17 +82,20 @@ describe('getting to a bench', () => {
     }
   });
 
-  it('a far bench in under three seconds: on it at once, in a puff of smoke at each end', () => {
-    clearEffects();
+  it('a far bench: taken there by the pickup, and seated as it lands', () => {
     const s = park();
     s.place('you', 0, 30);
     s.sitOn('you', seat);
-    expect(secondsToSit(s)).toBe(0);
     const me = s.get('you')!;
+    expect(me.fly?.f.kind, 'not taken by the pickup').toBe('pickup');
+    const flight = flightMs(me.fly!.f) / 1000;
+    let highest = 0;
+    let t = 0;
+    for (; t < 10 && me.state !== 'sitting'; t += 1 / 60) { s.step(1 / 60); highest = Math.max(highest, me.lift ?? 0); }
+    expect(highest, 'never left the ground').toBeGreaterThan(2);
+    expect(t, 'slower than the pickup itself').toBeLessThanOrEqual(flight + 0.05);
+    expect(t, 'more than the three or so seconds').toBeLessThanOrEqual(3.5);
     expect([me.x, me.z]).toEqual([0, 0]);
-    const puffs = effectsNow().filter((e) => e.kind === 'puff');
-    expect(puffs.map((p) => [p.x, p.z])).toEqual([[0, 30], [0, 0]]);
-    clearEffects();
   });
 
   it('held up on the way, you are put on it when the time is up -- never walked off elsewhere', () => {
@@ -101,7 +105,8 @@ describe('getting to a bench', () => {
     s.place('you', 0, 1.6);
     s.sitOn('you', seat);
     const t = secondsToSit(s);
-    expect(t, 'never got there').toBeLessThanOrEqual(BENCH_MAX_SECS + 1 / 60);
+    // Boxed in, the pickup takes over when the time is up (or sooner, stuck), and lands.
+    expect(t, 'never got there').toBeLessThanOrEqual(BENCH_MAX_SECS + 3.5);
     expect([s.get('you')!.x, s.get('you')!.z]).toEqual([0, 0]);
   });
 });

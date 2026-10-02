@@ -11,8 +11,7 @@
  */
 import { create } from 'zustand';
 import { PARK_QUESTS, PARK_SIGHTS, type Look, type ParkFly, type ParkPerson, type ParkQuestId, type ParkSight } from '@clone/shared';
-import { flightEffects } from './park-effects';
-import { sameFlight, type WorldSim } from './sim';
+import type { WorldSim } from './sim';
 
 export interface LivePerson {
   ref: string;
@@ -181,6 +180,17 @@ export function benchPill(
     : { label: 'Get up', action: locked ? null : 'stand' };
 }
 
+/**
+ * THE RING round the one you are talking with: hollow and yellow (the founder,
+ * 2026-10-03: "make it yellow #ffee02 and make it a hollow type instead of a solid
+ * shape"), drawn unlit (canvas.tsx) so it stays that yellow in sun and shade -- and not
+ * at all while they sit on a bench, where "it serves no purpose".
+ */
+export const RING_COLOR = '#ffee02';
+export function ringShown(a: { ring: boolean; state: string }): boolean {
+  return a.ring && a.state !== 'sitting';
+}
+
 /** This frame's people, their looks carried over from the last. Nobody without a look yet. */
 export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readonly ParkPerson[]): Map<string, LivePerson> {
   const out = new Map<string, LivePerson>();
@@ -203,15 +213,13 @@ export function mergePeople(prev: ReadonlyMap<string, LivePerson>, frame: readon
  */
 export function livePeople(sim: WorldSim, people: ReadonlyMap<string, LivePerson>, partner: string | null): void {
   for (const p of people.values()) {
-    // A flight this phone has not seen yet: its beams and its smoke, timed from when it
-    // really took off (park-effects.ts).
-    const was = sim.get(p.ref);
-    if (p.fly && !sameFlight(was?.fly?.f, p.fly) && !sameFlight(was?.flown, p.fly)) flightEffects(p.fly, Date.now() - p.fly.t);
     sim.live(p.ref, p.look, p.x, p.z, p.facing, p.moving, p.sitting, p.riding, p.fly);
     const a = sim.get(p.ref);
     if (a) a.ring = p.ref === partner;
   }
-  for (const a of sim.agents()) if (a.kind === 'live' && !people.has(a.ref)) sim.unlive(a.ref);
+  // Gone -- unless being taken away by a balloon right now (sim.liftAway), which ends
+  // with them gone from the sim by itself.
+  for (const a of sim.agents()) if (a.kind === 'live' && !people.has(a.ref) && !sim.leaving(a.ref)) sim.unlive(a.ref);
 }
 
 /** What floats over each head now: the latest line of each speaker, while it lasts. */

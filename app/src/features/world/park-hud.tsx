@@ -342,7 +342,10 @@ export function ParkActions({ venueSim, benches }: {
           {/* SHORT, because it sits over the park beside you: who you are with, the next
               thing to do together, and the buttons. Who can hear you is said where you
               type (the line's own placeholder). */}
-          <Text style={[type.bodyStrong, { color: p.text }]}>
+          {/* ONE LINE, shrunk to fit a narrow column rather than wrapped into two: on the
+              Pixel at its large display size the column is 149 dp and every line of this
+              card broke in two, so it stood half the screen tall (2026-10-03). */}
+          <Text style={[type.bodyStrong, { color: p.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
             {partner.rideTo ? 'On your way to them…' : bench !== null ? 'On a bench, just you two' : 'Talking with someone'}
           </Text>
           {next && !partner.rideTo && (
@@ -410,7 +413,8 @@ function Pill({ label, onPress, primary, disabled }: { label: string; onPress: (
     <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label}
                style={{ paddingHorizontal: space.lg, paddingVertical: space.sm + 2, borderRadius: radius.pill,
                         backgroundColor: primary ? p.accent : p.bg, boxShadow: primary ? undefined : raised(p, 3), opacity: disabled ? 0.5 : 1 }}>
-      <Text style={[type.callout, { color: primary ? p.accentText : p.text, fontFamily: type.bodyStrong.fontFamily }]}>{label}</Text>
+      <Text style={[type.callout, { color: primary ? p.accentText : p.text, fontFamily: type.bodyStrong.fontFamily }]}
+            numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{label}</Text>
     </Pressable>
   );
 }

@@ -13,7 +13,7 @@ import { AppState } from 'react-native';
 import { PARK_AWAY_MS } from '@clone/shared';
 import { parkAway, parkBack, parkEnter, parkLeave, parkMove, parkStand, parkWalkBackIn } from '../../lib/socket';
 import { flies, landingBeside } from './flight';
-import { clearEffects, flightEffects, puff, puffsFor } from './park-effects';
+import { comings } from './park-comings';
 import { livePeople, movingNow, parkPresence, useParkLive, type LivePerson } from './park-live';
 import { seatOn } from './bench';
 import type { WorldSim } from './sim';
@@ -71,7 +71,7 @@ export function useParkPresence(
     const me = venueSim.get('you');
     parkEnter(!fresh.current && me ? { x: me.x, z: me.z } : undefined);
     fresh.current = false;
-    return () => { parkLeave(); clearEffects(); };
+    return () => { parkLeave(); };
   }, [inPark, venueSim]);
 
   // Away and back: the server holds you, standing; back, the next move says so -- or,
@@ -87,7 +87,8 @@ export function useParkPresence(
     if (gone >= PARK_AWAY_MS - 500) parkWalkBackIn();
   }, [inPark, away]);
 
-  // Where the server says you stand: put there, in a puff of smoke.
+  // Where the server says you stand: down onto it by parachute (flight.ts drop), as
+  // everybody near sees you come.
   useEffect(() => {
     if (!inPark) return;
     return useParkLive.subscribe((s, prev) => {
@@ -95,7 +96,7 @@ export function useParkPresence(
       const me = venueSim.get('you');
       if (me?.fly) return;
       venueSim.place('you', s.arrived.x, s.arrived.z);
-      puff(s.arrived.x, s.arrived.z);
+      venueSim.dropIn('you', s.arrived.x, s.arrived.z);
     });
   }, [inPark, venueSim]);
 
@@ -115,6 +116,8 @@ export function useParkPresence(
       if (!live.arrived && Date.now() - entered < ARRIVE_WAIT_MS) return;
       const flying = !!me.fly;
       const moving = movingNow(me, venueSim.driven('you'));
+      // Only a pickup goes to the others; coming down into the park they play for themselves.
+      const pickup = me.fly && (me.fly.f.kind ?? 'pickup') === 'pickup' ? me.fly : undefined;
       const riding = me.riding === true;
       const now = Date.now();
       const changed = Math.hypot(me.x - last.x, me.z - last.z) > 0.01
@@ -123,7 +126,8 @@ export function useParkPresence(
       // nearby again rather than staying between two people no longer sitting.
       if (live.bench !== null && !me.seat && me.state !== 'sitting' && !flying) parkStand();
       if (!changed && now - last.at < STILL_MS) return;
-      parkMove(me.x, me.z, me.facing, moving, riding, me.fly ? { ...me.fly.f, t: Math.round(me.fly.ms) } : undefined);
+      parkMove(me.x, me.z, me.facing, moving, riding,
+        pickup ? { fx: pickup.f.fx, fz: pickup.f.fz, tx: pickup.f.tx, tz: pickup.f.tz, t: Math.round(pickup.ms) } : undefined);
       last = { x: me.x, z: me.z, facing: me.facing, moving, riding, flying, at: now };
     }, EVERY_MS);
     return () => clearInterval(t);
@@ -137,9 +141,9 @@ export function useParkPresence(
     return () => { unsubscribe(); venueSim.setRiding('you', false); };
   }, [inPark, venueSim]);
 
-  // A yes to your "Find someone": the sky drop takes you over (flight.ts) -- beside them,
-  // never inside a tree, a bench or somebody. The one who said yes stays where they are
-  // and watches you come down.
+  // A yes to your "Find someone": the emergency pickup takes you over (flight.ts) --
+  // beside them, never inside a tree, a bench or somebody. The one who said yes stays
+  // where they are and watches you come down.
   useEffect(() => {
     if (!inPark) return;
     return useParkLive.subscribe((s, prev) => {
@@ -153,14 +157,13 @@ export function useParkPresence(
       const [lx, lz] = landingBeside([me.x, me.z], to, clear);
       // Near enough to walk: a few steps over, not a lift on the spot.
       if (!flies([me.x, me.z], [lx, lz])) { venueSim.walkTo('you', lx, lz); done(); return; }
-      const from = { fx: me.x, fz: me.z, tx: lx, tz: lz };
       const flying = venueSim.flyTo('you', lx, lz, () => {
         // Down: facing them.
         const a = venueSim.get('you');
         if (a) a.facing = Math.atan2(to[0] - a.x, to[1] - a.z);
         done();
       });
-      if (flying) flightEffects(from, Date.now(), true); else done();
+      if (!flying) done();
     });
   }, [inPark, venueSim]);
 
@@ -182,8 +185,9 @@ export function useParkPresence(
     return startVoice(venueSim);
   }, [inPark, venueSim]);
 
-  // Whoever is here, into the sim; whoever has gone, out of it -- and a puff of smoke for
-  // whoever appears or vanishes near you, except the crowd already here as you walk in.
+  // Whoever is here, into the sim; whoever has gone, out of it -- coming down by parachute
+  // or taken up by a balloon when it happens near you (park-comings.ts), except the crowd
+  // already here as you walk in.
   useEffect(() => {
     if (!inPark) return;
     let first = true;
@@ -196,8 +200,14 @@ export function useParkPresence(
         if (!s.arrived) first = true;
         else {
           const me = venueSim.get('you');
-          for (const [x, z] of puffsFor(prev.people, s.people, me ? { x: me.x, z: me.z } : null, first)) puff(x, z);
+          const { came, went } = comings(prev.people, s.people, me ? { x: me.x, z: me.z } : null, first);
           first = false;
+          // Taken away before the sim forgets them; dropped in once the sim has them.
+          for (const ref of went) venueSim.liftAway(ref);
+          apply(s.people);
+          for (const ref of came) { const p = s.people.get(ref); if (p) venueSim.dropIn(ref, p.x, p.z); }
+          if (s.partner !== prev.partner) apply(s.people);
+          return;
         }
       }
       if (s.people !== prev.people || s.partner !== prev.partner) apply(s.people);

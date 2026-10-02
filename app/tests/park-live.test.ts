@@ -290,7 +290,7 @@ describe('a bicycle in the park sim', () => {
   it('sends the server that you ride, and rides at BIKE_PACE times a walk (SOURCE SHAPE: the canvas needs GL)', () => {
     const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     const presence = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-presence.ts'), 'utf8'));
-    expect(presence).toContain('parkMove(me.x, me.z, me.facing, moving, riding, me.fly ? { ...me.fly.f, t: Math.round(me.fly.ms) } : undefined);');
+    expect(presence).toMatch(/parkMove\(me\.x, me\.z, me\.facing, moving, riding,\s*pickup \? \{ fx: pickup\.f\.fx, fz: pickup\.f\.fz, tx: pickup\.f\.tx, tz: pickup\.f\.tz, t: Math\.round\(pickup\.ms\) \} : undefined\);/);
     const canvas = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8'));
     expect(canvas).toContain("* (walking && live.get('you')?.riding ? BIKE_PACE : 1)");
     expect(BIKE_PACE).toBeGreaterThan(1.5);

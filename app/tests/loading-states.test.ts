@@ -84,6 +84,27 @@ describe('the stores behind the town and the character', () => {
   });
 });
 
+describe('a placeholder looks like what it stands for', () => {
+  it('the town is the map\'s own ground -- a tilted square of tiles -- not a row of bars', () => {
+    // The first one was a skyline of bars of different heights; the founder saw a bar
+    // chart before the map (2026-10-03). The map is a square of tiles seen from above.
+    const town = src('features', 'world', 'town-loading.tsx');
+    expect(town).not.toMatch(/SKYLINE|Skyline/);
+    expect(town).toMatch(/transform: \[\{ scaleY: MAP_TILT \}, \{ rotate: '45deg' \}\]/);
+    expect(town).toMatch(/Array\.from\(\{ length: MAP_TILES \* MAP_TILES \}/);
+    expect(town).toContain('<MapGround />');
+  });
+
+  it('opening the app shows the town\'s shape while it checks, not a blank page', () => {
+    // The launch screen was held until the session check finished: a white page for nine
+    // seconds and more on the Pixel over a slow connection (2026-10-03).
+    const root = src('app', '_layout.tsx');
+    expect(root).toMatch(/if \(fontsReady && themeLoaded\) void SplashScreen\.hideAsync\(\);/);
+    expect(root).not.toMatch(/fontsReady && checked\) void SplashScreen/);
+    expect(root).toMatch(/\{!checked && <View[^>]*><TownLoading \/><\/View>\}/);
+  });
+});
+
 describe('no screen loads behind a bare spinner', () => {
   it('the town, setup\'s steps, the interview and the 3D character show their shape instead', () => {
     for (const f of [

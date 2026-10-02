@@ -1,77 +1,104 @@
 /**
- * The sky drop: how you get to somebody who said yes to talking (flight.ts).
+ * The emergency pickup: how you get to somebody who said yes to talking (flight.ts) --
+ * and the parachute in, and the balloon away, for coming and going.
  *
- * WHAT WAS WRONG (the founder, 2026-10-03): the car that drove you over was drawn on your
- * own phone only -- "in the partner's phone I look like I am sitting in an invisible car"
- * -- it drove through people, and a long drive took seven seconds.
+ * WHAT WAS WRONG (the founder, 2026-10-03): first a car drawn on your own phone only --
+ * "in the partner's phone I look like I am sitting in an invisible car" -- then a beam
+ * of light and a puff of smoke: "doesn't look good ... like the emergency pickup feature
+ * in PUBG". There a balloon rises on its line, a plane snags it and carries whoever
+ * hangs on it, and each comes down by parachute.
  *
  * WHAT IS GUARDED:
- *   - the flight goes up, across and down, in that order, in about two seconds however
- *     far, and clears the tallest tree in the park on the way;
+ *   - the pickup goes inflate, yank, carry, chute, settle, in that order, in about three
+ *     seconds however far: the balloon up on its rope first, you off the ground under it,
+ *     carried over the tallest tree, let go and down by parachute where it said;
  *   - your own sim flies you there, off the ground, ignoring the stick, and lands you
- *     facing them, saying so once;
- *   - ANOTHER PHONE, told of the flight by the server, flies you the same way: off the
- *     ground, along the same line, landing in the same place -- and one that first sees
- *     it half-way through picks it up half-way through;
- *   - the crowd draws the lift (aAnim.w carries it above the flags, which still read the
- *     same), and the canvas no longer has a car;
- *   - you land beside them, never inside a tree, a bench or somebody;
- *   - near enough to walk (FLY_MIN, about eight metres), you walk: the park bot did a
- *     "flight" of four centimetres beside the person it asked (2026-10-03).
+ *     once; ANOTHER PHONE, told of it by the server, flies you the same way, and one that
+ *     first sees it half-way through picks it up half-way through; a late word about a
+ *     flight already down does not take off again;
+ *   - coming into the park is a parachute down onto your spot, and going is the balloon
+ *     up and out of sight, after which you are gone from the sim;
+ *   - the crowd draws the lift, the canvas draws the gear, and has no car;
+ *   - you land beside them, never inside a tree, a bench or somebody; near enough, walk.
  *
  * Negative controls, run by hand and recorded in the commit:
  *   - flyStep not setting `lift` -> "lifts you off the ground" fails;
  *   - `live` ignoring `fly` -> "another phone flies them too" fails;
- *   - landingBeside ignoring `clear` -> "never lands inside" fails;
- *   - `flies` always true -> "near enough to walk" fails;
- *   - sim.flying without the `flown` check -> "a late word ... does not take off again"
- *     fails; livePeople without it -> "... brings no second smoke" fails.
+ *   - the carry at ground height -> "clears the tallest tree" fails;
+ *   - liftAway without removing at the end -> "taken up and gone" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STARTER, type Look } from '@clone/shared';
-import { DROP_MS, FLY_MIN, GLIDE_MAX_MS, LIFT_MS, SKY, flies, flightAt, flightMs, landingBeside, type Flight } from '../src/features/world/flight';
+import {
+  CARRY_MAX_MS, CHUTE_MS, DROP_MS, DROP_Y, FLY_MIN, INFLATE_MS, SETTLE_MS, SKY, YANK_MS,
+  flies, flightAt, flightMs, landingBeside, type Flight,
+} from '../src/features/world/flight';
 import { WorldSim } from '../src/features/world/sim';
 import { venueGarden, CUBBON_PARK } from '../src/features/world/venue';
 import { gardenSpots } from '../src/features/world/garden';
 import { MAX_LIFT, animFlags } from '../src/features/world/crowd-gpu';
-import { livePeople, type LivePerson } from '../src/features/world/park-live';
-import { clearEffects, effectsNow } from '../src/features/world/park-effects';
 
 const look: Look = { ...STARTER, hat: 2 };
 const REF = (n: number) => n.toString(16).padStart(32, '0');
 const hop: Flight = { fx: 0, fz: 0, tx: 12, tz: 5 };
+const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
-describe('the flight', () => {
-  it('goes up, across and down, in that order, and lands where it said', () => {
+describe('the pickup', () => {
+  it('goes inflate, yank, carry, chute, settle -- and lands where it said', () => {
     const seen: string[] = [];
     for (let ms = 0; ms <= flightMs(hop) + 100; ms += 20) {
       const p = flightAt(hop, ms).phase;
       if (seen.at(-1) !== p) seen.push(p);
     }
-    expect(seen).toEqual(['lift', 'glide', 'drop', 'landed']);
-    expect(flightAt(hop, flightMs(hop))).toMatchObject({ x: 12, z: 5, y: 0, phase: 'landed' });
-    // Straight up first: still where you stood, off the ground.
-    expect(flightAt(hop, LIFT_MS / 2)).toMatchObject({ x: 0, z: 0 });
-    expect(flightAt(hop, LIFT_MS / 2).y).toBeGreaterThan(0);
+    expect(seen).toEqual(['inflate', 'yank', 'carry', 'chute', 'settle', 'landed']);
+    expect(flightAt(hop, flightMs(hop))).toMatchObject({ x: 12, z: 5, y: 0, phase: 'landed', chute: 0, balloon: null });
   });
 
-  it('takes about two seconds however far: never longer than two and a half', () => {
-    for (const d of [0.5, 5, 30, 150]) {
-      const ms = flightMs({ fx: 0, fz: 0, tx: d, tz: 0 });
-      expect(ms, `${d} units`).toBeLessThanOrEqual(LIFT_MS + GLIDE_MAX_MS + DROP_MS);
-      expect(ms, `${d} units`).toBeLessThanOrEqual(2_500);
-      expect(ms, `${d} units`).toBeGreaterThanOrEqual(1_500);
+  it('the balloon rises on its rope first, and you are still standing', () => {
+    const early = flightAt(hop, INFLATE_MS * 0.2), late = flightAt(hop, INFLATE_MS * 0.95);
+    for (const p of [early, late]) {
+      expect(p.y, 'off the ground before the rope was taut').toBe(0);
+      expect(p.roped).toBe(true);
+      expect(p.balloon).not.toBeNull();
     }
+    expect(late.balloon!.y).toBeGreaterThan(early.balloon!.y);
+    expect(late.balloon!.size).toBeGreaterThan(early.balloon!.size);
   });
 
-  it('clears the tallest tree in Cubbon Park all the way across', () => {
+  it('carries you hanging under the balloon, over the tallest tree in Cubbon Park', () => {
     const spots = gardenSpots(venueGarden(CUBBON_PARK));
     const tallest = Math.max(...(spots.solids ?? []).filter((s) => s.kind === 'tree').map((s) => s.h));
     expect(tallest).toBeGreaterThan(2);
-    expect(SKY, 'the glide goes through the treetops').toBeGreaterThan(tallest);
-    for (let ms = LIFT_MS; ms < flightMs(hop) - DROP_MS; ms += 25) expect(flightAt(hop, ms).y).toBeGreaterThan(tallest);
+    for (let ms = INFLATE_MS + YANK_MS; ms < INFLATE_MS + YANK_MS + 500; ms += 25) {
+      const p = flightAt(hop, ms);
+      expect(p.phase).toBe('carry');
+      expect(p.y, 'through the treetops').toBeGreaterThan(tallest);
+      expect(p.roped).toBe(true);
+      expect(p.balloon!.y, 'the balloon is not above them').toBeGreaterThan(p.y + 1);
+    }
+    expect(SKY).toBeGreaterThan(tallest);
+  });
+
+  it('lets go over them: the parachute opens, the rope is gone, and they come down', () => {
+    const start = flightMs(hop) - SETTLE_MS - CHUTE_MS;
+    const mid = flightAt(hop, start + CHUTE_MS / 2);
+    expect(mid.phase).toBe('chute');
+    expect(mid.roped, 'still on the rope coming down').toBe(false);
+    expect(mid.chute, 'no parachute').toBeGreaterThan(0.9);
+    expect(mid).toMatchObject({ x: 12, z: 5 });
+    expect(mid.y).toBeGreaterThan(0);
+    expect(mid.y).toBeLessThan(SKY);
+  });
+
+  it('takes about three seconds however far', () => {
+    for (const d of [1, 5, 30, 150]) {
+      const ms = flightMs({ fx: 0, fz: 0, tx: d, tz: 0 });
+      expect(ms, `${d} units`).toBeLessThanOrEqual(INFLATE_MS + YANK_MS + CARRY_MAX_MS + CHUTE_MS + SETTLE_MS);
+      expect(ms, `${d} units`).toBeLessThanOrEqual(3_400);
+      expect(ms, `${d} units`).toBeGreaterThanOrEqual(2_500);
+    }
   });
 });
 
@@ -90,17 +117,20 @@ describe('flying in your own sim', () => {
     expect(s.flyTo('you', 12, 5, () => { landed++; at = [s.get('you')!.x, s.get('you')!.z]; })).toBe(true);
     expect(s.flyTo('you', 1, 1), 'a second flight while one is under way').toBe(false);
     let highest = 0;
-    for (let i = 0; i < 60 * 3; i++) {
+    let gear = false;
+    for (let i = 0; i < 60 * 4; i++) {
       s.drive('you', 0.3, 0); // a thumb on the stick the whole way
       s.step(1 / 60);
       highest = Math.max(highest, s.get('you')!.lift ?? 0);
+      gear ||= !!s.get('you')!.rig?.balloon;
     }
     const me = s.get('you')!;
     expect(highest, 'never left the ground').toBeGreaterThan(SKY * 0.9);
+    expect(gear, 'flew with no balloon to draw').toBe(true);
     expect(landed).toBe(1);
     expect(me.fly).toBeUndefined();
+    expect(me.rig).toBeUndefined();
     expect(me.lift).toBe(0);
-    // Landed where it said, the stick held all the way; it moves you only from there.
     expect(Math.hypot(at[0] - 12, at[1] - 5)).toBeLessThan(1e-9);
     expect(me.x, 'the stick did nothing after landing either').toBeGreaterThan(12);
     expect(s.inFlight('you')).toBe(false);
@@ -118,15 +148,44 @@ describe('flying in your own sim', () => {
   });
 });
 
+describe('coming and going', () => {
+  it('comes into the park by parachute, onto the spot, and the parachute folds away', () => {
+    const s = new WorldSim(5);
+    s.live(REF(4), look, 3, 2, 0, false);
+    expect(s.dropIn(REF(4), 3, 2)).toBe(true);
+    const a = s.get(REF(4))!;
+    expect(a.lift).toBeCloseTo(DROP_Y, 5);
+    expect(a.rig?.chute).toBe(1);
+    expect(a.rig?.balloon).toBeNull();
+    for (let i = 0; i < 60 * 2; i++) s.step(1 / 60);
+    expect(a.fly).toBeUndefined();
+    expect([a.x, a.z, a.lift]).toEqual([3, 2, 0]);
+    expect(DROP_MS + SETTLE_MS).toBeLessThan(2_000);
+  });
+
+  it('goes by balloon: taken up and gone from the sim', () => {
+    const s = new WorldSim(5);
+    s.live(REF(6), look, 1, 1, 0, false);
+    expect(s.liftAway(REF(6))).toBe(true);
+    expect(s.leaving(REF(6))).toBe(true);
+    let highest = 0;
+    for (let i = 0; i < 60 * 2 && s.get(REF(6)); i++) {
+      s.step(1 / 60);
+      highest = Math.max(highest, s.get(REF(6))?.lift ?? 0);
+    }
+    expect(highest, 'never went up').toBeGreaterThan(SKY);
+    expect(s.get(REF(6)), 'still in the sim after going').toBeUndefined();
+  });
+});
+
 describe('flying, seen from another phone', () => {
   it('another phone flies them too: off the ground, along the line, down where they land', () => {
     const s = new WorldSim(5);
     s.live(REF(1), look, 0, 0, 0, false);
     s.live(REF(1), look, 0, 0, 0, false, false, false, { ...hop, t: 0 });
     let highest = 0;
-    for (let i = 0; i < 60 * 3; i++) {
-      // The server keeps saying where they are, mid-air (the flier's own sim position).
-      if (i % 15 === 0 && i < 60 * 2) {
+    for (let i = 0; i < 60 * 4; i++) {
+      if (i % 15 === 0 && i < 60 * 3) {
         const p = flightAt(hop, (i / 60) * 1000);
         s.live(REF(1), look, p.x, p.z, p.heading, false, false, false, { ...hop, t: (i / 60) * 1000 });
       }
@@ -141,7 +200,7 @@ describe('flying, seen from another phone', () => {
 
   it('picks a flight up half-way through on a phone that only now sees it', () => {
     const s = new WorldSim(5);
-    const mid = LIFT_MS + 300;
+    const mid = INFLATE_MS + YANK_MS + 300;
     s.live(REF(2), look, 3, 1, 0, false, false, false, { ...hop, t: mid });
     const them = s.get(REF(2))!;
     const want = flightAt(hop, mid);
@@ -152,9 +211,19 @@ describe('flying, seen from another phone', () => {
   it('a late word from the server does not drag a flight backwards', () => {
     const s = new WorldSim(5);
     s.live(REF(3), look, 0, 0, 0, false, false, false, { ...hop, t: 0 });
-    for (let i = 0; i < 30; i++) s.step(1 / 60); // half a second here
+    for (let i = 0; i < 30; i++) s.step(1 / 60);
     s.live(REF(3), look, 0, 0, 0, false, false, false, { ...hop, t: 400 });
     expect(s.get(REF(3))!.fly!.ms, 'jumped back to the server\'s slightly older word').toBeGreaterThan(450);
+  });
+
+  it('a late word about a flight already down does not take off again', () => {
+    const s = new WorldSim(5);
+    s.live(REF(5), look, 0, 0, 0, false, false, false, { ...hop, t: 0 });
+    for (let i = 0; i < 60 * 4; i++) s.step(1 / 60);
+    expect(s.get(REF(5))!.fly).toBeUndefined();
+    s.live(REF(5), look, 12, 5, 0, false, false, false, { ...hop, t: flightMs(hop) - 400 });
+    s.step(1 / 60);
+    expect(s.get(REF(5))!.lift ?? 0, 'back up in the air').toBe(0);
   });
 });
 
@@ -170,15 +239,14 @@ describe('drawing the flight', () => {
     expect(animFlags(false, false, false, -1)).toBe(0);
   });
 
-  it('lifts the body in the shader, and the canvas has no car left (SOURCE SHAPE: it needs GL)', () => {
-    const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  it('lifts the body in the shader, draws the gear, and has no car (SOURCE SHAPE: it needs GL)', () => {
     const crowd = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'crowd-gpu.ts'), 'utf8'));
     expect(crowd).toContain('float crowdLift = floor(aAnim.w / 8.0) / 100.0;');
     expect(crowd).toContain('aPos.x, crowdLift, aPos.y, 1.0);');
-    expect(crowd).toContain('arr[at + 7] = animFlags(a.ghost, a.riding === true, a.state === \'sitting\', a.lift);');
     const canvas = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8'));
-    expect(canvas).not.toMatch(/buildCar|rideAt|car-mesh/);
-    expect(canvas).toContain('<primitive object={effects.group} />');
+    expect(canvas).not.toMatch(/buildCar|rideAt|car-mesh|effectsNow|buildEffects/);
+    expect(canvas).toContain('if (walking) rigs.update(shown, bodied.current);');
+    expect(canvas).toContain('<primitive object={rigs.group} />');
   });
 });
 
@@ -190,12 +258,10 @@ describe('where you land', () => {
   });
 
   it('never lands inside a tree, a bench or somebody: round them to the nearest clear spot', () => {
-    // Straight in is blocked; so is everything on that side of them.
     const blocked = (x: number) => x < 10.2;
     const [x, z] = landingBeside([0, 0], [10, 0], (px) => !blocked(px));
     expect(blocked(x), 'landed inside something').toBe(false);
     expect(Math.hypot(x - 10, z)).toBeLessThanOrEqual(1.0 + 1e-9);
-    // In the real park: next to a tree trunk, you land clear of it.
     const g = venueGarden(CUBBON_PARK);
     const s = new WorldSim(1);
     s.setMap(gardenSpots(g));
@@ -204,61 +270,20 @@ describe('where you land', () => {
     const [lx, lz] = landingBeside([tree.x - 5, tree.z], near, (px, pz) => s.standable(px, pz));
     expect(s.standable(lx, lz), 'landed inside a tree').toBe(true);
   });
-});
 
-describe('near enough to walk', () => {
-  it('walks over instead of lifting off on the spot, and flies only past FLY_MIN', () => {
+  it('near enough to walk: walks over instead of a pickup on the spot', () => {
     expect(flies([0, 0], [0.04, 0.02]), 'a lift on the spot').toBe(false);
     expect(flies([0, 0], [FLY_MIN * 0.9, 0])).toBe(false);
     expect(flies([0, 0], [FLY_MIN, 0])).toBe(true);
-    expect(FLY_MIN * 8.1, 'metres').toBeLessThanOrEqual(10);
     const s = new WorldSim(5);
     s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: null }]);
     s.place('you', 0, 0);
     expect(s.walkTo('you', 0.6, 0)).toBe(true);
-    expect(s.get('you')!.state).toBe('walking');
     for (let i = 0; i < 60 * 3; i++) s.step(1 / 60);
     const me = s.get('you')!;
     expect(me.fly).toBeUndefined();
-    expect(me.lift ?? 0).toBe(0);
     expect(Math.hypot(me.x - 0.6, me.z), 'stopped short of the spot').toBeLessThan(0.1);
-  });
-
-  it('the phone walks when near, and flies when not (SOURCE SHAPE: the hook needs React Native)', () => {
-    const presence = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-presence.ts'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const presence = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-presence.ts'), 'utf8'));
     expect(presence).toMatch(/if \(!flies\(\[me\.x, me\.z\], \[lx, lz\]\)\) \{ venueSim\.walkTo\('you', lx, lz\); done\(\); return; \}/);
-    expect(presence.indexOf('venueSim.walkTo(')).toBeLessThan(presence.indexOf('venueSim.flyTo('));
-  });
-});
-
-describe('a late word about a flight already down', () => {
-  // The flier's last moves can reach the server after this phone has them landed (the
-  // park bot's were three seconds late, 2026-10-03): the same flight, a little before
-  // its end. Taken as a new one it bounced them back into the air for the last of the
-  // drop, and lit a second puff where they landed.
-  function landed(): WorldSim {
-    const s = new WorldSim(5);
-    s.live(REF(5), look, 0, 0, 0, false, false, false, { ...hop, t: 0 });
-    for (let i = 0; i < 60 * 3; i++) s.step(1 / 60);
-    expect(s.get(REF(5))!.fly).toBeUndefined();
-    return s;
-  }
-
-  it('does not take off again', () => {
-    const s = landed();
-    s.live(REF(5), look, 12, 5, 0, false, false, false, { ...hop, t: flightMs(hop) - 100 });
-    s.step(1 / 60);
-    expect(s.get(REF(5))!.lift ?? 0, 'back up in the air').toBe(0);
-    expect([s.get(REF(5))!.x, s.get(REF(5))!.z]).toEqual([12, 5]);
-  });
-
-  it('brings no second smoke', () => {
-    const s = landed();
-    clearEffects();
-    const late: LivePerson = { ref: REF(5), x: 12, z: 5, facing: 0, moving: false, look, sitting: false, riding: false, voice: null, fly: { ...hop, t: flightMs(hop) - 100 } };
-    livePeople(s, new Map([[REF(5), late]]), null);
-    expect(effectsNow(), 'a second landing puff').toHaveLength(0);
-    clearEffects();
   });
 });

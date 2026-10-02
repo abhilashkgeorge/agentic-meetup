@@ -19,8 +19,7 @@
  * in each and nothing else knows.
  */
 import { lookFor, pointInPolygon, type Look, type ParkFly } from '@clone/shared';
-import { flightAt, flightMs, type Flight } from './flight';
-import { puff } from './park-effects';
+import { flightAt, flightMs, type Flight, type FlightPose } from './flight';
 
 /**
  * `live` is a real person walking in the park right now (park-live.ts): the server
@@ -375,6 +374,8 @@ export interface SimAgent {
    * until they land.
    */
   fly?: { f: Flight; ms: number; done?: (() => void) | undefined };
+  /** This frame of their flight: the balloon, its rope and the parachute (rig-mesh.ts draws them). */
+  rig?: FlightPose | undefined;
   /**
    * The flight they last landed from, here. A word from the server that is late -- still
    * carrying it after this phone has them down -- is not a new flight to take off on.
@@ -709,25 +710,66 @@ export class WorldSim {
       if (Math.abs(a.fly!.ms - fly.t) > 300) a.fly!.ms = fly.t;
       return;
     }
+    // A word for somebody leaving's balloon (an away of this phone's own) is not a pickup.
+    if (a.fly?.f.kind === 'away') return;
     a.fly = { f: { fx: fly.fx, fz: fly.fz, tx: fly.tx, tz: fly.tz }, ms: fly.t };
     a.seat = undefined;
     this.flyStep(a, 0);
   }
 
   /**
-   * THE SKY DROP (flight.ts): up on a beam, over the trees, down beside (tx, tz). Off a
-   * bench and off a bicycle first; the stick does nothing until you land, and `done` is
-   * called then. A second flight while one is under way is ignored. False if not here.
+   * THE EMERGENCY PICKUP (flight.ts): up on a balloon, over the trees, down by parachute
+   * beside (tx, tz). Off a bench and off a bicycle first; the stick does nothing until
+   * you land, and `done` is called then. A second flight while one is under way is
+   * ignored. False if not here.
    */
   flyTo(ref: string, tx: number, tz: number, done?: () => void): boolean {
     const a = this.byRef.get(ref);
     if (!a || a.fly) return false;
     if (a.seat) this.standUp(ref);
     a.seat = undefined;
+    this.pickup(a, tx, tz, done);
+    return true;
+  }
+
+  /** The pickup itself, leaving any seat they are bound for alone (magicSeat). */
+  private pickup(a: SimAgent, tx: number, tz: number, done?: () => void): void {
     a.riding = false;
     a.driveX = 0; a.driveZ = 0;
-    a.fly = { f: { fx: a.x, fz: a.z, tx, tz }, ms: 0, done };
+    a.fly = { f: { fx: a.x, fz: a.z, tx, tz, kind: 'pickup' }, ms: 0, done };
+    this.flyStep(a, 0);
+  }
+
+  /**
+   * Walking into the park, as everybody who can see it sees it: down by parachute onto
+   * (x, z). This phone's own -- the server sends nothing of it; each phone plays it when
+   * somebody appears near (park-live.ts comings), and yours when you arrive.
+   */
+  dropIn(ref: string, x: number, z: number): boolean {
+    const a = this.byRef.get(ref);
+    if (!a || a.fly) return false;
+    a.x = x; a.z = z; a.tx = x; a.tz = z;
+    a.fly = { f: { fx: x, fz: z, tx: x, tz: z, kind: 'drop' }, ms: 0 };
+    this.flyStep(a, 0);
     return true;
+  }
+
+  /**
+   * Leaving the park, as everybody near sees it: up on a balloon and out of sight, and
+   * then gone from this sim (`remove`). This phone's own, like dropIn.
+   */
+  liftAway(ref: string): boolean {
+    const a = this.byRef.get(ref);
+    if (!a || a.fly?.f.kind === 'away') return false;
+    a.seat = undefined;
+    a.fly = { f: { fx: a.x, fz: a.z, tx: a.x, tz: a.z, kind: 'away' }, ms: 0, done: () => this.remove(ref) };
+    this.flyStep(a, 0);
+    return true;
+  }
+
+  /** Whether they are being taken away (liftAway): gone from the park, still on screen. */
+  leaving(ref: string): boolean {
+    return this.byRef.get(ref)?.fly?.f.kind === 'away';
   }
 
   /**
@@ -756,10 +798,13 @@ export class WorldSim {
     const pose = flightAt(fl.f, fl.ms);
     a.x = pose.x; a.z = pose.z; a.tx = pose.x; a.tz = pose.z;
     a.lift = pose.y;
-    a.facing = pose.heading;
+    a.rig = pose;
+    // Facing along the way while it is a way; coming and going, as they were.
+    if (fl.f.kind !== 'drop' && fl.f.kind !== 'away') a.facing = pose.heading;
     a.state = 'idle'; a.stuck = 0;
     if (fl.ms < flightMs(fl.f)) return;
     a.fly = undefined;
+    a.rig = undefined;
     a.flown = fl.f;
     a.lift = 0;
     a.wait = 2;
@@ -810,14 +855,21 @@ export class WorldSim {
     a.seatWait = BENCH_MAX_SECS;
   }
 
-  /** Onto their seat at once: a puff where they stood, and one on the bench. */
+  /**
+   * Too far to walk to in time, or held up on the way: the pickup takes them to the
+   * front of their seat (the founder chose the PUBG pickup for getting about, 2026-10-03),
+   * and down they sit.
+   */
   private magicSeat(a: SimAgent): void {
     const seat = a.seat;
-    if (!seat) return;
-    puff(a.x, a.z);
-    a.x = seat.x; a.z = seat.z; a.tx = seat.x; a.tz = seat.z; a.facing = seat.facing;
-    a.state = 'sitting'; a.seatWait = undefined; a.stuck = 0;
-    puff(seat.x, seat.z);
+    if (!seat || a.fly) return;
+    a.seatWait = undefined; a.stuck = 0;
+    const [fx, fz] = frontOf(seat);
+    this.pickup(a, fx, fz, () => {
+      if (a.seat !== seat) return;
+      a.x = seat.x; a.z = seat.z; a.tx = seat.x; a.tz = seat.z; a.facing = seat.facing;
+      a.state = 'sitting';
+    });
   }
 
   /** Up off the bench, and a step forward off it, standing. */
