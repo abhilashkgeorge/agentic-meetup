@@ -41,8 +41,10 @@ In order, each sees:
    ([app/src/features/onboarding/start-screen.tsx:106] `Now it asks you some things`,
    [app/src/features/onboarding/start-screen.tsx:122] `label="Paste from another AI"`).
 4. **The interview** (below).
-5. **"A few things missing"**, because birth year and city are asked next
-   ([app/src/features/onboarding/interview-screen.tsx:233] `{state.ready ? "That's enough to start" : 'A few things missing'}`).
+5. **Straight on to the essentials**, which are asked next. Since 2026-10-02 there is no screen
+   between: it used to stop on "A few things missing" (birth year, city), which read as if
+   something had been skipped
+   ([app/src/features/onboarding/questions-end.ts:25] `return fromFinish ? '/onboarding/essentials?finish=1' : '/onboarding/essentials';`).
 6. **Essentials**: "What year were you born?", "Who would you like to meet?" (ages, pre-filled ±5 from
    their own), "Where are you now?", "How far would you travel?"
    ([app/src/features/profile/fields.ts:63] `{ key: 'birth_date', title: 'What year were you born?', kind: 'number',`,
@@ -57,8 +59,8 @@ In order, each sees:
 ### 2.1 The screens in order
 
 For a new person: start → (optional paste) → interview → essentials → voice → self-test →
-character → photos → Home ([app/src/features/onboarding/interview-screen.tsx:214] `router.replace(state.ready ? '/onboarding/stories' : '/onboarding/essentials');`,
-[app/src/features/onboarding/essentials-screen.tsx:74] `router.push('/onboarding/voice');`,
+character → photos → Home ([app/src/features/onboarding/interview-screen.tsx:222] `router.replace(state.ready ? '/onboarding/stories' : '/onboarding/essentials');`,
+[app/src/features/onboarding/essentials-screen.tsx:75] `router.push('/onboarding/voice');`,
 [app/src/features/onboarding/character-step.tsx:23] `const next = () => router.replace('/onboarding/photos');`).
 The Stories screen is shown only when someone is already in the pool when the interview ends, so a
 new person does not see it during setup; it is reached later from the You tab.
@@ -87,8 +89,8 @@ kids card is never asked of them and does not hold them back (before, everybody 
 ([server/src/onboarding/questions.ts:385] `export const NO_KIDS_CARD: readonly string[] = ['casual', 'companionship'];`) ([server/src/onboarding/questions.ts:371] `['card-kids', 'card-monogamy', 'card-smoking', 'card-drinking', 'card-food']`).
 Each card has two rows: **You** (your answer) and **Your partner** ("Tap every one that is okay.
 People who have not said still pass."), with "All are okay" and nothing pre-ticked
-([app/src/features/onboarding/interview-screen.tsx:359] `Tap every one that is okay. People who have not said still pass.`,
-[app/src/features/onboarding/interview-screen.tsx:363] `label="All are okay"`):
+([app/src/features/onboarding/interview-screen.tsx:353] `Tap every one that is okay. People who have not said still pass.`,
+[app/src/features/onboarding/interview-screen.tsx:357] `label="All are okay"`):
 
 | Card | You | Your partner | Answers |
 |---|---|---|---|
@@ -117,7 +119,7 @@ of your cards, you'll see the change and decide. If not, you'll spot it in the f
 ([server/src/onboarding/questions.ts:220] `text: 'Anyone else you couldn\'t be with?',`). The sentence is
 kept as a want (stage 5). A model may read it as a change to one card's partner row, shown as
 "Change this card?" with "Keep this" / "Leave it"; nothing changes unless the person keeps it
-([app/src/features/onboarding/interview-screen.tsx:157] `Your agent read your answer as this. Nothing changes unless you keep it.`).
+([app/src/features/onboarding/interview-screen.tsx:165] `Your agent read your answer as this. Nothing changes unless you keep it.`).
 
 **Optional profile questions**, asked only once the person is already in the pool, one at a time,
 with "Skip this one" and "That's enough for now": "How often do you move your body?", "How much does

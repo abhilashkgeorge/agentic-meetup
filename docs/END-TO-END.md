@@ -314,8 +314,10 @@ In order, each sees:
    (`app/src/features/onboarding/start-screen.tsx:106`,
    `app/src/features/onboarding/start-screen.tsx:122`).
 4. **The interview** (below).
-5. **"A few things missing"**, because birth year and city are asked next
-   (`app/src/features/onboarding/interview-screen.tsx:233`).
+5. **Straight on to the essentials**, which are asked next. Since 2026-10-02 there is no screen
+   between: it used to stop on "A few things missing" (birth year, city), which read as if
+   something had been skipped
+   (`app/src/features/onboarding/questions-end.ts:25`).
 6. **Essentials**: "What year were you born?", "Who would you like to meet?" (ages, pre-filled ±5 from
    their own), "Where are you now?", "How far would you travel?"
    (`app/src/features/profile/fields.ts:63`,
@@ -330,8 +332,8 @@ In order, each sees:
 ### 2.1 The screens in order
 
 For a new person: start → (optional paste) → interview → essentials → voice → self-test →
-character → photos → Home (`app/src/features/onboarding/interview-screen.tsx:214`,
-`app/src/features/onboarding/essentials-screen.tsx:74`,
+character → photos → Home (`app/src/features/onboarding/interview-screen.tsx:222`,
+`app/src/features/onboarding/essentials-screen.tsx:75`,
 `app/src/features/onboarding/character-step.tsx:23`).
 The Stories screen is shown only when someone is already in the pool when the interview ends, so a
 new person does not see it during setup; it is reached later from the You tab.
@@ -360,8 +362,8 @@ kids card is never asked of them and does not hold them back (before, everybody 
 (`server/src/onboarding/questions.ts:385`) (`server/src/onboarding/questions.ts:371`).
 Each card has two rows: **You** (your answer) and **Your partner** ("Tap every one that is okay.
 People who have not said still pass."), with "All are okay" and nothing pre-ticked
-(`app/src/features/onboarding/interview-screen.tsx:359`,
-`app/src/features/onboarding/interview-screen.tsx:363`):
+(`app/src/features/onboarding/interview-screen.tsx:353`,
+`app/src/features/onboarding/interview-screen.tsx:357`):
 
 | Card | You | Your partner | Answers |
 |---|---|---|---|
@@ -390,7 +392,7 @@ of your cards, you'll see the change and decide. If not, you'll spot it in the f
 (`server/src/onboarding/questions.ts:220`). The sentence is
 kept as a want (stage 5). A model may read it as a change to one card's partner row, shown as
 "Change this card?" with "Keep this" / "Leave it"; nothing changes unless the person keeps it
-(`app/src/features/onboarding/interview-screen.tsx:157`).
+(`app/src/features/onboarding/interview-screen.tsx:165`).
 
 **Optional profile questions**, asked only once the person is already in the pool, one at a time,
 with "Skip this one" and "That's enough for now": "How often do you move your body?", "How much does
@@ -2665,7 +2667,7 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | **Hide anyone for a "Really want" or "Nice to have".** Only must-haves exclude. | Yes | `server/src/matching/candidates.ts:126` | — |
 | **Match the same two people twice.** | Yes | `server/migrations/0022_rendezvous.sql:44` | They can still appear to each other as strangers in the town. |
 | **Store your phone number** in the database. Only a keyed hash is kept. | Yes | `server/migrations/0045_phone_identity.sql:22` | In development, the console SMS sender writes full numbers to the server log. |
-| **Track your location.** Location is read only on a screen asking where you are: when you tap "Use my location", and when the distance map opens in setup if you already allowed location (to start on your neighbourhood). Never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:374`, `app/src/features/distance/distance-step.tsx:89` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
+| **Track your location.** Location is read only on a screen asking where you are: when you tap "Use my location", and when the distance map opens in setup if you already allowed location (to start on your neighbourhood). Never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:388`, `app/src/features/distance/distance-step.tsx:89` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
 | **Act on reports automatically.** A person reviews each one. | Yes | `server/migrations/0039_trust_and_safety.sql:21` | — |
 | **Put a name or anybody's words on the lock screen.** Push notifications say only what kind of thing happened. | Yes | `server/src/push/index.ts:34` | Push reaches phones only after the founder's Expo setup (stage 9.5). |
 | **Hold free conversations between agents.** | Yes, by default | `server/src/matching/rendezvous.ts:75` | The code exists behind a switch ([AI-13](#ai-13)). |

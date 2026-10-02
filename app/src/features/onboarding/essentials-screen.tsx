@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { MIN_AGE, POOL_REQUIRED, firstName, isAdult } from '@clone/shared';
 import { getKnowledge, getPool, setEssential } from '../../lib/api';
+import { useKeyboardHeight } from '../../lib/keyboard';
 import { cityFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
 import { ESSENTIAL_FIELDS, essentialSteps, type FieldKind } from '../profile/fields';
@@ -146,9 +147,12 @@ export default function EssentialsScreen() {
   const [locating, setLocating] = useState(false);
   /** The distance map's choice, as it stands: what Next saves on that step. */
   const [distance, setDistance] = useState<DistanceChoice | null>(null);
+  const keyboard = useKeyboardHeight();
 
   const q = list[at]!;
   const value = answers[q.key];
+  /** The step shows the general "not a form" note rather than one about its own field. */
+  const generalNote = !q.note && q.key !== 'birth_date' && q.kind !== 'range';
   const answered = useMemo(
     () => (q.kind === 'distance'
       ? distance !== null
@@ -250,15 +254,17 @@ export default function EssentialsScreen() {
     setLocating(false);
 
     if (!r.ok) {
-      // Each of these is a different thing to do next, so each gets its own sentence.
+      // Each of these is a different thing to do next, so each gets its own sentence --
+      // one line each: with the keyboard up there is room for one above Next, and the
+      // second line ("instead.") was cut off on the Pixel (2026-10-02).
       setNote({
         bad: r.reason === 'failed',
         text:
           r.reason === 'denied'
-            ? 'No problem — type your city instead. You can turn location on later in Settings.'
+            ? 'No problem. Type your city instead.'
             : r.reason === 'unavailable'
               ? 'This version of the app cannot read your location yet. Type your city instead.'
-              : 'Could not work out where you are. Type your city instead.',
+              : 'Could not find you. Type your city.',
       });
       return;
     }
@@ -276,7 +282,10 @@ export default function EssentialsScreen() {
   }
 
   return (
-    <Screen topInset={false}
+    // KEYED BY STEP, so each one opens at the top. One screen served every step and kept
+    // the last one's scroll: after "Where are you now?" (scrolled by its keyboard) the
+    // map step opened with its step dots cut off under the header (the Pixel, 2026-10-02).
+    <Screen key={q.key} topInset={false}
       footer={
         <>
           <Button label={at + 1 === list.length ? 'Done' : 'Next'} variant="primary"
@@ -351,7 +360,12 @@ export default function EssentialsScreen() {
           <Field
             key={q.key}
             value={value === undefined || value === null ? '' : String(value)}
-            onChangeText={(t) => setAnswers((a) => ({ ...a, [q.key]: t }))}
+            onChangeText={(t) => {
+              // A note about the last try -- "Could not find you. Type your city." -- is
+              // answered by typing; it stayed up, red, over a city being typed.
+              setNote(null);
+              setAnswers((a) => ({ ...a, [q.key]: t }));
+            }}
             placeholder={q.placeholder ?? (q.kind === 'number' ? '1994' : undefined)}
             keyboardType={q.kind === 'number' ? 'number-pad' : 'default'}
             {...(q.key === 'first_name' ? { autoComplete: 'given-name', textContentType: 'givenName' } as const : {})}
@@ -397,7 +411,12 @@ export default function EssentialsScreen() {
       
           The specific note wins where there is one: it says everything the general one
           says, about the field actually on screen. */}
-      <Text style={[type.callout, { color: p.textTertiary }]}>
+      {/* THE GENERAL NOTE GIVES WAY TO THE KEYBOARD. Of the steps that type, it is only on
+          "Where are you now?", under a field AND a button -- and with the keyboard up on
+          the Pixel it pushed the step dots off the top and was itself cut in half above
+          Next (2026-10-02). The hint under the title already says the city is enough. The
+          specific notes (birth year, ages, name) stay: they are about the field typed in. */}
+      {!(generalNote && keyboard > 0) && <Text style={[type.callout, { color: p.textTertiary }]}>
         {q.note ?? (q.key === 'birth_date'
           ? `You must be ${MIN_AGE} or older. Your birthday is never shown to anybody — only your age.`
           : q.kind === 'range'
@@ -405,7 +424,7 @@ export default function EssentialsScreen() {
             // AND yours against theirs.
             ? 'Nobody outside these ages is brought to you, and your age has to fit their range too.'
             : 'Your agent cannot go out without these. It is not a form — nothing here is shown on a profile until you say so.')}
-      </Text>
+      </Text>}
     </Screen>
   );
 }

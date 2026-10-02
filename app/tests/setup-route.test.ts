@@ -96,6 +96,11 @@ describe('the interview, reached from "Finish setting it up"', () => {
   });
 
   it('does not walk a finish=1 visitor through the optional tail', () => {
-    expect(src).toMatch(/fromFinish && \(q\.tier === 'optional' \|\| q\.tier === 'free'\)/);
+    // The rule lives in questions-end.ts since 2026-10-02; the screen asks it.
+    const end = stripComments(readFileSync(
+      join(import.meta.dirname, '..', 'src', 'features', 'onboarding', 'questions-end.ts'), 'utf8',
+    ));
+    expect(end).toMatch(/fromFinish && \(q\.tier === 'optional' \|\| q\.tier === 'free'\)/);
+    expect(src).toContain('questionsOver(state.question, stopped, fromFinish)');
   });
 });

@@ -127,7 +127,7 @@ export function DistanceStep({ detect, onChange }: {
     if (!here.ok) {
       setNote(here.reason === 'denied'
         ? 'No problem: search a place instead.'
-        : 'Could not work out where you are. Search a place instead.');
+        : 'Could not find you. Search a place instead.');
       return;
     }
     const s = nearestSpot(here.lat, here.lon);

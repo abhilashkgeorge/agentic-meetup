@@ -28,7 +28,7 @@
  * left worth asking, which is not a number anybody can promise up front. What is shown
  * instead is the thing that actually matters: whether the agent can go out yet.
  */
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import {
@@ -36,7 +36,6 @@ import {
   type InterviewState, type WhoFine,
 } from '../../lib/api';
 import { useSession } from '../../store/session';
-import { missingLabel } from '../profile/fields';
 import {
   allFine, cardAnswer, declineYou, emptyCard, isAllFine, isFine, pickYou, toggleFine,
   type CardState,
@@ -44,6 +43,7 @@ import {
 import {
   afterSentence, proposedWhoFine, toggleProposed, type ProposalState,
 } from './sentence-proposal';
+import { questionsOver, straightOn } from './questions-end';
 import {
   Animation, Button, Card, Chip, ChipGroup, Field, Screen, space, type, usePalette,
 } from '../../components/ui';
@@ -128,7 +128,15 @@ export default function InterviewScreen() {
     void load();
   }, [token, proposal, load]);
 
-  if (!state) {
+  // The end of the questions, decided before any screen is drawn: when the essentials
+  // are still to come, straight on to them (questions-end.ts says why).
+  const over = state !== null && !proposal && !told && questionsOver(state.question, stopped, fromFinish);
+  const onward = straightOn(over, state?.ready ?? false, fromFinish);
+  useEffect(() => {
+    if (onward) router.replace(onward as Href);
+  }, [onward]);
+
+  if (!state || onward) {
     return (
       <Screen topInset={false} center>
         <ActivityIndicator color={p.accent} size="large" />
@@ -214,37 +222,23 @@ export default function InterviewScreen() {
     router.replace(state.ready ? '/onboarding/stories' : '/onboarding/essentials');
   };
 
-  const over = !q || stopped || (fromFinish && (q.tier === 'optional' || q.tier === 'free'));
-
-  if (over) {
+  // Only ever ready here: an end with the essentials still to come went straight on.
+  // (`!q` is already part of `over`; said again so the code below knows there is one.)
+  if (over || !q) {
     return (
       <Screen topInset={false}
         center
-        footer={
-          <Button
-            label={state.ready ? 'Let it go out' : 'Finish the basics'}
-            variant="primary"
-            onPress={done}
-          />
-        }
+        footer={<Button label="Let it go out" variant="primary" onPress={done} />}
       >
-        <Animation mood={state.ready ? 'sending' : 'orbit'} height={200} />
-        <Text style={[type.display, { color: p.text }]}>
-          {state.ready ? "That's enough to start" : 'A few things missing'}
-        </Text>
+        <Animation mood="sending" height={200} />
+        <Text style={[type.display, { color: p.text }]}>That's enough to start</Text>
         <Card>
           <Text style={[type.title, { color: p.text }]}>{state.answered}</Text>
           <Text style={[type.callout, { color: p.textSecondary }]}>questions answered</Text>
-          {state.ready ? (
-            <Text style={[type.body, { color: p.textSecondary }]}>
-              Your agent can go out and meet people for you now. It keeps learning as
-              you use it.
-            </Text>
-          ) : (
-            state.missing.map((m) => (
-              <Text key={m} style={[type.callout, { color: p.textSecondary }]}>• {missingLabel(m)}</Text>
-            ))
-          )}
+          <Text style={[type.body, { color: p.textSecondary }]}>
+            Your agent can go out and meet people for you now. It keeps learning as
+            you use it.
+          </Text>
         </Card>
       </Screen>
     );
