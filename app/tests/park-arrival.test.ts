@@ -101,6 +101,11 @@ describe('the smoke', () => {
     expect(landing).toMatchObject({ x: 20, z: 0 });
     expect(landing!.from).toBeGreaterThan(over + DROP_MS - 200);
     clearEffects();
+    // Your own: no beam where you take off -- the camera is right there (it was a white
+    // wall across the Pixel's screen, 2026-10-03) -- the rest as for anybody.
+    flightEffects(f, 1_000, true);
+    expect(effectsNow(1_000).map((e) => [e.kind, e.x])).toEqual([['beam', 20], ['puff', 20]]);
+    clearEffects();
   });
 
   it('runs for its time and goes, fading in and out, and never piles up', () => {

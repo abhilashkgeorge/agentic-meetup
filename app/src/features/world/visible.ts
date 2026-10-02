@@ -24,6 +24,13 @@ import * as THREE from 'three';
 export interface Placed {
   readonly x: number;
   readonly z: number;
+  /**
+   * Off the ground, in the sky drop (flight.ts). Asked about where they stand, somebody
+   * thirty-seven metres up was judged by the grass under them -- out of the picture --
+   * and not drawn at all: the flier never saw themselves fly, and nobody saw them in the
+   * air (on both phones, 2026-10-03).
+   */
+  readonly lift?: number;
 }
 
 /**
@@ -62,8 +69,8 @@ export class Viewport {
    * so somebody walking in from the side is already drawn by the time their shoulder
    * would appear, rather than popping into existence at the screen edge.
    */
-  sees(x: number, z: number, radius: number): boolean {
-    this.sphere.center.set(x, radius * 0.5, z);
+  sees(x: number, z: number, radius: number, lift = 0): boolean {
+    this.sphere.center.set(x, lift + radius * 0.5, z);
     this.sphere.radius = radius;
     return this.frustum.intersectsSphere(this.sphere);
   }
@@ -87,7 +94,7 @@ export function visible<T extends Placed>(
   if (limit <= 0) return 0;
   for (const p of people) {
     if (keep && !keep(p)) continue;
-    if (!view.sees(p.x, p.z, radius)) continue;
+    if (!view.sees(p.x, p.z, radius, p.lift ?? 0)) continue;
     out.push(p);
   }
   if (out.length > limit) {
@@ -120,7 +127,7 @@ export function pickAlong(ray: THREE.Ray, people: readonly Placed[], count: numb
   const n = Math.min(count, people.length);
   for (let i = 0; i < n; i++) {
     const p = people[i]!;
-    ball.center.set(p.x, height / 2, p.z);
+    ball.center.set(p.x, (p.lift ?? 0) + height / 2, p.z);
     ball.radius = height * 0.6;
     if (!ray.intersectSphere(ball, crossing)) continue;
     const d = crossing.distanceToSquared(ray.origin);

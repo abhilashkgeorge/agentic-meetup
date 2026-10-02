@@ -47,10 +47,12 @@ export function beam(x: number, z: number, from: number, ms: number): void {
  * Everything a flight shows, from when it took off: the beam it rises on, the beam it
  * comes down in (lit a moment early, so you see where it will land), and the puff as
  * it touches down. A phone that first sees a flight part-way through passes when it
- * really started, and sees the rest.
+ * really started, and sees the rest. Your OWN flight has no beam where you take off:
+ * the camera is right there, and the beam was a white wall across the screen (the
+ * Pixel, 2026-10-03).
  */
-export function flightEffects(f: Flight, startedAt: number): void {
-  beam(f.fx, f.fz, startedAt, LIFT_MS + 350);
+export function flightEffects(f: Flight, startedAt: number, own = false): void {
+  if (!own) beam(f.fx, f.fz, startedAt, LIFT_MS + 350);
   const over = startedAt + LIFT_MS + glideMs(f);
   beam(f.tx, f.tz, over - 300, 300 + DROP_MS + 450);
   puff(f.tx, f.tz, over + DROP_MS - 100);

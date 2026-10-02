@@ -3,8 +3,10 @@
  * running and how far along each is).
  *
  * A PUFF is a dozen soft balls billowing out from somebody's feet and fading, most of
- * them a pale smoke, a few the accent colour -- the magic in it. A BEAM is a tall pale
- * column, brighter where it overlaps itself, that somebody rises on or comes down in.
+ * them a pale smoke, a few the accent colour -- the magic in it. A BEAM is a thin shaft
+ * of light, brightest at the ground and gone by the top, that somebody rises on or comes
+ * down in -- and is seen THROUGH: the first one was a solid white pillar, drawn twice
+ * over (both faces, added together), and hid the very person rising in it (2026-10-03).
  *
  * Pools, not new meshes: a few puffs and beams at once is all the park ever needs, so
  * a fixed handful is built once and the ones not running are hidden -- nothing is drawn
@@ -23,6 +25,8 @@ const SPARKS = 4;
 /** A puff's reach: about a person's height across (a person is ~0.22 units tall). */
 const SPREAD = 0.2;
 const BEAM_H = SKY + 1.6;
+/** How strongly a beam shows at its brightest: light added, never a wall. */
+const BEAM_GLOW = 0.3;
 
 export interface BuiltEffects {
   group: THREE.Group;
@@ -68,12 +72,24 @@ export function buildEffects(accent: string): BuiltEffects {
     return { mesh, mat };
   });
 
-  const column = new THREE.CylinderGeometry(0.07, 0.11, BEAM_H, 20, 1, true);
+  // Thin, and fading to nothing toward the top: the light rides in the vertex colours,
+  // which with additive blending is how much light each part adds.
+  const column = new THREE.CylinderGeometry(0.03, 0.05, BEAM_H, 16, 4, true);
   column.translate(0, BEAM_H / 2, 0);
+  {
+    const pos = column.getAttribute('position');
+    const shade = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const up = 1 - pos.getY(i) / BEAM_H;
+      const k = up * up;
+      shade[i * 3] = spark.r * k; shade[i * 3 + 1] = spark.g * k; shade[i * 3 + 2] = spark.b * k;
+    }
+    column.setAttribute('color', new THREE.BufferAttribute(shade, 3));
+  }
   const beams = Array.from({ length: BEAMS }, () => {
     const mat = new THREE.MeshBasicMaterial({
-      color: spark, transparent: true, depthWrite: false, opacity: 0,
-      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      color: '#ffffff', vertexColors: true, transparent: true, depthWrite: false, opacity: 0,
+      blending: THREE.AdditiveBlending, side: THREE.FrontSide,
     });
     const mesh = new THREE.Mesh(column, mat);
     mesh.name = 'beam';
@@ -113,7 +129,7 @@ export function buildEffects(accent: string): BuiltEffects {
           mesh.position.set(e.x, 0, e.z);
           // A slow shimmer, so it reads as light rather than a pipe.
           mesh.scale.set(1 + 0.08 * Math.sin(now / 90), 1, 1 + 0.08 * Math.sin(now / 90));
-          mat.opacity = 0.5 * at.alpha;
+          mat.opacity = BEAM_GLOW * at.alpha;
           mesh.visible = true;
         }
       }

@@ -160,7 +160,7 @@ export function useParkPresence(
         if (a) a.facing = Math.atan2(to[0] - a.x, to[1] - a.z);
         done();
       });
-      if (flying) flightEffects(from, Date.now()); else done();
+      if (flying) flightEffects(from, Date.now(), true); else done();
     });
   }, [inPark, venueSim]);
 

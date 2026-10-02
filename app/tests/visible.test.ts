@@ -11,6 +11,7 @@
  *     when it moves" fails, because the frustum is built from a stale matrix.
  *   - drop the `out.length = limit` truncation -> "never asks for more slots than
  *     there are" fails.
+ *   - sees() ignoring `lift` -> "draws somebody up in the sky drop where they are" fails.
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
@@ -31,6 +32,24 @@ function walkCamera(): THREE.PerspectiveCamera {
 const RADIUS = 0.4;
 
 describe('drawing only who is on screen', () => {
+  it('draws somebody up in the sky drop where they are, not by the grass under them', () => {
+    // The flier's own camera, up with them: behind and above, looking along the flight.
+    // Judged by the grass under them -- out of the bottom of the picture -- they were not
+    // drawn at all, on either phone (2026-10-03).
+    const c = new THREE.PerspectiveCamera(62, 9 / 16, 0.08, 90);
+    c.position.set(0, 5.55, 1.45);
+    c.lookAt(0, 4.82, -1.6);
+    c.updateMatrixWorld();
+    const view = new Viewport().update(c);
+    expect(view.sees(0, 0, RADIUS), 'the grass under them is out of the picture').toBe(false);
+    expect(view.sees(0, 0, RADIUS, 4.6), 'not drawn while flying').toBe(true);
+    const out: Placed[] = [];
+    expect(visible<Placed>([{ x: 0, z: 0, lift: 4.6 }], view, out, { limit: 8, radius: RADIUS, fx: 0, fz: 0 })).toBe(1);
+    // ...and a tap finds them up there.
+    const ray = new THREE.Ray(c.position.clone(), new THREE.Vector3(0, 4.7, 0).sub(c.position).normalize());
+    expect(pickAlong(ray, [{ x: 0, z: 0, lift: 4.6 }], 1, 0.22, new THREE.Vector3())).toBe(0);
+  });
+
   it('sees what is in front and not what is behind', () => {
     const view = new Viewport().update(walkCamera());
     expect(view.sees(0, -5, RADIUS), 'straight ahead').toBe(true);
@@ -125,7 +144,7 @@ describe('drawing only who is on screen', () => {
   it('asks for nothing when there are no slots', () => {
     const view = new Viewport().update(walkCamera());
     const out: Placed[] = [];
-    expect(visible([at(0, -5)], view, out, { limit: 0, radius: RADIUS, fx: 0, fz: 0 })).toBe(0);
+    expect(visible<Placed>([at(0, -5)], view, out, { limit: 0, radius: RADIUS, fx: 0, fz: 0 })).toBe(0);
     expect(out).toHaveLength(0);
   });
 });
