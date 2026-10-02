@@ -37,7 +37,7 @@ const fake = vi.hoisted(() => {
     handlers = new Map<string, ((...a: unknown[]) => void)[]>();
     state = 'disconnected';
     remoteParticipants = new Map();
-    localParticipant = { setTrackSubscriptionPermissions: () => {}, setMicrophoneEnabled: async () => {} };
+    localParticipant = { setTrackSubscriptionPermissions: () => {}, setMicrophoneEnabled: async (_on: boolean) => {} };
     constructor() { FakeRoom.made.push(this); }
     on(ev: string, fn: (...a: unknown[]) => void) { this.handlers.set(ev, [...(this.handlers.get(ev) ?? []), fn]); return this; }
     emit(ev: string) { for (const fn of this.handlers.get(ev) ?? []) fn([]); }

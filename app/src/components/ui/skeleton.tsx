@@ -16,7 +16,7 @@
  * either theme rather than as a grey sticker on it.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Animated, Easing, Text, View, type DimensionValue, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Text, View, type DimensionValue, type StyleProp, type ViewStyle } from 'react-native';
 import { Button } from './button';
 import { Card } from './card';
 import { radius as R, space, type, usePalette } from './theme';
@@ -126,7 +126,7 @@ export function SkeletonBlock({ width = '100%', height, radius = R.lg, style }: 
  */
 export function SkeletonGroup({ children, style, label = 'Loading' }: {
   children: ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   label?: string;
 }) {
   return (
