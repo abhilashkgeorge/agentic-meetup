@@ -71,9 +71,19 @@ export function micRefused(err: { name?: string; message?: string }): boolean {
  * unless I moved to a different screen and came back" (yesterday's log: earpiece, then
  * loudspeaker at 23:06:53, when he came back).
  *
- * NOW: the earpiece is not on the list LiveKit chooses from, and the output is chosen
- * again by hand whenever the mic comes on or a room is joined: a headset or bluetooth if
- * one is connected, else the loudspeaker (`outputFor`).
+ * WHY IT HAPPENED (LiveKit's AudioSwitchManager.java, read 2026-10-03): its stop is
+ * QUEUED, its start checks AT ONCE whether it is already running. Moving to a bench's
+ * room left the park's room -- a stop -- and joined the bench's -- a start -- back to
+ * back: the start saw the old switch still there and did nothing, then the queued stop
+ * ran, and the phone was left with no audio switch at all. Android's call audio then
+ * goes to the earpiece, and choosing an output by hand does nothing (it asks the switch).
+ * Leaving the screen and coming back gave the stop time to run first.
+ *
+ * NOW: the session is kept across a change of room and stopped only when voice ends
+ * (`leave(true)`); a start that finds no outputs -- dropped behind a stop -- is made
+ * again (`startAudio`); the earpiece is not on the list LiveKit chooses from; and the
+ * output is chosen again by hand whenever the mic comes on or a room is joined: a
+ * headset or bluetooth if one is connected, else the loudspeaker (`outputFor`).
  */
 export const OUTPUTS = ['bluetooth', 'headset', 'speaker'] as const;
 export function outputFor(available: readonly string[]): string | null {
@@ -132,6 +142,29 @@ export async function askForMic(): Promise<boolean> {
   } finally {
     // The app comes back to the front a moment after the answer: still asking till then.
     setTimeout(() => { asking = false; }, 1500);
+  }
+}
+
+/**
+ * Start the phone's audio session, and on Android make sure it took: a start right behind
+ * a stop is dropped (see OUTPUTS), which shows as no outputs at all. Then start it again.
+ */
+export const AUDIO_START_TRIES = 3;
+/** How long a start is given to take before it counts as dropped: its creation is queued too. */
+export const AUDIO_START_WAIT_MS = 600;
+async function startAudio(rn: Lib['rn']): Promise<void> {
+  await rn.AudioSession.startAudioSession().catch(() => {});
+  if (Platform.OS !== 'android') return;
+  const started = async () => (await rn.AudioSession.getAudioOutputs().catch(() => [] as string[])).length > 0;
+  for (let i = 0; i < AUDIO_START_TRIES; i++) {
+    for (let waited = 0; waited < AUDIO_START_WAIT_MS; waited += 150) {
+      if (await started()) return;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    if (await started()) return;
+    // Dropped behind a stop: by now the stop has run, so this start makes a new switch.
+    console.warn('[voice] audio session did not start; starting it again');
+    await rn.AudioSession.startAudioSession().catch(() => {});
   }
 }
 
@@ -237,11 +270,16 @@ export function startVoice(venueSim: WorldSim): () => void {
     }
   };
 
-  const leave = async () => {
+  /**
+   * Out of the room. The phone's audio session goes too only when voice ends (`end`):
+   * stopped and started again for a change of room, it was left with no audio switch at
+   * all (see OUTPUTS) -- the earpiece.
+   */
+  const leave = async (end: boolean) => {
     const l = link;
     link = null;
-    if (!l) return;
-    await l.room.disconnect().catch(() => {});
+    if (l) await l.room.disconnect().catch(() => {});
+    if (!end) return;
     const loaded = await load();
     await loaded?.rn.AudioSession.stopAudioSession().catch(() => {});
   };
@@ -252,7 +290,7 @@ export function startVoice(venueSim: WorldSim): () => void {
     const my = ++gen;
     const loaded = await load();
     if (!loaded) { useParkVoice.getState().setLink('unavailable'); return; }
-    await leave();
+    await leave(false);
     if (my !== gen || stopped) return;
     const { rn, lk } = loaded;
     // Lost and trying again, it stays "failed" -- and says so -- until it is back.
@@ -263,7 +301,7 @@ export function startVoice(venueSim: WorldSim): () => void {
         android: { preferredOutputList: [...OUTPUTS], audioTypeOptions: rn.AndroidAudioTypePresets.communication },
       }).catch(() => {});
     }
-    await rn.AudioSession.startAudioSession().catch(() => {});
+    await startAudio(rn);
     const room = new lk.Room({ adaptiveStream: false, dynacast: false, disconnectOnPageLeave: false });
     const l: Link = { room, pass, allowed: '', mic: false, volumes: new Map() };
     room
@@ -308,7 +346,7 @@ export function startVoice(venueSim: WorldSim): () => void {
   // A new pass: a new room, or the same room as somebody who may or may not speak. The
   // same pass again (a reconnect of the park socket) changes nothing.
   const onPass = (pass: VoicePass | null) => {
-    if (!pass) { wanted = null; gen++; noRetry(); void leave().then(() => { if (!stopped) useParkVoice.getState().setSpeaking(new Set()); }); return; }
+    if (!pass) { wanted = null; gen++; noRetry(); void leave(true).then(() => { if (!stopped) useParkVoice.getState().setSpeaking(new Set()); }); return; }
     if (wanted && wanted.room === pass.room && wanted.identity === pass.identity && wanted.canTalk === pass.canTalk && link) {
       wanted = pass;
       return;
@@ -349,6 +387,6 @@ export function startVoice(venueSim: WorldSim): () => void {
     const v = useParkVoice.getState();
     v.setSpeaking(new Set());
     if (v.link !== 'unavailable') v.setLink('off');
-    void leave();
+    void leave(true);
   };
 }

@@ -52,7 +52,7 @@ const fake = vi.hoisted(() => {
     lose() { this.state = 'disconnected'; this.emit(RoomEvent.Disconnected); }
   }
   /** What the code asked of the phone's audio, in order. */
-  const audio = { calls: [] as string[], outputs: ['earpiece', 'speaker'] as string[] };
+  const audio = { calls: [] as string[], outputs: ['earpiece', 'speaker'] as string[], startsToTake: 1, starts: 0 };
   return { FakeRoom, RoomEvent, askAgain: { calls: 0, ok: true }, told: [] as boolean[], kept: [] as boolean[], audio };
 });
 
@@ -67,9 +67,10 @@ vi.mock('@livekit/react-native', () => ({
   AndroidAudioTypePresets: { communication: { audioMode: 'inCommunication' } },
   AudioSession: {
     configureAudio: async (c: { android?: { preferredOutputList?: string[] } }) => { fake.audio.calls.push(`configure:${c.android?.preferredOutputList?.join(',')}`); },
-    startAudioSession: async () => { fake.audio.calls.push('start'); },
-    stopAudioSession: async () => {},
-    getAudioOutputs: async () => fake.audio.outputs,
+    startAudioSession: async () => { fake.audio.starts++; fake.audio.calls.push('start'); },
+    stopAudioSession: async () => { fake.audio.calls.push('stop'); },
+    // LiveKit lists no outputs while it has no audio switch: a start dropped behind a stop.
+    getAudioOutputs: async () => (fake.audio.starts >= fake.audio.startsToTake ? fake.audio.outputs : []),
     selectAudioOutput: async (id: string) => { fake.audio.calls.push(`select:${id}`); },
   },
 }));
@@ -105,6 +106,8 @@ describe('voice after the voice server was lost', () => {
     fake.kept.length = 0;
     fake.audio.calls.length = 0;
     fake.audio.outputs = ['earpiece', 'speaker'];
+    fake.audio.startsToTake = 1;
+    fake.audio.starts = 0;
     useParkVoice.setState({ pass: null, micOn: false, hearing: true, open: false, muted: [], speaking: new Set(), link: 'off', everOn: false, micDenied: false });
   });
   afterEach(() => { stop(); vi.useRealTimers(); });
@@ -124,6 +127,33 @@ describe('voice after the voice server was lost', () => {
     useParkVoice.getState().setMic(true);
     await vi.advanceTimersByTimeAsync(300);
     expect(fake.audio.calls, 'left in the earpiece after the mic came on').toContain('select:speaker');
+  });
+
+  it('keeps the phone\'s audio session across a change of room, and stops it only when voice ends', async () => {
+    // Stopped and started again for the bench's room, LiveKit dropped the start behind its
+    // queued stop and the phone had no audio switch at all: the earpiece (2026-10-03).
+    stop = startVoice(sim);
+    useParkVoice.getState().gotPass(pass('t1'));
+    await settle();
+    // From here: the last test's own stop, finishing late, is not this one's.
+    fake.audio.calls.length = 0;
+    useParkVoice.getState().gotPass({ ...pass('t2'), room: 'bench-1', bench: true });
+    await settle();
+    expect(fake.FakeRoom.made).toHaveLength(2);
+    expect(fake.audio.calls.filter((c) => c === 'stop'), 'stopped for a change of room').toHaveLength(0);
+    useParkVoice.getState().left();
+    await settle();
+    expect(fake.audio.calls.filter((c) => c === 'stop'), 'not stopped when voice ended').toHaveLength(1);
+  });
+
+  it('starts the audio session again when the first start was dropped', async () => {
+    fake.audio.startsToTake = 2;
+    stop = startVoice(sim);
+    useParkVoice.getState().gotPass(pass('t1'));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fake.audio.calls.filter((c) => c === 'start'), 'never started again').toHaveLength(2);
+    expect(useParkVoice.getState().link).toBe('on');
+    expect(fake.audio.calls, 'no loudspeaker once it had started').toContain('select:speaker');
   });
 
   it('prefers what is worn: bluetooth, then a headset, then the loudspeaker; never the earpiece', () => {
