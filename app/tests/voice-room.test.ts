@@ -16,9 +16,13 @@
  *     it takes the pass it has straight back up, rather than voice staying off until the
  *     next walk into the park (seen on the Seeker after a hot reload, 2026-09-29).
  *
+ * And the mic (the Pixel, 2026-10-02): a publish cancelled by a reconnect is tried again,
+ * not called "Mic not allowed"; only a refusal is; after MIC_TRIES it is simply off.
+ *
  * Negative controls, run by hand and recorded in the commit: retryLater() taken out of the
  * Disconnected handler -> "asks the park for a fresh pass" fails; stopping that forgets the
- * pass (left()) -> "takes the pass straight back up" fails.
+ * pass (left()) -> "takes the pass straight back up" fails; apply() setting micDenied on
+ * any failure (as it did) -> "comes on after a publish cancelled" and "gives up" fail.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -65,7 +69,7 @@ vi.mock('../src/lib/storage', () => ({
   getParkVoiceOpen: async () => false, setParkVoiceOpen: async (open: boolean) => { fake.kept.push(open); },
 }));
 
-const { NEVER_ON_TRIES, RETRY_MS, VOICE_UNREACHABLE, startVoice } = await import('../src/features/world/voice-room');
+const { MIC_TRIES, NEVER_ON_TRIES, RETRY_MS, VOICE_UNREACHABLE, micRefused, startVoice } = await import('../src/features/world/voice-room');
 const { useParkVoice } = await import('../src/features/world/park-voice');
 
 const sim = { get: () => ({ x: 0, z: 0 }) } as never;
@@ -195,6 +199,59 @@ describe('voice after the voice server was lost', () => {
     stop();
     await vi.advanceTimersByTimeAsync(120_000);
     expect(fake.askAgain.calls).toBe(0);
+  });
+});
+
+describe('the mic, switched on', () => {
+  // The Pixel, 2026-10-02: allowing the mic put Android's box over the app, the voice link
+  // reconnected under it, the first publish was cancelled, and the park said "Mic not
+  // allowed" a second after the person had allowed it.
+  let stop: () => void = () => {};
+  beforeEach(() => {
+    vi.useFakeTimers();
+    fake.FakeRoom.made = [];
+    fake.FakeRoom.unreachable = false;
+    useParkVoice.setState({ pass: null, micOn: false, hearing: true, open: false, muted: [], speaking: new Set(), link: 'off', everOn: false, micDenied: false });
+  });
+  afterEach(() => { stop(); vi.useRealTimers(); });
+
+  /** On, with the room's mic failing in the given ways, in order, and then working. */
+  async function micWith(...fails: Error[]) {
+    stop = startVoice(sim);
+    useParkVoice.getState().gotPass(pass('t1'));
+    await settle();
+    const calls: boolean[] = [];
+    const left = [...fails];
+    fake.FakeRoom.made.at(-1)!.localParticipant.setMicrophoneEnabled = async (on: boolean) => {
+      calls.push(on);
+      const err = left.shift();
+      if (err) throw err;
+    };
+    useParkVoice.getState().setMic(true);
+    await vi.advanceTimersByTimeAsync(2_000);
+    return calls;
+  }
+  const named = (name: string, message: string) => Object.assign(new Error(message), { name });
+
+  it('comes on after a publish cancelled by a reconnect, and never says "not allowed"', async () => {
+    const calls = await micWith(new Error('Cancelled publication by calling unpublish'));
+    expect(useParkVoice.getState().micDenied, 'a cancelled publish was called a refusal').toBe(false);
+    expect(useParkVoice.getState().micOn).toBe(true);
+    expect(calls, 'it was not tried again').toEqual([true, true]);
+  });
+
+  it('says "not allowed" when the phone refused it', async () => {
+    await micWith(named('NotAllowedError', 'Permission denied'));
+    expect(useParkVoice.getState().micDenied).toBe(true);
+    expect(micRefused(new Error('Permission denied by system'))).toBe(true);
+    expect(micRefused(new Error('Cancelled publication by calling unpublish'))).toBe(false);
+  });
+
+  it('gives up after a few tries and is simply off, to be tapped again', async () => {
+    const calls = await micWith(...Array.from({ length: 10 }, () => new Error('engine closed')));
+    expect(calls.filter(Boolean).length, 'tries to switch it on').toBe(MIC_TRIES);
+    expect(useParkVoice.getState().micOn).toBe(false);
+    expect(useParkVoice.getState().micDenied).toBe(false);
   });
 });
 

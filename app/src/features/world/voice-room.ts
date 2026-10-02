@@ -46,6 +46,20 @@ export const RETRY_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
  * it still says so and keeps trying (RETRY_MS).
  */
 export const NEVER_ON_TRIES = 2;
+
+/**
+ * WHY THE MIC DID NOT COME ON: the phone refused it, or something passing. Allowing the
+ * mic puts Android's box over the app, the voice link reconnects under it, and the first
+ * publish is cancelled -- "Cancelled publication by calling unpublish" -- which was shown
+ * as "Mic not allowed" a second after the person had allowed it (the Pixel, 2026-10-02).
+ * Only a refusal says that now. Anything else is tried again on the next tick, up to
+ * MIC_TRIES times, and then the mic is simply off, to be tapped again.
+ */
+export const MIC_TRIES = 3;
+export function micRefused(err: { name?: string; message?: string }): boolean {
+  return err.name === 'NotAllowedError' || err.name === 'SecurityError'
+    || /permission|not allowed/i.test(err.message ?? '');
+}
 let lib: Promise<Lib | null> | null = null;
 
 function load(): Promise<Lib | null> {
@@ -126,6 +140,8 @@ export function startVoice(venueSim: WorldSim): () => void {
   // half minute, for as long as there is a pass to be had.
   let retries = 0;
   let neverOnFails = 0;
+  /** Mic switches that failed in a row, for something other than a refusal (MIC_TRIES). */
+  let micFails = 0;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   const retryLater = () => {
     if (stopped || !wanted || retryTimer) return;
@@ -172,7 +188,14 @@ export function startVoice(venueSim: WorldSim): () => void {
     if (mic !== l.mic) {
       l.mic = mic;
       l.room.localParticipant.setMicrophoneEnabled(mic, { echoCancellation: true, noiseSuppression: true, autoGainControl: true })
-        .catch((err: Error) => { console.warn('[voice] mic', err.message); useParkVoice.getState().setMicDenied(true); });
+        .then(() => { micFails = 0; })
+        .catch((err: Error) => {
+          console.warn('[voice] mic', err.message);
+          if (micRefused(err)) { micFails = 0; useParkVoice.getState().setMicDenied(true); return; }
+          if (++micFails >= MIC_TRIES) { micFails = 0; useParkVoice.getState().setMic(false); return; }
+          // Not applied after all: the next tick (a quarter second) tries again.
+          if (link === l) l.mic = !mic;
+        });
     }
   };
 
