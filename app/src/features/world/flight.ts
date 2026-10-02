@@ -39,6 +39,16 @@ export const GLIDE_SPEED = 25;
  * in all -- so the glide clears every one of them.
  */
 export const SKY = 4.6;
+/**
+ * NEAR ENOUGH TO WALK. Under this far (about eight metres) a sky drop is a lift straight up
+ * and down on the spot -- the park bot did one of four centimetres, standing next to the
+ * person it asked (2026-10-03) -- so you walk over instead, at a brisk pace.
+ */
+export const FLY_MIN = 1;
+/** Whether getting from `from` to `to` is a flight, or a few steps. */
+export function flies(from: readonly [number, number], to: readonly [number, number]): boolean {
+  return Math.hypot(to[0] - from[0], to[1] - from[1]) >= FLY_MIN;
+}
 /** A little extra height mid-glide, so it reads as a hop over the park rather than a lift. */
 const ARC = 0.6;
 

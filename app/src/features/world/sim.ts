@@ -719,6 +719,20 @@ export class WorldSim {
     return true;
   }
 
+  /**
+   * A few brisk steps to (tx, tz): somebody who said yes standing near enough to walk to
+   * (flight.ts FLY_MIN). The stick takes over if a thumb goes on it. False if not here.
+   */
+  walkTo(ref: string, tx: number, tz: number): boolean {
+    const a = this.byRef.get(ref);
+    if (!a || a.fly) return false;
+    if (a.seat) this.standUp(ref);
+    a.driveX = 0; a.driveZ = 0;
+    this.setTarget(a, tx, tz, WALK * 1.8);
+    a.state = 'walking';
+    return true;
+  }
+
   /** Whether somebody is up in a sky drop right now. */
   inFlight(ref: string): boolean {
     return !!this.byRef.get(ref)?.fly;

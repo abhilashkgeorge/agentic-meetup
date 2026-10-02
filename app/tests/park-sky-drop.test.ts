@@ -15,18 +15,21 @@
  *     it half-way through picks it up half-way through;
  *   - the crowd draws the lift (aAnim.w carries it above the flags, which still read the
  *     same), and the canvas no longer has a car;
- *   - you land beside them, never inside a tree, a bench or somebody.
+ *   - you land beside them, never inside a tree, a bench or somebody;
+ *   - near enough to walk (FLY_MIN, about eight metres), you walk: the park bot did a
+ *     "flight" of four centimetres beside the person it asked (2026-10-03).
  *
  * Negative controls, run by hand and recorded in the commit:
  *   - flyStep not setting `lift` -> "lifts you off the ground" fails;
  *   - `live` ignoring `fly` -> "another phone flies them too" fails;
- *   - landingBeside ignoring `clear` -> "never lands inside" fails.
+ *   - landingBeside ignoring `clear` -> "never lands inside" fails;
+ *   - `flies` always true -> "near enough to walk" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STARTER, type Look } from '@clone/shared';
-import { DROP_MS, GLIDE_MAX_MS, LIFT_MS, SKY, flightAt, flightMs, landingBeside, type Flight } from '../src/features/world/flight';
+import { DROP_MS, FLY_MIN, GLIDE_MAX_MS, LIFT_MS, SKY, flies, flightAt, flightMs, landingBeside, type Flight } from '../src/features/world/flight';
 import { WorldSim } from '../src/features/world/sim';
 import { venueGarden, CUBBON_PARK } from '../src/features/world/venue';
 import { gardenSpots } from '../src/features/world/garden';
@@ -196,5 +199,31 @@ describe('where you land', () => {
     const near: [number, number] = [tree.x + 0.3, tree.z];
     const [lx, lz] = landingBeside([tree.x - 5, tree.z], near, (px, pz) => s.standable(px, pz));
     expect(s.standable(lx, lz), 'landed inside a tree').toBe(true);
+  });
+});
+
+describe('near enough to walk', () => {
+  it('walks over instead of lifting off on the spot, and flies only past FLY_MIN', () => {
+    expect(flies([0, 0], [0.04, 0.02]), 'a lift on the spot').toBe(false);
+    expect(flies([0, 0], [FLY_MIN * 0.9, 0])).toBe(false);
+    expect(flies([0, 0], [FLY_MIN, 0])).toBe(true);
+    expect(FLY_MIN * 8.1, 'metres').toBeLessThanOrEqual(10);
+    const s = new WorldSim(5);
+    s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: null }]);
+    s.place('you', 0, 0);
+    expect(s.walkTo('you', 0.6, 0)).toBe(true);
+    expect(s.get('you')!.state).toBe('walking');
+    for (let i = 0; i < 60 * 3; i++) s.step(1 / 60);
+    const me = s.get('you')!;
+    expect(me.fly).toBeUndefined();
+    expect(me.lift ?? 0).toBe(0);
+    expect(Math.hypot(me.x - 0.6, me.z), 'stopped short of the spot').toBeLessThan(0.1);
+  });
+
+  it('the phone walks when near, and flies when not (SOURCE SHAPE: the hook needs React Native)', () => {
+    const presence = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-presence.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(presence).toMatch(/if \(!flies\(\[me\.x, me\.z\], \[lx, lz\]\)\) \{ venueSim\.walkTo\('you', lx, lz\); done\(\); return; \}/);
+    expect(presence.indexOf('venueSim.walkTo(')).toBeLessThan(presence.indexOf('venueSim.flyTo('));
   });
 });

@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { PARK_AWAY_MS } from '@clone/shared';
 import { parkAway, parkBack, parkEnter, parkLeave, parkMove, parkStand, parkWalkBackIn } from '../../lib/socket';
-import { landingBeside } from './flight';
+import { flies, landingBeside } from './flight';
 import { clearEffects, flightEffects, puff, puffsFor } from './park-effects';
 import { livePeople, movingNow, parkPresence, useParkLive, type LivePerson } from './park-live';
 import { seatOn } from './bench';
@@ -151,6 +151,8 @@ export function useParkPresence(
       const clear = (x: number, z: number) => venueSim.standable(x, z)
         && !venueSim.agents().some((a) => a.ref !== 'you' && Math.hypot(a.x - x, a.z - z) < PERSONAL);
       const [lx, lz] = landingBeside([me.x, me.z], to, clear);
+      // Near enough to walk: a few steps over, not a lift on the spot.
+      if (!flies([me.x, me.z], [lx, lz])) { venueSim.walkTo('you', lx, lz); done(); return; }
       const from = { fx: me.x, fz: me.z, tx: lx, tz: lz };
       const flying = venueSim.flyTo('you', lx, lz, () => {
         // Down: facing them.
