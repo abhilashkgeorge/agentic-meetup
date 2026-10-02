@@ -14,7 +14,7 @@
  * (the app's flight.ts). Told the two of you have a bench, it gets to its own seat --
  * the one the app gives it, from the same park layout -- inside three seconds, as the
  * app's sim does, and sits; with --sit it asks for the bench itself, a few seconds after
- * the two of you are together. `kill -USR1` sends it away (another tab, as a phone
+ * the two of you are together; with --still it never walks up to anybody. `kill -USR1` sends it away (another tab, as a phone
  * does: held PARK_AWAY_MS), `kill -USR2` brings it back. It says what it sees of the
  * others: who appears and goes, who flies, who sits. NO MODEL: every line is
  * written here. With --ride it is on a bicycle, and rides round you in a circle rather
@@ -55,6 +55,8 @@ let flight: { fx: number; fz: number; tx: number; tz: number; at: number } | nul
 let away = false;
 const ask = process.argv.includes('--ask');
 const sitDown = process.argv.includes('--sit');
+/** --still: stays where it is, rather than walking up to whoever it sees -- for watching a pickup come to it. */
+const still = process.argv.includes('--still');
 /** When the bot started, for the times in what it says it sees. */
 const started = Date.now();
 const secs = () => ((Date.now() - started) / 1000).toFixed(1);
@@ -277,7 +279,7 @@ const walk = setInterval(() => {
   }
   // Talking with somebody: by their side, a person's width off it, as they go -- on a
   // bike when they ride. Standing still while they come to it (the car), as before.
-  const partner = paired && partnerRef ? people.find((p) => p.ref === partnerRef) : undefined;
+  const partner = paired && partnerRef && !still ? people.find((p) => p.ref === partnerRef) : undefined;
   if (partner) {
     riding = partner.riding === true;
     const side = { x: partner.x + 0.35, z: partner.z };
@@ -289,7 +291,7 @@ const walk = setInterval(() => {
     send({ type: 'park.move', x, z, facing, moving, ...(riding ? { riding: true } : {}) });
     return;
   }
-  const target = paired ? undefined : people[0];
+  const target = paired || still ? undefined : people[0];
   let moving = false;
   let facing = 0;
   if (target) {
