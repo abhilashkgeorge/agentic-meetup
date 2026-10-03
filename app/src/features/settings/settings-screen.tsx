@@ -295,7 +295,7 @@ export default function SettingsScreen() {
 
         <Card label="Connection">
           <Row title="Server" value={getApiBase().replace(/^https?:\/\//, '')}
-               onPress={() => router.push('/connect')} last />
+               onPress={() => router.push({ pathname: '/connect', params: { from: 'settings' } })} last />
         </Card>
 
         {/* Both of these have worked on the server for weeks and neither could be
