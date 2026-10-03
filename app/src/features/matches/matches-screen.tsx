@@ -30,6 +30,7 @@ import {
 } from '../../lib/api';
 import { FEW_ON_THE_APP, costLabel, countLabel, fewOnTheApp, isUnder20 } from '../../lib/counts';
 import { roundNote } from './round-note';
+import { useWorld } from '../world/store';
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import {
@@ -144,6 +145,17 @@ export default function MatchesScreen() {
   // card it had just answered still listed as missing, and a button back into the
   // setup it had just finished (the founder, 2026-09-24: "it never finishes").
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  // AND WHEN THE CARDS CHANGE: a card written by somebody else's round that came to this
+  // person, a yes that makes it their turn, both saying yes -- all on the socket (store.ts
+  // `cards`). Before, the tab showed none of it until the person left it and came back
+  // (the two-phone test, 2026-10-02). Read a moment later, so a burst is one read.
+  const cards = useWorld((s) => s.cards);
+  useEffect(() => {
+    if (!cards) return;
+    const t = setTimeout(() => void load(), 600);
+    return () => clearTimeout(t);
+  }, [cards, load]);
 
   // WHILE A ROUND IS OUT, ASK AGAIN. The round runs on the server with no request
   // waiting on it, so the only way to learn it finished is to look. Every eight

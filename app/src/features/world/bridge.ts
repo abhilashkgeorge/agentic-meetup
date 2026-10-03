@@ -104,6 +104,16 @@ export function eventTransitions(ev: TownEvent): Transition[] {
   }
 }
 
+/**
+ * Whether a town event means the cards on Matches changed: a card written (the agents
+ * met -- this person's round, or somebody else's that came to them), a round finished,
+ * the other person's yes making it this person's turn, or both saying yes.
+ */
+export function cardsChange(ev: TownEvent): boolean {
+  return ev.type === 'round.decided' || ev.type === 'round.done'
+    || ev.type === 'match.turn' || ev.type === 'match.introduced';
+}
+
 /** What the sim was told, as the roster would have said it -- so the next poll agrees. */
 export const stateAfter = (t: Motion): WorldAgent['state'] =>
   t.op === 'meet' ? 'talking'

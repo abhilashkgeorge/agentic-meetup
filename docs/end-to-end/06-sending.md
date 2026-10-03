@@ -21,7 +21,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") ([app/src/app/(tabs)/index.tsx:1] `export { default } from '../../features/world/world-screen';`,
    [app/src/features/world/hud.tsx:218] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
-   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:308] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:320] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
    is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
@@ -100,7 +100,7 @@ needs a few more answers before it can go out."
 These lines, and how the last round went ("Nobody on the app fits what you asked for yet." and the
 rest), are gone once the person leaves the screen, so none of them is still there after they change
 what they asked for (since 2026-10-03; before, both the Home and Matches kept the last one until the
-next round) ([app/src/features/matches/matches-screen.tsx:116] `useFocusEffect(useCallback(() => () => setSaid(null), []));`).
+next round) ([app/src/features/matches/matches-screen.tsx:117] `useFocusEffect(useCallback(() => () => setSaid(null), []));`).
 In the clone chat, the turn that meets the limit ends with a line from the app, in the server's
 words: "That's all for today. Chat, learning and your agent's rounds share 10 turns a day, and
 today's are used up. Your clone can talk again tomorrow." (since 2026-09-29; before, nothing was
@@ -183,7 +183,7 @@ off ([server/src/matching/profile.ts:207] `if (!agreed) missing.push('consent');
 - **How they are labelled.** "Practice match — this one is not a real person." on the card,
   "Practice match / Not a real person" in lists, their lines marked "(practice)", and the
   reveal says "This is not a real person. The pool is invented until enough people have
-  joined…" ([app/src/features/matches/matches-screen.tsx:382] `Practice match — this one is not a real person.`,
+  joined…" ([app/src/features/matches/matches-screen.tsx:394] `Practice match — this one is not a real person.`,
   [app/src/features/matches/exchange.ts:47] `${s.text} (practice)`,
   [app/src/features/matches/reveal-screen.tsx:213] `This is not a real person. The pool is invented until enough people have`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a

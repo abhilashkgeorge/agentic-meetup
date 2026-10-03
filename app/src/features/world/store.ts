@@ -6,9 +6,9 @@
 import { create } from 'zustand';
 import { getWorld, type World } from '../../lib/api';
 
-import { eventTransitions, type TownEvent, type Transition } from './bridge';
+import { cardsChange, eventTransitions, type TownEvent, type Transition } from './bridge';
 
-export { YOU, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter } from './bridge';
+export { YOU, cardsChange, departed, fromRoster, metSpec, planTransitions, roundActive, stateAfter } from './bridge';
 export type { AgentSpec, Motion, Transition, TownEvent } from './bridge';
 
 interface WorldStore {
@@ -23,6 +23,8 @@ interface WorldStore {
   live: Transition[];
   /** Bumped by every town event; the screen refetches the roster shortly after. */
   nudge: number;
+  /** Bumped by every event that changes the cards (cardsChange); Matches reads them again. */
+  cards: number;
   setWorld: (w: World | null) => void;
   setAnnounce: (id: string | null) => void;
   load: (token: string) => Promise<World | null>;
@@ -37,8 +39,11 @@ export const useWorld = create<WorldStore>((set) => ({
   announce: null,
   live: [],
   nudge: 0,
+  cards: 0,
   setWorld: (world) => set({ world }),
-  apply: (ev) => set((s) => ({ live: [...s.live, ...eventTransitions(ev)], nudge: Date.now() })),
+  apply: (ev) => set((s) => ({
+    live: [...s.live, ...eventTransitions(ev)], nudge: Date.now(), cards: cardsChange(ev) ? s.cards + 1 : s.cards,
+  })),
   drained: () => set({ live: [] }),
   setAnnounce: (announce) => set({ announce }),
   load: async (token) => {
