@@ -19,10 +19,13 @@
  *     the hook between your shoulder blades -- and only then are you on it;
  *   - A FINE CABLE: CABLE_DP wide on the screen however near or far, not a rope that is
  *     thick up close;
- *   - THE CAMERA SHOWS IT: up after the plane as it comes over, then the plane and you in
- *     one picture -- you above the park's cards and buttons, the plane below the top --
- *     from the moment the cable has you until you let go; eased in from the walking camera
- *     and back to it, never a cut;
+ *   - THE CAMERA SHOWS IT IN SHOTS, CUT, NOT PANNED (the founder, the same day: "you
+ *     don't have to pan the camera from the user to the aeroplane. It will be better to
+ *     show the animation of the plane dropping the cable, then show it being attached to
+ *     the user and the user being dropped"): a still shot of the plane coming in and its
+ *     cable falling; cut to you, and the plane and you in one picture -- you above the
+ *     park's cards and buttons, the plane below the top -- from the moment the cable has
+ *     you until you let go; then eased back to the walking camera as you come down;
  *   - NOT FOR A FEW STEPS: nearer than FLY_MIN you go on foot, at a run if need be, and
  *     are there no later than the plane would have you there; a short hop's plane never
  *     carries you past them;
@@ -32,6 +35,7 @@
  *   - the cable's corners a fixed width apart -> "CABLE_DP wide however far" fails;
  *   - flightShot's weight held at 0 (the walking camera only) -> "the plane and you in one
  *     picture" fails;
+ *   - the first shot's camera turned after the plane (a pan) -> "holds still" fails;
  *   - the cable's end at the hook from the start of its fall -> "falls from the plane" fails;
  *   - walkTo back at a brisk walk -> "never slower than the plane would be" fails;
  *   - passOf without the short hop's nearer, slower pass -> "never carries you past" fails.
@@ -41,7 +45,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
-  AWAY_MS, CABLE_MS, FLY_MIN, PASS_Y, T_CABLE, T_CARRY, T_HOOK,
+  AWAY_MS, CABLE_MS, FLY_MIN, PASS_Y, SHOT_CUT_MS, T_CABLE, T_CARRY, T_HOOK,
   carryMs, flightAt, flightMs, flightShot, planeAt, type Flight, type FlightPose,
 } from '../src/features/world/flight';
 import { PLANE_LENGTH, PLANE_SPAN, planeGeometry } from '../src/features/world/plane-mesh';
@@ -168,9 +172,9 @@ describe('the camera shows it', () => {
   };
   const middleOf = (p: FlightPose) => ({ x: p.anchor.x, y: p.anchor.y - 0.05, z: p.anchor.z });
 
-  it('the plane and you in one picture, from the moment its cable has you until you let go', () => {
+  it('then the plane and you in one picture, from just before its cable has you until you let go', () => {
     for (const f of [hop, { fx: 0, fz: 0, tx: 0, tz: 60 }, { fx: 0, fz: 0, tx: -FLY_MIN - 1, tz: 0 }]) {
-      for (let ms = T_HOOK; ms < T_CARRY + carryMs(f); ms += 25) {
+      for (let ms = SHOT_CUT_MS; ms < T_CARRY + carryMs(f); ms += 25) {
         const { camera, p } = cameraAt(f, ms);
         const you = onScreen(camera, middleOf(p).x, middleOf(p).y, middleOf(p).z);
         const plane = onScreen(camera, p.plane!.x, p.plane!.y + 0.1, p.plane!.z);
@@ -188,23 +192,36 @@ describe('the camera shows it', () => {
     }
   });
 
-  it('on the way in, up after the plane: it is in the picture as it comes, before its cable drops', () => {
-    let seen = 0;
-    for (let ms = 0; ms < T_CABLE; ms += 10) {
-      const { camera, p } = cameraAt(hop, ms);
-      if (!p.plane) continue;
-      const at = onScreen(camera, p.plane.x, p.plane.y, p.plane.z);
-      if (at && at.x > 0 && at.x < 1 && at.y > 0 && at.y < 1) seen += 10;
+  it('first, a shot of the plane: held still -- no pan -- the plane coming in it, and its cable falling', () => {
+    for (const f of [hop, { fx: 0, fz: 0, tx: 0, tz: 60 }, { fx: 0, fz: 0, tx: FLY_MIN, tz: 0 }]) {
+      const first = cameraAt(f, 0);
+      let seen = 0, falling = 0;
+      for (let ms = 0; ms < SHOT_CUT_MS; ms += 10) {
+        const { camera, p, eye, look } = cameraAt(f, ms);
+        expect(eye.distanceTo(first.eye), `the camera moved at ${ms} ms`).toBeLessThan(1e-9);
+        expect(look.distanceTo(first.look), `the camera turned at ${ms} ms`).toBeLessThan(1e-9);
+        if (!p.plane) continue;
+        const at = onScreen(camera, p.plane.x, p.plane.y + 0.1, p.plane.z);
+        const inside = !!at && at.x > 0 && at.x < 1 && at.y > 0.02 && at.y < 0.71;
+        if (inside) seen += 10;
+        if (inside && p.cable) falling += 10;
+      }
+      expect(seen, 'the plane hardly in its own shot').toBeGreaterThanOrEqual(500);
+      expect(falling, 'its cable never seen falling from it').toBeGreaterThan(0);
     }
-    expect(seen, 'the plane hardly in the picture as it comes').toBeGreaterThanOrEqual(300);
   });
 
-  it('eases in from the walking camera and back to it by the time you are down, never a cut', () => {
+  it('cut to you just before the cable has you; from there it follows you, never jumping; eased back to walking as you come down', () => {
+    expect(SHOT_CUT_MS).toBeGreaterThan(T_CABLE);
+    expect(SHOT_CUT_MS).toBeLessThan(T_HOOK);
     for (const f of [hop, { fx: 0, fz: 0, tx: 0, tz: 120 }]) {
-      expect(flightShot(f, 0)!.w).toBe(0);
+      // A cut from the very first frame -- no ease from the walking camera -- and none left by the time you are down.
+      expect(flightShot(f, 0)!.w).toBe(1);
       expect(flightShot(f, flightMs(f) - 200)!.w).toBe(0);
-      let was = cameraAt(f, 0);
-      for (let ms = 5; ms <= flightMs(f); ms += 5) {
+      const before = cameraAt(f, SHOT_CUT_MS - 1), after = cameraAt(f, SHOT_CUT_MS);
+      expect(before.eye.distanceTo(after.eye), 'no cut to you').toBeGreaterThan(1);
+      let was = after;
+      for (let ms = SHOT_CUT_MS + 5; ms <= flightMs(f); ms += 5) {
         const now = cameraAt(f, ms);
         // Bolted to you as you are snatched up and carried, the camera moves as you do;
         // what it must never do is jump about you.

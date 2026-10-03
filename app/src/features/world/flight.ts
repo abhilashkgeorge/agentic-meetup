@@ -513,20 +513,26 @@ export function cableCurve(
 export interface Shot { eye: [number, number, number]; look: [number, number, number] }
 
 /**
- * THE CAMERA ON YOUR OWN PICKUP: you and the plane in one picture (the founder,
- * 2026-10-04: "show a good aeroplane on the sky dropping the cable then attaching to the
- * user"). The walking camera sits behind your head looking down the path; the plane
- * passes forty metres up, far out of the top of that picture.
+ * THE CAMERA ON YOUR OWN PICKUP, IN SHOTS, CUT -- NOT PANNED (the founder, 2026-10-04:
+ * "you don't have to pan the camera from the user to the aeroplane. It will be better to
+ * show the animation of the plane dropping the cable, then show it being attached to the
+ * user and the user being dropped to the partner's location"). The first version tipped
+ * the walking camera up after the plane and down again with its cable: one long pan.
  *
- * So the camera backs off behind you and a little to the side, low, and tips up -- just
- * far enough back that the plane and you are SHOT_SPREAD degrees apart, you SHOT_BELOW
- * degrees under the middle of the picture: on a phone held upright that is you about two
- * thirds of the way down, clear of the park's cards and buttons, and the plane near the
- * top. It closes in as the cable reels you up under the plane, and hands back to the
- * walking camera once your canopy is open.
+ *   1. THE PLANE DROPPING ITS CABLE. Cut, as the flight starts, to a camera low on the
+ *      ground ahead of where the cable will drop, a little to the side, looking back up
+ *      the plane's way: it comes in out of the distance towards you, growing, and its
+ *      cable falls from its belly towards you, standing small at the bottom.
+ *   2. THE CABLE ON YOU. Cut, just before the cable reaches you, to behind you: you about
+ *      two thirds of the way down the picture, clear of the park's cards and buttons, the
+ *      plane near the top, the cable between -- it hooks on your back and snatches you up,
+ *      the camera rising with you, closing in as you are reeled up under the plane, just
+ *      far enough back that the plane and you are SHOT_SPREAD degrees apart.
+ *   3. DOWN BESIDE THEM. Once your canopy is open, back to the walking camera, following
+ *      you down to where they are.
  *
- * `w` is how much of this shot to use over the walking camera: none at the start and
- * the end, so it eases in and out of whatever the walking camera was doing.
+ * `w` is how much of this shot to use over the walking camera: all of it from the first
+ * frame -- a cut -- easing out to none as you come down.
  */
 export const SHOT_SPREAD = 31;
 export const SHOT_BELOW = 9;
@@ -534,21 +540,38 @@ const SHOT_SIDE = 0.2;
 const SHOT_UP = 0.2;
 const SHOT_NEAR = 3;
 const SHOT_FAR = 9;
-/** On the way in, the camera tips up after the plane, holding it this far above the middle -- up to SHOT_UP_MOST. */
-const SHOT_PLANE_ABOVE = 12;
-const SHOT_UP_MOST = 48;
+/** When the picture cuts from the plane to you: a little before its cable has you. */
+export const SHOT_CUT_MS = T_HOOK - 150;
+/** The first shot's camera: how far ahead of where the cable drops, how far to the side, how high, and what it looks at. */
+const PLANE_SHOT = { ahead: 5, side: 1.6, up: 0.45, aimBack: 3, aimUp: 2.8 } as const;
 
 export function flightShot(f: Flight, ms: number): (Shot & { w: number }) | null {
   if (f.kind === 'drop' || f.kind === 'away') return null;
-  const pose = flightAt(f, ms);
   const release = T_CARRY + carryMs(f);
-  const w = smooth(ms, 0, 650) * (1 - smooth(ms, release + 100, release + 900));
+  const w = 1 - smooth(ms, release + 100, release + 900);
+  const heading = headingOf(f);
+  const ux = Math.sin(heading), uz = Math.cos(heading);
+  // 1. The plane coming in, from a camera on the ground ahead of the drop, looking back.
+  if (ms < SHOT_CUT_MS) {
+    const { lead, speed } = passOf(f);
+    const drop = lead - speed * (CABLE_MS / 1000);
+    const hook = anchorOff(HOOK, heading);
+    const sx = (s: number, side: number) => f.fx + hook[0] + ux * s + uz * side;
+    const sz = (s: number, side: number) => f.fz + hook[2] + uz * s - ux * side;
+    const at = drop + PLANE_SHOT.ahead;
+    return {
+      w,
+      eye: [sx(at, PLANE_SHOT.side), PLANE_SHOT.up, sz(at, PLANE_SHOT.side)],
+      look: [sx(drop - PLANE_SHOT.aimBack, 0), PLANE_SHOT.aimUp, sz(drop - PLANE_SHOT.aimBack, 0)],
+    };
+  }
+  // 2. You and the plane, from behind you.
+  const pose = flightAt(f, ms);
   const yaw = pose.heading + SHOT_SIDE;
   const dx = Math.sin(yaw), dz = Math.cos(yaw);
   // You: the middle of you, below the hook or the hands.
   const m = { x: pose.anchor.x, y: pose.anchor.y - (pose.phase === 'chute' || pose.phase === 'settle' ? 0.12 : 0.05), z: pose.anchor.z };
-  // The plane: until its cable has you, where it will be then -- the shot is set for that.
-  const q = planeAt(f, Math.max(ms, T_HOOK));
+  const q = planeAt(f, ms);
   const eyeAt = (r: number) => ({ x: m.x - dx * r, y: Math.max(0.25, m.y + SHOT_UP), z: m.z - dz * r });
   const rise = (e: { x: number; y: number; z: number }, p: { x: number; y: number; z: number }) =>
     Math.atan2(p.y - e.y, (p.x - e.x) * dx + (p.z - e.z) * dz);
@@ -560,14 +583,7 @@ export function flightShot(f: Flight, ms: number): (Shot & { w: number }) | null
     lo = hi;
   }
   const e = eyeAt(lo);
-  const deg = Math.PI / 180;
-  let pitch = rise(e, m) + SHOT_BELOW * deg;
-  // On the way in, up after the plane as it comes over you, and down again with its
-  // cable, to the two of you by the time the cable has you.
-  if (ms < T_HOOK) {
-    const after = Math.max(pitch, Math.min(SHOT_UP_MOST * deg, rise(e, planeAt(f, ms)) - SHOT_PLANE_ABOVE * deg));
-    pitch = after + (pitch - after) * smooth(ms, T_CABLE - 150, T_HOOK);
-  }
+  const pitch = rise(e, m) + (SHOT_BELOW * Math.PI) / 180;
   return {
     w,
     eye: [e.x, e.y, e.z],
