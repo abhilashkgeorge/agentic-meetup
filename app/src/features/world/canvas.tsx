@@ -51,6 +51,7 @@ import { loadGpuCrowd, type CrowdFrame, type GpuCrowd } from './crowd-gpu';
 import { honourSubDataRanges } from './gl-subdata';
 import { hairOf, skirtOf, topOf } from '../look/silhouette';
 import { buildGarden, skyFollow } from './garden-mesh';
+
 import { MAP, type Frame } from './map';
 import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
@@ -64,6 +65,9 @@ import type { CityPlan } from './city-plan';
 import { buildCity, type BuiltCity } from './city-mesh';
 import { CUBBON_PARK, venueGarden, type Venue } from './venue';
 import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
+
+/** The middle of a person, off their feet, in world units (a person is 0.215 tall). */
+const SIGHT_MIDDLE = 0.11;
 
 /**
  * Two warnings three.js prints for every canvas, about itself, that nothing here can act on:
@@ -1223,9 +1227,13 @@ function Town({
       camera.lookAt(look[0], look[1], look[2]);
       focus.set(look[0], 0, look[2]);
       skyFollow(garden, eye[0], 0, eye[2]);
+      // No trunk between the lens and you: cut away along that line (garden-mesh.ts
+      // seeThroughTrunks). To the middle of you, wherever the camera is easing to.
+      garden.sightLine(eye, [you.x, lift + SIGHT_MIDDLE, you.z]);
       // Detailed benches and lamps near the camera, plain ones further out (venue-mesh).
       furniture.current?.follow(eye[0], eye[2]);
     } else {
+      garden.sightLine(null);
       // The angle follows the zoom: a map seen from above out at the city, a game
       // camera looking along the street once you are down in it.
       const [ex, ey, ez] = eyeOffset(elevationFor(cam.pose.zoom, cam.city.zoom), EYE);

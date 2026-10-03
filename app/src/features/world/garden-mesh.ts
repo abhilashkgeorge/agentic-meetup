@@ -42,6 +42,11 @@ export interface BuiltGarden {
    * the mist. Call after the camera has been placed for the frame.
    */
   cull(view: Sees, x: number, z: number): void;
+  /**
+   * The line from the lens to the person walking, along which the trunks are cut away
+   * (seeThroughTrunks); null when nobody is being followed.
+   */
+  sightLine(lens: readonly [number, number, number] | null, subject?: readonly [number, number, number]): void;
   stats(): { meshes: number; triangles: number };
   dispose(): void;
 }
@@ -555,9 +560,10 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
   }
 
   // Trees: a trunk and three canopy blobs, two draw calls for the lot.
+  const trunkMat = new THREE.MeshLambertMaterial({ color: P.trunk });
+  const sight = seeThroughTrunks(trunkMat);
   const trunks = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(0.055, TRUNK_BASE, TRUNK_H, 5),
-    new THREE.MeshLambertMaterial({ color: P.trunk }), Math.max(1, g.trees.length));
+    new THREE.CylinderGeometry(0.055, TRUNK_BASE, TRUNK_H, 5), trunkMat, Math.max(1, g.trees.length));
   // WHITE MATERIAL, COLOUR PER INSTANCE. An instance colour MULTIPLIES the material's,
   // so tinting both with the same green squares it: the canopies and the grass came
   // out near black and read as shadow rather than as foliage (on the phone,
@@ -939,12 +945,56 @@ export function buildGarden(g: Garden, colors: GardenColors, options: GardenMesh
   };
 
   return {
-    group, horizon, tick, follow, cull,
+    group, horizon, tick, follow, cull, sightLine: sight,
     stats: () => ({
       meshes: meshes.filter((m) => m.visible).length,
       triangles: Math.round(meshes.filter((m) => m.visible).reduce((s, m) => s + tris(m), 0)),
     }),
     dispose: () => { for (const j of junk) j.dispose(); },
+  };
+}
+
+/**
+ * A TRUNK NEVER STANDS BETWEEN THE CAMERA AND YOU. The walking camera looks past trees --
+ * a trunk is no wall to it (garden.ts seeThrough), or it reared up over your head at
+ * every one -- so it could sit with a trunk square between it and you, and you walked
+ * behind the bark (the two-phone test, 2026-10-02). As third-person games do with
+ * pillars, the trunks are cut away along that line: inside SIGHT_R of it a trunk is
+ * gone, and a band beyond that is dithered, half its pixels dropped, so the edge of the
+ * cut is soft rather than a hole. Only between the two -- not behind you, not past the
+ * lens -- and only while somebody is followed.
+ */
+export const SIGHT_R = 0.12;
+export function seeThroughTrunks(m: THREE.Material): BuiltGarden['sightLine'] {
+  const lens = { value: new THREE.Vector3() }, subject = { value: new THREE.Vector3() }, reach = { value: 0 };
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uSightLens = lens;
+    shader.uniforms.uSightSubject = subject;
+    shader.uniforms.uSightR = reach;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSightWorld;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+#ifdef USE_INSTANCING
+vSightWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+#else
+vSightWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+#endif`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSightWorld;\nuniform vec3 uSightLens;\nuniform vec3 uSightSubject;\nuniform float uSightR;')
+      .replace('void main() {', `void main() {
+  if (uSightR > 0.0) {
+    vec3 sightAB = uSightSubject - uSightLens;
+    float sightT = clamp(dot(vSightWorld - uSightLens, sightAB) / max(dot(sightAB, sightAB), 1e-6), 0.0, 1.0);
+    float sightD = length(vSightWorld - (uSightLens + sightAB * sightT));
+    if (sightT > 0.02 && sightT < 0.97 && sightD < uSightR * 1.6
+        && (sightD < uSightR || mod(floor(gl_FragCoord.x) + floor(gl_FragCoord.y), 2.0) < 1.0)) discard;
+  }`);
+  };
+  return (from, to) => {
+    if (!from || !to) { reach.value = 0; return; }
+    lens.value.set(from[0], from[1], from[2]);
+    subject.value.set(to[0], to[1], to[2]);
+    reach.value = SIGHT_R;
   };
 }
 
