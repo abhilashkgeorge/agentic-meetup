@@ -14,7 +14,8 @@
  *     of the tables in the same place, the same size and the same ink;
  *   - the globe turns on the native driver (it must, to keep moving while the city is
  *     built on the JavaScript thread), the GL orb is only ever loaded on demand, and the
- *     loading screens use them (SOURCE SHAPE: React Native and GL do not run here).
+ *     loading screens use them, the park's entry and exit included (SOURCE SHAPE: React
+ *     Native and GL do not run here).
  *
  * Negative controls, run by hand and recorded in the commit: a constant of the copied
  * engine changed (the globe's spin 0.5 -> 0.51) -> "reproduces the library's frames"
@@ -165,5 +166,12 @@ describe('where the orbs are drawn (SOURCE SHAPE)', () => {
     expect(src('features', 'world', 'town-loading.tsx')).toContain('<GlobeOrb size={TOWN_ORB} label="Loading the town" />');
     expect(src('components', 'ui', 'loading.tsx')).toContain('<Orb state={orb} size={size} label={label} />');
     expect(src('features', 'distance', 'distance-map.tsx')).toContain('<Orb state="searching" size={72} label="Loading the map" />');
+  });
+
+  it('going into the park and back, the veil turns the globe -- and only while it shows', () => {
+    // "Cubbon Park / Entering the park…" was words alone over an empty page (seen on the
+    // Pixel, 2026-10-03), while the park was built on the JavaScript thread.
+    const world = src('features', 'world', 'world-screen.tsx');
+    expect(world).toContain("{transitioning && <GlobeOrb size={96} label={realm.phase === 'leaving' ? 'Returning to the city map' : 'Entering the park'} />}");
   });
 });

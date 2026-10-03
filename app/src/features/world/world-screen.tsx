@@ -24,7 +24,7 @@ import { getFps30, getGlFuse, setGlFuse, strikeGlFuse } from '../../lib/storage'
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import { setupRoute } from '../profile/fields';
-import { Screen, space, useIsDark, usePalette } from '../../components/ui';
+import { GlobeOrb, Screen, space, useIsDark, usePalette } from '../../components/ui';
 import { FPS_METER, FpsMeter, feedFps } from '../dev/fps';
 import { bubblesForCard, pickExchange } from '../matches/exchange';
 import { SHARED_LIMIT } from '../chat/turn-note';
@@ -495,6 +495,10 @@ function TownScreen() {
           alignItems: 'center', justifyContent: 'center', gap: 8,
         }}
       >
+        {/* The globe turning while the park is built (or the city again): on the native
+            driver, as the town's loader (town-loading.tsx), since the building is all on
+            the JavaScript thread. Mounted only while it shows: its loops never idle. */}
+        {transitioning && <GlobeOrb size={96} label={realm.phase === 'leaving' ? 'Returning to the city map' : 'Entering the park'} />}
         <Text style={{ color: p.text, fontSize: 24, fontWeight: '700' }}>
           {realm.phase === 'leaving' ? 'Back to Bengaluru' : CUBBON_PARK.name}
         </Text>
