@@ -13,20 +13,20 @@
  * the JavaScript thread at its busiest -- the app starting, the 3D code loading, the city
  * being built -- and an orb drawn from JavaScript would stand still through all of it.
  */
-import { View } from 'react-native';
-import { GlobeOrb, usePalette } from '../../components/ui';
-
-/** How big the globe is, in dp: the middle of the page, not the whole of it. */
-export const TOWN_ORB = 120;
+import { Text, View, useWindowDimensions } from 'react-native';
+import { GlobeOrb, screenOrb, space, type, usePalette } from '../../components/ui';
 
 /** The whole town on its way. `overlay`: laid over the 3D view until it has drawn. */
 export function TownLoading({ overlay = false }: { overlay?: boolean }) {
   const p = usePalette();
+  // As big as a waiting screen's orb (loading.tsx): most of the screen's width.
+  const { width, height } = useWindowDimensions();
   return (
     <View pointerEvents="none"
-          style={[{ backgroundColor: p.bg, alignItems: 'center', justifyContent: 'center' },
+          style={[{ backgroundColor: p.bg, alignItems: 'center', justifyContent: 'center', gap: space.lg },
                   overlay ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } : { flex: 1 }]}>
-      <GlobeOrb size={TOWN_ORB} label="Loading the town" />
+      <GlobeOrb size={screenOrb(width, height)} label="Loading the town" />
+      <Text style={[type.callout, { color: p.textSecondary }]}>Loading the town…</Text>
     </View>
   );
 }

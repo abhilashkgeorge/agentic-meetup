@@ -17,7 +17,7 @@ import { gradeSelfTest, nextSelfTest, tell, type SelfTestItem } from '../../lib/
 import { useSession } from '../../store/session';
 import { afterTell } from './start-state';
 import {
-  Animation, Bubble, Button, ButtonRow, Card, Field, Orb, Screen, space, type, usePalette,
+  Animation, Bubble, Button, ButtonRow, Card, Field, Loading, Screen, space, type, usePalette,
 } from '../../components/ui';
 
 type Stage = 'ask' | 'thinking' | 'judge' | 'done';
@@ -60,10 +60,7 @@ export default function StartScreen() {
   if (stage === 'thinking') {
     return (
       <Screen topInset={false} center>
-        <View style={{ alignItems: 'center', gap: space.lg }}>
-          <Orb state="weaving" size={64} label="Learning that" />
-          <Text style={[type.body, { color: p.textSecondary }]}>Learning that…</Text>
-        </View>
+        <Loading label="Learning that" orb="weaving" />
       </Screen>
     );
   }

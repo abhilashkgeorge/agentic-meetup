@@ -23,6 +23,7 @@
  */
 import { resolvePreset } from '../../vendor/thinking-orbs';
 import { radiusScale } from '../../vendor/thinking-orbs/core';
+import { scaleCounts } from '../../vendor/thinking-orbs/profiles';
 
 /** The library's globe: its spin, the scan's base pace, and the held tilt. */
 const SPIN = 0.5;
@@ -30,6 +31,13 @@ const SCAN_BASE = 1.7;
 export const GLOBE_TILT = 0.4;
 
 const { speed: PACE, opts: O } = resolvePreset('searching', 64);
+
+/**
+ * How many more dots a big globe has than the 64 design: like orb-frame.ts densityFor,
+ * but held to twice -- every dot here is a view the native driver moves each frame, and
+ * twice is about 400 of them, which the Pixel 6a turns at full rate.
+ */
+export const globeDensity = (size: number): number => (size < 120 ? 1 : Math.min(2, 1 + (size - 120) / 200));
 
 /** How long one turn of the sphere takes, and one sweep of the scan round it, in ms. */
 export const GLOBE_TURN_MS = ((2 * Math.PI) / SPIN / PACE) * 1000;
@@ -84,11 +92,12 @@ export function globePoint(lat: number, lon: number, yaw: number, size: number):
 }
 
 /** The globe `size` dp across, as tables. */
-export function globeTables(size: number): Globe {
+export function globeTables(size: number, density = globeDensity(size)): Globe {
+  const o = density === 1 ? O : scaleCounts(O, density);
   const rs = radiusScale(size, O.rsPow ?? 0.6);
   const rBase = O.rBase ?? 0.6, rDepth = O.rDepth ?? 1.7, rBoost = O.rBoost ?? 1;
   const inkFar = O.inkFar ?? 0.62, inkSpan = O.inkSpan ?? 0.54;
-  const latRings = O.latRings ?? 17, lonDensity = O.lonDensity ?? 44;
+  const latRings = o.latRings ?? 17, lonDensity = o.lonDensity ?? 44;
   const dots: GlobeDot[] = [];
   for (let li = 0; li <= latRings; li++) {
     const lat = -Math.PI / 2 + (li / latRings) * Math.PI;

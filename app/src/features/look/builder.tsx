@@ -143,7 +143,7 @@ export function CharacterBuilder({
             if (token) void useLook.getState().load(token);
           }} />
         ) : (
-          <Loading label="Loading your character" orb="shaping" style={fill ? { flex: 1 } : undefined} />
+          <Loading label="Loading your character" orb="weaving" style={fill ? { flex: 1 } : undefined} />
         )}
       </View>
     );

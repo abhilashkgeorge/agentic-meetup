@@ -119,7 +119,7 @@ export default function ConsentScreen() {
       {/* The three cards' shape while they are on their way: the page was a header and
           nothing, with "I agree" greyed out below it. */}
       {!docs && !failed && (
-        <Loading label="Loading the terms" orb="breathing" />
+        <Loading label="Loading the terms" orb="working" />
       )}
       {!docs && failed && <LoadFailed what="the terms" onRetry={() => void load()} />}
 

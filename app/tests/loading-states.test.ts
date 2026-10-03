@@ -92,7 +92,7 @@ describe('the town while it loads', () => {
     // (2026-10-03). Then a tilted square of tiles; then, his choice, the thinking orbs.
     const town = src('features', 'world', 'town-loading.tsx');
     expect(town).not.toMatch(/SKYLINE|Skyline|MAP_TILES|MapGround/);
-    expect(town).toContain('<GlobeOrb size={TOWN_ORB} label="Loading the town" />');
+    expect(town).toContain('<GlobeOrb size={screenOrb(width, height)} label="Loading the town" />');
   });
 
   it('the town\'s first frame is its placeholder: the park is built a frame later, under it', () => {
@@ -220,12 +220,12 @@ describe('pictures while they load', () => {
   it('a photo and a photo slot show an orb while their picture is on its way, a face its empty well; never for ever', () => {
     const photo = src('features', 'photos', 'photo.tsx');
     expect(photo).toContain('if (alive) setData(uri ?? null);');
-    expect(photo).toMatch(/if \(uri === undefined\) \{\s*return \(\s*<View[^>]*>\s*<Orb state="breathing" size=\{48\}/);
+    expect(photo).toMatch(/if \(uri === undefined\) \{\s*return \(\s*<View[^>]*>\s*<Orb state="working" size=\{120\}/);
     expect(photo).toContain('loading={Boolean(photoId) && uri === undefined}');
     const avatar = src('components', 'ui', 'avatar.tsx');
     // A face is small and sits in lists, where a GL view each is too many: its empty well.
     expect(avatar).toContain(') : loading ? null : (');
-    expect(avatar).toContain('<Orb state="breathing" size={40} label="Loading the photo" />');
+    expect(avatar).toContain('<Orb state="working" size={64} label="Loading the photo" />');
     expect(src('features', 'profile', 'profile-screen.tsx')).toContain('loading={Boolean(photo) && uri === undefined}');
   });
 
@@ -235,6 +235,6 @@ describe('pictures while they load', () => {
     const map = src('features', 'distance', 'distance-map.tsx');
     expect(map).toContain("const waiting = token !== null && (width === 0 || tiles.some((t) => !settled.has(t.key)));");
     expect(map).toContain('const settled = data !== undefined;');
-    expect(map).toMatch(/\{waiting && \(\s*<View pointerEvents="none"[^>]*>\s*<Orb state="searching" size=\{72\}/);
+    expect(map).toMatch(/\{waiting && \(\s*<View pointerEvents="none"[^>]*>\s*<Orb state="searching" size=\{Math\.round\(height \* 0\.62\)\}/);
   });
 });

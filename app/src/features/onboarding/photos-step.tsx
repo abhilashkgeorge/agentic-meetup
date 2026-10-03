@@ -136,7 +136,7 @@ export default function PhotosStep() {
       {status === 'ready' && !has && <Animation mood="camera" height={130} opacity={0.45} />}
 
       {status === 'loading' && (
-        <Loading label="Loading your photos" orb="breathing" />
+        <Loading label="Loading your photos" orb="working" section />
       )}
       {status === 'failed' && (
         <LoadFailed what="your photos" onRetry={() => { setStatus('loading'); void load(); }} />

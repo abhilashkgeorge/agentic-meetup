@@ -147,7 +147,7 @@ export default function SelfTestScreen() {
         ) : readyFailed ? (
           <Text style={[type.callout, { color: p.textSecondary }]}>Could not load how it has done so far.</Text>
         ) : (
-          <Loading label="Loading how it did" orb="working" />
+          <Loading label="Loading how it did" orb="working" section />
         )}
         {ready && <Meter value={size ? passed / size : 0} />}
         {/* Named, never scored. A percentage turns this into a form to max out. */}

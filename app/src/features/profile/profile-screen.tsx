@@ -64,7 +64,7 @@ function Slot({
  * "Add one", Points 0 and a character "not built yet" -- and then correct itself.
  */
 function ProfileLoading() {
-  return <Loading label="Loading your profile" orb="weaving" />;
+  return <Loading label="Loading your profile" orb="connecting" />;
 }
 
 /** Reads a single value out of the knowledge list, so the layout can stay declarative. */

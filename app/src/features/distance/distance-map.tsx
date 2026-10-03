@@ -106,7 +106,7 @@ export function DistanceMap({ token, spot, km, anywhere, onSpot, onMiss, height 
     >
       {waiting && (
         <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, right: 0, height, alignItems: 'center', justifyContent: 'center' }}>
-          <Orb state="searching" size={72} label="Loading the map" />
+          <Orb state="searching" size={Math.round(height * 0.62)} label="Loading the map" />
         </View>
       )}
       <Animated.View style={{ position: 'absolute', left: 0, top: 0, width, height, transform: pan.getTranslateTransform() }}>

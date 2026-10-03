@@ -168,7 +168,7 @@ export default function PhotosScreen() {
         )}
 
         {status === 'loading' && (
-          <Loading label="Loading your photos" orb="breathing" />
+          <Loading label="Loading your photos" orb="working" />
         )}
         {status === 'failed' && (
           <LoadFailed what="your photos" onRetry={() => { setStatus('loading'); void load(); }} />

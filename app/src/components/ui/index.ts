@@ -16,6 +16,7 @@ export * from './avatar';
 export * from './row';
 export * from './orb';
 export * from './loading';
+export * from './loading-size';
 export * from './globe-orb';
 export * from './animation';
 export * from './stat-row';

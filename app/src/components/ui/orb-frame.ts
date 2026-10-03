@@ -11,6 +11,7 @@
  * without a GPU (tests/orb.test.ts).
  */
 import { MODE_FRAMES, resolvePreset, type OrbFrame, type OrbState } from '../../vendor/thinking-orbs';
+import { scaleCounts } from '../../vendor/thinking-orbs/profiles';
 
 export type { OrbState } from '../../vendor/thinking-orbs';
 
@@ -21,9 +22,31 @@ export type { OrbState } from '../../vendor/thinking-orbs';
  */
 export const presetFor = (size: number): 64 | 20 => (size < 40 ? 20 : 64);
 
+/**
+ * MORE DOTS WHEN BIG. The 64 design drawn a phone's width across reads as a few specks on
+ * an empty page (the founder, 2026-10-04: "very small ... not well thought out"): its dot
+ * counts were tuned for 64 px. From 120 dp up the counts grow with the size, by the
+ * library's own scaleCounts, to three times at a screen-filling 320 dp and no more.
+ */
+export const densityFor = (size: number): number =>
+  size < 120 ? 1 : Math.min(3, 1 + ((size - 120) / 200) * 2);
+
+const scaled = new Map<string, ReturnType<typeof resolvePreset>>();
+function presetAt(state: OrbState, size: number): ReturnType<typeof resolvePreset> {
+  const density = Math.round(densityFor(size) * 4) / 4; // a few steps, each cached
+  const key = `${state}:${presetFor(size)}:${density}`;
+  let hit = scaled.get(key);
+  if (!hit) {
+    const base = resolvePreset(state, presetFor(size));
+    hit = density === 1 ? base : { ...base, opts: scaleCounts(base.opts, density) };
+    scaled.set(key, hit);
+  }
+  return hit;
+}
+
 /** One instant of `state` drawn `size` dp across, `seconds` into the shared clock. */
 export function orbFrame(state: OrbState, size: number, seconds: number, speed = 1): OrbFrame {
-  const { mode, speed: tuned, opts } = resolvePreset(state, presetFor(size));
+  const { mode, speed: tuned, opts } = presetAt(state, size);
   return MODE_FRAMES[mode](size, seconds * tuned * speed, opts);
 }
 

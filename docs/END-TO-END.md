@@ -299,7 +299,7 @@ In order, each sees:
 
 1. **"Tell it one true thing"** — "Anything about you. One sentence is enough to start." Arjun types
    "I work in AI and run most mornings."
-   (`app/src/features/onboarding/start-screen.tsx:140`).
+   (`app/src/features/onboarding/start-screen.tsx:137`).
    His work field and exercise are fields a must-have can depend on, so both facts are
    **held for his Yes** rather than learned (`server/src/api/tell.ts:90`).
    Anything heard moves him on: with only held facts the screen skips the sample reply (the
@@ -309,10 +309,10 @@ In order, each sees:
    It asks again only when nothing at all was heard.
 2. **"Now it's you"** (only when something was learned; Arjun's sentence skips it) — "Someone asks
    you", the clone's first reply in his name, "Is that you?", "That's me" / "Not even close"
-   (`app/src/features/onboarding/start-screen.tsx:87`).
+   (`app/src/features/onboarding/start-screen.tsx:84`).
 3. **"Now it asks you some things"**, with an optional "Paste from another AI"
-   (`app/src/features/onboarding/start-screen.tsx:106`,
-   `app/src/features/onboarding/start-screen.tsx:122`).
+   (`app/src/features/onboarding/start-screen.tsx:103`,
+   `app/src/features/onboarding/start-screen.tsx:119`).
 4. **The interview** (below).
 5. **Straight on to the essentials**, which are asked next. Since 2026-10-02 there is no screen
    between: it used to stop on "A few things missing" (birth year, city), which read as if
@@ -326,7 +326,7 @@ In order, each sees:
 7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Things to talk about"** (the
    stories its agent may repeat), **"Make your character"**, **"One last thing"** (photos) — all
    skippable
-   (`app/src/features/onboarding/voice-screen.tsx:161`,
+   (`app/src/features/onboarding/voice-screen.tsx:158`,
    `app/src/features/onboarding/photos-step.tsx:122`).
 8. **Home**, the town, with "Send my agent out".
 
@@ -2097,7 +2097,7 @@ words are the date idea, written earlier (stage 7).
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    (`server/migrations/0073_consent_first_reveal.sql:42`,
    `server/src/matching/orchestrator.ts:617`,
-   `app/src/features/dm/conversations-screen.tsx:123`). If her app is closed,
+   `app/src/features/dm/conversations-screen.tsx:121`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
    (`server/src/api/chat.ts:293`,
@@ -2678,13 +2678,13 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:98` |
 | **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:254` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable, and once an address answers it runs its whole start-up check again (account, consent, setup) instead of opening the town (since 2026-10-02: it used to open the town with no account loaded). Opened from Settings it is titled "Server", with "The app talks to this address:" and a back button, and "Use the default again" carries on the same way (since 2026-10-03; before, it said "Can't reach the server -- It tried this and nothing answered" over a working address, warned that a working localhost meant the phone, and stayed put after the reset while Settings showed the old address); the failure words are kept for when nothing answered at launch (`app/src/features/settings/connect-words.ts:18`) | Everyone | `app/src/features/settings/connect-screen.tsx:42` |
-| **Loading** | While something loads the app shows a thinking orb -- a small animated figure of dots from [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs) (MIT; its geometry copied into the app, drawn with the phone's GL), in the state that says what is coming: a dotted globe being scanned for the town, the park and the maps, a constellation wiring itself for matches and a person, an undulating sash for conversations, strands plaiting for what your agent knows, bands scrambling for questions and rules, a shape changing circle to square for your character, a slow ring for photos and the terms, orbits for the rest. Light dots on a dark page, dark on a light one. The town's globe, shown at launch and while the town builds, runs on the native animation driver so it keeps turning while the app is busy building the city; the others are drawn each frame (since 2026-10-03, the founder's choice; before, grey placeholders in each screen's shape, breathing, and before those a spinner). Never an empty state that is only a wait ("No conversations yet", "Nothing waiting", "0 left" used to show before the data came). The reveal's two answers appear only once the profile has. A load that fails says "Could not load ... Check your connection." with "Try again" instead of an orb left turning. Under the phone's Reduce Motion an orb holds still. Opening the app shows the globe while it checks your session, instead of a blank white page (since 2026-10-03; it could be ten seconds over a slow connection). Since 2026-10-02 | Everyone | `app/src/components/ui/orb.tsx:58`, `app/src/components/ui/globe-tables.ts:35`, `app/src/features/world/town-loading.tsx:20` |
+| **Loading** | While something loads the app shows a thinking orb -- a small animated figure of dots from [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs) (MIT; its geometry copied into the app, drawn with the phone's GL), in the state that says what is coming: a dotted globe being scanned for the town, the park and the maps, a constellation wiring itself for matches and a person, an undulating sash for conversations, strands plaiting for what your agent knows, bands scrambling for questions and rules, a shape changing circle to square for your character, a slow ring for photos and the terms, orbits for the rest. Light dots on a dark page, dark on a light one. Since 2026-10-04 a waiting screen IS the orb: most of the screen's width, in the middle of the screen, with the words under it ("Loading your matches…"), and big orbs carry up to three times the library's dots so they read as figures, not specks; a part of a screen inside a card ("Loading your invites") gets a smaller one in its card (before, a 64-point orb sat small in an empty page -- the founder: "very small ... cover the screen with it") (`app/src/components/ui/loading-size.ts:19`). The town's globe, shown at launch and while the town builds, runs on the native animation driver so it keeps turning while the app is busy building the city; the others are drawn each frame (since 2026-10-03, the founder's choice; before, grey placeholders in each screen's shape, breathing, and before those a spinner). Never an empty state that is only a wait ("No conversations yet", "Nothing waiting", "0 left" used to show before the data came). The reveal's two answers appear only once the profile has. A load that fails says "Could not load ... Check your connection." with "Try again" instead of an orb left turning. Under the phone's Reduce Motion an orb holds still. Opening the app shows the globe while it checks your session, instead of a blank white page (since 2026-10-03; it could be ten seconds over a slow connection). Since 2026-10-02 | Everyone | `app/src/components/ui/orb.tsx:58`, `app/src/components/ui/globe-tables.ts:43`, `app/src/features/world/town-loading.tsx:28` |
 | **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only). A report on two people who had messages shows "Read their chat (12 messages)": their chat as it stood when the report was made, "Them:" or "Reporter:" on each line, still there after either deletes their account (since 2026-09-29; before, no reviewer could read a reported chat) | Reviewer | `app/src/features/settings/settings-screen.tsx:288`, `server/src/api/admin.ts:80`, `app/src/features/admin/reports-screen.tsx:97` |
 | **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:91` |
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:39` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | `server/src/db/seed-synthetic.ts:16` |
-| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:436` |
+| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | `app/src/features/world/world-screen.tsx:437` |
 
 Also present in the code but not visible anywhere: a "how well it knows you" score that the YOU tab fetches but
 never draws (`server/src/memory/completion.ts:83`),

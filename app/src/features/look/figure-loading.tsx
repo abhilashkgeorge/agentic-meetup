@@ -11,7 +11,7 @@ import { Orb } from '../../components/ui';
 export function FigureLoading({ height }: { height: number }) {
   return (
     <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
-      <Orb state="shaping" size={Math.round(Math.min(96, Math.max(40, height * 0.4)))} label="Loading the character" />
+      <Orb state="weaving" size={Math.round(Math.min(300, Math.max(48, height * 0.62)))} label="Loading the character" />
     </View>
   );
 }

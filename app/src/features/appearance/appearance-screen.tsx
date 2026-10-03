@@ -97,7 +97,7 @@ export default function AppearanceScreen() {
         ) : (<>
         <Card label="Your agent only brings you people who">
           {loading ? (
-            <Loading label="Loading your rules" orb="solving" />
+            <Loading label="Loading your rules" orb="solving" section />
           ) : rules && rules.lines.length ? (
             <>
               {rules.lines.map((l) => (
@@ -115,7 +115,7 @@ export default function AppearanceScreen() {
 
         <Card label="What someone sees about you">
           {loading || !look ? (
-            <Loading label="Loading what others see" orb="shaping" />
+            <Loading label="Loading what others see" orb="weaving" section />
           ) : (
             <>
               <Text style={[type.bodyStrong, { color: p.text }]}>{look.headline}</Text>
@@ -176,7 +176,7 @@ export default function AppearanceScreen() {
         {(loading || look?.sheet) && (
           <Card label="When another agent asks yours">
             {loading || !look ? (
-              <Loading label="Loading what others see" orb="shaping" />
+              <Loading label="Loading what others see" orb="weaving" section />
             ) : (
               <SheetAnswers look={look} busy={busy} onToggle={(id, hidden) => void toggle(id, hidden)} />
             )}

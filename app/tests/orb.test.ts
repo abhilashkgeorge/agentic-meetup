@@ -27,7 +27,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MODE_FRAMES, resolvePreset, type OrbFrame, type OrbState } from '../src/vendor/thinking-orbs';
 import { DOT_FLOATS, LINE_FLOATS, LINE_VERTS, ink, orbFrame, packDots, packLines, presetFor } from '../src/components/ui/orb-frame';
-import { GLOBE_TILT, globePhases, globePoint, globeTables, sampleAt } from '../src/components/ui/globe-tables';
+import { GLOBE_TILT, globeDensity, globePhases, globePoint, globeTables, sampleAt } from '../src/components/ui/globe-tables';
+import { densityFor } from '../src/components/ui/orb-frame';
+import { readFileSync as read } from 'node:fs';
 
 const SRC = join(import.meta.dirname, '..', 'src');
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
@@ -163,15 +165,44 @@ describe('where the orbs are drawn (SOURCE SHAPE)', () => {
   });
 
   it('the town, at launch and while it builds, is the globe; every other wait is an orb', () => {
-    expect(src('features', 'world', 'town-loading.tsx')).toContain('<GlobeOrb size={TOWN_ORB} label="Loading the town" />');
+    expect(src('features', 'world', 'town-loading.tsx')).toContain('<GlobeOrb size={screenOrb(width, height)} label="Loading the town" />');
     expect(src('components', 'ui', 'loading.tsx')).toContain('<Orb state={orb} size={size} label={label} />');
-    expect(src('features', 'distance', 'distance-map.tsx')).toContain('<Orb state="searching" size={72} label="Loading the map" />');
+    expect(src('features', 'distance', 'distance-map.tsx')).toContain('<Orb state="searching" size={Math.round(height * 0.62)} label="Loading the map" />');
   });
 
   it('going into the park and back, the veil turns the globe -- and only while it shows', () => {
     // "Cubbon Park / Entering the park…" was words alone over an empty page (seen on the
     // Pixel, 2026-10-03), while the park was built on the JavaScript thread.
     const world = src('features', 'world', 'world-screen.tsx');
-    expect(world).toContain("{transitioning && <GlobeOrb size={96} label={realm.phase === 'leaving' ? 'Returning to the city map' : 'Entering the park'} />}");
+    expect(world).toContain("{transitioning && <GlobeOrb size={screenOrb(winW, winH)} label={realm.phase === 'leaving' ? 'Returning to the city map' : 'Entering the park'} />}");
+  });
+});
+
+// The founder (2026-10-04): "the loading animations looks not well thought out. it is very
+// small. use an appropriate loading animation and cover the screen with it". Negative
+// controls, run by hand and recorded in the commit: screenOrb back to 64 -> "most of the
+// screen's width" fails; densityFor always 1 -> "more dots when big" fails.
+describe('a waiting screen is the orb', () => {
+  it('most of the screen\'s width, on a phone; never wider than ORB_MAX', async () => {
+    const { screenOrb, ORB_MAX } = await import('../src/components/ui/loading-size');
+    expect(screenOrb(412, 915)).toBeGreaterThanOrEqual(300);   // the Pixel 6a
+    expect(screenOrb(412, 915) / 412).toBeGreaterThan(0.7);
+    expect(screenOrb(900, 1800)).toBe(ORB_MAX);                // a tablet
+    expect(screenOrb(412, 500)).toBeLessThanOrEqual(500 * 0.45); // a short window
+  });
+
+  it('more dots when big, as the library\'s counts allow: the 64 design was a few specks across a phone', () => {
+    expect(densityFor(64)).toBe(1);
+    expect(densityFor(120)).toBe(1);
+    expect(densityFor(320)).toBe(3);
+    expect(densityFor(600)).toBe(3);
+    expect(globeDensity(320)).toBe(2);
+    expect(globeTables(320).dots.length).toBeGreaterThan(globeTables(120).dots.length * 1.6);
+  });
+
+  it('says what is coming under the orb, and a section inside a card stays in its card', () => {
+    const loading = read(join(SRC, 'components', 'ui', 'loading.tsx'), 'utf8');
+    expect(loading).toMatch(/\{!section && \(\s*<Text[^>]*>\{`\$\{label\}…`\}<\/Text>/);
+    expect(loading).toContain('const size = section ? SECTION_ORB : screenOrb(width, height);');
   });
 });

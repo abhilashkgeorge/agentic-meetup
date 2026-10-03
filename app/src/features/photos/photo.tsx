@@ -132,7 +132,7 @@ export function Portrait({
   if (uri === undefined) {
     return (
       <View style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
-        <Orb state="breathing" size={48} label={label ? `Loading ${label}` : 'Loading the photo'} />
+        <Orb state="working" size={120} label={label ? `Loading ${label}` : 'Loading the photo'} />
       </View>
     );
   }

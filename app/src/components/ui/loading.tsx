@@ -1,35 +1,46 @@
 /**
- * Something on its way: a thinking orb in the middle of the space it will fill (orb.tsx).
+ * Something on its way: a thinking orb (orb.tsx), big, with a line saying what is coming.
  *
- * WHAT IT REPLACES. Grey bars shaped like the content, breathing (the founder, 2026-10-02:
- * "add a skeleton loading screen when something is loading"); then, the next day: "for the
- * map loading animation and all the other animation for loading
- * https://github.com/Jakubantalik/thinking-orbs use this please". Every screen that had a
- * skeleton group now shows one orb, in the state that says what is coming.
+ * WHAT IT REPLACES. Grey bars shaped like the content (the founder, 2026-10-02: "add a
+ * skeleton loading screen"); then small orbs (2026-10-03: "for the map loading animation
+ * and all the other animation for loading https://github.com/Jakubantalik/thinking-orbs
+ * use this please"); then, the next day: "the loading animations looks not well thought
+ * out. it is very small. use an appropriate loading animation and cover the screen with
+ * it". So a screen that is waiting is the orb: most of the screen's width, in the middle
+ * of the space below the title, the words under it.
+ *
+ * `section`: a part of a screen on its way inside a card (Settings' invites, "How you
+ * appear", "It knows") -- a smaller orb in the card's own space, not the whole screen.
  *
  * Still never an EMPTY state: "Nothing waiting" shown before a list has loaded is a lie
  * that corrects itself a second later, and this says "on its way" instead.
  */
 import { useEffect, useState } from 'react';
-import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Button } from './button';
 import { Orb, type OrbState } from './orb';
+import { SCREEN_SHARE, SECTION_ORB, screenOrb } from './loading-size';
 import { space, type, usePalette } from './theme';
 
-/** How much room a loading block takes at least, so a screen does not jump when it arrives. */
-export const LOADING_MIN_HEIGHT = 220;
 
-export function Loading({ label = 'Loading', orb = 'working', size = 64, style }: {
-  /** What a screen reader hears: "Loading your matches". */
+export function Loading({ label = 'Loading', orb = 'working', section = false, style }: {
+  /** What is coming, said under the orb and to a screen reader: "Loading your matches". */
   label?: string;
   /** Which animation (orb.tsx lists what each says). */
   orb?: OrbState;
-  size?: number;
+  /** A part of a screen inside its card, not the whole screen. */
+  section?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const p = usePalette();
+  const { width, height } = useWindowDimensions();
+  const size = section ? SECTION_ORB : screenOrb(width, height);
   return (
-    <View style={[{ minHeight: LOADING_MIN_HEIGHT, alignItems: 'center', justifyContent: 'center' }, style]}>
+    <View style={[{ minHeight: section ? 180 : height * SCREEN_SHARE, alignItems: 'center', justifyContent: 'center', gap: space.lg }, style]}>
       <Orb state={orb} size={size} label={label} />
+      {!section && (
+        <Text style={[type.callout, { color: p.textSecondary, textAlign: 'center' }]}>{`${label}…`}</Text>
+      )}
     </View>
   );
 }

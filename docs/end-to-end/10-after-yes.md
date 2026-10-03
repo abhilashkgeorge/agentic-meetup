@@ -28,7 +28,7 @@ words are the date idea, written earlier (stage 7).
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
    [server/src/matching/orchestrator.ts:617] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
-   [app/src/features/dm/conversations-screen.tsx:123] `: 'Say something'`). If her app is closed,
+   [app/src/features/dm/conversations-screen.tsx:121] `: 'Say something'`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
    ([server/src/api/chat.ts:293] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,

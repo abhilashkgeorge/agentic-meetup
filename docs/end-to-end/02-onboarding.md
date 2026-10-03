@@ -26,7 +26,7 @@ In order, each sees:
 
 1. **"Tell it one true thing"** — "Anything about you. One sentence is enough to start." Arjun types
    "I work in AI and run most mornings."
-   ([app/src/features/onboarding/start-screen.tsx:140] `Tell it one true thing`).
+   ([app/src/features/onboarding/start-screen.tsx:137] `Tell it one true thing`).
    His work field and exercise are fields a must-have can depend on, so both facts are
    **held for his Yes** rather than learned ([server/src/api/tell.ts:90] `if (r.outcome === 'staged') staged++;`).
    Anything heard moves him on: with only held facts the screen skips the sample reply (the
@@ -36,10 +36,10 @@ In order, each sees:
    It asks again only when nothing at all was heard.
 2. **"Now it's you"** (only when something was learned; Arjun's sentence skips it) — "Someone asks
    you", the clone's first reply in his name, "Is that you?", "That's me" / "Not even close"
-   ([app/src/features/onboarding/start-screen.tsx:87] `label="Someone asks you"`).
+   ([app/src/features/onboarding/start-screen.tsx:84] `label="Someone asks you"`).
 3. **"Now it asks you some things"**, with an optional "Paste from another AI"
-   ([app/src/features/onboarding/start-screen.tsx:106] `Now it asks you some things`,
-   [app/src/features/onboarding/start-screen.tsx:122] `label="Paste from another AI"`).
+   ([app/src/features/onboarding/start-screen.tsx:103] `Now it asks you some things`,
+   [app/src/features/onboarding/start-screen.tsx:119] `label="Paste from another AI"`).
 4. **The interview** (below).
 5. **Straight on to the essentials**, which are asked next. Since 2026-10-02 there is no screen
    between: it used to stop on "A few things missing" (birth year, city), which read as if
@@ -53,7 +53,7 @@ In order, each sees:
 7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Things to talk about"** (the
    stories its agent may repeat), **"Make your character"**, **"One last thing"** (photos) — all
    skippable
-   ([app/src/features/onboarding/voice-screen.tsx:161] `label="Skip this for now"`,
+   ([app/src/features/onboarding/voice-screen.tsx:158] `label="Skip this for now"`,
    [app/src/features/onboarding/photos-step.tsx:122] `label="I'll do it later"`).
 8. **Home**, the town, with "Send my agent out".
 

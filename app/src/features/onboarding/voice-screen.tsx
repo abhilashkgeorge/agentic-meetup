@@ -15,7 +15,7 @@ import { parseChatExport, type ParsedChat } from '@clone/shared';
 import { getImportPrompts, importChat, type ImportPrompts, type VoiceResult } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Animation, Button, Card, Crease, Field, Orb, Screen, space, type, usePalette,
+  Animation, Button, Card, Crease, Field, Loading, Orb, Screen, space, type, usePalette,
 } from '../../components/ui';
 
 /** Anything past this is an export WITH media, and reading it kills the app. */
@@ -132,10 +132,7 @@ export default function VoiceScreen() {
         <Animation mood="speaking" height={140} opacity={0.45} />
         <Text style={[type.display, { color: p.text }]}>Which one is you?</Text>
         {busy === 'learning' ? (
-          <View style={{ alignItems: 'center', gap: space.md, paddingVertical: space.xxl }}>
-            <Orb state="composing" size={64} label="Working out how you write" />
-            <Text style={[type.body, { color: p.textSecondary }]}>Working out how you write…</Text>
-          </View>
+          <Loading label="Working out how you write" orb="composing" section />
         ) : (
           <Card>
             {chat.speakers.map((s, i) => (

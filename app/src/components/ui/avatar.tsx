@@ -118,7 +118,7 @@ export function PhotoSlot({
       {source ? (
         <Image source={source} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
       ) : loading ? (
-        <Orb state="breathing" size={40} label="Loading the photo" />
+        <Orb state="working" size={64} label="Loading the photo" />
       ) : (
         <Text style={{ color: p.textTertiary, fontSize: 26 }}>+</Text>
       )}

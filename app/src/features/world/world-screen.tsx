@@ -16,7 +16,7 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Animated, AppState, BackHandler, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Animated, AppState, BackHandler, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatScreen from '../chat/chat-screen';
 import { getMatches, getQuestionOfDay, runRound, type MatchCard, type WorldAgent } from '../../lib/api';
@@ -24,7 +24,7 @@ import { getFps30, getGlFuse, setGlFuse, strikeGlFuse } from '../../lib/storage'
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import { setupRoute } from '../profile/fields';
-import { GlobeOrb, Screen, space, useIsDark, usePalette } from '../../components/ui';
+import { GlobeOrb, Screen, screenOrb, space, useIsDark, usePalette } from '../../components/ui';
 import { FPS_METER, FpsMeter, feedFps } from '../dev/fps';
 import { bubblesForCard, pickExchange } from '../matches/exchange';
 import { SHARED_LIMIT } from '../chat/turn-note';
@@ -419,6 +419,7 @@ function TownScreen() {
   const [band, setBand] = useState<Band | null>(null);
   const [size, setSize] = useState<Size | null>(null);
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
   // What the HUD covers: since 2026-09-30 a title and one pill at the top (hud.tsx
   // TownBar), and at the bottom the status line, a nudge, the button and its counts.
   const frame = useMemo(() => ({ top: insets.top + 96, bottom: Math.max(insets.bottom, 20) + 150, side: 12 }), [insets.top, insets.bottom]);
@@ -498,7 +499,7 @@ function TownScreen() {
         {/* The globe turning while the park is built (or the city again): on the native
             driver, as the town's loader (town-loading.tsx), since the building is all on
             the JavaScript thread. Mounted only while it shows: its loops never idle. */}
-        {transitioning && <GlobeOrb size={96} label={realm.phase === 'leaving' ? 'Returning to the city map' : 'Entering the park'} />}
+        {transitioning && <GlobeOrb size={screenOrb(winW, winH)} label={realm.phase === 'leaving' ? 'Returning to the city map' : 'Entering the park'} />}
         <Text style={{ color: p.text, fontSize: 24, fontWeight: '700' }}>
           {realm.phase === 'leaving' ? 'Back to Bengaluru' : CUBBON_PARK.name}
         </Text>

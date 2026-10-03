@@ -209,7 +209,7 @@ export default function SettingsScreen() {
         ) : (
           <Card>
             {invitesStatus === 'loading' ? (
-              <Loading label="Loading your invites" orb="working" />
+              <Loading label="Loading your invites" orb="working" section />
             ) : (
               <LoadFailed what="your invites" onRetry={() => { setInvitesStatus('loading'); void load(); }} />
             )}

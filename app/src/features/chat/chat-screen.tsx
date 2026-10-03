@@ -62,7 +62,7 @@ export default function ChatScreen() {
                   Could not load what it knows. You can still talk to it.
                 </Text>
               ) : !k ? (
-                <Loading label="Loading what it knows" orb="weaving" />
+                <Loading label="Loading what it knows" orb="weaving" section />
               ) : k.knows.length === 0 ? (
                 <Text style={[type.body, { color: p.textSecondary }]}>
                   Nothing yet. Say one true thing and it starts from there.

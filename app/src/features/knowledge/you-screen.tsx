@@ -193,7 +193,7 @@ export default function YouScreen() {
           <Card label="It knows">
             {/* Not an empty card while the list is on its way: rows in its shape. */}
             {!k && !failed && (
-              <Loading label="Loading what it knows" orb="weaving" />
+              <Loading label="Loading what it knows" orb="weaving" section />
             )}
             {!k && failed && <LoadFailed what="what it knows" onRetry={() => void load()} />}
             {k && k.knows.length === 0 && (

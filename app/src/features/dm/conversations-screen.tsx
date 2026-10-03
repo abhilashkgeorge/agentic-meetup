@@ -87,9 +87,7 @@ export default function ConversationsScreen() {
         )}
 
         {status === 'loading' ? (
-          <Surface radius={radius.lg} style={{ padding: space.screen }}>
-            <Loading label="Loading your chats" orb="composing" />
-          </Surface>
+          <Loading label="Loading your chats" orb="composing" />
         ) : status === 'failed' ? (
           <LoadFailed what="your chats" onRetry={() => { setStatus('loading'); void load(); }} />
         ) : conversations.length === 0 && left.length === 0 ? (
