@@ -110,6 +110,10 @@ export default function MatchesScreen() {
   const [matches, setMatches] = useState<MatchCard[]>([]);
   const [round, setRound] = useState<RoundState | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  // How the last round went is news for that moment only: gone once the person leaves
+  // the screen. Kept, "Nobody on the app fits what you asked for yet." was still here
+  // after they had changed what they asked for (the two-phone test, 2026-10-02).
+  useFocusEffect(useCallback(() => () => setSaid(null), []));
   // The round the person last asked for, so a "done" that was already on screen when
   // they arrived is not re-announced as news.
   const announced = useRef<string | null>(null);

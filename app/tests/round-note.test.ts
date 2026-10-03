@@ -9,8 +9,14 @@
  * is at least capitalised and ended; both screens say it through roundNote. The server's
  * list is read from orchestrator.ts so a new reason there without words here fails.
  *
- * Negative control, run by hand and recorded in the commit: world-screen.tsx back on
- * `r.skipped ? r.skipped` -> "both screens" fails.
+ * AND IT DOES NOT GO STALE (the two-phone test, 2026-10-02): "Nobody on the app fits what
+ * you asked for yet." stayed on both screens -- tabs stay mounted -- after the person had
+ * changed what they asked for, and somebody did fit. Each screen now drops its note when
+ * the person leaves it (SOURCE SHAPE: focus is React Navigation's, not run here).
+ *
+ * Negative controls, run by hand and recorded in the commits: world-screen.tsx back on
+ * `r.skipped ? r.skipped` -> "both screens" fails; either screen without the clearing focus
+ * effect -> "drops the note" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -44,5 +50,12 @@ describe('why a round met nobody', () => {
     const matches = strip(readFileSync(join(ROOT, 'app', 'src', 'features', 'matches', 'matches-screen.tsx'), 'utf8'));
     expect(world).toContain('r.skipped ? roundNote(r.skipped)');
     expect(matches).toMatch(/round\.skipped\s*\?\s*roundNote\(round\.skipped\)/);
+  });
+
+  it('drops the note when the person leaves either screen, so it is never stale', () => {
+    for (const screen of [['world', 'world-screen.tsx'], ['matches', 'matches-screen.tsx']]) {
+      const src = strip(readFileSync(join(ROOT, 'app', 'src', 'features', ...screen), 'utf8'));
+      expect(src, screen[1]).toContain('useFocusEffect(useCallback(() => () => setSaid(null), []));');
+    }
   });
 });

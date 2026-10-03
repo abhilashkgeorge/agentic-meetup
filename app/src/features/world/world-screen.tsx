@@ -279,6 +279,10 @@ function TownScreen() {
 
   // Say how the round went, once, when the one this person asked for comes back.
   const [said, setSaid] = useState<string | null>(null);
+  // How the last round went is news for that moment only: gone once the person leaves
+  // the screen. Kept, "Nobody on the app fits what you asked for yet." was still here
+  // after they had changed what they asked for (the two-phone test, 2026-10-02).
+  useFocusEffect(useCallback(() => () => setSaid(null), []));
   // AND PLAY WHAT THE AGENTS SAID, from the first of the round's cards that carries a
   // talk or, when they did not talk, the answer-sheet exchange. Read from /v1/matches, so the reveal rule has already
   // been applied: a card this person may not read yet has none, and plays nothing.

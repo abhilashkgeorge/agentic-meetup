@@ -21,7 +21,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") ([app/src/app/(tabs)/index.tsx:1] `export { default } from '../../features/world/world-screen';`,
    [app/src/features/world/hud.tsx:218] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
-   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:304] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:308] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
    is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
@@ -47,7 +47,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   ([app/src/features/world/world-screen.tsx:302] `Your agent met ${r.met} people. See Matches.`,
+   ([app/src/features/world/world-screen.tsx:306] `Your agent met ${r.met} people. See Matches.`,
    [app/src/features/world/exchange-strip.tsx:83] `label="See the card" variant="primary" onPress={onSeeCard}`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).
@@ -97,6 +97,10 @@ needs a few more answers before it can go out."
 [app/src/features/world/world-screen.tsx:42] `daily_targets: 'That is all the visits for today. Try again tomorrow.',`,
 [app/src/features/world/world-screen.tsx:43] `not_here: 'That person has moved on.',`,
 [app/src/features/world/world-screen.tsx:46] `not_ready: 'Your agent needs a few more answers before it can go out.',`).
+These lines, and how the last round went ("Nobody on the app fits what you asked for yet." and the
+rest), are gone once the person leaves the screen, so none of them is still there after they change
+what they asked for (since 2026-10-03; before, both the Home and Matches kept the last one until the
+next round) ([app/src/features/matches/matches-screen.tsx:116] `useFocusEffect(useCallback(() => () => setSaid(null), []));`).
 In the clone chat, the turn that meets the limit ends with a line from the app, in the server's
 words: "That's all for today. Chat, learning and your agent's rounds share 10 turns a day, and
 today's are used up. Your clone can talk again tomorrow." (since 2026-09-29; before, nothing was
@@ -179,7 +183,7 @@ off ([server/src/matching/profile.ts:207] `if (!agreed) missing.push('consent');
 - **How they are labelled.** "Practice match — this one is not a real person." on the card,
   "Practice match / Not a real person" in lists, their lines marked "(practice)", and the
   reveal says "This is not a real person. The pool is invented until enough people have
-  joined…" ([app/src/features/matches/matches-screen.tsx:378] `Practice match — this one is not a real person.`,
+  joined…" ([app/src/features/matches/matches-screen.tsx:382] `Practice match — this one is not a real person.`,
   [app/src/features/matches/exchange.ts:47] `${s.text} (practice)`,
   [app/src/features/matches/reveal-screen.tsx:213] `This is not a real person. The pool is invented until enough people have`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a

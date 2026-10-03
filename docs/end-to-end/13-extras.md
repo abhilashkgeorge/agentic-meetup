@@ -22,7 +22,7 @@
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | [server/src/api/stats.ts:53] `<title>How small this is</title>` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | [app/src/features/settings/settings-screen.tsx:39] `if (t.n >= 5) { t.n = 0; router.push('/dev/gl'); }` |
 | **Practice pool seeding** | `npm run seed:synthetic` replaces the invented pool (500 by default), no model | Founder, command line | [server/src/db/seed-synthetic.ts:16] `const count = Number(process.argv[2] ?? 500);` |
-| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | [app/src/features/world/world-screen.tsx:432] `if (renderer === null) return <ChatScreen />;` |
+| **Fallback Home** | If 3D cannot run, Home becomes the plain clone chat, and sending out moves to the Matches tab | Everyone | [app/src/features/world/world-screen.tsx:436] `if (renderer === null) return <ChatScreen />;` |
 
 Also present in the code but not visible anywhere: a "how well it knows you" score that the YOU tab fetches but
 never draws ([server/src/memory/completion.ts:83] `band: 'just met' | 'getting to know you' | 'knows you fairly well' | 'knows you well';`),

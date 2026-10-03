@@ -283,7 +283,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-([app/src/features/matches/matches-screen.tsx:425] `WHAT YOU ASKED FOR`):
+([app/src/features/matches/matches-screen.tsx:429] `WHAT YOU ASKED FOR`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|
