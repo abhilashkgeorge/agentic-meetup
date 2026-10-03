@@ -649,7 +649,10 @@ export interface World {
   /** Rounded to ten, or null for "under 20". */
   pool: { total: number | null };
   round: RoundState | null;
+  /** Visits to one person ("Send my agent over") left today. */
   targetsLeftToday: number;
+  /** "Send my agent out" left today (the server's ROUNDS_PER_DAY); absent from an older server. */
+  roundsLeftToday?: number;
   agents: WorldAgent[];
 }
 export const getWorld = (token: string) => get<World>('/v1/world', token);

@@ -20,7 +20,7 @@ details), and **database roles** that limit what each part of the server can rea
   she seeks, place, distance, intent, tags and card answers, to filter and count
   ([server/migrations/0019_match_role.sql:40] `USING (in_pool);`). Arjun himself sees at most her 3D
   character and neighbourhood in the town: no name, age, tags or photo
-  ([server/src/api/world.ts:265] `area: strangers.areas.get(id) ?? CENTRAL_AREA`).
+  ([server/src/api/world.ts:263] `area: strangers.areas.get(id) ?? CENTRAL_AREA`).
 - **In Cubbon Park, live** (since 2026-09-29): walking in the park at the same time, each sees the
   other's character where they stand, out to the mist (about 365 m), and reads what the other types if
   they are within about 20 m. Nothing said is written anywhere; a line holding a phone number, email,

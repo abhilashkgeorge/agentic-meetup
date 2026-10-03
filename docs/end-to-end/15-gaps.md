@@ -36,7 +36,7 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 5. **Closed on 2026-09-29: probing the square.** The square's strangers are picked once a day with both people's
     rules as they stand then, so flipping a must-have (or your own answer) changes nothing there until tomorrow;
     a block, a ban or leaving the pool still takes somebody out at once
-    ([server/src/api/world.ts:180] `let ids = hit?.day === today ? hit.ids : null;`,
+    ([server/src/api/world.ts:178] `let ids = hit?.day === today ? hit.ids : null;`,
     [server/src/matching/candidates.ts:165] `export async function stillThere(c: PoolClient, userId: string, ids: readonly string[]): Promise<string[]> {`).
 6. **Word lists have gaps.** The private-topic list is finite ("family", "wedding", "Diwali" are not on it), and the
     talk and answer sheets also use "goal" and "dislikes" sentences, which the card's own rule leaves out as the place

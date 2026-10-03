@@ -200,7 +200,7 @@ three shapes:
   recorded on each pair, and a round took real people by recency whatever anybody wanted. That two-way score
   still records and does not pick ([server/src/matching/orchestrator.ts:178] `it just no longer decides who is met.`).
   The one place the score still orders people is the town's square, where the 40 strangers shown, picked once
-  a day, are the top of the score ([server/src/api/world.ts:187] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
+  a day, are the top of the score ([server/src/api/world.ts:185] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
   In a round, what moves a person later is the want check: each "not met" want pushes that
   candidate later within their group (real people stay ahead of practice profiles),
   whatever the strength ([server/src/matching/wants.ts:284] `rs.filter((r) => r.status === 'not_met').length`).

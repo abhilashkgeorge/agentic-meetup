@@ -43,11 +43,11 @@ import { currentState } from '../memory/facts.js';
 import { candidateCount, candidateIds, candidateIdsNear, shownCount, stillThere } from '../matching/candidates.js';
 import { poolNow, shouldAskArea, shouldAskName, touchActive } from '../matching/profile.js';
 import { rank } from '../matching/score.js';
-import { latestRound } from '../matching/rounds.js';
+import { latestRound, openRoundsToday, visitsToday } from '../matching/rounds.js';
 import { looksFor } from '../looks/store.js';
 import type { Look } from '@clone/shared';
 import {
-  STRANGERS_IN_SQUARE, TARGETED_PER_DAY, agentRef, seatState, type SeatState,
+  ROUNDS_PER_DAY, STRANGERS_IN_SQUARE, TARGETED_PER_DAY, agentRef, seatState, type SeatState,
 } from '../matching/world.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
@@ -127,10 +127,8 @@ export const worldRoutes = new Hono()
         `SELECT object_text FROM facts
           WHERE user_id = $1 AND predicate = 'lives_in' AND status = 'active' AND valid_to IS NULL
           ORDER BY recorded_at DESC LIMIT 1`, [me]);
-      const { rows: targeted } = await db.query<{ n: string }>(
-        `SELECT count(*) AS n FROM rounds
-          WHERE user_id = $1 AND target_user_id IS NOT NULL
-            AND requested_at > now() - interval '24 hours'`, [me]);
+      const targetedToday = await visitsToday(db, me);
+      const roundsToday = await openRoundsToday(db, me);
       // Own seats: the matches query, plus rows this person lapsed in the last day so
       // the square can show them walking off once. The other person's row and the
       // other person's brief are never read; two one-bit functions stand in for them.
@@ -164,7 +162,7 @@ export const worldRoutes = new Hono()
             AND (r.status <> 'running' OR r.created_at > now() - interval '30 minutes')
           ORDER BY r.created_at DESC`, [me]);
       return { state, round, knows, city: city[0]?.object_text ?? null, myArea, askArea, askName,
-               targetedToday: Number(targeted[0]?.n ?? 0), seats };
+               targetedToday, roundsToday, seats };
     });
 
     const metIds = new Set(own.seats.map((s) => s.other_id));
@@ -282,6 +280,8 @@ export const worldRoutes = new Hono()
         error: own.round.error,
       } : null,
       targetsLeftToday: Math.max(0, TARGETED_PER_DAY - own.targetedToday),
+      // "Send my agent out" -- once a day (world.ts ROUNDS_PER_DAY) -- apart from the visits.
+      roundsLeftToday: Math.max(0, ROUNDS_PER_DAY - own.roundsToday),
       agents,
     });
   });

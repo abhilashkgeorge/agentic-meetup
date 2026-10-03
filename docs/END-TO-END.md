@@ -746,7 +746,7 @@ details), and **database roles** that limit what each part of the server can rea
   she seeks, place, distance, intent, tags and card answers, to filter and count
   (`server/migrations/0019_match_role.sql:40`). Arjun himself sees at most her 3D
   character and neighbourhood in the town: no name, age, tags or photo
-  (`server/src/api/world.ts:265`).
+  (`server/src/api/world.ts:263`).
 - **In Cubbon Park, live** (since 2026-09-29): walking in the park at the same time, each sees the
   other's character where they stand, out to the mist (about 365 m), and reads what the other types if
   they are within about 20 m. Nothing said is written anywhere; a line holding a phone number, email,
@@ -1193,7 +1193,7 @@ three shapes:
   recorded on each pair, and a round took real people by recency whatever anybody wanted. That two-way score
   still records and does not pick (`server/src/matching/orchestrator.ts:178`).
   The one place the score still orders people is the town's square, where the 40 strangers shown, picked once
-  a day, are the top of the score (`server/src/api/world.ts:187`).
+  a day, are the top of the score (`server/src/api/world.ts:185`).
   In a round, what moves a person later is the want check: each "not met" want pushes that
   candidate later within their group (real people stay ahead of practice profiles),
   whatever the strength (`server/src/matching/wants.ts:284`).
@@ -1364,7 +1364,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
 | Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe [AI-10](#ai-10) | `rounds` row (queued) | Arjun | `server/src/api/dating.ts:979` |
-| The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | `server/src/matching/rounds.ts:161` |
+| The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | `server/src/matching/rounds.ts:175` |
 | The candidate list | Real people first; within that, those who fit more of the person's Really want and Nice to have (since 2026-09-29), then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | `server/src/matching/candidates.ts:185` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | [AI-12](#ai-12) + code | Want results kept for the cards | Arjun (on his cards) | `server/src/matching/orchestrator.ts:226` |
 | The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | `server/src/matching/orchestrator.ts:247` |
@@ -1379,7 +1379,10 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
    is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
-   part of town?"), the line about the agent, and "40 people nearby · 5 visits left today". Before, up to
+   part of town?"), the line about the agent, and "40 people nearby · can go out today" -- or "out again
+   tomorrow" once the day's round has met somebody (since 2026-10-03; before, it counted the visits to one
+   person, "5 visits left today", under a button allowed once a day) -- counted as the refusal counts
+   (`server/src/matching/rounds.ts:77`). Before, up to
    eleven chips in a card covered the top half of the map
    (`app/src/features/world/hud.tsx:354`,
    `app/src/features/world/town-bar.ts:14`).
@@ -1392,7 +1395,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    heading out…" (`app/src/features/world/hud.tsx:146`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
-   all of them (`server/src/matching/rounds.ts:158`).
+   all of them (`server/src/matching/rounds.ts:172`).
 5. **Arjun's agent walks to Meera's** on his screen, and his status reads "Your agent is
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
@@ -1425,15 +1428,15 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
   (`app/src/features/world/agent-sheet.tsx:42`,
   `app/src/features/world/agent-sheet.tsx:64`).
   The 40 strangers in the square are chosen by the preference score, not real-first
-  (`server/src/api/world.ts:187`).
+  (`server/src/api/world.ts:185`).
 
 ### 6.2 Limits
 
 | Limit | Value in the dev setup | What counts | Code |
 |---|---|---|---|
-| Open rounds | 1 per rolling 24 hours | Only a finished open round that met at least one person | `server/src/matching/world.ts:44`, `server/src/matching/rounds.ts:94` |
-| Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | `server/src/matching/world.ts:28`, `server/src/matching/rounds.ts:78` |
-| One round at a time | A second tap returns the round already running | | `server/src/matching/rounds.ts:101` |
+| Open rounds | 1 per rolling 24 hours | Only a finished open round that met at least one person | `server/src/matching/world.ts:44`, `server/src/matching/rounds.ts:82` |
+| Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | `server/src/matching/world.ts:28`, `server/src/matching/rounds.ts:71` |
+| One round at a time | A second tap returns the round already running | | `server/src/matching/rounds.ts:115` |
 | Model spend | $2.00 per person per day | All of that person's model calls | `server/src/env.ts:340` |
 | Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | `server/src/metering.ts:73` |
 
@@ -1965,12 +1968,12 @@ has not ended in a no or expired
 Photos are served only through signed-in routes that ask that rule
 (`server/src/api/photos.ts:72`).
 The town shows a first name under the same test
-(`server/src/api/world.ts:211`).
+(`server/src/api/world.ts:209`).
 It stands a met person on their own neighbourhood only where the card already names the place
 (Arjun decides first, or Meera has said yes); otherwise the seat stands in the viewer's own
 neighbourhood, so the second mover does not learn where the first mover lives
-(`server/src/api/world.ts:221`,
-`server/src/api/world.ts:255`).
+(`server/src/api/world.ts:219`,
+`server/src/api/world.ts:253`).
 
 | Case | When Arjun sees Meera's profile and photos |
 |---|---|
@@ -2754,7 +2757,7 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
 5. **Closed on 2026-09-29: probing the square.** The square's strangers are picked once a day with both people's
     rules as they stand then, so flipping a must-have (or your own answer) changes nothing there until tomorrow;
     a block, a ban or leaving the pool still takes somebody out at once
-    (`server/src/api/world.ts:180`,
+    (`server/src/api/world.ts:178`,
     `server/src/matching/candidates.ts:165`).
 6. **Word lists have gaps.** The private-topic list is finite ("family", "wedding", "Diwali" are not on it), and the
     talk and answer sheets also use "goal" and "dislikes" sentences, which the card's own rule leaves out as the place

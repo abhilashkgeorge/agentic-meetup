@@ -21,7 +21,15 @@ export function nudgeFor(
   return null;
 }
 
-/** Under the button: how many people it can reach, and visits left today. */
-export function townCounts(people: string, visitsLeft: number): string {
-  return `${people} people nearby · ${visitsLeft} ${visitsLeft === 1 ? 'visit' : 'visits'} left today`;
+/**
+ * Under "Send my agent out": how many people it can reach, and whether it can go out
+ * again today. It said "5 visits left today" -- the visits to one person, a budget of
+ * their own, counted in the agent's sheet -- under a button allowed once a day, which then
+ * refused with "Your agent has been out enough for today" (the two-phone test, 2026-10-02).
+ * An older server sends no count: then the people alone.
+ */
+export function townCounts(people: string, outsLeft: number | undefined): string {
+  const here = `${people} people nearby`;
+  if (outsLeft === undefined) return here;
+  return `${here} · ${outsLeft === 0 ? 'out again tomorrow' : outsLeft === 1 ? 'can go out today' : `can go out ${outsLeft} more times today`}`;
 }

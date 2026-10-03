@@ -10,7 +10,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
 | Arjun taps "Send my agent out" | Server re-checks he is ready, may refresh his answer sheet, queues a round | Code, maybe {AI:sheet} | `rounds` row (queued) | Arjun | [server/src/api/dating.ts:979] `.post('/v1/matches/run', async (c) => {` |
-| The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | [server/src/matching/rounds.ts:161] `ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED)` |
+| The worker picks the round up (about every 5 s) | SQL finds everyone who passes every rule both ways | Code (SQL) | Nothing yet | Nobody | [server/src/matching/rounds.ts:175] `ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED)` |
 | The candidate list | Real people first; within that, those who fit more of the person's Really want and Nice to have (since 2026-09-29), then most recently active; people already met are removed; a weekly cap protects busy real people | Code | Nothing yet | Nobody | [server/src/matching/candidates.ts:185] `ORDER BY b.is_synthetic ASC, ${FITS_MY_WANTS} DESC, b.last_active_at DESC` |
 | Arjun's untied wants | One call checks them against the first 12; people with a "not met" move later | {AI:wants} + code | Want results kept for the cards | Arjun (on his cards) | [server/src/matching/orchestrator.ts:226] `const order = pre && !target ? demote(shortlist.order, notMetCounts(pre.byId)) : shortlist.order;` |
 | The first three who can still be claimed | A pair row is claimed for each; a score is recorded but does not pick | Code | `rendezvous` row per pair, with `rank_score` | Nobody on screen (founder scripts only) | [server/src/matching/orchestrator.ts:247] `INSERT INTO rendezvous (user_a, user_b, tenant_a, tenant_b, runs_planned, rank_score)` |
@@ -25,7 +25,10 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
    is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
-   part of town?"), the line about the agent, and "40 people nearby · 5 visits left today". Before, up to
+   part of town?"), the line about the agent, and "40 people nearby · can go out today" -- or "out again
+   tomorrow" once the day's round has met somebody (since 2026-10-03; before, it counted the visits to one
+   person, "5 visits left today", under a button allowed once a day) -- counted as the refusal counts
+   ([server/src/matching/rounds.ts:77] `export async function openRoundsToday(c: PoolClient, userId: string): Promise<number> {`). Before, up to
    eleven chips in a card covered the top half of the map
    ([app/src/features/world/hud.tsx:354] `function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, onEnterVenue, onAppearance, cityCrowd, onCityCrowd }: {`,
    [app/src/features/world/town-bar.ts:14] `export function nudgeFor(`).
@@ -38,7 +41,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    heading out…" ([app/src/features/world/hud.tsx:146] `? 'Your agent is heading out…'`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
-   all of them ([server/src/matching/rounds.ts:158] `UPDATE rounds SET status = 'running', started_at = now()`).
+   all of them ([server/src/matching/rounds.ts:172] `UPDATE rounds SET status = 'running', started_at = now()`).
 5. **Arjun's agent walks to Meera's** on his screen, and his status reads "Your agent is
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
@@ -71,15 +74,15 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
   ([app/src/features/world/agent-sheet.tsx:42] `One of the people your agent could meet.`,
   [app/src/features/world/agent-sheet.tsx:64] `Around {areaName(agent.area)}`).
   The 40 strangers in the square are chosen by the preference score, not real-first
-  ([server/src/api/world.ts:187] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
+  ([server/src/api/world.ts:185] `ids = (await rank(db, me, fresh, STRANGERS_IN_SQUARE)).map((r) => r.userId);`).
 
 ### 6.2 Limits
 
 | Limit | Value in the dev setup | What counts | Code |
 |---|---|---|---|
-| Open rounds | 1 per rolling 24 hours | Only a finished open round that met at least one person | [server/src/matching/world.ts:44] `Number(process.env.ROUNDS_PER_DAY ?? 1)`, [server/src/matching/rounds.ts:94] `AND result->'metAll' <> '[]'::jsonb` |
-| Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | [server/src/matching/world.ts:28] `Number(process.env.TARGETED_ROUNDS_PER_DAY ?? 5)`, [server/src/matching/rounds.ts:78] `WHERE user_id = $1 AND target_user_id IS NOT NULL` |
-| One round at a time | A second tap returns the round already running | | [server/src/matching/rounds.ts:101] `ON CONFLICT (user_id) WHERE status IN ('queued', 'running') DO NOTHING` |
+| Open rounds | 1 per rolling 24 hours | Only a finished open round that met at least one person | [server/src/matching/world.ts:44] `Number(process.env.ROUNDS_PER_DAY ?? 1)`, [server/src/matching/rounds.ts:82] `AND result->'metAll' <> '[]'::jsonb` |
+| Visits ("send my agent over") | 5 per rolling 24 hours | Every visit asked for, even one that failed | [server/src/matching/world.ts:28] `Number(process.env.TARGETED_ROUNDS_PER_DAY ?? 5)`, [server/src/matching/rounds.ts:71] `WHERE user_id = $1 AND target_user_id IS NOT NULL` |
+| One round at a time | A second tap returns the round already running | | [server/src/matching/rounds.ts:115] `ON CONFLICT (user_id) WHERE status IN ('queued', 'running') DO NOTHING` |
 | Model spend | $2.00 per person per day | All of that person's model calls | [server/src/env.ts:340] `DAILY_COST_CAP_USD: z.coerce.number().default(2.0),` |
 | Model calls | 10 per person per day (`TRIAL_TURN_CAP_PER_DAY=10`) | Chat, learning and rounds; setup calls are counted apart, up to 40 a day (since 2026-09-28) | [server/src/metering.ts:73] `if (row.setup_used >= env.SETUP_CALLS_PER_DAY) {` |
 

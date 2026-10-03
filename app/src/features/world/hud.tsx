@@ -216,7 +216,7 @@ export function Hud({
         )}
         {!venue && !walking && !transitioning && world?.me.inPool && (
           <Text numberOfLines={1} style={[type.callout, { fontSize: 12, lineHeight: 16, color: p.textSecondary, alignSelf: 'center' }]}>
-            {townCounts(countLabel(world.pool.total), world.targetsLeftToday)}
+            {townCounts(countLabel(world.pool.total), world.roundsLeftToday)}
           </Text>
         )}
       </View>

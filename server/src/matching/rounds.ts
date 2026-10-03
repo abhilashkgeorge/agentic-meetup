@@ -22,6 +22,7 @@
  * replica this becomes a separate worker, and the claim statement below is already
  * the one it would use.
  */
+import type { PoolClient } from 'pg';
 import { matchmakerSession, tenantSession } from '../db/client.js';
 import { BudgetExceeded } from '../metering.js';
 import { ROUNDS_PER_DAY, TARGETED_PER_DAY, notify } from './world.js';
@@ -59,6 +60,32 @@ export interface EnqueueOptions {
 }
 
 /**
+ * The two day's budgets, counted the one way the limits below and the town's numbers
+ * (api/world.ts) both read: visits to one person, and open rounds that met somebody, each
+ * over the last 24 hours. The town used to count only visits, and said "5 visits left
+ * today" under "Send my agent out" -- a button allowed once a day.
+ */
+export async function visitsToday(c: PoolClient, userId: string): Promise<number> {
+  const { rows } = await c.query<{ n: string }>(
+    `SELECT count(*) AS n FROM rounds
+      WHERE user_id = $1 AND target_user_id IS NOT NULL
+        AND requested_at > now() - interval '24 hours'`,
+    [userId],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+export async function openRoundsToday(c: PoolClient, userId: string): Promise<number> {
+  const { rows } = await c.query<{ n: string }>(
+    `SELECT count(*) AS n FROM rounds
+      WHERE user_id = $1 AND target_user_id IS NULL AND status = 'done'
+        AND requested_at > now() - interval '24 hours'
+        AND result->'metAll' <> '[]'::jsonb`,
+    [userId],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+/**
  * Ask for a round. Returns the round already in flight if there is one, because the
  * unique index refuses a second and the person did not do anything wrong by tapping
  * twice.
@@ -73,13 +100,7 @@ export async function enqueueRound(
       // restart. Five visits a day was a spend control while each one held a
       // conversation; a visit costs nothing now, and the five bound how often one
       // person can put themselves in front of another.
-      const { rows: n } = await c.query<{ n: string }>(
-        `SELECT count(*) AS n FROM rounds
-          WHERE user_id = $1 AND target_user_id IS NOT NULL
-            AND requested_at > now() - interval '24 hours'`,
-        [ctx.userId],
-      );
-      if (Number(n[0]?.n ?? 0) >= TARGETED_PER_DAY) throw new DailyTargetsExceeded(TARGETED_PER_DAY);
+      if (await visitsToday(c, ctx.userId) >= TARGETED_PER_DAY) throw new DailyTargetsExceeded(TARGETED_PER_DAY);
     } else {
       // The open round's day, for the same reason in different words: it used to be
       // the model budget that stopped a second tap, and a round spends none of it now
@@ -87,14 +108,7 @@ export async function enqueueRound(
       // an empty square put nobody in front of anybody. A round still queued or
       // running is not 'done', so a second tap during one falls through to the
       // insert below and gets that round back, as it always did.
-      const { rows: n } = await c.query<{ n: string }>(
-        `SELECT count(*) AS n FROM rounds
-          WHERE user_id = $1 AND target_user_id IS NULL AND status = 'done'
-            AND requested_at > now() - interval '24 hours'
-            AND result->'metAll' <> '[]'::jsonb`,
-        [ctx.userId],
-      );
-      if (Number(n[0]?.n ?? 0) >= ROUNDS_PER_DAY) throw new DailyRoundsExceeded(ROUNDS_PER_DAY);
+      if (await openRoundsToday(c, ctx.userId) >= ROUNDS_PER_DAY) throw new DailyRoundsExceeded(ROUNDS_PER_DAY);
     }
     const { rows } = await c.query<{ id: string; status: RoundRow['status']; requested_at: string }>(
       `INSERT INTO rounds (user_id, tenant_id, target_user_id) VALUES ($1, $2, $3)

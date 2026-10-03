@@ -58,10 +58,15 @@ describe('the town\'s edges', () => {
     expect(nudgeFor({ question: false, askName: false, askArea: false }, go)).toBeNull();
   });
 
-  it('says the counts by the button, as words', () => {
-    expect(townCounts('40', 5)).toBe('40 people nearby · 5 visits left today');
-    expect(townCounts('Under 20', 1)).toBe('Under 20 people nearby · 1 visit left today');
-    expect(hud).toMatch(/\{townCounts\(countLabel\(world\.pool\.total\), world\.targetsLeftToday\)\}/);
+  it('says the counts by the button, as words: the people, and whether it can go out again today', () => {
+    // Not the visits to one person: a budget of their own, said in the agent's sheet. It
+    // read "5 visits left today" under a button allowed once a day (2026-10-02). Negative
+    // control, run by hand: the hud back on world.targetsLeftToday -> this fails.
+    expect(townCounts('40', 1)).toBe('40 people nearby · can go out today');
+    expect(townCounts('Under 20', 0)).toBe('Under 20 people nearby · out again tomorrow');
+    expect(townCounts('40', 3)).toBe('40 people nearby · can go out 3 more times today');
+    expect(townCounts('40', undefined)).toBe('40 people nearby');
+    expect(hud).toMatch(/\{townCounts\(countLabel\(world\.pool\.total\), world\.roundsLeftToday\)\}/);
   });
 
   it('keeps three.js\'s own two warnings off a debug build\'s screen', async () => {

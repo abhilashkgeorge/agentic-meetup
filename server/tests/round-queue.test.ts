@@ -59,6 +59,7 @@ const { runRound, decide, CANDIDATES_PER_ROUND } = await import('../src/matching
 const { enqueueRound, runOneQueuedRound, latestRound, DailyRoundsExceeded } = await import('../src/matching/rounds.js');
 const { ROUNDS_PER_DAY } = await import('../src/matching/world.js');
 const { datingRoutes } = await import('../src/api/dating.js');
+const { worldRoutes } = await import('../src/api/world.js');
 const { mintToken, newSessionId } = await import('../src/tokens.js');
 const { CORE } = await import('../src/onboarding/questions.js');
 
@@ -347,6 +348,35 @@ describe('the queue', () => {
     const { rows } = await owner.query<{ n: string }>('SELECT count(*) AS n FROM rounds WHERE user_id = $1', [me.userId]);
     expect(rows[0]!.n, 'no row for the refused tap').toBe(String(ROUNDS_PER_DAY));
     expect(stub.calls).toBe(calls);
+  });
+
+  /**
+   * THE TOWN SAYS THE SAME. Under "Send my agent out" the town counted only the visits to
+   * one person, a budget of their own: "5 visits left today" over a button that then
+   * refused (the two-phone test, 2026-10-02). /v1/world now carries the open rounds left,
+   * counted as the refusal counts them (rounds.ts openRoundsToday).
+   *
+   * Negative control, run by hand: roundsLeftToday left at ROUNDS_PER_DAY -> the second
+   * expectation fails.
+   */
+  it('the town counts down the open rounds as the refusal does, apart from the visits', async () => {
+    const { me } = await scene();
+    const town = async () => (await (await worldRoutes.request('/v1/world', {
+      headers: { Authorization: `Bearer ${await tokenFor(me)}` },
+    })).json()) as { roundsLeftToday: number; targetsLeftToday: number };
+    expect((await town()).roundsLeftToday).toBe(ROUNDS_PER_DAY);
+    await enqueueRound(me);
+    const done = await drainFor(me);
+    expect(done?.result?.metAll.length).toBeGreaterThan(0);
+    for (let i = 1; i < ROUNDS_PER_DAY; i++) {
+      await owner.query(
+        `INSERT INTO rounds (user_id, tenant_id, status, finished_at, result)
+         VALUES ($1,$2,'done', now(), $3)`, [me.userId, me.tenantId, JSON.stringify(done?.result)]);
+    }
+    const after = await town();
+    expect(after.roundsLeftToday, 'the town still offers a round the button refuses').toBe(0);
+    await expect(enqueueRound(me)).rejects.toBeInstanceOf(DailyRoundsExceeded);
+    expect(after.targetsLeftToday, 'an open round spent a visit').toBeGreaterThan(0);
   });
 
   it('lets a person ask again when the last round met nobody', async () => {

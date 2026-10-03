@@ -106,12 +106,12 @@ has not ended in a no or expired
 Photos are served only through signed-in routes that ask that rule
 ([server/src/api/photos.ts:72] `const allowed = await tenantSession(ctx, (db) => photos.visibleTo(db, owner, ctx.userId));`).
 The town shows a first name under the same test
-([server/src/api/world.ts:211] `const entitled = own.seats.filter((s) => s.status !== 'running' && s.other_said_yes === true);`).
+([server/src/api/world.ts:209] `const entitled = own.seats.filter((s) => s.status !== 'running' && s.other_said_yes === true);`).
 It stands a met person on their own neighbourhood only where the card already names the place
 (Arjun decides first, or Meera has said yes); otherwise the seat stands in the viewer's own
 neighbourhood, so the second mover does not learn where the first mover lives
-([server/src/api/world.ts:221] `.filter((s) => s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true))`,
-[server/src/api/world.ts:255] `area: seatAreas.get(s.other_id) ?? own.myArea ?? CENTRAL_AREA,`).
+([server/src/api/world.ts:219] `.filter((s) => s.status !== 'running' && (s.first_mover === me || s.other_said_yes === true))`,
+[server/src/api/world.ts:253] `area: seatAreas.get(s.other_id) ?? own.myArea ?? CENTRAL_AREA,`).
 
 | Case | When Arjun sees Meera's profile and photos |
 |---|---|
