@@ -755,6 +755,8 @@ const SIGHT_MARK_Y = 2.5;
  * ground the mist had already painted over.
  */
 const WALK_FAR = VIEW + 6;
+/** Flying, how near the lens a treetop or a trunk is cut away (garden-mesh.ts seeThroughTrees). */
+const FLIGHT_CLEAR = 1.4;
 /**
  * How big a bubble around somebody counts as "on screen".
  *
@@ -1238,8 +1240,9 @@ function Town({
       focus.set(look[0], 0, look[2]);
       skyFollow(garden, eye[0], 0, eye[2]);
       // No trunk between the lens and you: cut away along that line (garden-mesh.ts
-      // seeThroughTrunks). To the middle of you, wherever the camera is easing to.
-      garden.sightLine(eye, [you.x, lift + SIGHT_MIDDLE, you.z]);
+      // seeThroughTrees). To the middle of you, wherever the camera is easing to.
+      // Flying, nor any treetop over the lens either (garden-mesh.ts seeThroughTrees).
+      garden.sightLine(eye, [you.x, lift + SIGHT_MIDDLE, you.z], flying ? FLIGHT_CLEAR : 0);
       // Detailed benches and lamps near the camera, plain ones further out (venue-mesh).
       furniture.current?.follow(eye[0], eye[2]);
     } else {
