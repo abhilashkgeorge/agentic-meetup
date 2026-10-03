@@ -560,7 +560,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   (`server/src/memory/card-guard.ts:31`).
 - **If he taps Yes**, the claim becomes his live answer, and it stays match-only: "that's right" is
   not "OK to share", so nobody else hears his work sentence until he shares it on "How you appear"
-  (`server/src/memory/pasteImport.ts:345`,
+  (`server/src/memory/pasteImport.ts:362`,
   `server/src/matching/brief.ts:109`).
   One side effect remains (Known gaps): "runs most mornings" is not one of the exercise answers, so
   his exercise answer becomes "unknown" for matching
@@ -619,6 +619,11 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   knows" ("Is this right?", with "Yes" / "No", and "Good. It believes you now." / "Dropped. It will not use
   that.") (`app/src/features/knowledge/you-screen.tsx:117`,
   `server/src/api/profile.ts:256`).
+  Nothing the person has since answered is asked: not the same thing saved by them, and on a one-answer
+  field not anything they answered after it was heard -- an answer given before a different sentence is
+  still asked about, as that may be a move (since 2026-10-03; before, the map saving Indiranagar still left
+  "Part of town: Indiranagar", heard in "I spend Sundays in bookshops in Indiranagar", to be asked)
+  (`server/src/memory/pasteImport.ts:265`;`).
 - **Before a Yes**, a held fact changes nothing in matching, cards, sheets, talk or want checks; the
   person's own clone still sees the sentence in its recent chat. Since 2026-09-29 that includes the
   background resolver ([AI-8](#ai-8)): only sentences that became true may retire an older answer on a

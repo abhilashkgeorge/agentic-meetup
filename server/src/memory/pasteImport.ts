@@ -249,6 +249,21 @@ export interface StagedFact {
  * `confirmStagedFact`, which re-commits as first-party. What changes is how many
  * times a person has to be asked.
  */
+/**
+ * NOTHING THE PERSON HAS SINCE ANSWERED. A staged guess is not asked about, or listed,
+ * once an answer of their own stands for it: the same thing already believed, or -- for
+ * a single-valued field -- any answer given after the guess was heard. The two-phone test
+ * (2026-10-02) was asked "Your agent heard something: Part of town: Indiranagar" (from
+ * "I spend Sundays in bookshops in Indiranagar") after the map had saved Indiranagar.
+ * An answer given BEFORE a different guess is still asked about: that may be a move.
+ */
+const NOT_ANSWERED = `NOT EXISTS (
+          SELECT 1 FROM facts a
+           WHERE a.user_id = f.user_id AND a.predicate = f.predicate
+             AND a.status = 'active' AND a.valid_to IS NULL
+             AND (lower(trim(a.object_text)) = lower(trim(f.object_text))
+                  OR (f.is_single_valued AND a.recorded_at > f.recorded_at)))`;
+
 export async function pendingConfirmation(
   c: PoolClient,
   userId: string,
@@ -260,6 +275,7 @@ export async function pendingConfirmation(
        JOIN predicates p ON p.name = f.predicate
       WHERE f.user_id = $1 AND f.status = 'staged' AND f.origin_class = 'untrusted'
         AND (p.durability = 'hard' OR f.predicate = ANY($3))
+        AND ${NOT_ANSWERED}
       ORDER BY f.recorded_at
       LIMIT $2`,
     // A TAPPED field is asked about on its own even when its predicate is 'soft':
@@ -283,6 +299,7 @@ export async function reviewable(
        JOIN predicates p ON p.name = f.predicate
       WHERE f.user_id = $1 AND f.status = 'staged' AND f.origin_class = 'untrusted'
         AND p.durability = 'soft' AND NOT (f.predicate = ANY($3))
+        AND ${NOT_ANSWERED}
       ORDER BY f.predicate, f.recorded_at
       LIMIT $2`,
     [userId, limit, [...TAPPED_PREDICATES]],
