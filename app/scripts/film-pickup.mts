@@ -1,14 +1,15 @@
 /**
- * The emergency pickup, filmed offline from the app's own code: the flight (flight.ts),
- * the frames the crowd shows and how it blends them (crowd-gpu.ts bakeClips, rigRows),
- * and the gear (the same balloon, rope and canopy as rig-mesh.ts) -- for watching the
- * whole of it without a second person in the park.
+ * The emergency pickup, filmed offline from the app's own code: the flight and the camera
+ * (flight.ts flightAt, flightShot), the frames the crowd shows and how it blends them
+ * (crowd-gpu.ts bakeClips, rigRows), and the gear (plane-mesh.ts, and the cable and
+ * canopy as rig-mesh.ts draws them) -- for watching the whole of it without a second
+ * person in the park.
  *
  *     npx tsx scripts/film-pickup.mts <out.mp4> [distance=24]
  *
- * Left, from the side, wide enough for the balloon and the canopy; right, the body close
- * up from three-quarters front. Both follow the person. Needs ffmpeg. Draws with
- * raster.mts, flat-shaded, without perspective.
+ * Left, the phone held upright, through the camera the app uses, the park's cards and
+ * buttons shaded over the bottom; right, from the side, wide enough for all of it. Needs
+ * ffmpeg. Draws with raster.mts, flat-shaded.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -17,7 +18,9 @@ import { join } from 'node:path';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { STARTER, type Look } from '@clone/shared';
-import { BALLOON_R, BODY_K, CANOPY_ABOVE, flightAt, flightMs, type Flight, type FlightPose } from '../src/features/world/flight';
+import { BODY_K, CANOPY_ABOVE, cableCurve, flightAt, flightMs, flightShot, type Flight, type FlightPose } from '../src/features/world/flight';
+import { PROP_HUBS, bladeGeometry, planeGeometry } from '../src/features/world/plane-mesh';
+import { WALK_AIM, WALK_BACK, WALK_EYE, WALK_FOV, WALK_RISE, followPose } from '../src/features/world/camera';
 import { bakeClips, rigRows } from '../src/features/world/crowd-gpu';
 import { ASSETS, dressed, draw, loadPeople, png, view, type Drawn, type RGB } from './raster.mts';
 
@@ -29,10 +32,14 @@ type Ctor = { new (type: string, init?: Record<string, unknown>): Event };
 const out = process.argv[2] ?? 'pickup.mp4';
 const D = Number(process.argv[3] ?? 24);
 const FPS = 30;
-const W = 540, H = 960;
+/** The phone's panel, a Pixel's shape at 0.4 of its pixels; the side view beside it. */
+const W = 432, H = 960, SW = 540;
+/** How much of the phone's height, from the bottom, the park's cards and buttons cover. */
+const HUD = Number(process.env.HUD ?? 0.3);
 const SKY: RGB = [0.83, 0.9, 0.97];
 const her: Look = { ...STARTER, figure: 1, head: 6, top: 6, legs: 6, feet: 6, skin: 3, hairColor: 1 };
-const ACCENT = new THREE.Color('#6D5DFC'); // the light theme's accent, as the canopy is drawn
+const ACCENT = '#6D5DFC'; // the light theme's accent, as the canopy and the plane are drawn
+const accent = new THREE.Color(ACCENT);
 
 // The bake, as the phone makes it: one row per frame, a skinning matrix per bone.
 const buf = readFileSync(join(ASSETS, 'people.glb'));
@@ -76,8 +83,24 @@ function fromGeometry(g: THREE.BufferGeometry, rgb: RGB, m: THREE.Matrix4): Draw
   const index = g.index ? g.index.array : Uint32Array.from({ length: p.count }, (_, i) => i);
   return moved({ pos: new Float32Array(p.array), nrm: new Float32Array(n.array), index, rgb }, m);
 }
-const balloonGeo = new THREE.SphereGeometry(1, 18, 12);
-const ropeGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).translate(0, 0.5, 0);
+/** A geometry coloured per corner, as one part per colour (the rasterizer colours whole parts). */
+function byColour(g: THREE.BufferGeometry): Drawn[] {
+  const p = g.attributes.position as THREE.BufferAttribute, n = g.attributes.normal as THREE.BufferAttribute, c = g.attributes.color as THREE.BufferAttribute;
+  const sets = new Map<string, { pos: number[]; nrm: number[]; rgb: RGB }>();
+  for (let i = 0; i < p.count; i += 3) {
+    const key = `${c.getX(i).toFixed(3)},${c.getY(i).toFixed(3)},${c.getZ(i).toFixed(3)}`;
+    if (!sets.has(key)) sets.set(key, { pos: [], nrm: [], rgb: [c.getX(i), c.getY(i), c.getZ(i)] });
+    const s = sets.get(key)!;
+    for (let k = 0; k < 3; k++) {
+      s.pos.push(p.getX(i + k), p.getY(i + k), p.getZ(i + k));
+      s.nrm.push(n.getX(i + k), n.getY(i + k), n.getZ(i + k));
+    }
+  }
+  return [...sets.values()].map((s) => ({ pos: Float32Array.from(s.pos), nrm: Float32Array.from(s.nrm), index: Uint32Array.from({ length: s.pos.length / 3 }, (_, i) => i), rgb: s.rgb }));
+}
+const planeParts = byColour(planeGeometry(ACCENT));
+const bladeParts = byColour(bladeGeometry());
+
 /** The canopy's dome in its two stripe colours, split as rig-mesh.ts colours it: by triangle, round the dome. */
 const domes = (() => {
   const dome = new THREE.SphereGeometry(1, 16, 5, 0, Math.PI * 2, 0, Math.PI / 2.3).toNonIndexed();
@@ -94,82 +117,104 @@ const domes = (() => {
   return sets.map(([p, n]) => new THREE.BufferGeometry()
     .setAttribute('position', new THREE.Float32BufferAttribute(p!, 3)).setAttribute('normal', new THREE.Float32BufferAttribute(n!, 3)));
 })();
-const lineGeo = new THREE.CylinderGeometry(1, 1, 1, 4, 1, true).translate(0, 0.5, 0);
-// The ground: a field under the park camera, and for the side view a strip BEHIND the
-// flight (a plane seen nearly edge-on in this orthographic view would cover everything).
-const GRASS: RGB = [0.45, 0.62, 0.38];
-const field = new THREE.PlaneGeometry(80, 80).rotateX(-Math.PI / 2);
-const strip = new THREE.BoxGeometry(1, 1, 1);
 
-/** A stick from a to b, `r` thick. */
-function stick(a: THREE.Vector3, b: THREE.Vector3, r: number, rgb: RGB): Drawn {
-  const d = b.clone().sub(a);
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize());
-  return fromGeometry(lineGeo, rgb, new THREE.Matrix4().compose(a, q, new THREE.Vector3(r, d.length(), r)));
+// The park: grass in small tiles (the lens leaves out a triangle with a corner behind it),
+// and trees about as tall as the park's, for scale.
+const GRASS: RGB = [0.45, 0.62, 0.38], GRASS2: RGB = [0.42, 0.59, 0.36];
+const tile = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+const trunkGeo = new THREE.CylinderGeometry(0.05, 0.07, 1.8, 6).translate(0, 0.9, 0);
+const crownGeo = new THREE.IcosahedronGeometry(0.75, 0).translate(0, 2.3, 0).toNonIndexed();
+crownGeo.computeVertexNormals();
+let seed = 7;
+const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+const ground: Drawn[] = [];
+for (let x = -20; x < 20; x++) {
+  for (let z = -16; z < D + 14; z++) ground.push(fromGeometry(tile, (x + z) % 2 ? GRASS : GRASS2, new THREE.Matrix4().makeTranslation(x + 0.5, 0, z + 0.5)));
+}
+const trees: Drawn[] = [];
+for (let i = 0; i < 46; i++) {
+  const x = (rnd() - 0.5) * 24, z = -14 + rnd() * (D + 26);
+  if (Math.abs(x) < 1.6) continue; // the way itself kept clear, as the pickup's path would be
+  const s = 0.75 + rnd() * 0.7; // garden.ts: a tree's scale, about four units at the most
+  const at = new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
+  trees.push(fromGeometry(trunkGeo, [0.45, 0.34, 0.25], at), fromGeometry(crownGeo, [0.3, 0.5, 0.3], at));
 }
 
-/** Everything at one instant, in world units. */
-function scene(p: FlightPose): Drawn[] {
+/** For the side view, a strip of grass behind the way (a ground seen edge-on would cover everything). */
+const strip = fromGeometry(new THREE.BoxGeometry(1, 1, 1), GRASS, new THREE.Matrix4().compose(
+  new THREE.Vector3(-2, -0.01, D / 2), new THREE.Quaternion(), new THREE.Vector3(2, 0.02, D + 30)));
+
+type Line = { a: [number, number, number]; b: [number, number, number]; rgb: RGB; px: number };
+
+/** Everything at one instant, in world units: the parts, and the lines (cable, canopy lines). */
+function scene(p: FlightPose, ms: number, px: number): { parts: Drawn[]; lines: Line[] } {
   pose(rigRows(p, bake));
   const place = new THREE.Matrix4().compose(
     new THREE.Vector3(p.x, p.y, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.heading),
     new THREE.Vector3(BODY_K, BODY_K, BODY_K));
   const parts = dressed(people, her).map((d) => moved(d, place));
-  const a = new THREE.Vector3(p.anchor.x, p.anchor.y, p.anchor.z);
-  const b = p.balloon;
-  if (b && b.alpha > 0.01) {
-    parts.push(fromGeometry(balloonGeo, [0.95, 0.94, 0.9], new THREE.Matrix4().compose(
-      new THREE.Vector3(b.x, b.y, b.z), new THREE.Quaternion(), new THREE.Vector3(BALLOON_R * b.size, BALLOON_R * b.size * 1.18, BALLOON_R * b.size))));
-    if (p.roped) parts.push(stick(a, new THREE.Vector3(b.x, b.y - BALLOON_R * b.size * 1.1, b.z), 0.006, [0.24, 0.24, 0.24]));
+  const lines: Line[] = [];
+  const pl = p.plane;
+  if (pl && pl.alpha > 0.3) {
+    const at = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(-pl.climb, pl.heading, pl.roll, 'YXZ')).setPosition(pl.x, pl.y, pl.z);
+    parts.push(...planeParts.map((d) => moved(d, at)));
+    PROP_HUBS.forEach(([hx, hy, hz], i) => {
+      const spin = new THREE.Matrix4().makeTranslation(hx, hy, hz + 0.015).multiply(new THREE.Matrix4().makeRotationZ(ms * 0.031 + i));
+      parts.push(...bladeParts.map((d) => moved(d, at.clone().multiply(spin))));
+    });
   }
+  if (pl && p.cable) {
+    const pts = cableCurve(pl, p.cable, p.heading);
+    for (let i = 0; i + 1 < pts.length; i++) lines.push({ a: pts[i]!, b: pts[i + 1]!, rgb: [0.2, 0.2, 0.23], px });
+  }
+  const a = new THREE.Vector3(p.anchor.x, p.anchor.y, p.anchor.z);
   const open = Math.min(1, Math.max(0, p.chute));
   if (open > 0.01) {
     const top = a.y + CANOPY_ABOVE, w = 0.26 * (0.25 + 0.75 * open), h = 0.11;
     const at = new THREE.Matrix4().compose(new THREE.Vector3(a.x, top - h * 0.5, a.z), new THREE.Quaternion(), new THREE.Vector3(w, h, w));
-    parts.push(fromGeometry(domes[1]!, [ACCENT.r, ACCENT.g, ACCENT.b], at), fromGeometry(domes[0]!, [0.97, 0.97, 0.97], at));
+    parts.push(fromGeometry(domes[1]!, [accent.r, accent.g, accent.b], at), fromGeometry(domes[0]!, [0.97, 0.97, 0.97], at));
     const sx = Math.cos(p.heading), sz = -Math.sin(p.heading), hands = 0.11 * BODY_K, rim = top - h * 0.45;
     for (let k = 0; k < 4; k++) {
       const ang = (k / 4) * Math.PI * 2 + Math.PI / 4;
       const side = Math.cos(ang) * sx + Math.sin(ang) * sz > 0 ? 1 : -1;
-      parts.push(stick(new THREE.Vector3(a.x + sx * hands * side, a.y, a.z + sz * hands * side),
-        new THREE.Vector3(a.x + Math.cos(ang) * w, rim, a.z + Math.sin(ang) * w), 0.0015, [0.3, 0.3, 0.3]));
+      lines.push({ a: [a.x + sx * hands * side, a.y, a.z + sz * hands * side], b: [a.x + Math.cos(ang) * w, rim, a.z + Math.sin(ang) * w], rgb: [0.3, 0.3, 0.3], px: px * 0.8 });
     }
   }
-  return parts;
+  return { parts, lines };
 }
 
-/** Drawn with the camera's target at the middle: everything moved so `target` is the origin. */
-function shot(parts: Drawn[], target: THREE.Vector3, yaw: number, pitch: number, span: number): Float32Array {
-  const shift = new THREE.Matrix4().makeTranslation(-target.x, -target.y, -target.z);
-  return draw(parts.map((d) => moved(d, shift)), W, H, { fit: { band: [-span / 2, span / 2] }, view: view(yaw, pitch), background: SKY });
-}
-const sideGround = (d: number) => fromGeometry(strip, GRASS, new THREE.Matrix4().compose(
-  new THREE.Vector3(d / 2, -0.01, -2), new THREE.Quaternion(), new THREE.Vector3(d + 8, 0.02, 3)));
-const parkGround = (d: number) => fromGeometry(field, GRASS, new THREE.Matrix4().makeTranslation(d / 2, 0, 0));
-
-const hop: Flight = { fx: 0, fz: 0, tx: D, tz: 0, kind: 'pickup' };
-const total = flightMs(hop) + 600;
+const hop: Flight = { fx: 0, fz: 0, tx: 0, tz: D, kind: 'pickup' };
+const total = flightMs(hop) + 700;
 const dir = join(process.env.CLAUDE_JOB_DIR ?? '/tmp', 'tmp', 'film-frames');
 rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
+const lerp3 = (a: readonly number[], b: readonly number[], w: number): [number, number, number] => [0, 1, 2].map((i) => a[i]! + (b[i]! - a[i]!) * w) as [number, number, number];
 let n = 0;
 for (let ms = 0; ms <= total; ms += 1000 / FPS) {
   const p = flightAt(hop, ms);
-  const parts = scene(p);
-  // Locked on the person: the yank is too quick for an eased camera. The wide shot looks
-  // a little above them, for the balloon and the canopy; the close one between the anchor
-  // and the feet, so the body stays in frame however it swings.
-  const wide = new THREE.Vector3(p.x, p.y + 0.75, p.z);
-  const close = new THREE.Vector3((p.x + p.anchor.x) / 2, (p.y + p.anchor.y) / 2, (p.z + p.anchor.z) / 2);
-  // The hop runs along +x, so looking down -z is from its side.
-  const side = shot([sideGround(D), ...parts], wide, 0, 0.06, 3.2);
-  const park = shot([sideGround(D), ...parts], close, -0.6, 0.05, 0.62);
-  const px = new Float32Array(W * 2 * H * 4);
-  for (let y = 0; y < H; y++) {
-    px.set(side.subarray(y * W * 4, (y + 1) * W * 4), y * W * 2 * 4);
-    px.set(park.subarray(y * W * 4, (y + 1) * W * 4), (y * W * 2 + W) * 4);
+  // The phone: the walking camera behind your head, eased into the pickup's own shot and back.
+  const walk = followPose(p.x, p.z, p.heading, WALK_BACK, WALK_RISE + p.y, WALK_AIM, WALK_EYE + p.y);
+  const shot = flightShot(hop, ms);
+  const w = shot?.w ?? 0;
+  const eye = shot ? lerp3(walk.eye, shot.eye, w) : walk.eye;
+  const look = shot ? lerp3(walk.look, shot.look, w) : walk.look;
+  const near = scene(p, ms, 1.2);
+  const phone = draw([...ground, ...trees, ...near.parts], W, H, { fit: { pad: 0 }, camera: { eye, look, fov: WALK_FOV }, lines: near.lines, background: SKY });
+  // The park's cards and buttons over the bottom of the phone.
+  for (let y = Math.floor(H * (1 - HUD)); y < H; y++) {
+    for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; for (let c = 0; c < 3; c++) phone[i + c] = phone[i + c]! * 0.55 + 0.45 * 0.93; }
   }
-  writeFileSync(join(dir, `f${String(n).padStart(4, '0')}.png`), png(W * 2, H, px));
+  // From the side: the whole way, the plane and you, flat.
+  const mid = Math.max(-1, Math.min(D + 1, p.z));
+  const far = scene(p, ms, 1.4);
+  const shift = new THREE.Matrix4().makeTranslation(0, -3.6, -mid);
+  const side = draw([strip, ...far.parts].map((d) => moved(d, shift)), SW, H, { fit: { band: [-4.6, 4.6] }, view: view(Math.PI / 2, 0.02), background: SKY });
+  const px = new Float32Array((W + SW) * H * 4);
+  for (let y = 0; y < H; y++) {
+    px.set(phone.subarray(y * W * 4, (y + 1) * W * 4), y * (W + SW) * 4);
+    px.set(side.subarray(y * SW * 4, (y + 1) * SW * 4), (y * (W + SW) + W) * 4);
+  }
+  writeFileSync(join(dir, `f${String(n).padStart(4, '0')}.png`), png(W + SW, H, px));
   n++;
 }
 execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', String(FPS), '-i', join(dir, 'f%04d.png'),

@@ -14,8 +14,10 @@
  *     movingNow, which is what the phone sends);
  *   - a near bench is walked to, faster the further, and sat on inside BENCH_MAX_SECS;
  *   - a bench further than a run in BENCH_SECS is reached by the emergency pickup (the
- *     founder chose it over the smoke, 2026-10-03): up on the balloon, down by parachute
- *     at the bench, and seated -- no smoke;
+ *     founder chose it over the smoke, 2026-10-03): the plane's cable up, down by
+ *     parachute at the bench, and seated -- no smoke. Four and a half seconds at most
+ *     since the plane came in (2026-10-04: he asked to see it come and drop its cable);
+ *     three and a half before, with the balloon;
  *   - held up on the way (a hedge, boxed in), the pickup takes you when the time is up,
  *     never a walk off somewhere else;
  *   - another phone draws somebody sitting only once they are on the seat;
@@ -94,7 +96,7 @@ describe('getting to a bench', () => {
     for (; t < 10 && me.state !== 'sitting'; t += 1 / 60) { s.step(1 / 60); highest = Math.max(highest, me.lift ?? 0); }
     expect(highest, 'never left the ground').toBeGreaterThan(2);
     expect(t, 'slower than the pickup itself').toBeLessThanOrEqual(flight + 0.05);
-    expect(t, 'more than the three or so seconds').toBeLessThanOrEqual(3.5);
+    expect(t, 'more than the pickup\'s four and a half seconds').toBeLessThanOrEqual(4.5);
     expect([me.x, me.z]).toEqual([0, 0]);
   });
 
@@ -106,7 +108,7 @@ describe('getting to a bench', () => {
     s.sitOn('you', seat);
     const t = secondsToSit(s);
     // Boxed in, the pickup takes over when the time is up (or sooner, stuck), and lands.
-    expect(t, 'never got there').toBeLessThanOrEqual(BENCH_MAX_SECS + 3.5);
+    expect(t, 'never got there').toBeLessThanOrEqual(BENCH_MAX_SECS + 4.5);
     expect([s.get('you')!.x, s.get('you')!.z]).toEqual([0, 0]);
   });
 });

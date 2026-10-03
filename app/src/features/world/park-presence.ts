@@ -186,7 +186,7 @@ export function useParkPresence(
   }, [inPark, venueSim]);
 
   // Whoever is here, into the sim; whoever has gone, out of it -- coming down by parachute
-  // or taken up by a balloon when it happens near you (park-comings.ts), except the crowd
+  // or taken up by the plane when it happens near you (park-comings.ts), except the crowd
   // already here as you walk in.
   useEffect(() => {
     if (!inPark) return;

@@ -210,6 +210,13 @@ export interface Frame {
   background?: RGB;
   /** Only triangles whose middle is at this model height (after posing). */
   clipY?: [number, number];
+  /**
+   * Through a lens, as the phone draws: from `eye` towards `look`, `fov` degrees top to
+   * bottom. Without it the drawing is flat (no perspective), fitted by `fit`.
+   */
+  camera?: { eye: [number, number, number]; look: [number, number, number]; fov: number };
+  /** Thin lines over the drawing, `px` wide, hidden behind what is nearer. */
+  lines?: { a: [number, number, number]; b: [number, number, number]; rgb: RGB; px: number }[];
 }
 
 export function draw(parts: Drawn[], w: number, h: number, frame: Frame): Float32Array {
@@ -218,6 +225,7 @@ export function draw(parts: Drawn[], w: number, h: number, frame: Frame): Float3
     for (let i = 0; i < w * h; i++) px.set([...frame.background, 1], i * 4);
   }
   const zb = new Float32Array(w * h).fill(-Infinity);
+  if (frame.camera) return lens(parts, w, h, frame, px, zb);
   const V = frame.view ?? view();
   const v = new THREE.Vector3();
   // Everything in view space first, so a fit is the fit of what is drawn.
@@ -290,6 +298,82 @@ export function draw(parts: Drawn[], w: number, h: number, frame: Frame): Float3
           if (z <= zb[at]!) continue;
           zb[at] = z;
           px[at * 4] = lit[0]!; px[at * 4 + 1] = lit[1]!; px[at * 4 + 2] = lit[2]!; px[at * 4 + 3] = 1;
+        }
+      }
+    }
+  }
+  return px;
+}
+
+/**
+ * The same, through a lens: every point into the camera's own space, then divided by its
+ * distance. Depth is compared as 1/distance, which is what runs straight across a
+ * triangle on the screen. A triangle with a corner behind the lens is left out -- draw
+ * big flat things (the ground) in small tiles.
+ */
+function lens(parts: Drawn[], w: number, h: number, frame: Frame, px: Float32Array, zb: Float32Array): Float32Array {
+  const cam = frame.camera!;
+  const eye = new THREE.Vector3(...cam.eye);
+  const m = new THREE.Matrix4().lookAt(eye, new THREE.Vector3(...cam.look), new THREE.Vector3(0, 1, 0));
+  m.setPosition(eye);
+  const V = m.invert();
+  const f = 1 / Math.tan((cam.fov * Math.PI) / 360);
+  const aspect = w / h;
+  const NEAR = 0.04;
+  const v = new THREE.Vector3();
+  const project = (x: number, y: number, z: number): [number, number, number] | null => {
+    v.set(x, y, z).applyMatrix4(V);
+    if (-v.z < NEAR) return null;
+    const ix = (v.x * f) / aspect / -v.z, iy = (v.y * f) / -v.z;
+    return [((ix + 1) / 2) * w, ((1 - iy) / 2) * h, 1 / -v.z];
+  };
+  for (const part of parts) {
+    const n = part.nrm;
+    const sp: ([number, number, number] | null)[] = [];
+    for (let i = 0; i < part.pos.length; i += 3) sp.push(project(part.pos[i]!, part.pos[i + 1]!, part.pos[i + 2]!));
+    for (let t = 0; t < part.index.length; t += 3) {
+      const a = part.index[t]!, b = part.index[t + 1]!, c = part.index[t + 2]!;
+      const A = sp[a], B = sp[b], C = sp[c];
+      if (!A || !B || !C) continue;
+      const [ax, ay, az] = A, [bx, by, bz] = B, [cx, cy, cz] = C;
+      const area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+      if (area === 0) continue;
+      const lit = shade(part.rgb, (n[a * 3]! + n[b * 3]! + n[c * 3]!) / 3, (n[a * 3 + 1]! + n[b * 3 + 1]! + n[c * 3 + 1]!) / 3,
+        (n[a * 3 + 2]! + n[b * 3 + 2]! + n[c * 3 + 2]!) / 3);
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx))), x1 = Math.min(w - 1, Math.ceil(Math.max(ax, bx, cx)));
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by, cy))), y1 = Math.min(h - 1, Math.ceil(Math.max(ay, by, cy)));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const sx = x + 0.5, sy = y + 0.5;
+          const w0 = ((bx - ax) * (sy - ay) - (by - ay) * (sx - ax)) / area;
+          const w1 = ((cx - bx) * (sy - by) - (cy - by) * (sx - bx)) / area;
+          const w2 = 1 - w0 - w1;
+          if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+          const z = w1 * az + w2 * bz + w0 * cz;
+          const at = y * w + x;
+          if (z <= zb[at]!) continue;
+          zb[at] = z;
+          px[at * 4] = lit[0]!; px[at * 4 + 1] = lit[1]!; px[at * 4 + 2] = lit[2]!; px[at * 4 + 3] = 1;
+        }
+      }
+    }
+  }
+  for (const l of frame.lines ?? []) {
+    const A = project(...l.a), B = project(...l.b);
+    if (!A || !B) continue;
+    const steps = Math.ceil(Math.hypot(B[0] - A[0], B[1] - A[1]) * 2) + 1;
+    const r = l.px / 2;
+    for (let i = 0; i <= steps; i++) {
+      const k = i / steps;
+      const x = A[0] + (B[0] - A[0]) * k, y = A[1] + (B[1] - A[1]) * k, z = A[2] + (B[2] - A[2]) * k;
+      for (let yy = Math.floor(y - r - 1); yy <= Math.ceil(y + r + 1); yy++) {
+        for (let xx = Math.floor(x - r - 1); xx <= Math.ceil(x + r + 1); xx++) {
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const at = yy * w + xx;
+          if (z < zb[at]! * 0.999) continue;
+          const cover = Math.min(1, Math.max(0, r + 0.5 - Math.hypot(xx + 0.5 - x, yy + 0.5 - y)));
+          if (cover <= 0) continue;
+          for (let c = 0; c < 3; c++) px[at * 4 + c] = px[at * 4 + c]! * (1 - cover) + l.rgb[c]! * cover;
         }
       }
     }

@@ -217,7 +217,7 @@ export function livePeople(sim: WorldSim, people: ReadonlyMap<string, LivePerson
     const a = sim.get(p.ref);
     if (a) a.ring = p.ref === partner;
   }
-  // Gone -- unless being taken away by a balloon right now (sim.liftAway), which ends
+  // Gone -- unless being taken away by the plane right now (sim.liftAway), which ends
   // with them gone from the sim by itself.
   for (const a of sim.agents()) if (a.kind === 'live' && !people.has(a.ref) && !sim.leaving(a.ref)) sim.unlive(a.ref);
 }

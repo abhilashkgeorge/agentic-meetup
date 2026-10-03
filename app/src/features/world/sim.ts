@@ -374,7 +374,7 @@ export interface SimAgent {
    * until they land.
    */
   fly?: { f: Flight; ms: number; done?: (() => void) | undefined };
-  /** This frame of their flight: the balloon, its rope and the parachute (rig-mesh.ts draws them). */
+  /** This frame of their flight: the plane, its cable and the parachute (rig-mesh.ts draws them). */
   rig?: FlightPose | undefined;
   /**
    * The flight they last landed from, here. A word from the server that is late -- still
@@ -710,7 +710,7 @@ export class WorldSim {
       if (Math.abs(a.fly!.ms - fly.t) > 300) a.fly!.ms = fly.t;
       return;
     }
-    // A word for somebody leaving's balloon (an away of this phone's own) is not a pickup.
+    // A word for somebody leaving by plane (an away of this phone's own) is not a pickup.
     if (a.fly?.f.kind === 'away') return;
     a.fly = { f: { fx: fly.fx, fz: fly.fz, tx: fly.tx, tz: fly.tz }, ms: fly.t };
     a.seat = undefined;
@@ -718,7 +718,7 @@ export class WorldSim {
   }
 
   /**
-   * THE EMERGENCY PICKUP (flight.ts): up on a balloon, over the trees, down by parachute
+   * THE EMERGENCY PICKUP (flight.ts): a plane's cable up, over the trees, down by parachute
    * beside (tx, tz). Off a bench and off a bicycle first; the stick does nothing until
    * you land, and `done` is called then. A second flight while one is under way is
    * ignored. False if not here.
@@ -755,7 +755,7 @@ export class WorldSim {
   }
 
   /**
-   * Leaving the park, as everybody near sees it: up on a balloon and out of sight, and
+   * Leaving the park, as everybody near sees it: snatched up by the plane and out of sight, and
    * then gone from this sim (`remove`). This phone's own, like dropIn.
    */
   liftAway(ref: string): boolean {
@@ -773,15 +773,17 @@ export class WorldSim {
   }
 
   /**
-   * A few brisk steps to (tx, tz): somebody who said yes standing near enough to walk to
-   * (flight.ts FLY_MIN). The stick takes over if a thumb goes on it. False if not here.
+   * Over to (tx, tz) on foot: somebody who said yes standing near enough to walk to
+   * (flight.ts FLY_MIN) -- briskly at the least, quicker the further, up to a run, so even
+   * the furthest of them is reached in about BENCH_SECS. The stick takes over if a thumb
+   * goes on it. False if not here.
    */
   walkTo(ref: string, tx: number, tz: number): boolean {
     const a = this.byRef.get(ref);
     if (!a || a.fly) return false;
     if (a.seat) this.standUp(ref);
     a.driveX = 0; a.driveZ = 0;
-    this.setTarget(a, tx, tz, WALK * 1.8);
+    this.setTarget(a, tx, tz, Math.min(RUN_MAX, Math.max(WALK * 1.8, Math.hypot(tx - a.x, tz - a.z) / BENCH_SECS)));
     a.state = 'walking';
     return true;
   }

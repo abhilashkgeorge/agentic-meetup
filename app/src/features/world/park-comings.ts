@@ -2,7 +2,7 @@
  * Who has just come into the park near you, and who has just gone (the founder,
  * 2026-10-03: "show a smoke magical effect when someone joins" -- and then, of the smoke,
  * "doesn't look good ... like the emergency pickup feature in PUBG"). Somebody who comes
- * in comes down by parachute; somebody who goes is taken up by a balloon (flight.ts drop
+ * in comes down by parachute; somebody who goes is taken up by the plane (flight.ts drop
  * and away) -- each phone plays both for itself, so nothing about them is sent.
  *
  * Not for the crowd already here as you walk in (they did not just arrive), not for

@@ -7,24 +7,25 @@
  * bad. please research how to implement it right". They were loops played on a clock --
  * arms flapping and legs kicking under the balloon whatever the balloon did, a sway under
  * the parachute -- each pose cut straight into the next, and the rope drawn to a point
- * worked out apart from the body.
+ * worked out apart from the body. (Since 2026-10-04 a plane's cable carries you, not a
+ * balloon's rope: tests/pickup-plane.test.ts.)
  *
  * HOW GAMES DO IT, and what is guarded here, on the real model and the real bake:
  *   - THE BODY IS A PENDULUM ON ITS ANCHOR. Hanging is baked at every lean, turned about
  *     the hook between the shoulder blades, which stays put; the parachute at every lean,
- *     turned about the hands on the risers, which stay put -- so the rope and the lines
+ *     turned about the hands on the risers, which stay put -- so the cable and the lines
  *     always end on the body, however it swings;
  *   - THE LEGS LAG THE SWING, hanging nearer the vertical than the body, and stay
  *     straight (the first render of the swings folded every swung shin back at the knee);
  *   - hanging: arms out to the sides a little below level, feet well below the hips; the
  *     jolt: arms flung up, knees bent; the parachute: feet together; the flare: hands
  *     down at the chest, knees bent, feet forward;
- *   - A FLIGHT SWINGS LIKE A PENDULUM: trailing as the balloon speeds up, swinging ahead
- *     as it slows, thrown by the canopy's opening, dying away to land level; a short hop
- *     hardly swings while carried; the same on every phone;
+ *   - A FLIGHT SWINGS LIKE A PENDULUM: trailing further as the plane speeds up on a long
+ *     hop, swinging further ahead as it slows, thrown by the canopy's opening, dying away
+ *     to land level; a short hop hardly swings while carried; the same on every phone;
  *   - THE FRAMES FOLLOW THE FLIGHT AND BLEND, never a cut: every joint moves smoothly
  *     through whole flights, 5 ms at a time; and the shader blends the two rows it is given;
- *   - the rope runs from the hook to the balloon, the canopy's lines down to the hands.
+ *   - the cable runs from the plane to the hook, the canopy's lines down to the hands.
  *
  * Negative controls, run by hand and recorded in the commit:
  *   - legsStanding taken after the lean, as the first swings did -> "the legs stay
@@ -33,8 +34,8 @@
  *     "the hands stay on the risers" fail;
  *   - RISER back at 2.0 -> "the hands stay on the risers" fails;
  *   - rigRows showing `to` from half way instead of blending -> "never a cut" fails;
- *   - swingOf without the balloon's push -> "trails as the balloon speeds up" fails;
- *   - the rope drawn from the body's origin -> "the rope runs from the hook" fails.
+ *   - swingOf without the plane's push -> "trails further as the plane speeds up" fails;
+ *   - the cable drawn to the body's origin -> "the cable runs from the plane to the hook" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -42,7 +43,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import type * as Gpu from '../src/features/world/crowd-gpu';
 import {
-  BALLOON_R, BODY_K, CANOPY_ABOVE, CHUTE_MS, HOOK, INFLATE_MS, LEAN_MAX, RISER, ROPE, SETTLE_MS, YANK_MS,
+  BODY_K, CABLE, CANOPY_ABOVE, CHUTE_MS, HOOK, LEAN_MAX, RISER, SETTLE_MS, T_CARRY, T_HOOK,
   carryMs, flightAt, flightMs, type Flight, type FlightPose,
 } from '../src/features/world/flight';
 import { buildRigs } from '../src/features/world/rig-mesh';
@@ -229,19 +230,25 @@ describe('under the parachute', () => {
 
 describe('a flight swings like a pendulum', () => {
   const along = (d: number): Flight => ({ fx: 0, fz: 0, tx: d, tz: 0 });
-  const carry = (f: Flight) => [INFLATE_MS + YANK_MS, INFLATE_MS + YANK_MS + carryMs(f)] as const;
+  const carry = (f: Flight) => [T_CARRY, T_CARRY + carryMs(f)] as const;
   const leans = (f: Flight, from: number, to: number) => {
     const out: number[] = [];
     for (let ms = from; ms <= to; ms += 5) out.push(flightAt(f, ms).lean);
     return out;
   };
 
-  it('trails as the balloon speeds up, and swings ahead as it slows', () => {
-    for (const d of [30, 80]) {
+  it('trails further as the plane speeds up on a long hop, and swings further ahead as it slows', () => {
+    // Every carry starts trailing a little and swings on its own; what the plane's speeding
+    // up and slowing down add is the difference from a hop it hardly speeds up for.
+    const swing = (d: number) => {
       const f = along(d);
       const [a, b] = carry(f);
-      expect(Math.max(...leans(f, a, (a + b) / 2)), `${d} units: no trailing`).toBeGreaterThan(0.2);
-      expect(Math.min(...leans(f, (a + b) / 2, b)), `${d} units: no swing ahead`).toBeLessThan(-0.1);
+      return { back: Math.max(...leans(f, a, (a + b) / 2)), ahead: Math.min(...leans(f, (a + b) / 2, b)) };
+    };
+    const calm = swing(13);
+    for (const d of [30, 80]) {
+      expect(swing(d).back, `${d} units: no more trailing than a short hop`).toBeGreaterThan(calm.back + 0.1);
+      expect(swing(d).ahead, `${d} units: no more swing ahead than a short hop`).toBeLessThan(calm.ahead - 0.1);
     }
   });
 
@@ -253,7 +260,7 @@ describe('a flight swings like a pendulum', () => {
 
   it('the canopy\'s opening throws the feet forward, the swing dies away, and they land level', () => {
     // A hop short enough to arrive hanging still: whatever swing there is, the opening made.
-    for (const d of [2, 13]) {
+    for (const d of [2, 4]) {
       const f = along(d);
       const open = carry(f)[1];
       expect(Math.abs(flightAt(f, open).lean)).toBeLessThan(0.05);
@@ -290,7 +297,7 @@ describe('where the anchors are', () => {
   const turned = (a: { y: number; z: number }, h: number) => [Math.sin(h) * a.z, a.y, Math.cos(h) * a.z];
 
   it('the hook behind the back while hanging, the hands in front under the canopy, as the body faces', () => {
-    for (let ms = INFLATE_MS + 10; ms < flightMs(hop) - SETTLE_MS; ms += 20) {
+    for (let ms = 10; ms < flightMs(hop) - SETTLE_MS; ms += 20) {
       const p = flightAt(hop, ms);
       const want = turned(p.phase === 'chute' ? RISER : HOOK, p.heading);
       off(p).forEach((v, i) => expect(v, `${p.phase} at ${ms} ms`).toBeCloseTo(want[i]!, 9));
@@ -299,13 +306,14 @@ describe('where the anchors are', () => {
     expect(RISER.z).toBeGreaterThan(0);
   });
 
-  it('carried, the hook hangs a rope\'s length below the balloon, along the swing', () => {
-    const [a, b] = [INFLATE_MS + YANK_MS, INFLATE_MS + YANK_MS + carryMs(hop)];
+  it('carried, the hook hangs a cable\'s length below the plane, along the swing', () => {
+    const [a, b] = [T_CARRY, T_CARRY + carryMs(hop)];
     for (let ms = a; ms < b; ms += 20) {
       const p = flightAt(hop, ms);
-      const r = new THREE.Vector3(p.balloon!.x - p.anchor.x, p.balloon!.y - p.anchor.y, p.balloon!.z - p.anchor.z);
-      expect(r.length()).toBeCloseTo(ROPE + BALLOON_R, 9);
-      expect(r.x * Math.sin(p.heading) + r.z * Math.cos(p.heading)).toBeCloseTo(Math.sin(p.lean) * (ROPE + BALLOON_R), 9);
+      const r = new THREE.Vector3(p.plane!.x - p.anchor.x, p.plane!.y - p.anchor.y, p.plane!.z - p.anchor.z);
+      expect(r.length()).toBeCloseTo(CABLE, 9);
+      expect(r.x * Math.sin(p.heading) + r.z * Math.cos(p.heading)).toBeCloseTo(Math.sin(p.lean) * CABLE, 9);
+      expect(p.cable).toMatchObject({ x: p.anchor.x, y: p.anchor.y, z: p.anchor.z });
     }
   });
 
@@ -325,10 +333,11 @@ describe('the frames follow the flight', () => {
   const hop: Flight = { fx: 0, fz: 0, tx: 12, tz: 5 };
   const poseAt = (ms: number) => gpu.poseOf({ state: 'idle', rig: flightAt(hop, ms) });
 
-  it('standing as the balloon rises, the pickup\'s frames from the jolt to the last of the flare, standing once down', () => {
+  it('standing as the plane comes and its cable drops, the pickup\'s frames from the jolt to the last of the flare, standing once down', () => {
     expect(poseAt(100)).toBe(gpu.POSE.stand);
-    expect(poseAt(INFLATE_MS + 30)).toBe(gpu.POSE.rig);
-    expect(poseAt(INFLATE_MS + YANK_MS + 100)).toBe(gpu.POSE.rig);
+    expect(poseAt(T_HOOK - 30)).toBe(gpu.POSE.stand);
+    expect(poseAt(T_HOOK + 30)).toBe(gpu.POSE.rig);
+    expect(poseAt(T_CARRY + 100)).toBe(gpu.POSE.rig);
     expect(poseAt(flightMs(hop) - SETTLE_MS - CHUTE_MS / 2)).toBe(gpu.POSE.rig);
     expect(poseAt(flightMs(hop) - SETTLE_MS / 2)).toBe(gpu.POSE.rig);
     expect(poseAt(flightMs(hop) + 10)).toBe(gpu.POSE.stand);
@@ -390,28 +399,33 @@ describe('the gear hangs on the body', () => {
     const rigs = buildRigs('#d94a3a');
     rigs.update([{ x: rig.x, z: rig.z, facing: rig.heading, lift: rig.y, rig }], 1);
     // Built in this order, a rig at a time.
-    const [balloon, rope, chute, lines] = rigs.group.children as [THREE.Mesh, THREE.Mesh, THREE.Mesh, THREE.LineSegments];
-    return { balloon, rope, chute, lines };
+    const [plane, cable, weight, chute, lines] = rigs.group.children as [THREE.Group, THREE.Mesh, THREE.Mesh, THREE.Mesh, THREE.LineSegments];
+    return { plane, cable, weight, chute, lines };
+  };
+  /** The middle of the cable's ribbon at point `i` of its length (the ribbon is two corners a point). */
+  const along = (cable: THREE.Mesh, i: number) => {
+    const pos = cable.geometry.getAttribute('position');
+    const k = i < 0 ? pos.count / 2 + i : i;
+    return new THREE.Vector3().fromBufferAttribute(pos, k * 2).add(new THREE.Vector3().fromBufferAttribute(pos, k * 2 + 1)).multiplyScalar(0.5);
   };
 
-  it('the rope runs from the hook on the back to the bottom of the balloon', () => {
-    // Far enough to swing well out under the balloon, and not along an axis.
+  it('the cable runs from the plane to the hook on the back', () => {
+    // Far enough to swing well out under the plane, and not along an axis.
     const far: Flight = { fx: 0, fz: 0, tx: 24, tz: -18 };
-    const p = flightAt(far, INFLATE_MS + YANK_MS + carryMs(far) * 0.45);
+    const p = flightAt(far, T_CARRY + carryMs(far) * 0.45);
     expect(Math.abs(p.lean)).toBeGreaterThan(0.15);
-    const { rope, chute } = draw(p);
-    expect(rope.visible).toBe(true);
+    const { plane, cable, weight, chute } = draw(p);
+    expect(plane.visible && cable.visible).toBe(true);
+    expect(weight.visible, 'a weight on the end of a cable that has you').toBe(false);
     expect(chute.visible).toBe(false);
-    expect(rope.position.distanceTo(new THREE.Vector3(p.anchor.x, p.anchor.y, p.anchor.z))).toBeLessThan(1e-6);
-    const top = new THREE.Vector3(0, rope.scale.y, 0).applyQuaternion(rope.quaternion).add(rope.position);
-    const b = p.balloon!;
-    expect(top.distanceTo(new THREE.Vector3(b.x, b.y - BALLOON_R * b.size * 1.1, b.z))).toBeLessThan(1e-6);
+    expect(along(cable, 0).distanceTo(new THREE.Vector3(p.plane!.x, p.plane!.y, p.plane!.z))).toBeLessThan(1e-6);
+    expect(along(cable, -1).distanceTo(new THREE.Vector3(p.anchor.x, p.anchor.y, p.anchor.z))).toBeLessThan(1e-6);
   });
 
   it('the canopy rides over the hands, its lines down to them', () => {
     const p = flightAt(hop, flightMs(hop) - SETTLE_MS - CHUTE_MS / 2);
-    const { rope, chute, lines } = draw(p);
-    expect(rope.visible).toBe(false);
+    const { cable, chute, lines } = draw(p);
+    expect(cable.visible).toBe(false);
     expect(chute.visible).toBe(true);
     expect(chute.position.x).toBeCloseTo(p.anchor.x, 9);
     expect(chute.position.z).toBeCloseTo(p.anchor.z, 9);

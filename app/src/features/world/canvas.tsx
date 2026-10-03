@@ -57,6 +57,7 @@ import { buildMap } from './map-mesh';
 import type { SimAgent, WorldSim } from './sim';
 import { Viewport, nearestFirst, pickAlong, visible } from './visible';
 import { buildRigs } from './rig-mesh';
+import { flightShot } from './flight';
 import { BIKE_PACE } from './bike';
 import { buildBike } from './bike-mesh';
 import { buildScale } from './character';
@@ -830,7 +831,7 @@ function Town({
   // the camera, plain stand-ins further out (venue-mesh.ts). If the bundle ever fails,
   // terrain and people remain usable; only the benches, lamps and bins are absent.
   const furnitureHolder = useMemo(() => new THREE.Group(), []);
-  // The emergency pickup's gear (rig-mesh.ts): balloons, ropes, and parachutes striped
+  // The emergency pickup's gear (rig-mesh.ts): planes, cables, and parachutes striped
   // in the accent colour.
   const rigs = useMemo(() => buildRigs(colors.accent), [colors.accent]);
   useEffect(() => () => rigs.dispose(), [rigs]);
@@ -1223,6 +1224,15 @@ function Town({
         ax, az, cam.yaw, back,
         mix(riseFor(back), bench?.rise) + lift, mix(aimFor(back), bench?.aim), mix(WALK_EYE, bench?.lookY) + lift,
       );
+      // YOUR OWN PICKUP: the camera backs off and tips up, so the plane, its cable and you
+      // are all in the picture (flight.ts flightShot), eased in from this one and out again.
+      const shot = flying && you.fly ? flightShot(you.fly.f, you.fly.ms) : null;
+      if (shot && shot.w > 0) {
+        for (let k = 0; k < 3; k++) {
+          eye[k] = eye[k]! + (shot.eye[k]! - eye[k]!) * shot.w;
+          look[k] = look[k]! + (shot.look[k]! - look[k]!) * shot.w;
+        }
+      }
       camera.position.set(eye[0], eye[1], eye[2]);
       camera.lookAt(look[0], look[1], look[2]);
       focus.set(look[0], 0, look[2]);
@@ -1296,8 +1306,15 @@ function Town({
       crowdFrame.dt = clamped;
       crowdFrame.scale = PERSON;
       bodied.current = bodies.update(shown, used, crowdFrame);
-      // Whoever of them is flying: their balloon, rope or parachute (flight.ts).
-      if (walking) rigs.update(shown, bodied.current);
+      // Whoever of them is flying: the plane, its cable or their parachute (flight.ts). The
+      // cable is a hairline however far off: how much of the world a screen point covers.
+      if (walking) {
+        rigs.update(shown, bodied.current, {
+          eye: [camera.position.x, camera.position.y, camera.position.z],
+          unitsPerDp: (2 * Math.tan((WALK_FOV * Math.PI) / 360)) / Math.max(1, size.height),
+          time: t,
+        });
+      }
       // A bicycle under each rider the crowd drew, nearest first, at the rider's own build.
       let nb = 0;
       for (let i = 0; walking && i < bodied.current && nb < BIKES_DRAWN; i++) {
