@@ -43,6 +43,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneRig } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { HARD_HAT, lookKey, type Look } from '@clone/shared';
 import { BIKE, RIDE_FRAMES, WRIST_ON_GRIP, ankleOn } from './bike';
+import { BODY_K, HOOK, LEAN_MAX, RISER, type Act, type FlightPose } from './flight';
 import {
   EXTRA_OWN_COLOUR, FITTED_HAIR, HAT_INSIDE, HEAD_BIND, LOOKS, SCALP, SKULL_MIDDLE, buildScale, coloursOf, hardHatSet, partsOf, roleOf,
   type ExtraKind, type LookKey, type LookPieces, type Role,
@@ -135,9 +136,11 @@ export interface Bake {
   sit: { row: number; frames: number };
   /** One turn of the cranks on a bicycle (ridePose); the first frame is the still one. */
   ride: { row: number; frames: number };
-  /** Hanging from the pickup's rope, kicking (hangPose), and under the parachute (chutePose). */
+  /** The pickup (flight.ts): hanging at each lean (hangPose), the jolt, the parachute at each lean, the flare. */
   hang: { row: number; frames: number };
+  jolt: { row: number; frames: number };
   chute: { row: number; frames: number };
+  flare: { row: number; frames: number };
 }
 
 /**
@@ -299,10 +302,22 @@ export function ridePose(root: THREE.Object3D, bone: (name: string) => THREE.Bon
   root.updateMatrixWorld(true);
 }
 
-/** A turn of the kicking legs and waving arms under the balloon, in frames (0.8 s at BAKE_FPS). */
-export const HANG_FRAMES = 48;
-/** A sway under the parachute, in frames (1.2 s). */
-export const CHUTE_FRAMES = 72;
+/**
+ * THE PICKUP'S POSES (flight.ts), baked like sitting and cycling from the idle's first
+ * frame, by aiming the limbs. Hanging and the parachute are each baked at HANG_LEANS /
+ * CHUTE_LEANS angles of swing across +-LEAN_MAX, turned about their anchor -- the hook
+ * between the shoulder blades, the hands on the risers -- so a body swings by picking the
+ * frames for its lean and blending the two nearest (rigRows), as GPU crowds blend baked
+ * frames. The jolt of being snatched up and the flare before touchdown are one frame each.
+ */
+export const HANG_LEANS = 15;
+export const CHUTE_LEANS = 15;
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+/** The anchors in the model's own units (flight.ts HOOK and RISER are in the world's). */
+const PIVOT_HOOK = new THREE.Vector3(0, HOOK.y / BODY_K, HOOK.z / BODY_K);
+const PIVOT_RISER = new THREE.Vector3(0, RISER.y / BODY_K, RISER.z / BODY_K);
+/** The lean a baked frame of `frames` stands for. */
+export const leanOfFrame = (f: number, frames: number): number => -LEAN_MAX + (2 * LEAN_MAX * f) / (frames - 1);
 
 /** Square the hips to the front (the idle frame has them turned 27 degrees), the rest as it faced. */
 function squareHips(root: THREE.Object3D, bone: (name: string) => THREE.Bone): void {
@@ -315,94 +330,168 @@ function squareHips(root: THREE.Object3D, bone: (name: string) => THREE.Bone): v
   root.updateMatrixWorld(true);
 }
 
+/** The whole body (all but the feet, which hang off the root) turned by `lean` about `pivot`: + tips the top forward. */
+function leanAbout(root: THREE.Object3D, bone: (name: string) => THREE.Bone, pivot: THREE.Vector3, lean: number): void {
+  const body = bone('Body');
+  const q = new THREE.Quaternion().setFromAxisAngle(X_AXIS, lean);
+  const moved = body.getWorldPosition(new THREE.Vector3()).sub(pivot).applyQuaternion(q).add(pivot);
+  body.position.copy(body.parent!.worldToLocal(moved));
+  body.updateMatrixWorld(true);
+  turnBone(body, q);
+  root.updateMatrixWorld(true);
+}
+
+/** Where a limb reaches: along a direction from its root joint at a share of its length, or to a point. */
+type Reach = { dir: THREE.Vector3; reach: number; pole: THREE.Vector3 } | { to: THREE.Vector3; pole: THREE.Vector3 };
+
 /**
- * The arms and legs to where `arm` and `leg` say, for each side (L is +x): each wrist and
- * each ankle reached for along a direction from its shoulder or hip, at a share of the
- * limb's length, the elbows and knees bending towards their poles; the feet, which in
- * this rig hang off the root, moved to the ankles and pointed `toes` down.
+ * Each shin's own end (the ankle) in the shin's frame, and each leg's length, taken
+ * STANDING -- before anything moves. The feet hang off the root in this rig, not off the
+ * shins, so once the body has been turned a foot is no guide to where its ankle is: taken
+ * after, every swung frame folded its shins back at the knee (the first render of the
+ * swings, 2026-10-03).
+ */
+interface Legs { end: Record<'L' | 'R', THREE.Vector3>; length: Record<'L' | 'R', number> }
+function legsStanding(root: THREE.Object3D, bone: (name: string) => THREE.Bone): Legs {
+  root.updateMatrixWorld(true);
+  const at = (b: THREE.Bone) => b.getWorldPosition(new THREE.Vector3());
+  const end = {} as Legs['end'], length = {} as Legs['length'];
+  for (const s of ['L', 'R'] as const) {
+    const upper = bone(`UpperLeg${s}`), lower = bone(`LowerLeg${s}`), foot = bone(`Foot${s}`);
+    end[s] = lower.worldToLocal(at(foot));
+    length[s] = at(upper).distanceTo(at(lower)) + at(lower).distanceTo(at(foot));
+  }
+  return { end, length };
+}
+
+/**
+ * The arms and legs to where `arm` and `leg` say, for each side (L is +x): wrists and
+ * ankles reached for, elbows and knees bending towards their poles; the feet, which in
+ * this rig hang off the root, moved to the ankles and pointed `toes` down. `legs` is
+ * legsStanding, taken before the body moved.
  */
 function limbsTo(
-  root: THREE.Object3D, bone: (name: string) => THREE.Bone,
-  arm: (x: number) => { dir: THREE.Vector3; reach: number; pole: THREE.Vector3 },
-  leg: (x: number) => { dir: THREE.Vector3; reach: number; pole: THREE.Vector3 },
-  toes: number,
+  root: THREE.Object3D, bone: (name: string) => THREE.Bone, legs: Legs,
+  arm: (x: number, shoulder: THREE.Vector3) => Reach, leg: (x: number) => Reach, toes: number,
 ): void {
   const at = (b: THREE.Bone) => b.getWorldPosition(new THREE.Vector3());
+  const target = (r: Reach, from: THREE.Vector3, length: number) =>
+    ('to' in r ? r.to.clone() : from.clone().add(r.dir.clone().normalize().multiplyScalar(length * r.reach)));
   for (const s of ['L', 'R'] as const) {
     const x = s === 'L' ? 1 : -1;
     const upper = bone(`UpperArm${s}`), lower = bone(`LowerArm${s}`), wrist = bone(`Wrist${s}`);
     const end = lower.worldToLocal(at(wrist));
     const length = at(upper).distanceTo(at(lower)) + at(lower).distanceTo(at(wrist));
-    const a = arm(x);
-    reach(upper, lower, end, at(upper).add(a.dir.clone().normalize().multiplyScalar(length * a.reach)), a.pole);
+    const r = arm(x, at(upper));
+    reach(upper, lower, end, target(r, at(upper), length), r.pole);
   }
   root.updateMatrixWorld(true);
   for (const s of ['L', 'R'] as const) {
     const x = s === 'L' ? 1 : -1;
     const upper = bone(`UpperLeg${s}`), lower = bone(`LowerLeg${s}`), foot = bone(`Foot${s}`);
-    const end = lower.worldToLocal(at(foot));
-    const length = at(upper).distanceTo(at(lower)) + at(lower).distanceTo(at(foot));
-    const l = leg(x);
-    reach(upper, lower, end, at(upper).add(l.dir.clone().normalize().multiplyScalar(length * l.reach)), l.pole);
+    const end = legs.end[s];
+    const r = leg(x);
+    reach(upper, lower, end, target(r, at(upper), legs.length[s]), r.pole);
     foot.position.copy(foot.parent!.worldToLocal(lower.localToWorld(end.clone())));
     foot.updateMatrixWorld(true);
-    turnBone(foot, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), toes));
+    turnBone(foot, new THREE.Quaternion().setFromAxisAngle(X_AXIS, toes));
   }
   root.updateMatrixWorld(true);
 }
 
+/** Down, swung `a` radians about x the way a forward lean swings the feet (back). */
+const downSwung = (x: number, a: number) => new THREE.Vector3(x, -Math.cos(a), -Math.sin(a));
+
 /**
- * HANGING FROM THE PICKUP'S ROPE, `phase` of a turn round (0 to 1) -- the founder,
- * 2026-10-03: "the rope should be hooked to a person's back and you can give actions to
- * hands and legs (animate it) like he is being pulled and dropped". The pack has no such
- * clip, so like sitPose it is made from the idle's first frame:
- *   - pulled from the back, the body tips forward a little from the hook;
- *   - the arms flung out to the sides above the shoulders, flapping, a beat apart;
- *   - the legs dangling and kicking, one forward as the other goes back, knees bending
- *     on the way forward, toes pointing down.
+ * HANGING FROM THE HOOK at `lean`, as players hang from PUBG's pickup line: the body
+ * along the rope, the arms out to the sides a little below level, the legs straight down
+ * and a little apart, toes pointed. The legs hang nearer the vertical than the body
+ * (LEG_LAG of its lean) and the head stays nearer level: they lag the swing.
  */
-export function hangPose(root: THREE.Object3D, bone: (name: string) => THREE.Bone, phase: number): void {
-  root.updateMatrixWorld(true);
+const LEG_LAG = 0.45;
+export function hangPose(root: THREE.Object3D, bone: (name: string) => THREE.Bone, lean: number): void {
+  const legs = legsStanding(root, bone);
   squareHips(root, bone);
-  turnBone(bone('Body'), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.22));
-  turnBone(bone('Neck'), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.12));
+  leanAbout(root, bone, PIVOT_HOOK, lean);
+  turnBone(bone('Neck'), new THREE.Quaternion().setFromAxisAngle(X_AXIS, -0.5 * lean));
   root.updateMatrixWorld(true);
-  const turn = phase * Math.PI * 2;
-  limbsTo(root, bone,
-    (x) => {
-      const flap = Math.sin(turn + (x > 0 ? 0 : Math.PI / 2));
-      const up = 0.35 + 0.3 * flap;
-      return { dir: new THREE.Vector3(x * Math.cos(up), Math.sin(up), 0.12 + 0.1 * flap), reach: 0.94, pole: new THREE.Vector3(0, -1, -0.6) };
-    },
-    (x) => {
-      const kick = Math.sin(turn + (x > 0 ? 0 : Math.PI));
-      return {
-        dir: new THREE.Vector3(x * 0.2, -1, 0.42 * kick),
-        reach: 0.86 - 0.1 * Math.max(0, kick),
-        // Knees forward and a little out: straight forward, they met in the middle.
-        pole: new THREE.Vector3(x * 0.45, 0.3, 1),
-      };
-    },
-    0.75,
+  limbsTo(root, bone, legs,
+    (x) => ({ dir: new THREE.Vector3(x * Math.cos(-0.3), Math.sin(-0.3), 0.08), reach: 0.97, pole: new THREE.Vector3(0, -0.6, -1) }),
+    (x) => ({ dir: downSwung(x * 0.09, LEG_LAG * lean), reach: 0.97, pole: new THREE.Vector3(x * 0.25, 0.1, 1) }),
+    0.6,
+  );
+}
+
+/** THE JOLT: snatched off your feet, the arms fling up and the knees come up behind. */
+export function joltPose(root: THREE.Object3D, bone: (name: string) => THREE.Bone): void {
+  const legs = legsStanding(root, bone);
+  squareHips(root, bone);
+  leanAbout(root, bone, PIVOT_HOOK, -0.12);
+  limbsTo(root, bone, legs,
+    (x) => ({ dir: new THREE.Vector3(x * Math.cos(0.95), Math.sin(0.95), -0.12), reach: 0.96, pole: new THREE.Vector3(0, -1, -0.4) }),
+    (x) => ({ dir: new THREE.Vector3(x * 0.13, -0.78, -0.42), reach: 0.78, pole: new THREE.Vector3(x * 0.2, 0.2, 1) }),
+    0.9,
   );
 }
 
 /**
- * UNDER THE PARACHUTE, `phase` of a sway (0 to 1): both hands up on the lines above the
- * shoulders, elbows out; the legs together and hanging, swinging a little; toes down.
+ * UNDER THE CANOPY at `lean`, as a jumper flies one: both hands up on the toggles, just
+ * above the head; feet and knees together, hanging; the head down a little, watching the
+ * ground. The body swings about the hands; the legs lag it.
  */
-export function chutePose(root: THREE.Object3D, bone: (name: string) => THREE.Bone, phase: number): void {
-  root.updateMatrixWorld(true);
+export function chutePose(root: THREE.Object3D, bone: (name: string) => THREE.Bone, lean: number): void {
+  const legs = legsStanding(root, bone);
   squareHips(root, bone);
-  const turn = phase * Math.PI * 2;
-  turnBone(bone('Body'), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), 0.06 * Math.sin(turn)));
+  leanAbout(root, bone, PIVOT_RISER, lean);
+  turnBone(bone('Neck'), new THREE.Quaternion().setFromAxisAngle(X_AXIS, 0.15 - 0.4 * lean));
   root.updateMatrixWorld(true);
-  limbsTo(root, bone,
-    (x) => ({ dir: new THREE.Vector3(x * 0.42, 0.9, 0.06), reach: 0.86, pole: new THREE.Vector3(x, -0.2, -0.6) }),
-    (x) => ({ dir: new THREE.Vector3(-x * 0.03, -1, 0.1 * Math.sin(turn + (x > 0 ? 0 : 0.6))), reach: 0.93, pole: new THREE.Vector3(0, 0.2, 1) }),
+  limbsTo(root, bone, legs,
+    (x) => ({ to: PIVOT_RISER.clone().add(new THREE.Vector3(x * 0.11, 0, 0)), pole: new THREE.Vector3(x, -0.3, -0.4) }),
+    (x) => ({ dir: downSwung(-x * 0.025, 0.5 * lean), reach: 0.97, pole: new THREE.Vector3(0, 0.1, 1) }),
     0.55,
   );
 }
+
+/** THE FLARE before touchdown: toggles pulled down to the chest, knees bent, feet together and ready. */
+export function flarePose(root: THREE.Object3D, bone: (name: string) => THREE.Bone): void {
+  const legs = legsStanding(root, bone);
+  squareHips(root, bone);
+  limbsTo(root, bone, legs,
+    (x, shoulder) => ({ to: shoulder.clone().add(new THREE.Vector3(x * 0.02, -0.22, 0.26)), pole: new THREE.Vector3(x * 0.7, -0.4, -0.8) }),
+    (x) => ({ dir: new THREE.Vector3(-x * 0.02, -1, 0.22), reach: 0.88, pole: new THREE.Vector3(0, 0.1, 1) }),
+    0.35,
+  );
+}
+
+/** A frame of the bake: one row, or two blended (`w` of the way from `a` to `b`). */
+export interface RigRows { a: number; b: number; w: number }
+
+/**
+ * Which baked frames show a body mid flight, from what flight.ts says it is doing: the
+ * act it is in (its lean picking among the swing's frames, the nearest two blended), or
+ * two acts crossfading (the nearest frame of each). Never a cut.
+ */
+export function rigRows(p: Pick<FlightPose, 'act' | 'lean'>, bake: Pick<Bake, 'idle' | 'hang' | 'jolt' | 'chute' | 'flare'>): RigRows {
+  const rowOf = (act: Act): number => {
+    switch (act) {
+      case 'stand': return bake.idle.row;
+      case 'jolt': return bake.jolt.row;
+      case 'flare': return bake.flare.row;
+      case 'hang': return bake.hang.row + leanIndex(p.lean, bake.hang.frames);
+      case 'chute': return bake.chute.row + leanIndex(p.lean, bake.chute.frames);
+    }
+  };
+  const { from, to, w } = p.act;
+  if (from === to || w <= 0.001 || w >= 0.999) {
+    const r = rowOf(w >= 0.999 ? to : from);
+    const a = Math.floor(r);
+    const frac = r - a;
+    return frac < 1e-4 ? { a, b: a, w: 0 } : { a, b: a + 1, w: frac };
+  }
+  return { a: Math.round(rowOf(from)), b: Math.round(rowOf(to)), w };
+}
+const leanIndex = (lean: number, frames: number): number =>
+  Math.min(1, Math.max(0, (lean + LEAN_MAX) / (2 * LEAN_MAX))) * (frames - 1);
 
 /**
  * Every bone's skinning matrix -- bone world matrix times its inverse bind matrix,
@@ -430,7 +519,7 @@ export function bakeClips(
   const w = framesOf(walk);
   const i = framesOf(idle);
   const width = bones.length * 4;
-  const rows = w + i + 1 + RIDE_FRAMES + HANG_FRAMES + CHUTE_FRAMES;
+  const rows = w + i + 1 + RIDE_FRAMES + HANG_LEANS + 1 + CHUTE_LEANS + 1;
   const data = new Float32Array(width * rows * 4);
   const mixer = new THREE.AnimationMixer(root);
   const m = new THREE.Matrix4();
@@ -477,25 +566,22 @@ export function bakeClips(
     ridePose(root, need, f / RIDE_FRAMES);
     write();
   }
-  // Hanging from the pickup's rope, and under the parachute (flight.ts).
-  for (let f = 0; f < HANG_FRAMES; f++) {
-    restore();
-    hangPose(root, need, f / HANG_FRAMES);
-    write();
-  }
-  for (let f = 0; f < CHUTE_FRAMES; f++) {
-    restore();
-    chutePose(root, need, f / CHUTE_FRAMES);
-    write();
-  }
+  // The pickup (flight.ts): hanging at each lean, the jolt, the parachute at each lean, the flare.
+  const hang = row;
+  for (let f = 0; f < HANG_LEANS; f++) { restore(); hangPose(root, need, leanOfFrame(f, HANG_LEANS)); write(); }
+  const jolt = row;
+  restore(); joltPose(root, need); write();
+  const chute = row;
+  for (let f = 0; f < CHUTE_LEANS; f++) { restore(); chutePose(root, need, leanOfFrame(f, CHUTE_LEANS)); write(); }
+  const flare = row;
+  restore(); flarePose(root, need); write();
   restore();
-  const hang = w + i + 1 + RIDE_FRAMES;
   return {
     data, width, rows,
     walk: { row: 0, frames: w }, idle: { row: w, frames: i }, sit: { row: w + i, frames: 1 },
     ride: { row: w + i + 1, frames: RIDE_FRAMES },
-    hang: { row: hang, frames: HANG_FRAMES },
-    chute: { row: hang + HANG_FRAMES, frames: CHUTE_FRAMES },
+    hang: { row: hang, frames: HANG_LEANS }, jolt: { row: jolt, frames: 1 },
+    chute: { row: chute, frames: CHUTE_LEANS }, flare: { row: flare, frames: 1 },
   };
 }
 
@@ -960,8 +1046,6 @@ uniform highp sampler2D uBake;
 uniform vec4 uClips;
 uniform float uSit;
 uniform vec2 uRide;
-uniform vec2 uHang;
-uniform vec2 uChute;
 uniform float uFps;
 uniform float uTime;
 uniform vec4 uHat[8];
@@ -1017,7 +1101,7 @@ else if (crowdRole < 8.5) crowdPaint = color * crowdUnpack(aCol2.z);
 else if (crowdRole < 9.5) crowdPaint = color * crowdUnpack(aCol2.w);
 else crowdPaint = color * crowdUnpack(aShape.w);
 vColor = vec4(crowdPaint, 1.0);
-// aAnim.w: 1 for see-through, plus twice the pose (POSE: 1 sit, 2 ride, 3 hang, 4 chute),
+// aAnim.w: 1 for see-through, plus twice the pose (POSE: 1 sit, 2 ride, 3 flight's own frames),
 // plus 16 for each hundredth of a unit off the ground (animFlags). Powers of two divide
 // exactly.
 float crowdFlags = mod(aAnim.w, 16.0);
@@ -1033,13 +1117,11 @@ int crowdIdleRow = int(uClips.z + mod(floor((uTime + aAnim.y) * uFps), uClips.w)
 // Riding: the cranks turn while they move and rest level while they stand.
 bool crowdSitting = abs(crowdKind - 1.0) < 0.5;
 bool crowdRiding = abs(crowdKind - 2.0) < 0.5;
-bool crowdHanging = abs(crowdKind - 3.0) < 0.5;
-bool crowdChute = abs(crowdKind - 4.0) < 0.5;
+// Mid flight (flight.ts): the two baked frames rigRows chose, in aAnim.x and aAnim.y, and
+// how far from the first to the second, in aAnim.z.
+bool crowdFlying = abs(crowdKind - 3.0) < 0.5;
 int crowdRideRow = int(uRide.x + (aAnim.z > 0.5 ? mod(floor((uTime + aAnim.x) * uFps), uRide.y) : 0.0));
-// Hanging from the pickup's rope, kicking; under the parachute, swaying (hangPose, chutePose).
-int crowdHangRow = int(uHang.x + mod(floor((uTime + aAnim.x) * uFps), uHang.y));
-int crowdChuteRow = int(uChute.x + mod(floor((uTime + aAnim.x) * uFps), uChute.y));
-mat4 crowdSkin = crowdHanging ? crowdPose(crowdHangRow) : crowdChute ? crowdPose(crowdChuteRow)
+mat4 crowdSkin = crowdFlying ? crowdPose(int(aAnim.x + 0.5)) * (1.0 - aAnim.z) + crowdPose(int(aAnim.y + 0.5)) * aAnim.z
   : crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))
   : aAnim.z > 0.995 ? crowdPose(crowdWalkRow) : aAnim.z < 0.005 ? crowdPose(crowdIdleRow)
   : crowdPose(crowdWalkRow) * aAnim.z + crowdPose(crowdIdleRow) * (1.0 - aAnim.z);
@@ -1109,8 +1191,8 @@ export interface CrowdPerson {
   readonly riding?: boolean;
   /** Off the ground, in world units: up in the sky drop (flight.ts). */
   readonly lift?: number;
-  /** Mid pickup: which part of it, for the pose (poseOf). */
-  readonly rig?: { readonly phase: string } | undefined;
+  /** Mid pickup: what the body is doing and how it swings (flight.ts), for the pose (poseOf, rigRows). */
+  readonly rig?: Pick<FlightPose, 'act' | 'lean'> | undefined;
 }
 
 /**
@@ -1122,7 +1204,7 @@ export const MAX_LIFT = 8;
  * What a body is doing, past walking and standing: on a bench, on a bicycle, hanging from
  * the pickup's rope, under the parachute (flight.ts). Each has its own frames in the bake.
  */
-export const POSE = { stand: 0, sit: 1, ride: 2, hang: 3, chute: 4 } as const;
+export const POSE = { stand: 0, sit: 1, ride: 2, rig: 3 } as const;
 export type PoseKind = (typeof POSE)[keyof typeof POSE];
 
 /**
@@ -1135,11 +1217,13 @@ export function animFlags(ghost: boolean, pose: PoseKind, lift = 0): number {
   return (ghost ? 1 : 0) + 2 * pose + 16 * up;
 }
 
-/** Which pose a person's body takes this frame: a flight's phase first, then a bike, then a bench. */
-export function poseOf(a: { riding?: boolean; state: string; rig?: { phase: string } | undefined }): PoseKind {
-  const phase = a.rig?.phase;
-  if (phase === 'yank' || phase === 'carry') return POSE.hang;
-  if (phase === 'chute') return POSE.chute;
+/**
+ * Which pose a person's body takes this frame: mid flight, the frames rigRows picks (unless
+ * the flight has them simply standing); then a bike; then a bench.
+ */
+export function poseOf(a: { riding?: boolean; state: string; rig?: Pick<FlightPose, 'act'> | undefined }): PoseKind {
+  const act = a.rig?.act;
+  if (act && !(act.from === 'stand' && (act.to === 'stand' || act.w <= 0.001))) return POSE.rig;
   if (a.riding) return POSE.ride;
   return a.state === 'sitting' ? POSE.sit : POSE.stand;
 }
@@ -1261,8 +1345,6 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
     uClips: { value: new THREE.Vector4(bake.walk.row, bake.walk.frames, bake.idle.row, bake.idle.frames) },
     uSit: { value: bake.sit.row },
     uRide: { value: new THREE.Vector2(bake.ride.row, bake.ride.frames) },
-    uHang: { value: new THREE.Vector2(bake.hang.row, bake.hang.frames) },
-    uChute: { value: new THREE.Vector2(bake.chute.row, bake.chute.frames) },
     uFps: { value: BAKE_FPS },
     uTime: { value: 0 },
     uHat: { value: hatUniform() },
@@ -1343,8 +1425,15 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
         const arr = l.buffer.array as Float32Array;
         const at = l.n * STRIDE;
         arr[at] = a.x; arr[at + 1] = a.z; arr[at + 2] = a.facing; arr[at + 3] = s;
-        arr[at + 4] = offset * walkDur; arr[at + 5] = offset * idleDur; arr[at + 6] = w;
-        arr[at + 7] = animFlags(a.ghost, poseOf(a), a.lift);
+        const pose = poseOf(a);
+        if (pose === POSE.rig && a.rig) {
+          // Mid flight: the two baked frames to show and how far between them (rigRows).
+          const rows = rigRows(a.rig, bake);
+          arr[at + 4] = rows.a; arr[at + 5] = rows.b; arr[at + 6] = rows.w;
+        } else {
+          arr[at + 4] = offset * walkDur; arr[at + 5] = offset * idleDur; arr[at + 6] = w;
+        }
+        arr[at + 7] = animFlags(a.ghost, pose, a.lift);
         arr.set(f, at + 8);
         l.n++;
         drawn++;

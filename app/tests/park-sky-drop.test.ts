@@ -96,8 +96,8 @@ describe('the pickup', () => {
     for (const d of [1, 5, 30, 150]) {
       const ms = flightMs({ fx: 0, fz: 0, tx: d, tz: 0 });
       expect(ms, `${d} units`).toBeLessThanOrEqual(INFLATE_MS + YANK_MS + CARRY_MAX_MS + CHUTE_MS + SETTLE_MS);
-      expect(ms, `${d} units`).toBeLessThanOrEqual(3_400);
-      expect(ms, `${d} units`).toBeGreaterThanOrEqual(2_500);
+      expect(ms, `${d} units`).toBeLessThanOrEqual(3_500);
+      expect(ms, `${d} units`).toBeGreaterThanOrEqual(2_800);
     }
   });
 });
@@ -229,7 +229,7 @@ describe('flying, seen from another phone', () => {
 
 describe('drawing the flight', () => {
   it('carries the lift in aAnim.w above the flags, which read the same', () => {
-    for (const pose of [POSE.stand, POSE.sit, POSE.ride, POSE.hang, POSE.chute]) {
+    for (const pose of [POSE.stand, POSE.sit, POSE.ride, POSE.rig]) {
       const w = animFlags(false, pose, 4.73);
       expect(w % 16).toBe(animFlags(false, pose));
       expect(Math.floor(w / 16) / 100).toBeCloseTo(4.73, 5);
@@ -246,7 +246,7 @@ describe('drawing the flight', () => {
     const canvas = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8'));
     expect(canvas).not.toMatch(/buildCar|rideAt|car-mesh|effectsNow|buildEffects/);
     expect(canvas).toContain('if (walking) rigs.update(shown, bodied.current);');
-    expect(crowd).toContain('arr[at + 7] = animFlags(a.ghost, poseOf(a), a.lift);');
+    expect(crowd).toContain('arr[at + 7] = animFlags(a.ghost, pose, a.lift);');
     expect(canvas).toContain('<primitive object={rigs.group} />');
   });
 });

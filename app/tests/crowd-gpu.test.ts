@@ -77,7 +77,7 @@ describe('the baked animation', () => {
     const names = sample.skeleton.bones.map((b) => b.name);
     const bake = gpu.bakeClips(gltf.scene, names, sample.skeleton.boneInverses,
       new Map(gltf.animations.map((c) => [c.name, c])));
-    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames + bake.ride.frames + bake.hang.frames + bake.chute.frames);
+    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames + bake.ride.frames + bake.hang.frames + bake.jolt.frames + bake.chute.frames + bake.flare.frames);
 
     // three's own answer: the same clip on the model's own skeleton, at the same time.
     const mixer = new THREE.AnimationMixer(gltf.scene);

@@ -74,7 +74,7 @@ function skinnedPoints(name: string, row: number): { p: THREE.Vector3; bone: str
 describe('a rider on a bicycle', () => {
   it('has a turn of the cranks baked, the first frame the still one', () => {
     expect(bake.ride.frames).toBe(RIDE_FRAMES);
-    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames + bake.ride.frames + bake.hang.frames + bake.chute.frames);
+    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames + bake.ride.frames + bake.hang.frames + bake.jolt.frames + bake.chute.frames + bake.flare.frames);
     const a = joint('FootL', bake.ride.row), b = joint('FootL', bake.ride.row + RIDE_FRAMES / 2);
     expect(a.distanceTo(b), 'the cranks do not turn').toBeGreaterThan(BIKE.crank);
   });

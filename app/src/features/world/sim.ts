@@ -749,7 +749,7 @@ export class WorldSim {
     const a = this.byRef.get(ref);
     if (!a || a.fly) return false;
     a.x = x; a.z = z; a.tx = x; a.tz = z;
-    a.fly = { f: { fx: x, fz: z, tx: x, tz: z, kind: 'drop' }, ms: 0 };
+    a.fly = { f: { fx: x, fz: z, tx: x, tz: z, kind: 'drop', facing: a.facing }, ms: 0 };
     this.flyStep(a, 0);
     return true;
   }
@@ -762,7 +762,7 @@ export class WorldSim {
     const a = this.byRef.get(ref);
     if (!a || a.fly?.f.kind === 'away') return false;
     a.seat = undefined;
-    a.fly = { f: { fx: a.x, fz: a.z, tx: a.x, tz: a.z, kind: 'away' }, ms: 0, done: () => this.remove(ref) };
+    a.fly = { f: { fx: a.x, fz: a.z, tx: a.x, tz: a.z, kind: 'away', facing: a.facing }, ms: 0, done: () => this.remove(ref) };
     this.flyStep(a, 0);
     return true;
   }

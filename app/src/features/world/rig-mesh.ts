@@ -4,34 +4,27 @@
  *
  * As PUBG draws it (the founder, 2026-10-03, with a screenshot of two players hanging
  * from a pickup's line high over the map): a pale balloon on a dark line, the person
- * hanging under it, and a striped canopy when they let go and come down.
+ * hanging from it by the back, and a striped canopy when they let go and come down.
+ *
+ * THE ROPE IS HOOKED TO THE BACK, between the shoulder blades (flight.ts HOOK) -- the
+ * point the body swings about while carried, so it stays put while the body swings and
+ * the rope never seems to run through them. THE CANOPY RIDES ABOVE THE HANDS on the
+ * risers (flight.ts RISER), its lines coming down to them.
  *
  * A fixed handful of rigs, built once and hidden when nobody is flying: a park has a
  * few people in the air at a time, not dozens, and nothing at all is drawn otherwise.
  */
 import * as THREE from 'three';
-import { BALLOON_R, HARNESS_Y, type FlightPose } from './flight';
+import { BALLOON_R, BODY_K, CANOPY_ABOVE, type FlightPose } from './flight';
 
 /** At most this many people's gear drawn at once; anybody past it flies bare. */
 export const RIGS = 8;
-/** The canopy: how wide when open, how high over the head, how tall the dome. */
+/** The canopy: how wide when open, and how tall the dome. */
 const CANOPY_R = 0.26;
-const CANOPY_UP = 0.46;
 const CANOPY_H = 0.11;
-/** The rope's thickness, and the shoulders the lines come down to. */
+/** The rope's thickness, and how far apart the hands hold the lines (flight.ts RISER). */
 const ROPE_R = 0.006;
-const SHOULDER = 0.035;
-/**
- * THE ROPE IS HOOKED TO THE BACK (the founder, 2026-10-03: "the rope should be hooked to
- * a person's back"): this far behind their middle, between the shoulder blades. It came
- * out of the middle of the chest, so it seemed to run through them.
- */
-export const BACK = 0.02;
-
-/** Where the rope ties on: between the shoulder blades of somebody at (x, y, z) facing `facing`. */
-export function hookOf(x: number, y: number, z: number, facing: number): [number, number, number] {
-  return [x - Math.sin(facing) * BACK, y + HARNESS_Y, z - Math.cos(facing) * BACK];
-}
+const HANDS = 0.11 * BODY_K;
 
 export interface Rigged {
   readonly x: number;
@@ -70,7 +63,7 @@ export function buildRigs(chuteColor: string): BuiltRigs {
   group.name = 'pickup-rigs';
   const balloonGeo = new THREE.SphereGeometry(1, 18, 12);
   const ropeGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
-  ropeGeo.translate(0, 0.5, 0); // from its foot up, so it can be stood on the harness
+  ropeGeo.translate(0, 0.5, 0); // from its foot up, so it can be stood on the hook
   const canopyGeo = canopy(chuteColor);
   const ropeMat = new THREE.MeshBasicMaterial({ color: '#3d3d3d' });
   const canopyMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
@@ -100,12 +93,11 @@ export function buildRigs(chuteColor: string): BuiltRigs {
     update(people, count) {
       let n = 0;
       for (let i = 0; i < count && n < RIGS; i++) {
-        const p = people[i]!;
-        const rig = p.rig;
+        const rig = people[i]!.rig;
         if (!rig || (!rig.balloon && rig.chute <= 0)) continue;
         const r = rigs[n++]!;
-        const y = p.lift ?? 0;
         const b = rig.balloon;
+        const hook = rig.anchor;
         // The balloon, a little taller than it is wide.
         r.balloon.visible = !!b && b.alpha > 0.01;
         if (b) {
@@ -116,28 +108,30 @@ export function buildRigs(chuteColor: string): BuiltRigs {
         // The rope, from the hook on their back to the bottom of the balloon.
         r.rope.visible = rig.roped && !!b;
         if (rig.roped && b) {
-          const [hx, hy, hz] = hookOf(p.x, y, p.z, p.facing);
-          dir.set(b.x - hx, b.y - BALLOON_R * b.size * 1.1 - hy, b.z - hz);
+          dir.set(b.x - hook.x, b.y - BALLOON_R * b.size * 1.1 - hook.y, b.z - hook.z);
           const len = dir.length();
-          r.rope.position.set(hx, hy, hz);
+          r.rope.position.set(hook.x, hook.y, hook.z);
           r.rope.quaternion.setFromUnitVectors(up, len > 1e-6 ? dir.divideScalar(len) : up);
           r.rope.scale.set(ROPE_R, len, ROPE_R);
         }
-        // The parachute, opening wide from a furled column, and its four lines down.
+        // The canopy over the hands, opening wide from a furled column, its lines down to them.
         const open = Math.min(1, Math.max(0, rig.chute));
         r.chute.visible = open > 0.01;
         r.lines.visible = open > 0.01;
         if (open > 0.01) {
-          const top = y + CANOPY_UP;
+          const top = hook.y + CANOPY_ABOVE;
           const w = CANOPY_R * (0.25 + 0.75 * open);
-          r.chute.position.set(p.x, top - CANOPY_H * 0.5, p.z);
+          r.chute.position.set(hook.x, top - CANOPY_H * 0.5, hook.z);
           r.chute.scale.set(w, CANOPY_H, w);
           const arr = r.linesGeo.getAttribute('position').array as Float32Array;
           const rim = top - CANOPY_H * 0.45;
+          // Across the body, which way is left: the hands are either side of the anchor.
+          const sx = Math.cos(rig.heading), sz = -Math.sin(rig.heading);
           for (let k = 0; k < 4; k++) {
             const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
-            arr.set([p.x + Math.cos(a) * w, rim, p.z + Math.sin(a) * w,
-              p.x + Math.cos(a) * SHOULDER, y + HARNESS_Y, p.z + Math.sin(a) * SHOULDER], k * 6);
+            const side = Math.cos(a) * sx + Math.sin(a) * sz > 0 ? 1 : -1;
+            arr.set([hook.x + Math.cos(a) * w, rim, hook.z + Math.sin(a) * w,
+              hook.x + sx * HANDS * side, hook.y, hook.z + sz * HANDS * side], k * 6);
           }
           r.linesGeo.getAttribute('position').needsUpdate = true;
         }
