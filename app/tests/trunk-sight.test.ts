@@ -92,7 +92,7 @@ describe('the trunks between the lens and you', () => {
   it('is set every walking frame, to the middle of you, cut near the lens while flying, and cleared off the street', () => {
     const c = src('features', 'world', 'canvas.tsx');
     expect(c).toContain('garden.sightLine(eye, [you.x, lift + SIGHT_MIDDLE, you.z], flying ? FLIGHT_CLEAR : 0);');
-    expect(c).toMatch(/const FLIGHT_CLEAR = 1\.4;/);
+    expect(c).toMatch(/const FLIGHT_CLEAR = 2\.6;/);
     expect(c).toMatch(/\} else \{\s*garden\.sightLine\(null\);/);
   });
 });

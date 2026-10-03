@@ -755,8 +755,13 @@ const SIGHT_MARK_Y = 2.5;
  * ground the mist had already painted over.
  */
 const WALK_FAR = VIEW + 6;
-/** Flying, how near the lens a treetop or a trunk is cut away (garden-mesh.ts seeThroughTrees). */
-const FLIGHT_CLEAR = 1.4;
+/**
+ * Flying, how near the lens a treetop or a trunk is cut away (garden-mesh.ts
+ * seeThroughTrees): a whole canopy, three blobs about two and a half units across. At
+ * 1.4 the far half of one the camera came down beside was still drawn on the Pixel, a
+ * pale green ghost over a fifth of a second.
+ */
+const FLIGHT_CLEAR = 2.6;
 /**
  * How big a bubble around somebody counts as "on screen".
  *
