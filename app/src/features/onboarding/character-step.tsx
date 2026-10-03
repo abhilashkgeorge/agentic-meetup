@@ -6,7 +6,7 @@
  * unsaved person a free one from a seed, so skipping leaves a character, not a hole.
  * No Header here -- the onboarding stack draws its own.
  */
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { Text, View } from 'react-native';
 import { useSession } from '../../store/session';
@@ -20,7 +20,9 @@ export default function CharacterStep() {
   const token = useSession((s) => s.token);
   const load = useLook((s) => s.load);
   useEffect(() => { if (token) void load(token); }, [token, load]);
-  const next = () => router.replace('/onboarding/photos');
+  // Opened from the setup chat: back to the chat, which goes on to the photos itself.
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const next = () => (from === 'chat' ? router.back() : router.replace('/onboarding/photos'));
 
   return (
     <Screen scroll topInset={false}>

@@ -8,12 +8,13 @@
  * never agreed to anything, so their half is dropped before anything crosses the
  * network.
  */
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { parseChatExport, type ParsedChat } from '@clone/shared';
 import { getImportPrompts, importChat, type ImportPrompts, type VoiceResult } from '../../lib/api';
 import { useSession } from '../../store/session';
+import { noteVoiceLearned } from './chat-return';
 import {
   Animation, Button, Card, Crease, Field, Loading, Orb, Screen, space, type, usePalette,
 } from '../../components/ui';
@@ -32,6 +33,10 @@ const FALLBACK = {
 export default function VoiceScreen() {
   const p = usePalette();
   const token = useSession((s) => s.token);
+  // Opened from the setup chat: back to it, after the note or a skip -- not on to the
+  // self-test, which the chat has already done.
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const fromChat = from === 'chat';
   const [guide, setGuide] = useState<ImportPrompts | null>(null);
   const [chat, setChat] = useState<ParsedChat | null>(null);
   const [text, setText] = useState('');
@@ -95,13 +100,16 @@ export default function VoiceScreen() {
     const r = await importChat(token, mine.slice(-2000));
     setBusy(null);
     if (!r) return setNote('Could not learn from that chat.');
+    if (fromChat) noteVoiceLearned();
     setChat(null);
     setResult(r);
-  }, [token, chat]);
+  }, [token, chat, fromChat]);
 
   if (result) {
     return (
-      <Screen topInset={false} footer={<Button label="Now test it" variant="primary" onPress={() => router.push('/onboarding/test')} />}>
+      <Screen topInset={false} footer={fromChat
+        ? <Button label="Back to the chat" variant="primary" onPress={() => router.back()} />
+        : <Button label="Now test it" variant="primary" onPress={() => router.push('/onboarding/test')} />}>
         <Text style={[type.display, { color: p.text }]}>That's you</Text>
         <Text style={[type.body, { color: p.textSecondary }]}>
           Read from {result.messagesUsed} of your messages.
@@ -156,7 +164,7 @@ export default function VoiceScreen() {
           <Button label={showPaste ? 'Hide the paste box' : 'Paste it instead'} variant="ghost"
                   onPress={() => setShowPaste((v) => !v)} />
           <Button label="Skip this for now" variant="ghost"
-                  onPress={() => router.push('/onboarding/test')} />
+                  onPress={() => (fromChat ? router.back() : router.push('/onboarding/test'))} />
         </>
       }
     >

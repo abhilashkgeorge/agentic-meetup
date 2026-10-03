@@ -203,8 +203,7 @@ export const CARD_PREDICATES = ['wants_children', 'monogamy_stance', 'smoking', 
  */
 export function setupRoute(missing: readonly string[]) {
   if (missing.includes('consent')) return '/consent' as const;
-  if (missing.some((m) => (CARD_PREDICATES as readonly string[]).includes(m))) {
-    return '/onboarding/interview' as const;
-  }
-  return '/onboarding/essentials' as const;
+  // EVERYTHING ELSE IN THE CHAT, since 2026-10-04 (setup-chat.tsx): with finish=1 it asks
+  // the cards still open, then only the essentials still missing, and goes back.
+  return '/onboarding' as const;
 }

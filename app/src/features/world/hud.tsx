@@ -23,6 +23,7 @@ import { MAX_VENUE_AGENTS, type Venue } from './venue';
 import { useLiveCount, useQuestsDone } from './park-hud';
 import { PARK_WHO_MEANS, parkWho } from './park-top';
 import { nudgeFor, townCounts } from './town-bar';
+import { clonePill } from '../knowledge/learned';
 import { useWorld } from './store';
 
 export function Hud({
@@ -31,6 +32,8 @@ export function Hud({
   onFinishSetup,
   onPeople,
   onAppearance,
+  onClone,
+  learned,
   said,
   band,
   size,
@@ -61,6 +64,9 @@ export function Hud({
   onPeople: () => void;
   /** What your agent looks for, and what others see about you -- before it goes out. */
   onAppearance: () => void;
+  /** Your clone's chat (TownBar's "Your clone"), and how many learned things wait there. */
+  onClone?: () => void;
+  learned?: number;
   /** How the last round went, said once. */
   said: string | null;
   /** The camera's zoom band; the neighbourhood names show at `city`. Null before the first frame. */
@@ -170,7 +176,8 @@ export function Hud({
       ) : !world ? null : (
         <TownBar title={title} inPool={!!world?.me.inPool} area={areaName(myArea)} here={here} band={band}
                  onPeople={onPeople} onHome={onHome} onCity={onCity} onEnterVenue={onEnterVenue}
-                 onAppearance={onAppearance} cityCrowd={cityCrowd} onCityCrowd={onCityCrowd} />
+                 onAppearance={onAppearance} onClone={onClone} learned={learned}
+                 cityCrowd={cityCrowd} onCityCrowd={onCityCrowd} />
       )}
 
       {/* The stick sits where a thumb already is, and takes the bottom of the screen
@@ -351,7 +358,7 @@ function EdgePill({ label, detail, glyph, onPress, active = false, accessibility
  *   - the line about your agent, one nudge and the counts moved to the bottom, beside the
  *     button they are about (the Hud's bottom column).
  */
-function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, onEnterVenue, onAppearance, cityCrowd, onCityCrowd }: {
+function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, onEnterVenue, onAppearance, onClone, learned, cityCrowd, onCityCrowd }: {
   title: string;
   inPool: boolean;
   /** Your part of town, by name. */
@@ -364,12 +371,16 @@ function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, on
   onCity: () => void;
   onEnterVenue: () => void;
   onAppearance: () => void;
+  /** Your clone's chat, and how many things it learned that wait for your say-so. */
+  onClone?: () => void;
+  learned?: number;
   cityCrowd: number;
   onCityCrowd?: () => void;
 }) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const wide = band === 'city';
+  const clone = clonePill(learned ?? 0);
   return (
     <View pointerEvents="box-none"
           style={{ position: 'absolute', top: insets.top + space.sm, left: space.screen, right: space.screen,
@@ -379,6 +390,14 @@ function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, on
         {inPool && (
           <EdgePill glyph="📍" label={area} detail={`· ${here} here`} onPress={onPeople}
                     accessibilityLabel={`${area}, ${here} agents here. Who they are`} />
+        )}
+        {/* YOUR CLONE, ALWAYS A TAP AWAY (the founder, 2026-10-04: "we need to have a chat
+            option in the town square to chat with my clone to keep it updated on things
+            happening around my life or changes needed in finding a partner"). Before, the
+            only way in was tapping your own agent on the map. */}
+        {onClone && (
+          <EdgePill glyph="💬" label={clone.label} detail={clone.detail} onPress={onClone}
+                    accessibilityLabel={`Talk to your clone${clone.detail ? `, ${learned} new ${learned === 1 ? 'thing' : 'things'} it learned` : ''}`} />
         )}
       </View>
       {inPool && (

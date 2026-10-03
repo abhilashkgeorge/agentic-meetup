@@ -46,6 +46,7 @@ const REFUSED: Record<string, string> = {
   not_ready: 'Your agent needs a few more answers before it can go out.',
 };
 import { CloneSheet } from './clone-sheet';
+import { useLearned } from '../knowledge/use-learned';
 import { Hud } from './hud';
 import { PeopleSheet } from './people-sheet';
 import { useParkPresence } from './park-presence';
@@ -349,6 +350,13 @@ function TownScreen() {
 
   const [selected, setSelected] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  /** What your clone learned that waits for your say-so: counted on the town's "Your clone". */
+  const learned = useLearned();
+  useFocusEffect(useCallback(() => { void learned.refresh(); }, [learned.refresh]));
+  // Read again when the chat closes, however it closes -- the Back key too: shared or kept
+  // in the chat, a thing still counted "1 new" on the town (the Pixel, 2026-10-04).
+  const refreshLearned = learned.refresh;
+  useEffect(() => { if (!chatOpen) void refreshLearned(); }, [chatOpen, refreshLearned]);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [liveSelected, setLiveSelected] = useState<string | null>(null);
   const [questsOpen, setQuestsOpen] = useState(false);
@@ -470,6 +478,7 @@ function TownScreen() {
       {!drawn && <TownLoading overlay />}
       <Hud world={world} said={said} onSendOut={() => void sendOut()} onPeople={() => setPeopleOpen(true)}
            onAppearance={() => router.push('/appearance')}
+           onClone={() => setChatOpen(true)} learned={learned.items.length}
            question={question} onQuestion={() => router.push('/question')}
            onFinishSetup={() => router.push({ pathname: setupRoute(world?.me.need ?? []), params: { finish: '1' } })}
            band={band} size={size} frame={frame}

@@ -15,7 +15,7 @@
  * well: six empty squares ask a question nobody knows the answer to, while "with
  * friends" and "caught off guard" are answerable without thinking.
  */
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { getMyPhotos, uploadPhoto, type Photo } from '../../lib/api';
@@ -99,7 +99,10 @@ export default function PhotosStep() {
     await load();
   };
 
+  // Opened from the setup chat: back to the chat, which ends setup itself.
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const finish = async (): Promise<void> => {
+    if (from === 'chat') { router.back(); return; }
     await setOnboarded();
     router.replace('/');
   };

@@ -20,17 +20,18 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") ([app/src/app/(tabs)/index.tsx:1] `export { default } from '../../features/world/world-screen';`,
-   [app/src/features/world/hud.tsx:214] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   [app/src/features/world/hud.tsx:221] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
    The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:316] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
-   is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
+   is there) sit top left, and under it "💬 Your clone" (since 2026-10-04; "· 2 new" when it has learned
+   things to ask about, stage 13); top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
    part of town?"), the line about the agent, and "40 people nearby · can go out today" -- or "out again
    tomorrow" once the day's round has met somebody (since 2026-10-03; before, it counted the visits to one
    person, "5 visits left today", under a button allowed once a day) -- counted as the refusal counts
    ([server/src/matching/rounds.ts:77] `export async function openRoundsToday(c: PoolClient, userId: string): Promise<number> {`). Before, up to
    eleven chips in a card covered the top half of the map
-   ([app/src/features/world/hud.tsx:354] `function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, onEnterVenue, onAppearance, cityCrowd, onCityCrowd }: {`,
+   ([app/src/features/world/hud.tsx:361] `function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, onEnterVenue, onAppearance, onClone, learned, cityCrowd, onCityCrowd }: {`,
    [app/src/features/world/town-bar.ts:14] `export function nudgeFor(`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
@@ -38,7 +39,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    [server/src/api/dating.ts:997] `await ensureSheet(ctx);`,
    [server/src/api/dating.ts:1040] `return c.json({ roundId: round.id, status: round.status }, 202);`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
-   heading out…" ([app/src/features/world/hud.tsx:146] `? 'Your agent is heading out…'`).
+   heading out…" ([app/src/features/world/hud.tsx:152] `? 'Your agent is heading out…'`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
    all of them ([server/src/matching/rounds.ts:172] `UPDATE rounds SET status = 'running', started_at = now()`).
@@ -46,11 +47,11 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
    start this ([server/src/matching/orchestrator.ts:284] `type: 'round.met', roundId: null, rendezvousId: pair.rendezvousId,`,
-   [app/src/features/world/hud.tsx:148] `Your agent is out — meeting ${talking} ${talking === 1 ? 'person' : 'people'}`,
+   [app/src/features/world/hud.tsx:154] `Your agent is out — meeting ${talking} ${talking === 1 ? 'person' : 'people'}`,
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   ([app/src/features/world/world-screen.tsx:322] `Your agent met ${r.met} people. See Matches.`,
+   ([app/src/features/world/world-screen.tsx:323] `Your agent met ${r.met} people. See Matches.`,
    [app/src/features/world/exchange-strip.tsx:83] `label="See the card" variant="primary" onPress={onSeeCard}`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).

@@ -126,7 +126,7 @@ The promises match: consent says "Your photos and first name reach a person only
 sharing your profile with them."; the photo screens say "Nobody sees these until you share your profile
 with them." and "Only people you share your profile with"
 ([app/src/features/consent/consent-screen.tsx:52] `'Your photos and first name reach a person only after you say yes to sharing your profile with them.',`,
-[app/src/features/onboarding/photos-step.tsx:184] `Nobody sees these until you share your profile with them. Your agent never does,`,
+[app/src/features/onboarding/photos-step.tsx:187] `Nobody sees these until you share your profile with them. Your agent never does,`,
 [app/src/features/photos/photos-screen.tsx:140] `<Card label="Only people you share your profile with">`).
 
 ### 9.4 What "no" does
@@ -160,7 +160,7 @@ Each moment that asks something of a person wakes their phone, whether or not th
 No name and no words anybody wrote ever go on the lock screen; a no wakes nobody
 ([server/src/push/index.ts:31] `turn: { title: 'Your agent met someone'`). The phone asks for
 permission when the person first sends their agent out, not at launch
-([app/src/features/world/world-screen.tsx:337] `void registerForPush(token, { ask: true });`), and a
+([app/src/features/world/world-screen.tsx:338] `void registerForPush(token, { ask: true });`), and a
 tap opens the card, their profile or the chat
 ([app/src/features/push/route.ts:14] `export function routeForPush(data: Record<string, unknown> | null | undefined): string | null {`).
 **Not yet reaching phones:** the app has no Expo project id yet and the server sends with

@@ -13,32 +13,43 @@
  *
  * Negative control, run 2026-09-23: remove the CARD_PREDICATES branch from setupRoute
  * -> every "goes to the interview" case fails, returning '/onboarding/essentials'.
+ *
+ * SINCE 2026-10-04 SETUP IS A CONVERSATION (setup-chat.tsx), and "Finish setup" opens it
+ * with finish=1 for a card and an essential alike: it starts at the questions -- the
+ * interview, which asks the cards -- and goes on to the essentials still missing. The
+ * stranding this file guards against is now guarded in the chat's stage order.
+ * Negative control, run 2026-10-04: firstStage(true) returning 'essentials' -> "asks the
+ * cards first" fails.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CARD_PREDICATES, missingLabel, setupRoute } from '../src/features/profile/fields';
+import { firstStage, stageAfter } from '../src/features/onboarding/setup-script';
 
 describe('setupRoute', () => {
   it.each(['wants_children', 'monogamy_stance', 'smoking', 'drinking', 'diet'])(
-    'goes to the interview when %s is missing',
+    'goes to the setup chat when %s is missing',
     (predicate) => {
-      expect(setupRoute([predicate])).toBe('/onboarding/interview');
+      expect(setupRoute([predicate])).toBe('/onboarding');
     },
   );
 
-  it('goes to the interview for a card even when an essential is missing too', () => {
-    // The interview hands on to the essentials wizard when it is done, so the cards
-    // first loses nothing; the wizard first would strand the cards.
-    expect(setupRoute(['birth_date', 'smoking'])).toBe('/onboarding/interview');
-    expect(setupRoute(['lives_in', 'area', 'max_distance_km', 'diet'])).toBe('/onboarding/interview');
+  it('the chat, finishing, asks the cards first and then the essentials still missing', () => {
+    // The questions are the interview, which asks the cards; the wizard first would
+    // strand them -- the order this file has always guarded.
+    expect(firstStage(true)).toBe('questions');
+    expect(stageAfter('questions', true)).toBe('essentials');
+    expect(stageAfter('essentials', true)).toBe('done');
+    expect(setupRoute(['birth_date', 'smoking'])).toBe('/onboarding');
+    expect(setupRoute(['lives_in', 'area', 'max_distance_km', 'diet'])).toBe('/onboarding');
   });
 
-  it('still sends consent first, and essentials-only to the wizard', () => {
+  it('still sends consent first, and everything else to the chat', () => {
     expect(setupRoute(['consent', 'smoking'])).toBe('/consent');
-    expect(setupRoute(['birth_date', 'lives_in'])).toBe('/onboarding/essentials');
-    expect(setupRoute(['area'])).toBe('/onboarding/essentials');
-    expect(setupRoute([])).toBe('/onboarding/essentials');
+    expect(setupRoute(['birth_date', 'lives_in'])).toBe('/onboarding');
+    expect(setupRoute(['area'])).toBe('/onboarding');
+    expect(setupRoute([])).toBe('/onboarding');
   });
 
   it('knows exactly the card predicates the server names', () => {

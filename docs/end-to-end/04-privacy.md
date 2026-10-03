@@ -83,7 +83,8 @@ details), and **database roles** that limit what each part of the server can rea
   ([shared/src/facts.ts:90] `'medical_condition', 'allergy', 'religion', 'politics', 'ethnicity',`,
   [shared/src/facts.ts:91] `'full_name', 'birth_date', 'works_at', 'has_children', 'close_to', 'lives_with',`).
 - **Learned is private.** Anything learned from chat, the first sentence or a paste starts match-only,
-  until the person taps "OK to share" on "How you appear"
+  until the person taps "OK to share" on "How you appear" -- or, since 2026-10-04, on its card in the
+  chat with their clone or on "What it learned" (stage 13)
   ([server/migrations/0063_learned_is_private.sql:25] `UPDATE facts SET disclosure = 'matchable_only'`).
   A "Yes, that's right" on something held keeps it match-only too: it confirms, it does not share
   ([server/src/matching/brief.ts:108] `export function learnedDisclosure(predicate: string): { disclosure?: 'matchable_only' } {`).

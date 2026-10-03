@@ -12,6 +12,7 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useChat } from './use-chat';
+import { LearnedCards } from '../knowledge/learned-cards';
 import { useSession } from '../../store/session';
 import {
   Bubble, Button, Card, Disclosure, Field, space, type, usePalette,
@@ -74,6 +75,9 @@ export function CloneChat({
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: space.screen, paddingTop: space.sm, flexGrow: 1 }}
         keyExtractor={(b) => `${b.role}-${b.turnId}`}
+        // WHAT IT LEARNED, AND MAY IT SAY SO (knowledge/learned.ts): first thing in the
+        // conversation, so opening it is where you see them.
+        ListHeaderComponent={<LearnedCards />}
         onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"

@@ -196,3 +196,28 @@ export async function getParkVoiceOpen(): Promise<boolean> {
 export async function setParkVoiceOpen(open: boolean): Promise<void> {
   await SecureStore.setItemAsync(PARK_VOICE_OPEN_KEY, open ? '1' : '0').catch(() => {});
 }
+
+/**
+ * WHAT YOU SAID TO KEEP PRIVATE, of what your clone learned in chat (features/knowledge/
+ * learned.ts). Kept private means as it was -- used to find people, quoted to nobody --
+ * so nothing on the server changes; this only stops the chat asking again. The newest
+ * KEPT_MAX are remembered (a phone's secure store takes about two thousand bytes a
+ * value); one older than that may be asked about once more.
+ */
+const KEPT_KEY = 'clone.learned.kept';
+export const KEPT_MAX = 40;
+
+export async function getKeptPrivate(): Promise<string[]> {
+  try {
+    const raw = await SecureStore.getItemAsync(KEPT_KEY);
+    return raw ? raw.split(',').filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function keepPrivate(ids: readonly string[]): Promise<void> {
+  const kept = await getKeptPrivate();
+  const next = [...kept.filter((k) => !ids.includes(k)), ...ids].slice(-KEPT_MAX);
+  await SecureStore.setItemAsync(KEPT_KEY, next.join(',')).catch(() => {});
+}

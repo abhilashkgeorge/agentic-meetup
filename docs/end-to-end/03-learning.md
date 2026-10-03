@@ -138,8 +138,8 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   [server/src/memory/pasteImport.ts:87] `A guess is NEVER a fact.`).
 - **WhatsApp export** ("Now, how you talk"): parsed on the phone; the person picks which speaker they are;
   only their own lines (at least 20, at most the last 2,000) are sent; one model call writes a style note;
-  the messages are not stored ([app/src/features/onboarding/voice-screen.tsx:92] `const mine = chat.lines.filter((l) => l.speaker === speaker).map((l) => l.text);`,
-  [app/src/features/onboarding/voice-screen.tsx:123] `Only this note is kept. The chat was never stored.`).
+  the messages are not stored ([app/src/features/onboarding/voice-screen.tsx:97] `const mine = chat.lines.filter((l) => l.speaker === speaker).map((l) => l.text);`,
+  [app/src/features/onboarding/voice-screen.tsx:131] `Only this note is kept. The chat was never stored.`).
 
 ### 3.5 Background jobs
 

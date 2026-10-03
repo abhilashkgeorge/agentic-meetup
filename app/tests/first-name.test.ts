@@ -31,7 +31,7 @@ describe('the first-name step', () => {
     expect(essentialSteps(['first_name', 'area'], true).map((f) => f.key)).toEqual(['first_name', 'area']);
     expect(essentialSteps(['area'], true).map((f) => f.key)).toEqual(['area']);
     expect(missingLabel('first_name')).toBe('Your first name');
-    expect(setupRoute(['first_name'])).toBe('/onboarding/essentials');
+    expect(setupRoute(['first_name'])).toBe('/onboarding');
   });
 
   it('takes one word of letters, in any script, and never a number or a handle', () => {

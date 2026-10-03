@@ -1,75 +1,112 @@
 ## 2. Onboarding
 
-Setup is a short run of screens. Only a few answers are **required**: the three basics, the five
-cards, birth year, city, and consent. Everything else is optional and can come later. When the
-required answers are in, the person is **"in the pool"**: their agent can be sent out and others
-can meet it.
+Setup is a conversation with your clone (since 2026-10-04; before, it was a run of screens, each
+with its own Next). The clone says hello and asks one thing at a time; the person answers under its
+last message -- by typing, by tapping chips, on a card's two rows, or on the map -- and the answer
+appears as their own bubble. Only a few answers are **required**: the three basics, the five cards,
+birth year, city, and consent. Everything else is optional and can come later. When the required
+answers are in, the person is **"in the pool"**: their agent can be sent out and others can meet it.
+
+What the clone says in setup is written down, not generated, and every answer is saved by the call the
+old screens made: the chat adds no model call
+([app/src/features/onboarding/setup-script.ts:16] `the clone says here is written down below, not generated: setup costs no model call`,
+[app/src/app/onboarding/index.tsx:5] `export { default } from '../../features/onboarding/setup-chat';`).
 
 ### At a glance
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| "Tell it one true thing" (one sentence) | Facts are pulled out of it; the clone then answers a question as the person | AI ({AI:extract}, then {AI:selftest}) | An episode (the words) and facts | The person; public facts can later reach others (stage 4) | [server/src/api/tell.ts:73] `out = await metered(ctx, 'extract', () => extractSessionFacts(` |
-| The interview: basics, five cards, faith, one sentence | Each tap is saved; card "who's fine" rows become hard rules | Code (the sentence also goes to {AI:dealbreaker}) | `question_answers`, facts, `preferences` | The person; rules are used by matching | [server/src/api/interview.ts:276] `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)` |
-| Essentials: birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | [server/src/api/dating.ts:383] `extractorModel: 'direct',` |
-| Voice (optional): a WhatsApp export | Only the person's own lines are read; a style note is written | AI ({AI:voice}) | A "voice" note; the chat itself is not kept | The person's own clone | [server/src/memory/chatImport.ts:127] `VALUES ($1,$2,'voice',$3,$4,$5,'{}', now())` |
-| Self-test (optional) | The clone writes as the person; they grade it | AI ({AI:selftest}) | Grades | The person | [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), { db, setup: true }));` |
-| Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | [app/src/features/onboarding/photos-step.tsx:184] `Nobody sees these until you share your profile with them. Your agent never does,` |
+| "Tell me one true thing about yourself" (one sentence) | Facts are pulled out of it; the clone then answers a question as the person | AI ({AI:extract}, then {AI:selftest}) | An episode (the words) and facts | The person; public facts can later reach others (stage 4) | [server/src/api/tell.ts:73] `out = await metered(ctx, 'extract', () => extractSessionFacts(` |
+| The questions: basics, five cards, faith, one sentence | Each tap is saved; card "who's fine" rows become hard rules | Code (the sentence also goes to {AI:dealbreaker}) | `question_answers`, facts, `preferences` | The person; rules are used by matching | [server/src/api/interview.ts:276] `INSERT INTO question_answers (tenant_id, user_id, question_id, answer, skipped)` |
+| Essentials: first name, birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | [server/src/api/dating.ts:383] `extractorModel: 'direct',` |
+| How you write (optional): a WhatsApp export | Only the person's own lines are read; a style note is written | AI ({AI:voice}) | A "voice" note; the chat itself is not kept | The person's own clone | [server/src/memory/chatImport.ts:127] `VALUES ($1,$2,'voice',$3,$4,$5,'{}', now())` |
+| "Is that you?" (after the one true thing) | The clone writes as the person; they grade it | AI ({AI:selftest}) | Grades | The person | [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), { db, setup: true }));` |
+| Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | [app/src/features/onboarding/photos-step.tsx:187] `Nobody sees these until you share your profile with them. Your agent never does,` |
 
 ### Arjun and Meera
 
-The screens and questions are the same for both; only their taps differ. Arjun taps "A man" on
+The conversation is the same for both; only their answers differ. Arjun taps "A man" on
 "You are…" and "Women" on "You want to meet…"; Meera taps "A woman" and "Men"
 ([server/src/onboarding/questions.ts:146] `{ value: 'woman', label: 'A woman' }, { value: 'man', label: 'A man' },`,
 [server/src/onboarding/questions.ts:155] `{ value: 'woman', label: 'Women' }, { value: 'man', label: 'Men' },`).
-In order, each sees:
+In order, each reads and answers:
 
-1. **"Tell it one true thing"** — "Anything about you. One sentence is enough to start." Arjun types
-   "I work in AI and run most mornings."
-   ([app/src/features/onboarding/start-screen.tsx:137] `Tell it one true thing`).
-   His work field and exercise are fields a must-have can depend on, so both facts are
-   **held for his Yes** rather than learned ([server/src/api/tell.ts:90] `if (r.outcome === 'staged') staged++;`).
-   Anything heard moves him on: with only held facts the screen skips the sample reply (the
-   clone has nothing live to answer from) and goes straight to the questions
-   ([app/src/features/onboarding/start-state.ts:24] `if ((r.toConfirm ?? 0) > 0) return { next: 'questions' };`,
-   [app/src/features/onboarding/start-screen.tsx:47] `if (after.next === 'questions') return setStage('done');`).
+1. **The hello** — "Hi! I'm your clone.", what it is for, and "Let's start with you. Tell me one
+   true thing about yourself. Anything.", with three example lines to tap
+   ([app/src/features/onboarding/setup-script.ts:42] `"Hi! I'm your clone.",`,
+   [app/src/features/onboarding/setup-script.ts:44] `"Let's start with you. Tell me one true thing about yourself. Anything.",`,
+   [app/src/features/onboarding/setup-script.ts:62] `'I live in Bangalore and I work at an ISP.',`).
+   Arjun types "I work in AI and run most mornings." His work field and exercise are fields a
+   must-have can depend on, so both facts are **held for his Yes** rather than learned
+   ([server/src/api/tell.ts:90] `if (r.outcome === 'staged') staged++;`).
+2. **What it heard**, in the person's words ("Got it: trekking, maths teacher."), and "I'll check a
+   couple of things with you as we go." when something was held
+   ([app/src/features/onboarding/setup-script.ts:71] `const heard = r.facts.slice(0, 3).map((f) => f.value).filter(Boolean);`,
+   [app/src/features/onboarding/setup-script.ts:75] `if ((r.toConfirm ?? 0) > 0) out.push("I'll check a couple of things with you as we go.");`).
    It asks again only when nothing at all was heard.
-2. **"Now it's you"** (only when something was learned; Arjun's sentence skips it) — "Someone asks
-   you", the clone's first reply in his name, "Is that you?", "That's me" / "Not even close"
-   ([app/src/features/onboarding/start-screen.tsx:84] `label="Someone asks you"`).
-3. **"Now it asks you some things"**, with an optional "Paste from another AI"
-   ([app/src/features/onboarding/start-screen.tsx:103] `Now it asks you some things`,
-   [app/src/features/onboarding/start-screen.tsx:119] `label="Paste from another AI"`).
-4. **The interview** (below).
-5. **Straight on to the essentials**, which are asked next. Since 2026-10-02 there is no screen
-   between: it used to stop on "A few things missing" (birth year, city), which read as if
-   something had been skipped
-   ([app/src/features/onboarding/questions-end.ts:25] `return fromFinish ? '/onboarding/essentials?finish=1' : '/onboarding/essentials';`).
-6. **Essentials**: "What year were you born?", "Who would you like to meet?" (ages, pre-filled ±5 from
-   their own), "Where are you now?", "How far would you travel?"
-   ([app/src/features/profile/fields.ts:78] `{ key: 'birth_date', title: 'What year were you born?', kind: 'number',`,
-   [app/src/features/profile/age-range.ts:42] `return { min: clamp(age - AGE_SPREAD), max: clamp(age + AGE_SPREAD) };`).
+3. **"Is that you?"** (only when something was learned; Arjun's sentence skips it, since the clone has
+   nothing live to answer from) — "Here's how I'd answer someone already, as you:", the question, its
+   reply in his name, and "That's me" / "Not even close"
+   ([app/src/features/onboarding/start-state.ts:24] `if ((r.toConfirm ?? 0) > 0) return { next: 'questions' };`,
+   [app/src/features/onboarding/setup-chat.tsx:283] `await say([SAMPLE_INTRO, item.question,`).
+4. **The questions**, each one a message (below): a basic is one tap; a card shows "You" and "Your
+   partner" rows and sends nothing until both are answered; the faith card can be skipped; the
+   sentence is typed. Send and Skip stay on screen under the chips, which scroll
+   ([app/src/features/onboarding/setup-chat.tsx:555] `// One tap is the answer, as on the old screen.`,
+   [app/src/features/onboarding/setup-chat.tsx:528] `<Button label="Send" variant="primary" disabled={!done} loading={busy}`,
+   [app/src/features/onboarding/setup-chat.tsx:712] `{area.actions}`).
+5. **The essentials**, in the chat: "Thanks. Now the basics I need to go out for you.", then "What
+   should people call you?", "What year were you born?", "Who would you like to meet?" (ages,
+   pre-filled ±5 from their own), "Where are you now?" (typed, or "Use my location") and "How far would
+   you travel?" -- the map and its slider, inside the chat
+   ([app/src/features/onboarding/setup-script.ts:120] `export const ESSENTIALS_INTRO = 'Thanks. Now the basics I need to go out for you.';`,
+   [app/src/features/profile/fields.ts:78] `{ key: 'birth_date', title: 'What year were you born?', kind: 'number',`,
+   [app/src/features/profile/age-range.ts:42] `return { min: clamp(age - AGE_SPREAD), max: clamp(age + AGE_SPREAD) };`,
+   [app/src/features/onboarding/setup-chat.tsx:587] `{field.kind === 'distance' && <DistanceStep detect onChange={setDistance} />}`).
    Both type "Bangalore", which resolves to the city centre.
-7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Things to talk about"** (the
-   stories its agent may repeat), **"Make your character"**, **"One last thing"** (photos) — all
-   skippable
-   ([app/src/features/onboarding/voice-screen.tsx:158] `label="Skip this for now"`,
-   [app/src/features/onboarding/photos-step.tsx:122] `label="I'll do it later"`).
-8. **Home**, the town, with "Send my agent out".
+6. **Stories** — "That's enough for me to go out for you. Now, if you like, a few stories: they are
+   what I'll have to talk about." Up to three, each skippable, or "That's enough for now"
+   ([app/src/features/onboarding/setup-script.ts:142] `export const STORIES_INTRO = "That's enough for me to go out for you.`,
+   [app/src/features/onboarding/setup-script.ts:143] `export const STORIES_MAX = 3;`).
+7. **How you write** — "Want me to sound like you, not just know about you?" "Share a chat" opens the
+   WhatsApp import, which comes back to the chat after its note or a skip
+   ([app/src/features/onboarding/setup-script.ts:150] `'Want me to sound like you, not just know about you?',`,
+   [app/src/features/onboarding/voice-screen.tsx:111] `? <Button label="Back to the chat" variant="primary" onPress={() => router.back()} />`).
+8. **Character** and **photos**, each opened from the chat on a tap and back to it, or "Skip for now".
+   What happened there is said as it was: "Done", "2 photos", or "Later" for a skip
+   ([app/src/features/onboarding/setup-chat.tsx:241] `add('me', takeVoiceLearned() ? 'Done' : 'Later');`,
+   [app/src/features/onboarding/photos-step.tsx:105] `if (from === 'chat') { router.back(); return; }`).
+9. **"All set, Arjun. I'll go out and meet people for you."**, then how to keep it up to date: "Talk
+   to me any time from the town (tap "Your clone")..." and "Go to the town"
+   ([app/src/features/onboarding/setup-script.ts:161] `'Talk to me any time from the town (tap "Your clone").`,
+   [app/src/features/onboarding/setup-chat.tsx:671] `<Button label={fromFinish ? 'Back' : 'Go to the town'}`).
+10. **Home**, the town, with "Send my agent out".
 
-### 2.1 The screens in order
+### 2.1 The conversation in order
 
-For a new person: start → (optional paste) → interview → essentials → voice → self-test → stories →
-character → photos → Home ([app/src/features/onboarding/interview-screen.tsx:245] `router.replace(state.ready ? '/onboarding/stories' : '/onboarding/essentials');`,
-[app/src/features/onboarding/essentials-screen.tsx:74] `router.push('/onboarding/voice');`,
-[app/src/features/onboarding/self-test-screen.tsx:80] `router.replace('/onboarding/stories');`,
-[app/src/features/onboarding/character-step.tsx:23] `const next = () => router.replace('/onboarding/photos');`).
-Until 2026-10-02 the self-test went straight to the character, so a new person never saw the stories
-during setup -- and they are the only sentences an agent may repeat when it meets another, so the
-first two new people's agents had nothing at all to say. Someone already in the pool when the
-interview ends still goes straight to the stories.
-"Setup done" is remembered on the phone only after the photos step; closing the app earlier
-restarts setup at the first screen ([app/src/features/onboarding/photos-step.tsx:103] `await setOnboarded();`).
+For a new person: one true thing → (is that you?) → the questions → the essentials → stories → how
+you write → character → photos → done
+([app/src/features/onboarding/setup-script.ts:179] `case 'essentials': return finish ? 'done' : 'stories';`,
+[app/src/features/onboarding/setup-script.ts:180] `case 'stories': return 'voice';`).
+Only the essentials still missing are asked, so someone already in the pool when the questions end goes
+straight to the stories. Until 2026-10-02 a new person never saw the stories during setup -- and they
+are the only sentences an agent may repeat when it meets another, so the first two new people's agents
+had nothing at all to say.
+"Setup done" is remembered on the phone only at "Go to the town"
+([app/src/features/onboarding/setup-chat.tsx:438] `await setOnboarded();`). Closing the app earlier
+and opening it again carries on: "Welcome back. Let's carry on where we were.", and on with the
+questions; nothing answered is asked again
+([app/src/features/onboarding/setup-script.ts:49] `"Welcome back. Let's carry on where we were.",`,
+[app/src/features/onboarding/setup-chat.tsx:222] `if (known && known.knows.length > 0) {`).
+**"Finish setup"** (an agent that cannot go out yet, or "Which part of town?" and "Add your first name"
+on the Home) opens the same chat: it starts at the questions, asks only what is still open, and ends
+after the essentials with "That's everything. Thank you."
+([app/src/features/profile/fields.ts:208] `return '/onboarding' as const;`,
+[app/src/features/onboarding/setup-script.ts:189] `export const firstStage = (finish: boolean): Stage => (finish ? 'questions' : 'tell');`).
+The old screens are still used outside setup: the question of the day opens the interview, the
+"Faith (optional)" row on the You tab opens it to ask that card, and Settings opens the self-test
+([app/src/features/question/question-screen.tsx:95] `router.replace({ pathname: '/onboarding/interview', params: { card: q.card!.id, qotd: q.id } })`,
+[app/src/features/settings/settings-screen.tsx:263] `onPress={() => router.push('/onboarding/test')} last />`).
 
 ### 2.2 Every question
 
@@ -210,13 +247,14 @@ is a separate notion and gates nothing ([app/src/features/onboarding/self-test-s
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
-([app/src/features/world/hud.tsx:212] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
+([app/src/features/world/hud.tsx:219] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
 [app/src/features/matches/matches-screen.tsx:267] `It needs a few more things before it can talk to anyone.`).
 
 ### 2.4 Model calls during setup
 
-The first screen already calls a model (fact extraction, then a sample reply); so do the paste, the
-"couldn't be with" sentence, the voice import and each self-test. Since 2026-09-28 these setup calls
+The one true thing already calls a model (fact extraction, then a sample reply); so do the paste, the
+"couldn't be with" sentence, the WhatsApp import and each self-test. The clone's own lines in the
+setup chat call none. Since 2026-09-28 these setup calls
 are counted apart, up to 40 a day, and never use the 10 a day that chat, learning and rounds share;
 the $2.00 daily cost cap still covers them. Measured before the change: real people's setup used 1 to
 4 of the 10 on their first day ([server/src/api/tell.ts:76] `), { setup: true });`,
@@ -225,9 +263,10 @@ the $2.00 daily cost cap still covers them. Measured before the change: real peo
 
 ### Docs vs code
 
-- HOW-IT-WORKS.md §2 gives the flow as `start → interview → (essentials → voice → self-test) →
-  character → photos → home`, skipping the middle only after a paste. The code skips to Stories when the
-  person is already in the pool, and a paste can never put a new person in the pool, because pasted
+- HOW-IT-WORKS.md §2 gives the flow as screens, `start → interview → (essentials → voice → self-test) →
+  character → photos → home`, skipping the middle only after a paste. Since 2026-10-04 setup is one
+  conversation in which the paste is not offered (it is on the You tab, "Write them"); the chat asks only
+  the essentials still missing, and a paste can never put a new person in the pool, because pasted
   facts are held until confirmed ([HOW-IT-WORKS.md:63] `start → interview → (essentials → voice → self-test) → character → photos → home`,
   [server/src/memory/pasteImport.ts:189] `originClass: 'untrusted',`).
 - HOW-IT-WORKS.md §2a describes the partner row as "Anyone is fine" or "Let me choose". The screen shows
