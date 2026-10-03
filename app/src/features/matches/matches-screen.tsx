@@ -28,7 +28,7 @@ import { Pressable, Text, View } from 'react-native';
 import {
   decideMatch, getMatches, getPool, runRound, type MatchCard, type PoolStep, type RoundState, type Talk,
 } from '../../lib/api';
-import { FEW_ON_THE_APP, costLabel, countLabel, fewOnTheApp, isUnder20 } from '../../lib/counts';
+import { FEW_ON_THE_APP, costLabel, countLabel, fewOnTheApp, isUnder20, rulesTakeSomebody } from '../../lib/counts';
 import { roundNote } from './round-note';
 import { useWorld } from '../world/store';
 import { useSession } from '../../store/session';
@@ -282,19 +282,23 @@ export default function MatchesScreen() {
             <Text style={[type.callout, { color: p.textSecondary }]}>
               people fit what you have asked for
             </Text>
-            <Crease />
-            {/* WHERE THE NUMBER STARTED, first. Without it the list below is four
-                subtractions from nothing: "72 people" then "-2595" says neither what
-                was there before nor how the two are related. */}
-            <StatRow
-              label="everyone your agent could consider"
-              value={countLabel(pool.steps.find((s) => s.step === 'everyone')?.remaining)}
-            />
-            {pool.steps.filter((s) => (s.cost ?? 0) > 0).map((s) => (
-              <StatRow key={s.step} label={s.step} value={costLabel(s.cost ?? 0)} muted />
-            ))}
-            <Crease />
-            <StatRow label="left to meet" value={countLabel(pool.total)} />
+            {/* The sum, only when a rule takes somebody: otherwise it is the big number
+                again, twice (lib/counts.ts rulesTakeSomebody). */}
+            {rulesTakeSomebody(pool.steps) && (<>
+              <Crease />
+              {/* WHERE THE NUMBER STARTED, first. Without it the list below is four
+                  subtractions from nothing: "72 people" then "-2595" says neither what
+                  was there before nor how the two are related. */}
+              <StatRow
+                label="everyone your agent could consider"
+                value={countLabel(pool.steps.find((s) => s.step === 'everyone')?.remaining)}
+              />
+              {pool.steps.filter((s) => (s.cost ?? 0) > 0).map((s) => (
+                <StatRow key={s.step} label={s.step} value={costLabel(s.cost ?? 0)} muted />
+              ))}
+              <Crease />
+              <StatRow label="left to meet" value={countLabel(pool.total)} />
+            </>)}
             {isUnder20(pool.total) && (
               <Text style={[type.callout, { color: p.warning }]}>
                 {fewOnTheApp(pool.steps) ? FEW_ON_THE_APP

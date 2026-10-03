@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { costLabel, countLabel, isUnder20, FEW_ON_THE_APP, fewOnTheApp } from '../src/lib/counts';
+import { costLabel, countLabel, isUnder20, FEW_ON_THE_APP, fewOnTheApp, rulesTakeSomebody } from '../src/lib/counts';
 
 const SRC = join(import.meta.dirname, '..', 'src');
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
@@ -86,5 +86,30 @@ describe('a small pool, when the app itself is small', () => {
     // It makes no claim about what was asked: on a near-empty app the asks may well be
     // why nobody is left, and it sat under "Nobody fits what you asked for" (2026-10-02).
     expect(FEW_ON_THE_APP).not.toMatch(/asked/i);
+  });
+});
+
+// Matches on the Pixel (2026-10-02, and again 2026-10-03 after the orbs went in): one card
+// said "Under 20" three times -- the big number, "everyone your agent could consider" and
+// "left to meet" -- because the sum under the number is shown whether or not any rule
+// takes anybody. Negative controls, run by hand: rulesTakeSomebody always true -> the
+// first test fails; Matches drawing the sum unconditionally -> the second fails.
+describe('the pool card\'s sum', () => {
+  it('is worth showing only when some rule takes somebody', () => {
+    expect(rulesTakeSomebody([{ cost: null }, { cost: 0 }])).toBe(false);
+    expect(rulesTakeSomebody([])).toBe(false);
+    expect(rulesTakeSomebody(undefined)).toBe(false);
+    expect(rulesTakeSomebody([{ cost: 0 }, { cost: 2600 }])).toBe(true);
+  });
+
+  it('is drawn on Matches only then, so a small app reads "Under 20" once', () => {
+    const src = readFileSync(join(SRC, 'features', 'matches', 'matches-screen.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+    const card = src.slice(src.indexOf('<Card label="Who your agent can reach">'), src.indexOf('</Card>', src.indexOf('<Card label="Who your agent can reach">')));
+    const sum = card.indexOf('{rulesTakeSomebody(pool.steps) && (<>');
+    expect(sum, 'the sum is drawn whatever the rules take').toBeGreaterThan(-1);
+    expect(card.indexOf('label="everyone your agent could consider"')).toBeGreaterThan(sum);
+    expect(card.indexOf('<StatRow label="left to meet"')).toBeGreaterThan(sum);
+    expect(card.indexOf('</>)}')).toBeGreaterThan(card.indexOf('<StatRow label="left to meet"'));
   });
 });

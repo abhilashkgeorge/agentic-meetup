@@ -37,5 +37,14 @@ export function fewOnTheApp(steps: readonly { step: string; remaining: number | 
 // asked for" on one screen (the Pixel, 2026-10-02).
 export const FEW_ON_THE_APP = 'Very few people are on the app yet. As more join, your agent will have more people to meet.';
 
+/**
+ * Whether the pool card's sum -- everyone your agent could consider, what each rule takes,
+ * what is left -- says anything: only when some rule takes somebody. Without one it only
+ * repeated the big number, and on a small app said "Under 20" three times on one card
+ * (Matches, the Pixel, 2026-10-02 and 2026-10-03).
+ */
+export const rulesTakeSomebody = (steps: readonly { cost?: number | null }[] | undefined): boolean =>
+  (steps ?? []).some((s) => (s.cost ?? 0) > 0);
+
 /** True when the server said "under 20": a small pool, which may be none at all. */
 export const isUnder20 = (n: number | null | undefined): boolean => n === null || n === undefined;

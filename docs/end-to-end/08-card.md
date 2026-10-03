@@ -16,8 +16,8 @@ A card never shows the other person's name or photos; those are on the "reveal"
 | Meera's age, intent and neighbourhood | Become the headline, e.g. "Here for something long-term · 27 · Jayanagar" | Code | Card row (`headline`) | Arjun, on his turn | [server/src/matching/brief.ts:334] `Here for ${words.join(' or ')}` |
 | Tags both share | "You both like …" (up to 5), "You both work in …" (up to 2), public tags only | Code | Card row | Arjun, on his turn | [server/src/matching/brief.ts:500] `const shared = inCommon(LIKED).slice(0, 5);` |
 | Meera's own public sentences | Up to 2 quotes, "In their words, <month year>" | Code | Card row | Arjun, on his turn | [server/src/matching/brief.ts:468] `Up to two of the OTHER person's verified sentences.` |
-| The talk or the answer sheets | Shown as the agents' exchange (stage 7) | {AI:talk} earlier, code now | Card row | Arjun, on his turn | [app/src/features/matches/matches-screen.tsx:414] `{m.talk ? <TalkOnCard talk={m.talk} /> : exchangeRows(m.qa).length > 0 && (` |
-| Arjun's wants | "WHAT YOU ASKED FOR" (stage 5) | {AI:wants} earlier, code now | Card row, with each want's status | Arjun only | [app/src/features/matches/matches-screen.tsx:433] `WHAT YOU ASKED FOR` |
+| The talk or the answer sheets | Shown as the agents' exchange (stage 7) | {AI:talk} earlier, code now | Card row | Arjun, on his turn | [app/src/features/matches/matches-screen.tsx:418] `{m.talk ? <TalkOnCard talk={m.talk} /> : exchangeRows(m.qa).length > 0 && (` |
+| Arjun's wants | "WHAT YOU ASKED FOR" (stage 5) | {AI:wants} earlier, code now | Card row, with each want's status | Arjun only | [app/src/features/matches/matches-screen.tsx:437] `WHAT YOU ASKED FOR` |
 | Every time the card is opened | Each of Meera's sentences is re-checked; anything she hid or changed comes off | Code | Nothing | | [server/src/matching/brief.ts:750] `const ok = (t: string) => mayRepeat(t) && (live === null || live.has(sentenceKey(t)));` |
 
 ### Arjun and Meera
@@ -32,11 +32,11 @@ In this example Meera decides first (stage 9 explains why).
   date idea and what the agents said, "WHAT YOU ASKED FOR" with **her** wants, an opener
   such as "Ask them about travel", and the buttons "Yes, share my profile with them" and "Not
   this one". No photo and no name: she decides on these words and his character (stage 9)
-  ([app/src/features/matches/matches-screen.tsx:370] `{m.waitingOnYou ? 'WAITING ON YOU' : 'WAITING ON THEM'}`,
-  [app/src/features/matches/matches-screen.tsx:391] `You both like {m.shared.join(', ')}.`,
-  [app/src/features/matches/matches-screen.tsx:405] `In their words, ${q.when}`,
-  [app/src/features/matches/matches-screen.tsx:463] `<Button label={m.practice ? WORDS.shareFirstPractice : WORDS.shareFirst}`,
-  [app/src/features/matches/matches-screen.tsx:477] `<Button label={WORDS.notThisOne} variant="ghost" onPress={() => void pass(m.id)} />`).
+  ([app/src/features/matches/matches-screen.tsx:374] `{m.waitingOnYou ? 'WAITING ON YOU' : 'WAITING ON THEM'}`,
+  [app/src/features/matches/matches-screen.tsx:395] `You both like {m.shared.join(', ')}.`,
+  [app/src/features/matches/matches-screen.tsx:409] `In their words, ${q.when}`,
+  [app/src/features/matches/matches-screen.tsx:467] `<Button label={m.practice ? WORDS.shareFirstPractice : WORDS.shareFirst}`,
+  [app/src/features/matches/matches-screen.tsx:481] `<Button label={WORDS.notThisOne} variant="ghost" onPress={() => void pass(m.id)} />`).
 - **Arjun's card about Meera, while it is not his turn**, is the "plain card": Meera's
   character, "WAITING ON THEM", "Your agent met someone", the fixed line, and "They decide
   first. If they share their profile, you will see it here." Nothing else: no age, no area, no
@@ -45,7 +45,7 @@ In this example Meera decides first (stage 9 explains why).
   [app/src/features/matches/turn.ts:43] `theyFirst: 'They decide first. If they share their profile, you will see it here.',`).
 - **After Meera shares her profile**, Arjun's card fills in (the same sections, built for him),
   with "See who it is" to open her profile, and "Not this one"
-  ([app/src/features/matches/matches-screen.tsx:475] `<Button label={m.practice ? WORDS.seeThemPractice : WORDS.seeThem}`).
+  ([app/src/features/matches/matches-screen.tsx:479] `<Button label={m.practice ? WORDS.seeThemPractice : WORDS.seeThem}`).
   Her own card now says "You shared your profile. If they share theirs back, you can talk."
   ([app/src/features/matches/turn.ts:41] `youShared: 'You shared your profile. If they share theirs back, you can talk.',`).
 
@@ -53,26 +53,26 @@ In this example Meera decides first (stage 9 explains why).
 
 | # | On screen | Where it comes from | Code |
 |---|---|---|---|
-| 1 | Their character (a small 3D look) | The look they built; sent even on a plain card | [app/src/features/matches/matches-screen.tsx:368] `{m.look && <CharacterAvatar look={m.look} size={40} />}` |
-| 2 | "WAITING ON YOU" / "WAITING ON THEM" | Whose turn it is | [app/src/features/matches/matches-screen.tsx:370] `{m.waitingOnYou ? 'WAITING ON YOU' : 'WAITING ON THEM'}` |
+| 1 | Their character (a small 3D look) | The look they built; sent even on a plain card | [app/src/features/matches/matches-screen.tsx:372] `{m.look && <CharacterAvatar look={m.look} size={40} />}` |
+| 2 | "WAITING ON YOU" / "WAITING ON THEM" | Whose turn it is | [app/src/features/matches/matches-screen.tsx:374] `{m.waitingOnYou ? 'WAITING ON YOU' : 'WAITING ON THEM'}` |
 | 3 | Headline | Intent · age · neighbourhood (or city) of the other person; nothing known → "Your agent met someone" | [server/src/matching/brief.ts:336] `const place = (card.area ? findArea(card.area)?.name : null) ?? card.city ?? null;` |
 | 4 | "Passes your rules both ways, on everything they've answered" | The same fixed words on every card | [server/src/matching/brief.ts:66] `export const BRIEF_LINE = "Passes your rules both ways, on everything they've answered";` |
-| 5 | "Practice match — this one is not a real person." | Practice profiles only | [app/src/features/matches/matches-screen.tsx:386] `Practice match — this one is not a real person.` |
+| 5 | "Practice match — this one is not a real person." | Practice profiles only | [app/src/features/matches/matches-screen.tsx:390] `Practice match — this one is not a real person.` |
 | 6 | "You both like …" / "You both work in …" | Tags both have, only from **public** facts, each word checked for private topics | [server/src/matching/rendezvous.ts:384] `WHERE user_id = $1 AND status = 'active' AND valid_to IS NULL AND disclosure = 'public'` |
 | 7 | "In their words, <month year>" + a quote | Up to 2 of their own public sentences, typed by them, 12–300 characters, of allowed kinds (interests, things done, topics, media, pets, story answers, work, exercise, sleep, transport) | [server/src/matching/brief.ts:88] `'interest', 'did', 'topic', 'media_taste', 'pet', 'prompt_answer',` |
 | 8a | "DATE IDEA", "SOMETHING YOU SHARE", "Read what your agents said" | The talk (stage 7) | [app/src/features/matches/matches-screen.tsx:83] `open ? 'Hide the chat' : 'Read what your agents said'` |
-| 8b | or "WHAT YOUR AGENTS ASKED EACH OTHER" | The answer sheets, when there is no talk | [app/src/features/matches/matches-screen.tsx:417] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>` |
+| 8b | or "WHAT YOUR AGENTS ASKED EACH OTHER" | The answer sheets, when there is no talk | [app/src/features/matches/matches-screen.tsx:421] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>` |
 | 9 | "WHAT YOU ASKED FOR" | The reader's own wants (stage 5) | [app/src/features/matches/exchange.ts:197] `const label = w.kind === 'not' ? "You couldn't be with" : 'You asked for';` |
 | 10 | "Ask them about …" | First that applies: a question they could not answer in the talk; one from the sheets; a shared interest; a quote; a shared work field; one of their tags | [server/src/matching/brief.ts:543] `Ask them about ${talkAsk.toLowerCase()}` |
 | 11 | "Fades tomorrow if you don't answer." / "Fades today if you don't answer." | Days left on the reader's turn | [app/src/features/matches/fade.ts:15] `"Fades tomorrow if you don't answer."` |
-| 12 | First move: "Yes, share my profile with them" and "Not this one". Second move: "See who it is" and "Not this one". Otherwise one line saying whose move it is | By whose turn it is (stage 9) | [app/src/features/matches/matches-screen.tsx:461] `{turnOf(m) === 'share-first' && (` |
-| 13 | "Block or report" | On every card | [app/src/features/matches/matches-screen.tsx:494] `{ color: p.textTertiary, textAlign: 'center' }]}>Block or report</Text>` |
+| 12 | First move: "Yes, share my profile with them" and "Not this one". Second move: "See who it is" and "Not this one". Otherwise one line saying whose move it is | By whose turn it is (stage 9) | [app/src/features/matches/matches-screen.tsx:465] `{turnOf(m) === 'share-first' && (` |
+| 13 | "Block or report" | On every card | [app/src/features/matches/matches-screen.tsx:498] `{ color: p.textTertiary, textAlign: 'center' }]}>Block or report</Text>` |
 
 Only one "waiting on you" card shows at a time. Since 2026-09-29 it is the one that fades soonest, so a
 card can only run out while it is the one on screen, and under "WAITING ON YOU" it says "2 more waiting"
 when there are more; before, it was simply the first, and the others could run out unseen. The server
 orders cards newest round first, then by a hash of the pair's id, never by a score
-([app/src/features/matches/matches-screen.tsx:362] `[...soonestFirst(matches.filter((m) => m.waitingOnYou)).slice(0, 1),`,
+([app/src/features/matches/matches-screen.tsx:366] `[...soonestFirst(matches.filter((m) => m.waitingOnYou)).slice(0, 1),`,
 [app/src/features/matches/waiting.ts:15] `export function soonestFirst<T extends Waiting>(cards: readonly T[]): T[] {`,
 [server/src/api/dating.ts:628] `ORDER BY r.created_at DESC, md5(r.id::text) COLLATE "C"`).
 

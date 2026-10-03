@@ -205,7 +205,11 @@ three shapes:
   candidate later within their group (real people stay ahead of practice profiles),
   whatever the strength ([server/src/matching/wants.ts:284] `rs.filter((r) => r.status === 'not_met').length`).
 - **The pool count.** "Who your agent can reach" shows how many people pass every filter,
-  rounded to the nearest 10; below 20 it says "Under 20" and a warning such as "Very few
+  rounded to the nearest 10, and under it the sum -- everyone your agent could consider, what
+  each rule takes, what is left -- only when some rule takes somebody (since 2026-10-03; before,
+  the sum was always there, and a small app's card said "Under 20" three times)
+  ([app/src/lib/counts.ts:46] `export const rulesTakeSomebody = (steps: readonly { cost?: number | null }[] | undefined): boolean =>`);
+  below 20 it says "Under 20" and a warning such as "Very few
   people fit. Turn a must-have into a want to reach more." When the whole app has fewer
   than 20 people you could meet before any rule of yours applies, it says so instead: "Very
   few people are on the app yet. As more join, your agent will have more people to meet."
@@ -283,7 +287,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-([app/src/features/matches/matches-screen.tsx:433] `WHAT YOU ASKED FOR`):
+([app/src/features/matches/matches-screen.tsx:437] `WHAT YOU ASKED FOR`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|

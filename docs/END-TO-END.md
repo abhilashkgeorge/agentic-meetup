@@ -1198,7 +1198,11 @@ three shapes:
   candidate later within their group (real people stay ahead of practice profiles),
   whatever the strength (`server/src/matching/wants.ts:284`).
 - **The pool count.** "Who your agent can reach" shows how many people pass every filter,
-  rounded to the nearest 10; below 20 it says "Under 20" and a warning such as "Very few
+  rounded to the nearest 10, and under it the sum -- everyone your agent could consider, what
+  each rule takes, what is left -- only when some rule takes somebody (since 2026-10-03; before,
+  the sum was always there, and a small app's card said "Under 20" three times)
+  (`app/src/lib/counts.ts:46`);
+  below 20 it says "Under 20" and a warning such as "Very few
   people fit. Turn a must-have into a want to reach more." When the whole app has fewer
   than 20 people you could meet before any rule of yours applies, it says so instead: "Very
   few people are on the app yet. As more join, your agent will have more people to meet."
@@ -1276,7 +1280,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-(`app/src/features/matches/matches-screen.tsx:433`):
+(`app/src/features/matches/matches-screen.tsx:437`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|
@@ -1371,7 +1375,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") (`app/src/app/(tabs)/index.tsx:1`,
    `app/src/features/world/hud.tsx:214`).
-   The same button is on the Matches tab (`app/src/features/matches/matches-screen.tsx:312`).
+   The same button is on the Matches tab (`app/src/features/matches/matches-screen.tsx:316`).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
    is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
@@ -1533,7 +1537,7 @@ off (`server/src/matching/profile.ts:207`,
 - **How they are labelled.** "Practice match — this one is not a real person." on the card,
   "Practice match / Not a real person" in lists, their lines marked "(practice)", and the
   reveal says "This is not a real person. The pool is invented until enough people have
-  joined…" (`app/src/features/matches/matches-screen.tsx:386`,
+  joined…" (`app/src/features/matches/matches-screen.tsx:390`,
   `app/src/features/matches/exchange.ts:47`,
   `app/src/features/matches/reveal-screen.tsx:205`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a
@@ -1681,7 +1685,7 @@ shareable sentences change ([AI-10](#ai-10);
 Only fact ids are stored. When there is no talk, the card shows "WHAT YOUR AGENTS ASKED EACH
 OTHER": questions both answered, then only theirs, then up to two the reader answered and
 they did not (`server/src/matching/answer-sheet.ts:348`,
-`app/src/features/matches/matches-screen.tsx:417`).
+`app/src/features/matches/matches-screen.tsx:421`).
 
 ### 7.5 What is saved, and what people can read
 
@@ -1747,8 +1751,8 @@ A card never shows the other person's name or photos; those are on the "reveal"
 | Meera's age, intent and neighbourhood | Become the headline, e.g. "Here for something long-term · 27 · Jayanagar" | Code | Card row (`headline`) | Arjun, on his turn | `server/src/matching/brief.ts:334` |
 | Tags both share | "You both like …" (up to 5), "You both work in …" (up to 2), public tags only | Code | Card row | Arjun, on his turn | `server/src/matching/brief.ts:500` |
 | Meera's own public sentences | Up to 2 quotes, "In their words, <month year>" | Code | Card row | Arjun, on his turn | `server/src/matching/brief.ts:468` |
-| The talk or the answer sheets | Shown as the agents' exchange (stage 7) | [AI-11](#ai-11) earlier, code now | Card row | Arjun, on his turn | `app/src/features/matches/matches-screen.tsx:414` |
-| Arjun's wants | "WHAT YOU ASKED FOR" (stage 5) | [AI-12](#ai-12) earlier, code now | Card row, with each want's status | Arjun only | `app/src/features/matches/matches-screen.tsx:433` |
+| The talk or the answer sheets | Shown as the agents' exchange (stage 7) | [AI-11](#ai-11) earlier, code now | Card row | Arjun, on his turn | `app/src/features/matches/matches-screen.tsx:418` |
+| Arjun's wants | "WHAT YOU ASKED FOR" (stage 5) | [AI-12](#ai-12) earlier, code now | Card row, with each want's status | Arjun only | `app/src/features/matches/matches-screen.tsx:437` |
 | Every time the card is opened | Each of Meera's sentences is re-checked; anything she hid or changed comes off | Code | Nothing | | `server/src/matching/brief.ts:750` |
 
 ### Arjun and Meera
@@ -1763,11 +1767,11 @@ In this example Meera decides first (stage 9 explains why).
   date idea and what the agents said, "WHAT YOU ASKED FOR" with **her** wants, an opener
   such as "Ask them about travel", and the buttons "Yes, share my profile with them" and "Not
   this one". No photo and no name: she decides on these words and his character (stage 9)
-  (`app/src/features/matches/matches-screen.tsx:370`,
-  `app/src/features/matches/matches-screen.tsx:391`,
-  `app/src/features/matches/matches-screen.tsx:405`,
-  `app/src/features/matches/matches-screen.tsx:463`,
-  `app/src/features/matches/matches-screen.tsx:477`).
+  (`app/src/features/matches/matches-screen.tsx:374`,
+  `app/src/features/matches/matches-screen.tsx:395`,
+  `app/src/features/matches/matches-screen.tsx:409`,
+  `app/src/features/matches/matches-screen.tsx:467`,
+  `app/src/features/matches/matches-screen.tsx:481`).
 - **Arjun's card about Meera, while it is not his turn**, is the "plain card": Meera's
   character, "WAITING ON THEM", "Your agent met someone", the fixed line, and "They decide
   first. If they share their profile, you will see it here." Nothing else: no age, no area, no
@@ -1776,7 +1780,7 @@ In this example Meera decides first (stage 9 explains why).
   `app/src/features/matches/turn.ts:43`).
 - **After Meera shares her profile**, Arjun's card fills in (the same sections, built for him),
   with "See who it is" to open her profile, and "Not this one"
-  (`app/src/features/matches/matches-screen.tsx:475`).
+  (`app/src/features/matches/matches-screen.tsx:479`).
   Her own card now says "You shared your profile. If they share theirs back, you can talk."
   (`app/src/features/matches/turn.ts:41`).
 
@@ -1784,26 +1788,26 @@ In this example Meera decides first (stage 9 explains why).
 
 | # | On screen | Where it comes from | Code |
 |---|---|---|---|
-| 1 | Their character (a small 3D look) | The look they built; sent even on a plain card | `app/src/features/matches/matches-screen.tsx:368` |
-| 2 | "WAITING ON YOU" / "WAITING ON THEM" | Whose turn it is | `app/src/features/matches/matches-screen.tsx:370` |
+| 1 | Their character (a small 3D look) | The look they built; sent even on a plain card | `app/src/features/matches/matches-screen.tsx:372` |
+| 2 | "WAITING ON YOU" / "WAITING ON THEM" | Whose turn it is | `app/src/features/matches/matches-screen.tsx:374` |
 | 3 | Headline | Intent · age · neighbourhood (or city) of the other person; nothing known → "Your agent met someone" | `server/src/matching/brief.ts:336` |
 | 4 | "Passes your rules both ways, on everything they've answered" | The same fixed words on every card | `server/src/matching/brief.ts:66` |
-| 5 | "Practice match — this one is not a real person." | Practice profiles only | `app/src/features/matches/matches-screen.tsx:386` |
+| 5 | "Practice match — this one is not a real person." | Practice profiles only | `app/src/features/matches/matches-screen.tsx:390` |
 | 6 | "You both like …" / "You both work in …" | Tags both have, only from **public** facts, each word checked for private topics | `server/src/matching/rendezvous.ts:384` |
 | 7 | "In their words, <month year>" + a quote | Up to 2 of their own public sentences, typed by them, 12–300 characters, of allowed kinds (interests, things done, topics, media, pets, story answers, work, exercise, sleep, transport) | `server/src/matching/brief.ts:88` |
 | 8a | "DATE IDEA", "SOMETHING YOU SHARE", "Read what your agents said" | The talk (stage 7) | `app/src/features/matches/matches-screen.tsx:83` |
-| 8b | or "WHAT YOUR AGENTS ASKED EACH OTHER" | The answer sheets, when there is no talk | `app/src/features/matches/matches-screen.tsx:417` |
+| 8b | or "WHAT YOUR AGENTS ASKED EACH OTHER" | The answer sheets, when there is no talk | `app/src/features/matches/matches-screen.tsx:421` |
 | 9 | "WHAT YOU ASKED FOR" | The reader's own wants (stage 5) | `app/src/features/matches/exchange.ts:197` |
 | 10 | "Ask them about …" | First that applies: a question they could not answer in the talk; one from the sheets; a shared interest; a quote; a shared work field; one of their tags | `server/src/matching/brief.ts:543` |
 | 11 | "Fades tomorrow if you don't answer." / "Fades today if you don't answer." | Days left on the reader's turn | `app/src/features/matches/fade.ts:15` |
-| 12 | First move: "Yes, share my profile with them" and "Not this one". Second move: "See who it is" and "Not this one". Otherwise one line saying whose move it is | By whose turn it is (stage 9) | `app/src/features/matches/matches-screen.tsx:461` |
-| 13 | "Block or report" | On every card | `app/src/features/matches/matches-screen.tsx:494` |
+| 12 | First move: "Yes, share my profile with them" and "Not this one". Second move: "See who it is" and "Not this one". Otherwise one line saying whose move it is | By whose turn it is (stage 9) | `app/src/features/matches/matches-screen.tsx:465` |
+| 13 | "Block or report" | On every card | `app/src/features/matches/matches-screen.tsx:498` |
 
 Only one "waiting on you" card shows at a time. Since 2026-09-29 it is the one that fades soonest, so a
 card can only run out while it is the one on screen, and under "WAITING ON YOU" it says "2 more waiting"
 when there are more; before, it was simply the first, and the others could run out unseen. The server
 orders cards newest round first, then by a hash of the pair's id, never by a score
-(`app/src/features/matches/matches-screen.tsx:362`,
+(`app/src/features/matches/matches-screen.tsx:366`,
 `app/src/features/matches/waiting.ts:15`,
 `server/src/api/dating.ts:628`).
 
@@ -1902,7 +1906,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 
 - "Yes, share my profile with them" and "Not this one", and the note "This shows them your
   photos and first name. Nothing is shared until you tap it."
-  (`app/src/features/matches/matches-screen.tsx:463`,
+  (`app/src/features/matches/matches-screen.tsx:467`,
   `app/src/features/matches/turn.ts:37`).
 - If she opens his profile screen anyway, it says "Not yet — Their photos and name show only after
   they share them. You decide first, on the card."
@@ -1929,7 +1933,7 @@ at 0), tag chips; "Your agent never decided whether you would find them attracti
 opinion about that and does not keep one."; then "Yes, share mine back" and "Not for me", and
 under them "Yes shows them your photos and first name, and opens a chat. If you say no, they
 are not told."
-(`app/src/features/matches/matches-screen.tsx:475`,
+(`app/src/features/matches/matches-screen.tsx:479`,
 `app/src/features/matches/reveal-screen.tsx:251`,
 `app/src/features/matches/reveal-screen.tsx:178`,
 `app/src/features/matches/turn.ts:47`).
@@ -2803,7 +2807,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.
 19. **Closed on 2026-09-29: a waiting card running out unseen.** The one waiting card on screen is the one that fades
     soonest, and "2 more waiting" says how many are behind it; each card also wakes the phone when it arrives and the
-    day it fades, once push is set up (`app/src/features/matches/matches-screen.tsx:362`).
+    day it fades, once push is set up (`app/src/features/matches/matches-screen.tsx:366`).
 20. **Check-in details.** "Not yet" is final. Closed on 2026-09-29: a Block from "Did you feel safe?" sends the unsafe
     answer first, and "Not sure" no longer counts toward "Confirmed by N people"
     (`app/src/features/dm/checkin-flow.ts:58`,
