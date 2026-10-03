@@ -135,6 +135,9 @@ export interface Bake {
   sit: { row: number; frames: number };
   /** One turn of the cranks on a bicycle (ridePose); the first frame is the still one. */
   ride: { row: number; frames: number };
+  /** Hanging from the pickup's rope, kicking (hangPose), and under the parachute (chutePose). */
+  hang: { row: number; frames: number };
+  chute: { row: number; frames: number };
 }
 
 /**
@@ -296,6 +299,111 @@ export function ridePose(root: THREE.Object3D, bone: (name: string) => THREE.Bon
   root.updateMatrixWorld(true);
 }
 
+/** A turn of the kicking legs and waving arms under the balloon, in frames (0.8 s at BAKE_FPS). */
+export const HANG_FRAMES = 48;
+/** A sway under the parachute, in frames (1.2 s). */
+export const CHUTE_FRAMES = 72;
+
+/** Square the hips to the front (the idle frame has them turned 27 degrees), the rest as it faced. */
+function squareHips(root: THREE.Object3D, bone: (name: string) => THREE.Bone): void {
+  const at = (b: THREE.Bone) => b.getWorldPosition(new THREE.Vector3());
+  const body = bone('Body'), hips = bone('Hips');
+  const across = at(bone('UpperLegL')).sub(at(bone('UpperLegR')));
+  const hipsWorld = hips.getWorldQuaternion(new THREE.Quaternion());
+  turnBone(body, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(across.z, across.x)));
+  hips.quaternion.copy(body.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(hipsWorld));
+  root.updateMatrixWorld(true);
+}
+
+/**
+ * The arms and legs to where `arm` and `leg` say, for each side (L is +x): each wrist and
+ * each ankle reached for along a direction from its shoulder or hip, at a share of the
+ * limb's length, the elbows and knees bending towards their poles; the feet, which in
+ * this rig hang off the root, moved to the ankles and pointed `toes` down.
+ */
+function limbsTo(
+  root: THREE.Object3D, bone: (name: string) => THREE.Bone,
+  arm: (x: number) => { dir: THREE.Vector3; reach: number; pole: THREE.Vector3 },
+  leg: (x: number) => { dir: THREE.Vector3; reach: number; pole: THREE.Vector3 },
+  toes: number,
+): void {
+  const at = (b: THREE.Bone) => b.getWorldPosition(new THREE.Vector3());
+  for (const s of ['L', 'R'] as const) {
+    const x = s === 'L' ? 1 : -1;
+    const upper = bone(`UpperArm${s}`), lower = bone(`LowerArm${s}`), wrist = bone(`Wrist${s}`);
+    const end = lower.worldToLocal(at(wrist));
+    const length = at(upper).distanceTo(at(lower)) + at(lower).distanceTo(at(wrist));
+    const a = arm(x);
+    reach(upper, lower, end, at(upper).add(a.dir.clone().normalize().multiplyScalar(length * a.reach)), a.pole);
+  }
+  root.updateMatrixWorld(true);
+  for (const s of ['L', 'R'] as const) {
+    const x = s === 'L' ? 1 : -1;
+    const upper = bone(`UpperLeg${s}`), lower = bone(`LowerLeg${s}`), foot = bone(`Foot${s}`);
+    const end = lower.worldToLocal(at(foot));
+    const length = at(upper).distanceTo(at(lower)) + at(lower).distanceTo(at(foot));
+    const l = leg(x);
+    reach(upper, lower, end, at(upper).add(l.dir.clone().normalize().multiplyScalar(length * l.reach)), l.pole);
+    foot.position.copy(foot.parent!.worldToLocal(lower.localToWorld(end.clone())));
+    foot.updateMatrixWorld(true);
+    turnBone(foot, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), toes));
+  }
+  root.updateMatrixWorld(true);
+}
+
+/**
+ * HANGING FROM THE PICKUP'S ROPE, `phase` of a turn round (0 to 1) -- the founder,
+ * 2026-10-03: "the rope should be hooked to a person's back and you can give actions to
+ * hands and legs (animate it) like he is being pulled and dropped". The pack has no such
+ * clip, so like sitPose it is made from the idle's first frame:
+ *   - pulled from the back, the body tips forward a little from the hook;
+ *   - the arms flung out to the sides above the shoulders, flapping, a beat apart;
+ *   - the legs dangling and kicking, one forward as the other goes back, knees bending
+ *     on the way forward, toes pointing down.
+ */
+export function hangPose(root: THREE.Object3D, bone: (name: string) => THREE.Bone, phase: number): void {
+  root.updateMatrixWorld(true);
+  squareHips(root, bone);
+  turnBone(bone('Body'), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.22));
+  turnBone(bone('Neck'), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.12));
+  root.updateMatrixWorld(true);
+  const turn = phase * Math.PI * 2;
+  limbsTo(root, bone,
+    (x) => {
+      const flap = Math.sin(turn + (x > 0 ? 0 : Math.PI / 2));
+      const up = 0.35 + 0.3 * flap;
+      return { dir: new THREE.Vector3(x * Math.cos(up), Math.sin(up), 0.12 + 0.1 * flap), reach: 0.94, pole: new THREE.Vector3(0, -1, -0.6) };
+    },
+    (x) => {
+      const kick = Math.sin(turn + (x > 0 ? 0 : Math.PI));
+      return {
+        dir: new THREE.Vector3(x * 0.2, -1, 0.42 * kick),
+        reach: 0.86 - 0.1 * Math.max(0, kick),
+        // Knees forward and a little out: straight forward, they met in the middle.
+        pole: new THREE.Vector3(x * 0.45, 0.3, 1),
+      };
+    },
+    0.75,
+  );
+}
+
+/**
+ * UNDER THE PARACHUTE, `phase` of a sway (0 to 1): both hands up on the lines above the
+ * shoulders, elbows out; the legs together and hanging, swinging a little; toes down.
+ */
+export function chutePose(root: THREE.Object3D, bone: (name: string) => THREE.Bone, phase: number): void {
+  root.updateMatrixWorld(true);
+  squareHips(root, bone);
+  const turn = phase * Math.PI * 2;
+  turnBone(bone('Body'), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), 0.06 * Math.sin(turn)));
+  root.updateMatrixWorld(true);
+  limbsTo(root, bone,
+    (x) => ({ dir: new THREE.Vector3(x * 0.42, 0.9, 0.06), reach: 0.86, pole: new THREE.Vector3(x, -0.2, -0.6) }),
+    (x) => ({ dir: new THREE.Vector3(-x * 0.03, -1, 0.1 * Math.sin(turn + (x > 0 ? 0 : 0.6))), reach: 0.93, pole: new THREE.Vector3(0, 0.2, 1) }),
+    0.55,
+  );
+}
+
 /**
  * Every bone's skinning matrix -- bone world matrix times its inverse bind matrix,
  * exactly what three's Skeleton.update computes -- for every frame of walk and idle.
@@ -322,7 +430,8 @@ export function bakeClips(
   const w = framesOf(walk);
   const i = framesOf(idle);
   const width = bones.length * 4;
-  const data = new Float32Array(width * (w + i + 1 + RIDE_FRAMES) * 4);
+  const rows = w + i + 1 + RIDE_FRAMES + HANG_FRAMES + CHUTE_FRAMES;
+  const data = new Float32Array(width * rows * 4);
   const mixer = new THREE.AnimationMixer(root);
   const m = new THREE.Matrix4();
   let row = 0;
@@ -368,11 +477,25 @@ export function bakeClips(
     ridePose(root, need, f / RIDE_FRAMES);
     write();
   }
+  // Hanging from the pickup's rope, and under the parachute (flight.ts).
+  for (let f = 0; f < HANG_FRAMES; f++) {
+    restore();
+    hangPose(root, need, f / HANG_FRAMES);
+    write();
+  }
+  for (let f = 0; f < CHUTE_FRAMES; f++) {
+    restore();
+    chutePose(root, need, f / CHUTE_FRAMES);
+    write();
+  }
   restore();
+  const hang = w + i + 1 + RIDE_FRAMES;
   return {
-    data, width, rows: w + i + 1 + RIDE_FRAMES,
+    data, width, rows,
     walk: { row: 0, frames: w }, idle: { row: w, frames: i }, sit: { row: w + i, frames: 1 },
     ride: { row: w + i + 1, frames: RIDE_FRAMES },
+    hang: { row: hang, frames: HANG_FRAMES },
+    chute: { row: hang + HANG_FRAMES, frames: CHUTE_FRAMES },
   };
 }
 
@@ -837,6 +960,8 @@ uniform highp sampler2D uBake;
 uniform vec4 uClips;
 uniform float uSit;
 uniform vec2 uRide;
+uniform vec2 uHang;
+uniform vec2 uChute;
 uniform float uFps;
 uniform float uTime;
 uniform vec4 uHat[8];
@@ -892,11 +1017,13 @@ else if (crowdRole < 8.5) crowdPaint = color * crowdUnpack(aCol2.z);
 else if (crowdRole < 9.5) crowdPaint = color * crowdUnpack(aCol2.w);
 else crowdPaint = color * crowdUnpack(aShape.w);
 vColor = vec4(crowdPaint, 1.0);
-// aAnim.w: 1 for see-through, plus 2 for sitting, plus 4 for riding a bicycle, plus 8
-// for each hundredth of a unit off the ground (animFlags). A power of two divides exactly.
-float crowdFlags = mod(aAnim.w, 8.0);
-float crowdLift = floor(aAnim.w / 8.0) / 100.0;
+// aAnim.w: 1 for see-through, plus twice the pose (POSE: 1 sit, 2 ride, 3 hang, 4 chute),
+// plus 16 for each hundredth of a unit off the ground (animFlags). Powers of two divide
+// exactly.
+float crowdFlags = mod(aAnim.w, 16.0);
+float crowdLift = floor(aAnim.w / 16.0) / 100.0;
 vGhost = mod(crowdFlags, 2.0);
+float crowdKind = floor(crowdFlags / 2.0);
 `;
 
 /** Where in their walk (or idle) they are, and where they stand: one matrix. */
@@ -904,10 +1031,16 @@ const VERTEX_SKIN = /* glsl */`
 int crowdWalkRow = int(uClips.x + mod(floor((uTime + aAnim.x) * uFps), uClips.y));
 int crowdIdleRow = int(uClips.z + mod(floor((uTime + aAnim.y) * uFps), uClips.w));
 // Riding: the cranks turn while they move and rest level while they stand.
-bool crowdRiding = crowdFlags > 3.5;
-bool crowdSitting = !crowdRiding && crowdFlags > 1.5;
+bool crowdSitting = abs(crowdKind - 1.0) < 0.5;
+bool crowdRiding = abs(crowdKind - 2.0) < 0.5;
+bool crowdHanging = abs(crowdKind - 3.0) < 0.5;
+bool crowdChute = abs(crowdKind - 4.0) < 0.5;
 int crowdRideRow = int(uRide.x + (aAnim.z > 0.5 ? mod(floor((uTime + aAnim.x) * uFps), uRide.y) : 0.0));
-mat4 crowdSkin = crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))
+// Hanging from the pickup's rope, kicking; under the parachute, swaying (hangPose, chutePose).
+int crowdHangRow = int(uHang.x + mod(floor((uTime + aAnim.x) * uFps), uHang.y));
+int crowdChuteRow = int(uChute.x + mod(floor((uTime + aAnim.x) * uFps), uChute.y));
+mat4 crowdSkin = crowdHanging ? crowdPose(crowdHangRow) : crowdChute ? crowdPose(crowdChuteRow)
+  : crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))
   : aAnim.z > 0.995 ? crowdPose(crowdWalkRow) : aAnim.z < 0.005 ? crowdPose(crowdIdleRow)
   : crowdPose(crowdWalkRow) * aAnim.z + crowdPose(crowdIdleRow) * (1.0 - aAnim.z);
 float crowdC = cos(aPos.z);
@@ -976,6 +1109,8 @@ export interface CrowdPerson {
   readonly riding?: boolean;
   /** Off the ground, in world units: up in the sky drop (flight.ts). */
   readonly lift?: number;
+  /** Mid pickup: which part of it, for the pose (poseOf). */
+  readonly rig?: { readonly phase: string } | undefined;
 }
 
 /**
@@ -984,13 +1119,29 @@ export interface CrowdPerson {
  */
 export const MAX_LIFT = 8;
 /**
- * aAnim.w for a person: 1 for see-through, plus 2 for sitting, plus 4 for riding a
- * bicycle, plus 8 for each hundredth of a unit they are off the ground. Whole numbers
- * all, and below 2^24, so a float carries them exactly.
+ * What a body is doing, past walking and standing: on a bench, on a bicycle, hanging from
+ * the pickup's rope, under the parachute (flight.ts). Each has its own frames in the bake.
  */
-export function animFlags(ghost: boolean, riding: boolean, sitting: boolean, lift = 0): number {
+export const POSE = { stand: 0, sit: 1, ride: 2, hang: 3, chute: 4 } as const;
+export type PoseKind = (typeof POSE)[keyof typeof POSE];
+
+/**
+ * aAnim.w for a person: 1 for see-through, plus twice the POSE, plus 16 for each hundredth
+ * of a unit they are off the ground. Whole numbers all, and below 2^24, so a float
+ * carries them exactly. (Sitting is 2 and riding 4, as they were before the pickup's two.)
+ */
+export function animFlags(ghost: boolean, pose: PoseKind, lift = 0): number {
   const up = Math.round(Math.min(MAX_LIFT, Math.max(0, lift)) * 100);
-  return (ghost ? 1 : 0) + (riding ? 4 : sitting ? 2 : 0) + 8 * up;
+  return (ghost ? 1 : 0) + 2 * pose + 16 * up;
+}
+
+/** Which pose a person's body takes this frame: a flight's phase first, then a bike, then a bench. */
+export function poseOf(a: { riding?: boolean; state: string; rig?: { phase: string } | undefined }): PoseKind {
+  const phase = a.rig?.phase;
+  if (phase === 'yank' || phase === 'carry') return POSE.hang;
+  if (phase === 'chute') return POSE.chute;
+  if (a.riding) return POSE.ride;
+  return a.state === 'sitting' ? POSE.sit : POSE.stand;
 }
 
 /** One frame's camera and clock. The caller keeps one and rewrites it each frame. */
@@ -1110,6 +1261,8 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
     uClips: { value: new THREE.Vector4(bake.walk.row, bake.walk.frames, bake.idle.row, bake.idle.frames) },
     uSit: { value: bake.sit.row },
     uRide: { value: new THREE.Vector2(bake.ride.row, bake.ride.frames) },
+    uHang: { value: new THREE.Vector2(bake.hang.row, bake.hang.frames) },
+    uChute: { value: new THREE.Vector2(bake.chute.row, bake.chute.frames) },
     uFps: { value: BAKE_FPS },
     uTime: { value: 0 },
     uHat: { value: hatUniform() },
@@ -1191,7 +1344,7 @@ export function crowdFrom(prepared: PreparedCrowd): GpuCrowd {
         const at = l.n * STRIDE;
         arr[at] = a.x; arr[at + 1] = a.z; arr[at + 2] = a.facing; arr[at + 3] = s;
         arr[at + 4] = offset * walkDur; arr[at + 5] = offset * idleDur; arr[at + 6] = w;
-        arr[at + 7] = animFlags(a.ghost, a.riding === true, a.state === 'sitting', a.lift);
+        arr[at + 7] = animFlags(a.ghost, poseOf(a), a.lift);
         arr.set(f, at + 8);
         l.n++;
         drawn++;

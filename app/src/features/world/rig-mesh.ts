@@ -21,10 +21,22 @@ const CANOPY_H = 0.11;
 /** The rope's thickness, and the shoulders the lines come down to. */
 const ROPE_R = 0.006;
 const SHOULDER = 0.035;
+/**
+ * THE ROPE IS HOOKED TO THE BACK (the founder, 2026-10-03: "the rope should be hooked to
+ * a person's back"): this far behind their middle, between the shoulder blades. It came
+ * out of the middle of the chest, so it seemed to run through them.
+ */
+export const BACK = 0.02;
+
+/** Where the rope ties on: between the shoulder blades of somebody at (x, y, z) facing `facing`. */
+export function hookOf(x: number, y: number, z: number, facing: number): [number, number, number] {
+  return [x - Math.sin(facing) * BACK, y + HARNESS_Y, z - Math.cos(facing) * BACK];
+}
 
 export interface Rigged {
   readonly x: number;
   readonly z: number;
+  readonly facing: number;
   readonly lift?: number;
   readonly rig?: FlightPose | undefined;
 }
@@ -101,10 +113,10 @@ export function buildRigs(chuteColor: string): BuiltRigs {
           r.balloon.scale.set(BALLOON_R * b.size, BALLOON_R * b.size * 1.18, BALLOON_R * b.size);
           r.balloonMat.opacity = b.alpha;
         }
-        // The rope, from the harness on their back to the bottom of the balloon.
+        // The rope, from the hook on their back to the bottom of the balloon.
         r.rope.visible = rig.roped && !!b;
         if (rig.roped && b) {
-          const hx = p.x, hy = y + HARNESS_Y, hz = p.z;
+          const [hx, hy, hz] = hookOf(p.x, y, p.z, p.facing);
           dir.set(b.x - hx, b.y - BALLOON_R * b.size * 1.1 - hy, b.z - hz);
           const len = dir.length();
           r.rope.position.set(hx, hy, hz);

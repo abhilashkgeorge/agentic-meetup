@@ -38,7 +38,7 @@ import {
 import { WorldSim } from '../src/features/world/sim';
 import { venueGarden, CUBBON_PARK } from '../src/features/world/venue';
 import { gardenSpots } from '../src/features/world/garden';
-import { MAX_LIFT, animFlags } from '../src/features/world/crowd-gpu';
+import { MAX_LIFT, POSE, animFlags } from '../src/features/world/crowd-gpu';
 
 const look: Look = { ...STARTER, hat: 2 };
 const REF = (n: number) => n.toString(16).padStart(32, '0');
@@ -229,23 +229,24 @@ describe('flying, seen from another phone', () => {
 
 describe('drawing the flight', () => {
   it('carries the lift in aAnim.w above the flags, which read the same', () => {
-    for (const [ghost, riding, sitting] of [[false, false, false], [true, false, true], [false, true, false]] as const) {
-      const w = animFlags(ghost, riding, sitting, 4.73);
-      expect(w % 8).toBe(animFlags(ghost, riding, sitting));
-      expect(Math.floor(w / 8) / 100).toBeCloseTo(4.73, 5);
+    for (const pose of [POSE.stand, POSE.sit, POSE.ride, POSE.hang, POSE.chute]) {
+      const w = animFlags(false, pose, 4.73);
+      expect(w % 16).toBe(animFlags(false, pose));
+      expect(Math.floor(w / 16) / 100).toBeCloseTo(4.73, 5);
       expect(Math.fround(w), 'not exact in a float').toBe(w);
     }
-    expect(Math.floor(animFlags(false, false, false, 99) / 8) / 100).toBe(MAX_LIFT);
-    expect(animFlags(false, false, false, -1)).toBe(0);
+    expect(Math.floor(animFlags(false, POSE.stand, 99) / 16) / 100).toBe(MAX_LIFT);
+    expect(animFlags(false, POSE.stand, -1)).toBe(0);
   });
 
   it('lifts the body in the shader, draws the gear, and has no car (SOURCE SHAPE: it needs GL)', () => {
     const crowd = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'crowd-gpu.ts'), 'utf8'));
-    expect(crowd).toContain('float crowdLift = floor(aAnim.w / 8.0) / 100.0;');
+    expect(crowd).toContain('float crowdLift = floor(aAnim.w / 16.0) / 100.0;');
     expect(crowd).toContain('aPos.x, crowdLift, aPos.y, 1.0);');
     const canvas = strip(readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'canvas.tsx'), 'utf8'));
     expect(canvas).not.toMatch(/buildCar|rideAt|car-mesh|effectsNow|buildEffects/);
     expect(canvas).toContain('if (walking) rigs.update(shown, bodied.current);');
+    expect(crowd).toContain('arr[at + 7] = animFlags(a.ghost, poseOf(a), a.lift);');
     expect(canvas).toContain('<primitive object={rigs.group} />');
   });
 });

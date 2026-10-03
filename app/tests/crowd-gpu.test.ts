@@ -77,7 +77,7 @@ describe('the baked animation', () => {
     const names = sample.skeleton.bones.map((b) => b.name);
     const bake = gpu.bakeClips(gltf.scene, names, sample.skeleton.boneInverses,
       new Map(gltf.animations.map((c) => [c.name, c])));
-    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames + bake.ride.frames);
+    expect(bake.rows).toBe(bake.walk.frames + bake.idle.frames + bake.sit.frames + bake.ride.frames + bake.hang.frames + bake.chute.frames);
 
     // three's own answer: the same clip on the model's own skeleton, at the same time.
     const mixer = new THREE.AnimationMixer(gltf.scene);
@@ -470,11 +470,12 @@ describe('a frame', () => {
     // while the rider moves (the walk weight), and rest on the first frame otherwise.
     const src = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'crowd-gpu.ts'), 'utf8');
     // The flags are read from below the height in aAnim.w (animFlags): eight and up is lift.
-    expect(src).toContain('float crowdFlags = mod(aAnim.w, 8.0);');
-    expect(src).toContain('bool crowdRiding = crowdFlags > 3.5;');
-    expect(src).toContain('bool crowdSitting = !crowdRiding && crowdFlags > 1.5;');
+    // The flags are read from below the height in aAnim.w (animFlags): sixteen and up is lift.
+    expect(src).toContain('float crowdFlags = mod(aAnim.w, 16.0);');
+    expect(src).toContain('bool crowdRiding = abs(crowdKind - 2.0) < 0.5;');
+    expect(src).toContain('bool crowdSitting = abs(crowdKind - 1.0) < 0.5;');
     expect(src).toContain('int crowdRideRow = int(uRide.x + (aAnim.z > 0.5 ? mod(floor((uTime + aAnim.x) * uFps), uRide.y) : 0.0));');
-    expect(src).toContain('mat4 crowdSkin = crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))');
+    expect(src).toContain('  : crowdRiding ? crowdPose(crowdRideRow) : crowdSitting ? crowdPose(int(uSit))');
     crowd.dispose();
   });
 
