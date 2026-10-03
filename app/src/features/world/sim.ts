@@ -721,11 +721,14 @@ export class WorldSim {
    * THE EMERGENCY PICKUP (flight.ts): a plane's cable up, over the trees, down by parachute
    * beside (tx, tz). Off a bench and off a bicycle first; the stick does nothing until
    * you land, and `done` is called then. A second flight while one is under way is
-   * ignored. False if not here.
+   * ignored -- except coming down into the park: then the plane comes as soon as you
+   * land (afterLanding). False if not here.
    */
   flyTo(ref: string, tx: number, tz: number, done?: () => void): boolean {
     const a = this.byRef.get(ref);
-    if (!a || a.fly) return false;
+    if (!a) return false;
+    if (a.fly?.f.kind === 'drop') { this.afterLanding(a, () => { if (!this.flyTo(ref, tx, tz, done)) done?.(); }); return true; }
+    if (a.fly) return false;
     if (a.seat) this.standUp(ref);
     a.seat = undefined;
     this.pickup(a, tx, tz, done);
@@ -780,12 +783,26 @@ export class WorldSim {
    */
   walkTo(ref: string, tx: number, tz: number): boolean {
     const a = this.byRef.get(ref);
-    if (!a || a.fly) return false;
+    if (!a) return false;
+    if (a.fly?.f.kind === 'drop') { this.afterLanding(a, () => this.walkTo(ref, tx, tz)); return true; }
+    if (a.fly) return false;
     if (a.seat) this.standUp(ref);
     a.driveX = 0; a.driveZ = 0;
     this.setTarget(a, tx, tz, Math.min(RUN_MAX, Math.max(WALK * 1.8, Math.hypot(tx - a.x, tz - a.z) / BENCH_SECS)));
     a.state = 'walking';
     return true;
+  }
+
+  /**
+   * STILL COMING DOWN INTO THE PARK when somebody says yes: what to do once you land.
+   * Ignored, as a second flight is, you were left standing where you came down while
+   * the two of you were "talking" a hundred metres apart -- on the Pixel, asking the
+   * moment the park opened (2026-10-04).
+   */
+  private afterLanding(a: SimAgent, next: () => void): void {
+    const fl = a.fly!;
+    const was = fl.done;
+    fl.done = () => { was?.(); next(); };
   }
 
   /** Whether somebody is up in a sky drop right now. */

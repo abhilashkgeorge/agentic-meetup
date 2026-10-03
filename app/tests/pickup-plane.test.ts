@@ -261,6 +261,32 @@ describe('not for a few steps', () => {
     }
   });
 
+  it('a yes while you are still coming down into the park: the plane comes as soon as you land, or you walk', () => {
+    // On the Pixel, 2026-10-04: "Find someone" the moment the park opened, the bot's yes
+    // came while the arrival parachute was still coming down -- the second flight was
+    // ignored, and the two were "talking" sixteen units apart.
+    const s = new WorldSim(5);
+    s.upsert([{ ref: 'you', kind: 'you', seed: 7, area: null }]);
+    expect(s.dropIn('you', 0, 0)).toBe(true);
+    let landed = 0;
+    expect(s.flyTo('you', 12, 0, () => { landed++; }), 'turned down while coming down').toBe(true);
+    let picked = false;
+    for (let i = 0; i < 60 * 8 && !landed; i++) {
+      s.step(1 / 60);
+      picked ||= s.get('you')!.fly?.f.kind === 'pickup';
+    }
+    expect(picked, 'no plane after landing').toBe(true);
+    expect(landed).toBe(1);
+    expect(Math.hypot(s.get('you')!.x - 12, s.get('you')!.z)).toBeLessThan(1e-6);
+
+    const w = new WorldSim(5);
+    w.upsert([{ ref: 'you', kind: 'you', seed: 7, area: null }]);
+    w.dropIn('you', 0, 0);
+    expect(w.walkTo('you', 1.5, 0)).toBe(true);
+    for (let i = 0; i < 60 * 8; i++) w.step(1 / 60);
+    expect(Math.hypot(w.get('you')!.x - 1.5, w.get('you')!.z), 'never walked over after landing').toBeLessThan(0.12);
+  });
+
   it('a short hop\'s plane never carries you past them', () => {
     for (const d of [FLY_MIN, 4, 6, 9, 12, 20]) {
       const f: Flight = { fx: 0, fz: 0, tx: d, tz: 0 };
