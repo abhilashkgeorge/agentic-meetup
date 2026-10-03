@@ -36,7 +36,7 @@ three shapes:
   question, which comes before the "impulse" question in the list, so Arjun is offered:
   "You get an unexpected ₹50,000. What happens to most of it?"
   ([server/src/matching/want-questions.ts:35] `{ questionId: 'sit-windfall',`,
-  [server/src/onboarding/questions.ts:329] `You get an unexpected ₹50,000. What happens to most of it?`).
+  [server/src/onboarding/questions.ts:326] `You get an unexpected ₹50,000. What happens to most of it?`).
   "Someone kind" matches nothing, so it stays a sentence.
 - **What Arjun sees** on YOU → Manage → "What you're looking for": his first want in
   quotes, "We can ask people this. Tick the answers that are fine for you.", the question,
@@ -95,7 +95,7 @@ three shapes:
   ([server/src/onboarding/stories.ts:147] `single-valued, so a new one supersedes the old by itself`).
 - **The interview's free sentence.** "Anyone else you couldn't be with?", up to 400
   characters, stored as a `dealbreaker` fact
-  ([server/src/onboarding/questions.ts:220] `text: 'Anyone else you couldn\'t be with?',`,
+  ([server/src/onboarding/questions.ts:217] `text: 'Anyone else you couldn\'t be with?',`,
   [server/src/api/interview.ts:209] `text: z.string().max(400).optional(),`). Several can
   stay live at once ([shared/src/facts.ts:138] `{ name: 'dealbreaker',`). The same sentence
   also goes to a model that may propose a change to one card's "Who's fine" row; only the
@@ -128,10 +128,10 @@ three shapes:
   dinner; "What field are you in?"; "How often do you move your body?"; "Early or late?";
   a long weekend with no plans; a 7 pm call about plans tonight; "Would you move cities for
   the right person?" ([server/src/matching/want-questions.ts:31] `export const WANT_QUESTIONS: readonly WantQuestion[] = [`,
-  [server/src/onboarding/questions.ts:336] `A friend takes you to a tiny street stall. Amazing food, not very clean.`,
-  [server/src/onboarding/questions.ts:345] `The last book you finished: when was it?`,
-  [server/src/onboarding/questions.ts:259] `text: 'What field are you in?',`,
-  [server/src/onboarding/questions.ts:312] `text: 'Would you move cities for the right person?',`).
+  [server/src/onboarding/questions.ts:333] `A friend takes you to a tiny street stall. Amazing food, not very clean.`,
+  [server/src/onboarding/questions.ts:342] `The last book you finished: when was it?`,
+  [server/src/onboarding/questions.ts:256] `text: 'What field are you in?',`,
+  [server/src/onboarding/questions.ts:309] `text: 'Would you move cities for the right person?',`).
   Eight are "situation" questions; four are optional profile questions. A want can never be
   tied to the basics, the five core cards or the faith card.
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
@@ -181,9 +181,9 @@ three shapes:
   five cards, faith, the eight situation answers, and (since 2026-09-28) work field,
   exercise, sleep and moving cities. On these fields a sentence said in chat waits for the
   person's Yes before it counts, so chat can never silently move someone into or out of a
-  must-have ([server/src/onboarding/questions.ts:443] `export function mustHaveAllowed(predicate: string): boolean {`,
-  [server/src/onboarding/questions.ts:444] `return TAPPED_PREDICATES.has(predicate);`,
-  [server/src/onboarding/questions.ts:433] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
+  must-have ([server/src/onboarding/questions.ts:440] `export function mustHaveAllowed(predicate: string): boolean {`,
+  [server/src/onboarding/questions.ts:441] `return TAPPED_PREDICATES.has(predicate);`,
+  [server/src/onboarding/questions.ts:430] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
   The server refuses a must-have anywhere else
   ([server/src/api/dating.ts:553] `A must-have only hides someone over an answer they tapped`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is

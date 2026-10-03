@@ -9,7 +9,7 @@
  *
  * Adding a field here gives it both a step in setup and an editor on the profile.
  */
-import { AREAS, DIETS, GENDERS, RELATIONSHIP_INTENTS } from '@clone/shared';
+import { AREAS, DIETS, GENDERS, INTENT_LABELS, INTENT_QUESTION, RELATIONSHIP_INTENTS } from '@clone/shared';
 
 /** `range` is a pair of numbers, from and to: today only the ages you would meet. */
 export type FieldKind = 'one' | 'many' | 'number' | 'text' | 'range' | 'distance';
@@ -33,8 +33,8 @@ export interface Field {
 /** Words people use, for values stored as tags. */
 const HUMAN: Record<string, string> = {
   woman: 'Woman', man: 'Man', nonbinary: 'Nonbinary', other: 'Something else',
-  long_term: 'Something long-term', marriage: 'Marriage',
-  companionship: 'Company', casual: 'Casual', undecided: 'Still deciding',
+  // The onboarding cards' words too: one set (shared INTENT_LABELS).
+  ...INTENT_LABELS,
   omnivore: 'I eat everything', no_beef: 'No beef', no_pork: 'No pork',
   pescatarian: 'Pescatarian', vegetarian: 'Vegetarian', vegan: 'Vegan',
 };
@@ -50,6 +50,21 @@ const HUMAN: Record<string, string> = {
  */
 export const label = (v: string): string =>
   HUMAN[v] ?? AREAS.find((a) => a.id === v)?.name ?? v.replace(/_/g, ' ');
+
+/** Whether a typed city is the one the map's neighbourhoods are in. */
+export const isBangalore = (city: string | null | undefined): boolean => !!city && /bangalore|bengaluru/i.test(city);
+
+/**
+ * Where you live, as the top of the You tab says it: the part of town and the city --
+ * "Indiranagar, Bangalore" -- when it knows the part, the city alone otherwise. It said
+ * "Bangalore" with the part of town saved (the two-phone test, 2026-10-02). A part kept
+ * from before the city changed to one the map does not cover is not put under the new city.
+ */
+export function placeLine(city: string | null | undefined, area: string | null | undefined): string | undefined {
+  const part = area ? AREAS.find((a) => a.id === area)?.name : undefined;
+  if (!part || (city && !isBangalore(city))) return city ?? undefined;
+  return city ? `${part}, ${city}` : part;
+}
 
 export const FIELDS: Field[] = [
   // THE NAME ANOTHER PERSON SEES, and the only place it comes from (the founder,
@@ -74,7 +89,7 @@ export const FIELDS: Field[] = [
   { key: 'age_range_sought', title: 'Who would you like to meet?', kind: 'range', essential: true,
     rowLabel: "Ages you'd meet",
     hint: 'Their age, from and to. We started from yours. Change it if you like.' },
-  { key: 'relationship_intent', title: 'What are you after?', kind: 'one', essential: true,
+  { key: 'relationship_intent', title: INTENT_QUESTION, kind: 'one', essential: true,
     rowLabel: 'Here for',
     options: RELATIONSHIP_INTENTS.map((i) => ({ value: i, label: label(i) })) },
   { key: 'lives_in', title: 'Where are you now?', kind: 'text', essential: true,
@@ -119,7 +134,7 @@ const MISSING_NOUN: Record<string, string> = {
   birth_date: 'Your birth year',
   gender: 'Your gender',
   seeking_gender: 'Who you want to meet',
-  relationship_intent: "What you're after",
+  relationship_intent: "What you're here for",
   lives_in: 'Where you live',
   area: 'Which part of town',
   max_distance_km: 'How far you would travel',

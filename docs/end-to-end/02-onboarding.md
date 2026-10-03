@@ -20,8 +20,8 @@ can meet it.
 
 The screens and questions are the same for both; only their taps differ. Arjun taps "A man" on
 "You are…" and "Women" on "You want to meet…"; Meera taps "A woman" and "Men"
-([server/src/onboarding/questions.ts:144] `{ value: 'woman', label: 'A woman' }, { value: 'man', label: 'A man' },`,
-[server/src/onboarding/questions.ts:153] `{ value: 'woman', label: 'Women' }, { value: 'man', label: 'Men' },`).
+([server/src/onboarding/questions.ts:146] `{ value: 'woman', label: 'A woman' }, { value: 'man', label: 'A man' },`,
+[server/src/onboarding/questions.ts:155] `{ value: 'woman', label: 'Women' }, { value: 'man', label: 'Men' },`).
 In order, each sees:
 
 1. **"Tell it one true thing"** — "Anything about you. One sentence is enough to start." Arjun types
@@ -47,7 +47,7 @@ In order, each sees:
    ([app/src/features/onboarding/questions-end.ts:25] `return fromFinish ? '/onboarding/essentials?finish=1' : '/onboarding/essentials';`).
 6. **Essentials**: "What year were you born?", "Who would you like to meet?" (ages, pre-filled ±5 from
    their own), "Where are you now?", "How far would you travel?"
-   ([app/src/features/profile/fields.ts:63] `{ key: 'birth_date', title: 'What year were you born?', kind: 'number',`,
+   ([app/src/features/profile/fields.ts:78] `{ key: 'birth_date', title: 'What year were you born?', kind: 'number',`,
    [app/src/features/profile/age-range.ts:42] `return { min: clamp(age - AGE_SPREAD), max: clamp(age + AGE_SPREAD) };`).
    Both type "Bangalore", which resolves to the city centre.
 7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Things to talk about"** (the
@@ -74,7 +74,7 @@ restarts setup at the first screen ([app/src/features/onboarding/photos-step.tsx
 ### 2.2 Every question
 
 **Basics** (required, cannot be skipped)
-([server/src/onboarding/questions.ts:359] `export const GATING = ['q-gender', 'q-seeking', 'q-intent'];`):
+([server/src/onboarding/questions.ts:356] `export const GATING = ['q-gender', 'q-seeking', 'q-intent'];`):
 
 | Question | Answers |
 |---|---|
@@ -82,15 +82,19 @@ restarts setup at the first screen ([app/src/features/onboarding/photos-step.tsx
 | "You want to meet…" (several) | Women, Men, Nonbinary people |
 | "What are you here for?" | Something long-term, Marriage, Company, Something casual, Still working it out |
 
-Sources: [server/src/onboarding/questions.ts:142] `text: 'You are…',`,
-[server/src/onboarding/questions.ts:151] `text: 'You want to meet…',`,
-[server/src/onboarding/questions.ts:159] `text: 'What are you here for?',`.
+The app's setup and the profile ask the last one in the same words and read the answer back in
+them (since 2026-10-03; before, they asked "What are you after?" with "Casual" and "Still
+deciding").
+
+Sources: [server/src/onboarding/questions.ts:144] `text: 'You are…',`,
+[server/src/onboarding/questions.ts:153] `text: 'You want to meet…',`,
+[shared/src/values.ts:42] `export const INTENT_QUESTION = 'What are you here for?';`.
 
 **The five cards** (the fixed "set" questions; required, but "Prefer not to say" counts as an
 answer). Since 2026-10-01 somebody here for something casual or for company gets four: the
 kids card is never asked of them and does not hold them back (before, everybody was asked
 "Do you want children?" and could not go out without it)
-([server/src/onboarding/questions.ts:385] `export const NO_KIDS_CARD: readonly string[] = ['casual', 'companionship'];`) ([server/src/onboarding/questions.ts:371] `['card-kids', 'card-monogamy', 'card-smoking', 'card-drinking', 'card-food']`).
+([server/src/onboarding/questions.ts:382] `export const NO_KIDS_CARD: readonly string[] = ['casual', 'companionship'];`) ([server/src/onboarding/questions.ts:368] `['card-kids', 'card-monogamy', 'card-smoking', 'card-drinking', 'card-food']`).
 Each card has two rows: **You** (your answer) and **Your partner** ("Tap every one that is okay.
 People who have not said still pass."), with "All are okay" and nothing pre-ticked
 ([app/src/features/onboarding/interview-screen.tsx:376] `Tap every one that is okay. People who have not said still pass.`,
@@ -104,23 +108,23 @@ People who have not said still pass."), with "All are okay" and nothing pre-tick
 | Drinking | "Do you drink?" | "How much can your partner drink?" | same five |
 | Food | "How do you eat?" | "How can your partner eat?" | Everything, No beef, No pork, Fish no meat, Vegetarian, Vegan |
 
-Sources: [server/src/onboarding/questions.ts:175] `'Kids', 'Do you want children?', 'Which are okay for your partner?'`,
-[server/src/onboarding/questions.ts:179] `card('card-monogamy', 'monogamy_stance', 'One person or open', 'One person, or open?'`,
-[server/src/onboarding/questions.ts:182] `'Smoking', 'Do you smoke?', 'How much can your partner smoke?'`,
-[server/src/onboarding/questions.ts:183] `'Drinking', 'Do you drink?', 'How much can your partner drink?'`,
-[server/src/onboarding/questions.ts:184] `card('card-food', 'diet', 'Food', 'How do you eat?', 'How can your partner eat?', DIETS, {`.
+Sources: [server/src/onboarding/questions.ts:172] `'Kids', 'Do you want children?', 'Which are okay for your partner?'`,
+[server/src/onboarding/questions.ts:176] `card('card-monogamy', 'monogamy_stance', 'One person or open', 'One person, or open?'`,
+[server/src/onboarding/questions.ts:179] `'Smoking', 'Do you smoke?', 'How much can your partner smoke?'`,
+[server/src/onboarding/questions.ts:180] `'Drinking', 'Do you drink?', 'How much can your partner drink?'`,
+[server/src/onboarding/questions.ts:181] `card('card-food', 'diet', 'Food', 'How do you eat?', 'How can your partner eat?', DIETS, {`.
 Ticking only some partner answers stores **one hard rule** (a must-have) on that card; "All are
 okay" stores none ([server/src/api/interview.ts:531] `strength: 'dealbreaker',`).
 
 **Faith** (optional, can be skipped whole): "What is your faith?" with eleven answers (Hindu,
 Muslim, Christian, Sikh, Jain, Buddhist, Jewish, Zoroastrian, "Spiritual, not religious", "Not
 religious", "Something else") and "Optional. Nobody ever sees your answer. It is only used to check
-who fits, both ways." ([server/src/onboarding/questions.ts:196] `'Faith', 'What is your faith?', 'Which are okay for your partner?'`,
-[server/src/onboarding/questions.ts:202] `why: 'Optional. Nobody ever sees your answer. It is only used to check who fits, both ways.',`).
+who fits, both ways." ([server/src/onboarding/questions.ts:193] `'Faith', 'What is your faith?', 'Which are okay for your partner?'`,
+[server/src/onboarding/questions.ts:199] `why: 'Optional. Nobody ever sees your answer. It is only used to check who fits, both ways.',`).
 
 **"Couldn't be with"** (optional): "Anyone else you couldn't be with?" — "Be blunt. If it matches one
 of your cards, you'll see the change and decide. If not, you'll spot it in the first chat."
-([server/src/onboarding/questions.ts:220] `text: 'Anyone else you couldn\'t be with?',`). The sentence is
+([server/src/onboarding/questions.ts:217] `text: 'Anyone else you couldn\'t be with?',`). The sentence is
 kept as a want (stage 5). A model may read it as a change to one card's partner row, shown as
 "Change this card?" with "Keep this" / "Leave it"; nothing changes unless the person keeps it
 ([app/src/features/onboarding/interview-screen.tsx:188] `Your agent read your answer as this. Nothing changes unless you keep it.`).
@@ -132,9 +136,9 @@ school?", "What field are you in?", "Any field you would especially like them to
 late?", "Money — how do you think about it?", "What do you actually watch?", "How do you get
 around?", "Would you move cities for the right person?"
 ([server/src/api/interview.ts:125] `const candidates = state.profile.inPool`,
-[server/src/onboarding/questions.ts:232] `text: 'How often do you move your body?',`,
-[server/src/onboarding/questions.ts:259] `text: 'What field are you in?',`,
-[server/src/onboarding/questions.ts:312] `text: 'Would you move cities for the right person?',`).
+[server/src/onboarding/questions.ts:229] `text: 'How often do you move your body?',`,
+[server/src/onboarding/questions.ts:256] `text: 'What field are you in?',`,
+[server/src/onboarding/questions.ts:309] `text: 'Would you move cities for the right person?',`).
 
 **Situation questions** (8): never asked during setup. They arrive only as a question of the day
 when someone else's want needs the answer (stages 3 and 5)
@@ -153,12 +157,14 @@ a neighbourhood is saved as the city plus the area, so nothing finer than a neig
 ever stored. In setup it starts on the person's neighbourhood when the pool has only their city
 and the phone already allows location (no dialog appears unasked). The map's pictures are
 OpenStreetMap's, fetched by our server and kept there, so the map provider never sees a person.
-The same map is the "How far you'd go" row on the You tab.
+The same map is the "How far you'd go" row on the You tab, and the top of that tab says where the
+person lives with the part of town first -- "Indiranagar, Bangalore" -- once one is saved (since
+2026-10-03; before, the city alone) ([app/src/features/profile/fields.ts:63] `export function placeLine(city: string | null | undefined, area: string | null | undefined): string | undefined {`).
 Only the first name and distance can be declined here
-([app/src/features/profile/fields.ts:59] `{ key: 'first_name', title: 'What should people call you?', kind: 'text', essential: true,`,
-[app/src/features/profile/fields.ts:62] `note: 'People see it only after you share your profile with them.' },`,
-([app/src/features/profile/fields.ts:82] `hint: 'Your city is enough. Nobody sees your exact location.' },`,
-[app/src/features/profile/fields.ts:92] `{ key: 'max_distance_km', title: 'How far would you travel?', kind: 'distance', essential: true,`,
+([app/src/features/profile/fields.ts:74] `{ key: 'first_name', title: 'What should people call you?', kind: 'text', essential: true,`,
+[app/src/features/profile/fields.ts:77] `note: 'People see it only after you share your profile with them.' },`,
+([app/src/features/profile/fields.ts:97] `hint: 'Your city is enough. Nobody sees your exact location.' },`,
+[app/src/features/profile/fields.ts:107] `{ key: 'max_distance_km', title: 'How far would you travel?', kind: 'distance', essential: true,`,
 [app/src/features/distance/geo.ts:188] `export function placeWrites(from: Spot | null, to: Spot): { predicate: 'lives_in' | 'area'; value: string; fix?: Spot['fix'] }[] {`,
 [server/src/api/tiles.ts:23] `const TILE_URL = env.TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';`).
 A city among 46 listed ones becomes that city's centre; an unlisted city becomes a point only if
@@ -185,7 +191,7 @@ before the step existed are asked on the Home ("Add your first name") and can se
 
 The server recomputes readiness on every profile rebuild. A person is **in the pool** when all of
 these hold ([server/src/matching/profile.ts:209] `const inPool = missing.length === 0 && adult;`,
-[shared/src/values.ts:108] `export const POOL_REQUIRED = [`):
+[shared/src/values.ts:123] `export const POOL_REQUIRED = [`):
 
 - gender, who they want to meet, birth year, city **with a map point**, and what they are here for,
   each from a confirmed (not held) fact ([server/src/matching/profile.ts:45] `WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL`,

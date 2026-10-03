@@ -33,6 +33,21 @@ export const GENDERS = ['woman', 'man', 'nonbinary', 'other'] as const;
 export const RELATIONSHIP_INTENTS =
   ['long_term', 'marriage', 'companionship', 'casual', 'undecided'] as const;
 /**
+ * The intent question and its answers in the words a person reads: one set, for the
+ * server's onboarding cards and the app's setup and profile alike. The two asked it in
+ * different words -- "What are you here for?" with "Something casual" and "Still working
+ * it out", and "What are you after?" with "Casual" and "Still deciding" -- so a person
+ * met the same question twice, worded two ways (the two-phone test, 2026-10-02).
+ */
+export const INTENT_QUESTION = 'What are you here for?';
+export const INTENT_LABELS: Readonly<Record<(typeof RELATIONSHIP_INTENTS)[number], string>> = {
+  long_term: 'Something long-term',
+  marriage: 'Marriage',
+  companionship: 'Company',
+  casual: 'Something casual',
+  undecided: 'Still working it out',
+};
+/**
  * "Anywhere" on "How far would you travel?": a limit no two places on Earth exceed, stored
  * as a number so the distance filter needs no special case. Words that read a distance
  * back say "anywhere" for it, never "20000 km".

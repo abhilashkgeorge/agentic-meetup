@@ -293,8 +293,8 @@ can meet it.
 
 The screens and questions are the same for both; only their taps differ. Arjun taps "A man" on
 "You are…" and "Women" on "You want to meet…"; Meera taps "A woman" and "Men"
-(`server/src/onboarding/questions.ts:144`,
-`server/src/onboarding/questions.ts:153`).
+(`server/src/onboarding/questions.ts:146`,
+`server/src/onboarding/questions.ts:155`).
 In order, each sees:
 
 1. **"Tell it one true thing"** — "Anything about you. One sentence is enough to start." Arjun types
@@ -320,7 +320,7 @@ In order, each sees:
    (`app/src/features/onboarding/questions-end.ts:25`).
 6. **Essentials**: "What year were you born?", "Who would you like to meet?" (ages, pre-filled ±5 from
    their own), "Where are you now?", "How far would you travel?"
-   (`app/src/features/profile/fields.ts:63`,
+   (`app/src/features/profile/fields.ts:78`,
    `app/src/features/profile/age-range.ts:42`).
    Both type "Bangalore", which resolves to the city centre.
 7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Things to talk about"** (the
@@ -347,7 +347,7 @@ restarts setup at the first screen (`app/src/features/onboarding/photos-step.tsx
 ### 2.2 Every question
 
 **Basics** (required, cannot be skipped)
-(`server/src/onboarding/questions.ts:359`):
+(`server/src/onboarding/questions.ts:356`):
 
 | Question | Answers |
 |---|---|
@@ -355,15 +355,19 @@ restarts setup at the first screen (`app/src/features/onboarding/photos-step.tsx
 | "You want to meet…" (several) | Women, Men, Nonbinary people |
 | "What are you here for?" | Something long-term, Marriage, Company, Something casual, Still working it out |
 
-Sources: `server/src/onboarding/questions.ts:142`,
-`server/src/onboarding/questions.ts:151`,
-`server/src/onboarding/questions.ts:159`.
+The app's setup and the profile ask the last one in the same words and read the answer back in
+them (since 2026-10-03; before, they asked "What are you after?" with "Casual" and "Still
+deciding").
+
+Sources: `server/src/onboarding/questions.ts:144`,
+`server/src/onboarding/questions.ts:153`,
+`shared/src/values.ts:42`.
 
 **The five cards** (the fixed "set" questions; required, but "Prefer not to say" counts as an
 answer). Since 2026-10-01 somebody here for something casual or for company gets four: the
 kids card is never asked of them and does not hold them back (before, everybody was asked
 "Do you want children?" and could not go out without it)
-(`server/src/onboarding/questions.ts:385`) (`server/src/onboarding/questions.ts:371`).
+(`server/src/onboarding/questions.ts:382`) (`server/src/onboarding/questions.ts:368`).
 Each card has two rows: **You** (your answer) and **Your partner** ("Tap every one that is okay.
 People who have not said still pass."), with "All are okay" and nothing pre-ticked
 (`app/src/features/onboarding/interview-screen.tsx:376`,
@@ -377,23 +381,23 @@ People who have not said still pass."), with "All are okay" and nothing pre-tick
 | Drinking | "Do you drink?" | "How much can your partner drink?" | same five |
 | Food | "How do you eat?" | "How can your partner eat?" | Everything, No beef, No pork, Fish no meat, Vegetarian, Vegan |
 
-Sources: `server/src/onboarding/questions.ts:175`,
+Sources: `server/src/onboarding/questions.ts:172`,
+`server/src/onboarding/questions.ts:176`,
 `server/src/onboarding/questions.ts:179`,
-`server/src/onboarding/questions.ts:182`,
-`server/src/onboarding/questions.ts:183`,
-`server/src/onboarding/questions.ts:184`.
+`server/src/onboarding/questions.ts:180`,
+`server/src/onboarding/questions.ts:181`.
 Ticking only some partner answers stores **one hard rule** (a must-have) on that card; "All are
 okay" stores none (`server/src/api/interview.ts:531`).
 
 **Faith** (optional, can be skipped whole): "What is your faith?" with eleven answers (Hindu,
 Muslim, Christian, Sikh, Jain, Buddhist, Jewish, Zoroastrian, "Spiritual, not religious", "Not
 religious", "Something else") and "Optional. Nobody ever sees your answer. It is only used to check
-who fits, both ways." (`server/src/onboarding/questions.ts:196`,
-`server/src/onboarding/questions.ts:202`).
+who fits, both ways." (`server/src/onboarding/questions.ts:193`,
+`server/src/onboarding/questions.ts:199`).
 
 **"Couldn't be with"** (optional): "Anyone else you couldn't be with?" — "Be blunt. If it matches one
 of your cards, you'll see the change and decide. If not, you'll spot it in the first chat."
-(`server/src/onboarding/questions.ts:220`). The sentence is
+(`server/src/onboarding/questions.ts:217`). The sentence is
 kept as a want (stage 5). A model may read it as a change to one card's partner row, shown as
 "Change this card?" with "Keep this" / "Leave it"; nothing changes unless the person keeps it
 (`app/src/features/onboarding/interview-screen.tsx:188`).
@@ -405,9 +409,9 @@ school?", "What field are you in?", "Any field you would especially like them to
 late?", "Money — how do you think about it?", "What do you actually watch?", "How do you get
 around?", "Would you move cities for the right person?"
 (`server/src/api/interview.ts:125`,
-`server/src/onboarding/questions.ts:232`,
-`server/src/onboarding/questions.ts:259`,
-`server/src/onboarding/questions.ts:312`).
+`server/src/onboarding/questions.ts:229`,
+`server/src/onboarding/questions.ts:256`,
+`server/src/onboarding/questions.ts:309`).
 
 **Situation questions** (8): never asked during setup. They arrive only as a question of the day
 when someone else's want needs the answer (stages 3 and 5)
@@ -426,12 +430,14 @@ a neighbourhood is saved as the city plus the area, so nothing finer than a neig
 ever stored. In setup it starts on the person's neighbourhood when the pool has only their city
 and the phone already allows location (no dialog appears unasked). The map's pictures are
 OpenStreetMap's, fetched by our server and kept there, so the map provider never sees a person.
-The same map is the "How far you'd go" row on the You tab.
+The same map is the "How far you'd go" row on the You tab, and the top of that tab says where the
+person lives with the part of town first -- "Indiranagar, Bangalore" -- once one is saved (since
+2026-10-03; before, the city alone) (`app/src/features/profile/fields.ts:63`).
 Only the first name and distance can be declined here
-(`app/src/features/profile/fields.ts:59`,
-`app/src/features/profile/fields.ts:62`,
-(`app/src/features/profile/fields.ts:82`,
-`app/src/features/profile/fields.ts:92`,
+(`app/src/features/profile/fields.ts:74`,
+`app/src/features/profile/fields.ts:77`,
+(`app/src/features/profile/fields.ts:97`,
+`app/src/features/profile/fields.ts:107`,
 `app/src/features/distance/geo.ts:188`,
 `server/src/api/tiles.ts:23`).
 A city among 46 listed ones becomes that city's centre; an unlisted city becomes a point only if
@@ -458,7 +464,7 @@ before the step existed are asked on the Home ("Add your first name") and can se
 
 The server recomputes readiness on every profile rebuild. A person is **in the pool** when all of
 these hold (`server/src/matching/profile.ts:209`,
-`shared/src/values.ts:108`):
+`shared/src/values.ts:123`):
 
 - gender, who they want to meet, birth year, city **with a map point**, and what they are here for,
   each from a confirmed (not held) fact (`server/src/matching/profile.ts:45`,
@@ -541,7 +547,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   session ([AI-1](#ai-1)) (`server/src/index.ts:154`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
   mornings". Both are fields a must-have can depend on, so both are **held**
-  (`server/src/onboarding/questions.ts:433`).
+  (`server/src/onboarding/questions.ts:430`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
   (`app/src/features/profile/profile-screen.tsx:200`,
@@ -558,7 +564,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
   `server/src/matching/brief.ts:109`).
   One side effect remains (Known gaps): "runs most mornings" is not one of the exercise answers, so
   his exercise answer becomes "unknown" for matching
-  (`shared/src/values.ts:68`).
+  (`shared/src/values.ts:83`).
 - **Meera pastes** a paragraph about herself from another AI. One model call pulls facts out of it
   ([AI-4](#ai-4)); **every** fact is held for checking, and the paragraph itself is not stored. She sees
   "Held for checking" and "Nothing is treated as true until you say so."
@@ -602,7 +608,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **What is held:** anything heard (chat, the first sentence, a paste) on a **tapped** field: gender, who
   they want to meet, birth year, city, intent, age range, distance, neighbourhood, the five cards,
   faith, the eight situation answers, and (since 2026-09-28) work field, exercise, sleep and moving
-  cities; plus **everything** from a paste (`server/src/onboarding/questions.ts:421`).
+  cities; plus **everything** from a paste (`server/src/onboarding/questions.ts:418`).
 - **What goes live at once:** everything else heard in chat (interests, things done, employer, wants
   and "could not be with" sentences...), but **match-only**: it may help matching, it is never said to
   anyone until "OK to share" (`server/src/memory/extract.ts:245`).
@@ -1018,7 +1024,7 @@ three shapes:
   question, which comes before the "impulse" question in the list, so Arjun is offered:
   "You get an unexpected ₹50,000. What happens to most of it?"
   (`server/src/matching/want-questions.ts:35`,
-  `server/src/onboarding/questions.ts:329`).
+  `server/src/onboarding/questions.ts:326`).
   "Someone kind" matches nothing, so it stays a sentence.
 - **What Arjun sees** on YOU → Manage → "What you're looking for": his first want in
   quotes, "We can ask people this. Tick the answers that are fine for you.", the question,
@@ -1077,7 +1083,7 @@ three shapes:
   (`server/src/onboarding/stories.ts:147`).
 - **The interview's free sentence.** "Anyone else you couldn't be with?", up to 400
   characters, stored as a `dealbreaker` fact
-  (`server/src/onboarding/questions.ts:220`,
+  (`server/src/onboarding/questions.ts:217`,
   `server/src/api/interview.ts:209`). Several can
   stay live at once (`shared/src/facts.ts:138`). The same sentence
   also goes to a model that may propose a change to one card's "Who's fine" row; only the
@@ -1110,10 +1116,10 @@ three shapes:
   dinner; "What field are you in?"; "How often do you move your body?"; "Early or late?";
   a long weekend with no plans; a 7 pm call about plans tonight; "Would you move cities for
   the right person?" (`server/src/matching/want-questions.ts:31`,
-  `server/src/onboarding/questions.ts:336`,
-  `server/src/onboarding/questions.ts:345`,
-  `server/src/onboarding/questions.ts:259`,
-  `server/src/onboarding/questions.ts:312`).
+  `server/src/onboarding/questions.ts:333`,
+  `server/src/onboarding/questions.ts:342`,
+  `server/src/onboarding/questions.ts:256`,
+  `server/src/onboarding/questions.ts:309`).
   Eight are "situation" questions; four are optional profile questions. A want can never be
   tied to the basics, the five core cards or the faith card.
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
@@ -1163,9 +1169,9 @@ three shapes:
   five cards, faith, the eight situation answers, and (since 2026-09-28) work field,
   exercise, sleep and moving cities. On these fields a sentence said in chat waits for the
   person's Yes before it counts, so chat can never silently move someone into or out of a
-  must-have (`server/src/onboarding/questions.ts:443`,
-  `server/src/onboarding/questions.ts:444`,
-  `server/src/onboarding/questions.ts:433`).
+  must-have (`server/src/onboarding/questions.ts:440`,
+  `server/src/onboarding/questions.ts:441`,
+  `server/src/onboarding/questions.ts:430`).
   The server refuses a must-have anywhere else
   (`server/src/api/dating.ts:553`).
 - **What a Must have does.** It is the only personal rule that removes anybody, and it is
@@ -1458,7 +1464,7 @@ lets an **unknown** value pass: someone who never answered is not excluded for i
 | Gender | Meera's gender is in Arjun's "seeking" | Arjun's is in Meera's | Passes | `server/src/matching/candidates.ts:94`, `server/src/matching/candidates.ts:95` |
 | Age | Meera's age in Arjun's range | Arjun's age in Meera's range | Passes | `server/src/matching/candidates.ts:98`, `server/src/matching/candidates.ts:100` |
 | Distance | Within Arjun's maximum distance | Within Meera's | No location: skipped. No maximum: only that person's side passes (since 2026-09-28; before, one missing maximum switched off both) | `server/src/matching/candidates.ts:112` |
-| What they are looking for (intent) | The same answer, or a close one: Marriage and Long-term meet; Long-term and Still working it out; Still working it out and Casual, and Company (since 2026-10-01; before, only the same answer, so Marriage never met Long-term). Marriage never meets Casual | same | Passes | `server/src/matching/candidates.ts:123`, `shared/src/values.ts:49` |
+| What they are looking for (intent) | The same answer, or a close one: Marriage and Long-term meet; Long-term and Still working it out; Still working it out and Casual, and Company (since 2026-10-01; before, only the same answer, so Marriage never met Long-term). Marriage never meets Casual | same | Passes | `server/src/matching/candidates.ts:123`, `shared/src/values.ts:64` |
 | Must-haves | Every Arjun must-have passes on Meera | Every Meera must-have passes on Arjun | Passes | `server/src/matching/candidates.ts:136`, `server/src/matching/candidates.ts:140` |
 | Recently active | Meera used the app in the last 60 days; a practice profile always passes (since 2026-09-28) | (not checked for Arjun; he just tapped) | | `server/src/matching/candidates.ts:149` |
 
@@ -2763,7 +2769,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 13. **A city not on the list keeps a person out of the pool** unless they tap "Use my location"; they are told "It does
     not know where you are." (`server/src/matching/profile.ts:152`).
 14. **Someone who turns 18 this year is refused all year**, because only the birth year is asked
-    (`shared/src/values.ts:149`).
+    (`shared/src/values.ts:164`).
 15. **Closed on 2026-09-29: a mistyped invite code.** It says "That code didn't work, try again." and the number stays
     verified for the retry; the invite screen has a Back button (`server/src/api/auth.ts:262`).
 16. **Closed on 2026-09-29: "Yes, that's right" doing more than agree.** Words a card cannot read, or a place with no

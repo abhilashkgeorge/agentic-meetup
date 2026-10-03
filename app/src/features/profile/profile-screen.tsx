@@ -23,7 +23,7 @@ import { useLook } from '../look/store';
 import { useSession } from '../../store/session';
 import { ANYWHERE_KM, AREAS } from '@clone/shared';
 import { PHOTO_SLOTS } from '../photos/photos-screen';
-import { label, setupRoute } from './fields';
+import { isBangalore, label, placeLine, setupRoute } from './fields';
 import { rangeFromText, rangeLabel } from './age-range';
 import {
   Avatar, Button, Card, Chip, ChipGroup, Crease, LoadFailed, PhotoSlot, Row, Screen, ScreenTitle,
@@ -193,7 +193,7 @@ export default function ProfileScreen() {
 
   return (
     <Screen onRefresh={() => void load()} padded={false}>
-      <ScreenTitle title={name ?? 'You'} subtitle={[city, work].filter(Boolean).join(' · ') || undefined} />
+      <ScreenTitle title={name ?? 'You'} subtitle={[placeLine(city, valueOf(k, 'area')), work].filter(Boolean).join(' · ') || undefined} />
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
         {k?.confirm && (
@@ -315,7 +315,7 @@ export default function ProfileScreen() {
               <Row title="Lives in" value={city ?? 'Not set'}
                    onPress={() => router.push('/edit/lives_in')} />
               {/* Only for a city the map covers: the row would be a lie in Mumbai. */}
-              {(city && /bangalore|bengaluru/i.test(city)) || valueOf(k, 'area') ? (
+              {isBangalore(city) || valueOf(k, 'area') ? (
                 <Row title="Part of town"
                      value={(() => { const v = valueOf(k, 'area'); return v ? (AREAS.find((a) => a.id === v)?.name ?? v) : 'Not set'; })()}
                      onPress={() => router.push('/edit/area')} />

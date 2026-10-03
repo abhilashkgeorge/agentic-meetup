@@ -34,7 +34,9 @@
  * NO MODEL CALLS ANYWHERE IN THIS FILE. Options are fixed, answers map straight onto
  * predicates, and which question comes next is fixed code up to the optional tier.
  */
-import { DIETS, FAITHS, FREQUENCY, IMPORTANCE, MONOGAMY, SITUATION_PREDICATES, WANTS_CHILDREN } from '@clone/shared';
+import {
+  DIETS, FAITHS, FREQUENCY, IMPORTANCE, INTENT_LABELS, INTENT_QUESTION, MONOGAMY, RELATIONSHIP_INTENTS, SITUATION_PREDICATES, WANTS_CHILDREN,
+} from '@clone/shared';
 
 /**
  * `free` is a sentence rather than a choice. It exists for one question -- see
@@ -156,14 +158,9 @@ export const QUESTIONS: readonly Question[] = [
   },
   {
     id: 'q-intent', predicate: 'relationship_intent', kind: 'fact', tier: 'basics', declinable: false,
-    text: 'What are you here for?',
-    options: [
-      { value: 'long_term', label: 'Something long-term' },
-      { value: 'marriage', label: 'Marriage' },
-      { value: 'companionship', label: 'Company' },
-      { value: 'casual', label: 'Something casual' },
-      { value: 'undecided', label: 'Still working it out' },
-    ],
+    // The same words as the app's setup and profile (shared INTENT_LABELS).
+    text: INTENT_QUESTION,
+    options: RELATIONSHIP_INTENTS.map((value) => ({ value, label: INTENT_LABELS[value] })),
   },
 
   // ── core: five cards, asked in this order, every one required ────────────
