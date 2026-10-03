@@ -519,10 +519,11 @@ export interface Shot { eye: [number, number, number]; look: [number, number, nu
  * user and the user being dropped to the partner's location"). The first version tipped
  * the walking camera up after the plane and down again with its cable: one long pan.
  *
- *   1. THE PLANE DROPPING ITS CABLE. Cut, as the flight starts, to a camera low on the
- *      ground ahead of where the cable will drop, a little to the side, looking back up
- *      the plane's way: it comes in out of the distance towards you, growing, and its
- *      cable falls from its belly towards you, standing small at the bottom.
+ *   1. THE PLANE DROPPING ITS CABLE. Cut, as the flight starts, to a camera over the
+ *      treetops ahead of where the cable will drop, a little to the side, looking back
+ *      the plane's way: it comes at you out of the distance at about eye level, growing,
+ *      and its cable falls from its belly to you, below. (Low on the ground first, the
+ *      park's trees filled half of it on the Pixel.)
  *   2. THE CABLE ON YOU. Cut, just before the cable reaches you, to behind you: you about
  *      two thirds of the way down the picture, clear of the park's cards and buttons, the
  *      plane near the top, the cable between -- it hooks on your back and snatches you up,
@@ -543,7 +544,7 @@ const SHOT_FAR = 9;
 /** When the picture cuts from the plane to you: a little before its cable has you. */
 export const SHOT_CUT_MS = T_HOOK - 150;
 /** The first shot's camera: how far ahead of where the cable drops, how far to the side, how high, and what it looks at. */
-const PLANE_SHOT = { ahead: 5, side: 1.6, up: 0.45, aimBack: 3, aimUp: 2.8 } as const;
+const PLANE_SHOT = { ahead: 6, side: 1.8, up: 4.4, aimBack: 5, aimUp: 4.6 } as const;
 
 export function flightShot(f: Flight, ms: number): (Shot & { w: number }) | null {
   if (f.kind === 'drop' || f.kind === 'away') return null;
