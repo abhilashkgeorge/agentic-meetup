@@ -15,9 +15,9 @@
  * newest message at the bottom without measuring anything, which is the only way this
  * behaves when the keyboard opens.
  */
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { AppState, FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardPad } from '../../lib/keyboard';
 import { getDateIdea, getMessages, nudgeSeen, proposeDate, type Look } from '../../lib/api';
@@ -28,6 +28,7 @@ import { SafetySheet } from '../safety/safety-sheet';
 import { PersonAvatar } from '../look/person-avatar';
 import { Checkin } from './checkin';
 import { readDm, sendDm, sendTyping } from '../../lib/socket';
+import { newestTheirs, readNow } from './read-on-arrival';
 import { useSession } from '../../store/session';
 import { useDm, type Dm } from '../../store/dm';
 import {
@@ -139,6 +140,22 @@ export default function ThreadScreen() {
   }, [token, rendezvousId, setThread, clearUnread, setMe]);
 
   useEffect(() => { void loadThread(); }, [loadThread]);
+
+  // And what arrives while it is open is read too -- on screen, the app in front
+  // (read-on-arrival.ts). Only opening it used to count.
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
+  const [front, setFront] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => setFront(st === 'active'));
+    return () => sub.remove();
+  }, []);
+  const theirs = newestTheirs(messages);
+  useEffect(() => {
+    if (!readNow(theirs, { focused, front, ready: status === 'ready' })) return;
+    readDm(rendezvousId);
+    clearUnread(rendezvousId);
+  }, [theirs, focused, front, status, rendezvousId, clearUnread]);
 
   const older = useCallback(async () => {
     if (!token || !hasMore || loadingOlder || !messages.length) return;

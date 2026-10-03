@@ -2099,8 +2099,8 @@ words are the date idea, written earlier (stage 7).
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
    both said yes. Nobody else can message you here."
    (`app/src/features/dm/date-idea.ts:39`,
-   `app/src/features/dm/thread-screen.tsx:270`,
-   `app/src/features/dm/thread-screen.tsx:303`).
+   `app/src/features/dm/thread-screen.tsx:287`,
+   `app/src/features/dm/thread-screen.tsx:320`).
 4. **Arjun taps "Propose this date".** Meera receives an ordinary message from Arjun, for example
    "How about this: Sunrise walk in Cubbon Park, then filter coffee?". The idea card disappears
    for both.
@@ -2128,7 +2128,11 @@ words are the date idea, written earlier (stage 7).
   (`server/src/matching/brief.ts:199`,
   `app/src/features/stories/stories-state.ts:29`).
 - **Receipts:** "Sent", "Delivered", "Read", "typing…", always on
-  (`app/src/features/dm/thread-screen.tsx:42`).
+  (`app/src/features/dm/thread-screen.tsx:43`).
+  A message is read when the conversation is opened, and since 2026-10-03 also when it arrives
+  while the conversation is open on screen with the app in front (before, it stayed "Delivered" on
+  the other phone until the reader left and came back)
+  (`app/src/features/dm/read-on-arrival.ts:26`).
 - **Messages are never deleted by the app**; there is no delete route
   (`server/migrations/0025_messaging_fixes.sql:57`).
 
@@ -2203,7 +2207,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 
 - **Where:** every card ("Block or report"), the reveal and chat headers ("⋯"), a met
   person's sheet in the town, and the check-in's "felt unsafe" step
-  (`app/src/features/dm/thread-screen.tsx:242`).
+  (`app/src/features/dm/thread-screen.tsx:259`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
   are not told." (`app/src/features/safety/safety-sheet.tsx:55`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",

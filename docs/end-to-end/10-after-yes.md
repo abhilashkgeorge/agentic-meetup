@@ -37,8 +37,8 @@ words are the date idea, written earlier (stage 7).
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
    both said yes. Nobody else can message you here."
    ([app/src/features/dm/date-idea.ts:39] `title: "YOUR AGENTS' DATE IDEA", line: s.idea!`,
-   [app/src/features/dm/thread-screen.tsx:270] `It goes as a message from you. You two pick the day.`,
-   [app/src/features/dm/thread-screen.tsx:303] `You both said yes. Nobody else can message you here.`).
+   [app/src/features/dm/thread-screen.tsx:287] `It goes as a message from you. You two pick the day.`,
+   [app/src/features/dm/thread-screen.tsx:320] `You both said yes. Nobody else can message you here.`).
 4. **Arjun taps "Propose this date".** Meera receives an ordinary message from Arjun, for example
    "How about this: Sunrise walk in Cubbon Park, then filter coffee?". The idea card disappears
    for both.
@@ -66,7 +66,11 @@ words are the date idea, written earlier (stage 7).
   ([server/src/matching/brief.ts:199] `street address (shared/src/contact.ts). People swap those themselves, in chat, after`,
   [app/src/features/stories/stories-state.ts:29] `Swap those in chat after you both say yes.`).
 - **Receipts:** "Sent", "Delivered", "Read", "typing…", always on
-  ([app/src/features/dm/thread-screen.tsx:42] `state === 'queued' ? 'waiting to send'`).
+  ([app/src/features/dm/thread-screen.tsx:43] `state === 'queued' ? 'waiting to send'`).
+  A message is read when the conversation is opened, and since 2026-10-03 also when it arrives
+  while the conversation is open on screen with the app in front (before, it stayed "Delivered" on
+  the other phone until the reader left and came back)
+  ([app/src/features/dm/read-on-arrival.ts:26] `export const readNow = (theirs: string | null, l: Looking): boolean =>`).
 - **Messages are never deleted by the app**; there is no delete route
   ([server/migrations/0025_messaging_fixes.sql:57] `-- No DELETE grant on messages, deliberately. "Delete for everyone" is`).
 
@@ -141,7 +145,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 
 - **Where:** every card ("Block or report"), the reveal and chat headers ("⋯"), a met
   person's sheet in the town, and the check-in's "felt unsafe" step
-  ([app/src/features/dm/thread-screen.tsx:242] `right={{ glyph: '⋯', label: 'Block or report', onPress: stop }}`).
+  ([app/src/features/dm/thread-screen.tsx:259] `right={{ glyph: '⋯', label: 'Block or report', onPress: stop }}`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
   are not told." ([app/src/features/safety/safety-sheet.tsx:55] `'You will never see each other again, anywhere in the app. They are not told.',`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
