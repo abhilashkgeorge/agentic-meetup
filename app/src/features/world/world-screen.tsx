@@ -72,6 +72,8 @@ import {
  */
 const sim = new WorldSim(20260918);
 sim.setMap(spotsFrom(MAP));
+/** No park built yet: no benches in it. */
+const NO_BENCHES: readonly { x: number; z: number; rot: number }[] = [];
 
 /**
  * THE TOWN'S FIRST FRAME IS ITS SHAPE. Everything below builds Cubbon Park's layout and
@@ -190,13 +192,23 @@ function TownScreen() {
   /**
    * THE OTHER WORLD. Cubbon Park has local coordinates and a bounded nearby roster.
    * It is not a magnified patch of the city map.
+   *
+   * IT IS BUILT WHEN YOU GO IN, NOT WHEN THE APP OPENS (the founder, 2026-10-04: "why
+   * does it take 10 secs+ to load the initial tabs and the map?"). Laying the park out
+   * -- 62,000 tufts of grass, 700 trees, every path -- and drawing it took the better
+   * part of nine seconds on the Pixel, all before the town could draw and while every
+   * tab waited behind it, for a park you may not enter. Now the town opens without it,
+   * and the park is built the first time you go in, under the "Entering the park" veil
+   * (whose globe turns on the native thread, so it keeps turning meanwhile).
    */
-  const venueLayout = useMemo(() => venueGarden(CUBBON_PARK), []);
-  const venueSim = useMemo(() => {
-    const s = new WorldSim(20260922);
-    s.setMap(gardenSpots(venueLayout));
-    return s;
-  }, [venueLayout]);
+  const [parkWanted, setParkWanted] = useState(false);
+  const venueLayout = useMemo(() => (parkWanted ? venueGarden(CUBBON_PARK) : null), [parkWanted]);
+  const venueSim = useMemo(() => new WorldSim(20260922), []);
+  const parkReady = useMemo(() => {
+    if (!venueLayout) return false;
+    venueSim.setMap(gardenSpots(venueLayout));
+    return true;
+  }, [venueLayout, venueSim]);
 
   /**
    * THE PARK'S CROWD TEST, development builds only (the founder, 2026-09-28: "put 1000
@@ -206,10 +218,11 @@ function TownScreen() {
    */
   const [crowd, setCrowd] = useState(0);
   const toggleCrowd = useCallback(() => {
+    if (!parkReady) return;
     if (crowd) { venueSim.removeCrowd(); setCrowd(0); return; }
     venueSim.addCrowd(CROWD_TEST, CUBBON_PARK.id);
     setCrowd(CROWD_TEST);
-  }, [crowd, venueSim]);
+  }, [crowd, venueSim, parkReady]);
   /**
    * The same test for the city (the founder, 2026-09-29: "can you try adding 1000
    * agents over there too"), spread over all thirty neighbourhoods. The roster never
@@ -229,13 +242,16 @@ function TownScreen() {
     if (!world) return;
     const roster = fromRoster(world);
     sim.upsert(roster);
-    const local = agentsForVenue(roster, CUBBON_PARK);
-    venueSim.upsert(local);
-    const localRefs = new Set(local.map((a) => a.ref));
-    // The crowd test's walkers are nobody's roster entry: they stay until cleared. And
-    // somebody here in person (park-presence.ts) is the server's to move, not the roster's.
-    for (const a of venueSim.agents()) {
-      if (!localRefs.has(a.ref) && !isCrowd(a.ref) && a.kind !== 'live') venueSim.remove(a.ref);
+    // The park's own roster only once the park is built: it has nowhere to put them before.
+    if (parkReady) {
+      const local = agentsForVenue(roster, CUBBON_PARK);
+      venueSim.upsert(local);
+      const localRefs = new Set(local.map((a) => a.ref));
+      // The crowd test's walkers are nobody's roster entry: they stay until cleared. And
+      // somebody here in person (park-presence.ts) is the server's to move, not the roster's.
+      for (const a of venueSim.agents()) {
+        if (!localRefs.has(a.ref) && !isCrowd(a.ref) && a.kind !== 'live') venueSim.remove(a.ref);
+      }
     }
     for (const ref of departed(applied.current, world.agents)) {
       sim.remove(ref);
@@ -248,7 +264,7 @@ function TownScreen() {
       else sim.settle(t.ref);
     }
     applied.current = new Map(world.agents.map((a) => [a.ref, a.state]));
-  }, [world, venueSim]);
+  }, [world, venueSim, parkReady]);
 
   // Socket -> sim, at once. Each is recorded as applied so the roster that follows
   // two seconds later does not replay it.
@@ -359,7 +375,7 @@ function TownScreen() {
   const transitioning = realm.phase === 'entering' || realm.phase === 'leaving';
 
   // In the park, live: while it is on screen, you are in it for everybody else too.
-  useParkPresence(realm.phase === 'venue', focused, venueSim, venueLayout.benches);
+  useParkPresence(realm.phase === 'venue' && parkReady, focused, venueSim, venueLayout?.benches ?? NO_BENCHES);
 
   const enterVenue = useCallback(() => {
     if (realm.phase !== 'city' || !world) return;
@@ -402,6 +418,9 @@ function TownScreen() {
     }).start();
     if (realm.phase === 'entering') {
       const t = setTimeout(() => {
+        // The first time in, the park is built now, with the veil up: this effect comes
+        // round again when it is, and then you go in.
+        if (!parkWanted) { setParkWanted(true); return; }
         control.current?.setWalking(true);
         dispatchRealm({ type: 'entered' });
       }, 430);
@@ -415,7 +434,7 @@ function TownScreen() {
       }, 360);
       return () => clearTimeout(t);
     }
-  }, [realm.phase, transitioning, veil]);
+  }, [realm.phase, transitioning, veil, parkWanted]);
   const [band, setBand] = useState<Band | null>(null);
   const [size, setSize] = useState<Size | null>(null);
   const insets = useSafeAreaInsets();
@@ -444,7 +463,7 @@ function TownScreen() {
                             onStats={FPS_METER ? feedFps : undefined}
                             control={control} onBand={setBand} frame={frame}
                             stick={stick} onWalking={setWalking}
-                            venueSim={venueSim} venue={CUBBON_PARK}
+                            venueSim={venueSim} venue={CUBBON_PARK} venueLayout={venueLayout}
                             slots={crowd + cityCrowd ? crowd + cityCrowd + 64 : undefined}
                             inVenue={realm.phase === 'venue' || realm.phase === 'leaving'}
                             onTapVenue={() => enterVenue()} />
@@ -477,7 +496,7 @@ function TownScreen() {
           <SpeechBubbles control={control} />
           <VoiceMarks control={control} />
           <ParkChat bottom={Math.max(insets.bottom, 20) + 24} onVoices={() => setVoicesOpen(true)}>
-            <ParkActions venueSim={venueSim} benches={venueLayout.benches} />
+            <ParkActions venueSim={venueSim} benches={venueLayout?.benches ?? NO_BENCHES} />
           </ParkChat>
           <InviteCard />
           <BikeButton left={space.screen} bottom={Math.max(insets.bottom, space.lg) + space.lg + STICK_RING + space.md} />

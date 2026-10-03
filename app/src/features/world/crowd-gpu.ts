@@ -1473,8 +1473,31 @@ export function makeGpuCrowd(gltf: { scene: THREE.Object3D; animations: THREE.An
 
 let prepared: Promise<PreparedCrowd> | null = null;
 
+/** How long the crowd's preparation runs between frames it lets the phone draw. */
+export const STEP_BUDGET_MS = 40;
+
+/**
+ * START ON THE CROWD AS SOON AS THE RENDERER IS LOADED (r3f.ts), not once the town has
+ * drawn: the town waits for its people (canvas.tsx), and while its data comes from the
+ * server the phone has little else to do. Started twice, it is the same work: one
+ * preparation per app run.
+ */
+export function warmGpuCrowd(): void {
+  preparing().catch(() => { /* loadGpuCrowd asks again, and says so */ });
+}
+
 /** Read the model and manifest off disk -- once per app run -- and build the crowd. */
 export async function loadGpuCrowd(): Promise<GpuCrowd> {
+  try {
+    return crowdFrom(await preparing());
+  } catch (e) {
+    // A failed read is not remembered: the next canvas tries again.
+    prepared = null;
+    throw e;
+  }
+}
+
+function preparing(): Promise<PreparedCrowd> {
   prepared ??= (async () => {
     const bytes = await readModel();
     const gltf = await new Promise<{ scene: THREE.Object3D; animations: THREE.AnimationClip[] }>((res, rej) =>
@@ -1484,6 +1507,7 @@ export async function loadGpuCrowd(): Promise<GpuCrowd> {
     let longest = 0;
     let at = 0;
     const slow: string[] = [];
+    let batch = Date.now();
     for (;;) {
       const s0 = Date.now();
       const r = steps.next();
@@ -1497,15 +1521,14 @@ export async function loadGpuCrowd(): Promise<GpuCrowd> {
         }
         return r.value;
       }
-      // Let the phone draw a frame between steps.
+      // Let the phone draw a frame between steps -- but not after every one: a frame
+      // between each of the 58 made the whole take five seconds on the Pixel when the
+      // steps themselves add up to about one (2026-10-04). Steps run on together until
+      // STEP_BUDGET_MS has gone by.
+      if (Date.now() - batch < STEP_BUDGET_MS) continue;
       await new Promise((res) => setTimeout(res, 0));
+      batch = Date.now();
     }
   })();
-  try {
-    return crowdFrom(await prepared);
-  } catch (e) {
-    // A failed read is not remembered: the next canvas tries again.
-    prepared = null;
-    throw e;
-  }
+  return prepared;
 }

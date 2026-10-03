@@ -301,20 +301,82 @@ const STRAP_LIFT = 0.007;
  * `body` is the top's triangles in the CHEST bone's bind space, which is what the bag
  * is hung off. Returns null for a top with nothing to lay a strap on.
  */
+/**
+ * THE CLOTH, FOR RAYS ALONG AN AXIS. buildBag finds where its straps lie on a top by
+ * casting rays straight at it -- about fifty a bag, two bags for each top -- and three's
+ * Raycaster tests every triangle of the top for every ray: four and a half seconds on
+ * the Pixel, in steps of half a second, while the town's first move to your agent was
+ * drawn at a frame or two a second (the founder, 2026-10-04: "it happens at 1 fps").
+ *
+ * A ray along an axis can only meet a triangle whose box it passes through, so only
+ * those are tested -- by three's own test (Mesh.raycast: the bounding sphere and box,
+ * then Ray.intersectTriangle both ways round, as DoubleSide does), in three's order,
+ * nearest kept and the first of equals: the same hit, to the bit.
+ */
+export function axisCaster(body: THREE.BufferGeometry): (from: THREE.Vector3, along: THREE.Vector3) => THREE.Vector3 | null {
+  const pos = body.attributes.position as THREE.BufferAttribute;
+  const index = body.index;
+  const count = index ? Math.min(index.count, body.drawRange.start + body.drawRange.count) : Math.min(pos.count, body.drawRange.start + body.drawRange.count);
+  const start = Math.max(0, body.drawRange.start);
+  const corner = (k: number) => (index ? index.getX(k) : k);
+  // Each triangle's box, a hair wider than its corners: a hit three rounds onto an edge
+  // is never left out.
+  const tris = Math.max(0, Math.floor((count - start) / 3));
+  const boxes = new Float64Array(tris * 6);
+  const HAIR = 1e-6;
+  for (let t = 0; t < tris; t++) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let k = 0; k < 3; k++) {
+      const v = corner(start + t * 3 + k);
+      const x = pos.getX(v), y = pos.getY(v), z = pos.getZ(v);
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (z < z0) z0 = z; if (z > z1) z1 = z;
+    }
+    boxes.set([x0 - HAIR, x1 + HAIR, y0 - HAIR, y1 + HAIR, z0 - HAIR, z1 + HAIR], t * 6);
+  }
+  if (body.boundingSphere === null) body.computeBoundingSphere();
+  const sphere = body.boundingSphere!;
+  const ray = new THREE.Ray();
+  const hitAt = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), point = new THREE.Vector3();
+  return (from, along) => {
+    ray.set(from, along);
+    if (!sphere.containsPoint(ray.origin) && ray.intersectSphere(sphere, hitAt) === null) return null;
+    if (body.boundingBox !== null && !ray.intersectsBox(body.boundingBox)) return null;
+    // Which two of x, y, z the ray's line is fixed in.
+    const [p, q] = along.z !== 0 ? [0, 2] : along.y !== 0 ? [0, 4] : [2, 4];
+    const fp = p === 0 ? from.x : from.y, fq = q === 2 ? from.y : from.z;
+    let best: THREE.Vector3 | null = null;
+    let near = Infinity;
+    for (let t = 0; t < tris; t++) {
+      const o = t * 6;
+      if (fp < boxes[o + p]! || fp > boxes[o + p + 1]! || fq < boxes[o + q]! || fq > boxes[o + q + 1]!) continue;
+      a.fromBufferAttribute(pos, corner(start + t * 3));
+      b.fromBufferAttribute(pos, corner(start + t * 3 + 1));
+      c.fromBufferAttribute(pos, corner(start + t * 3 + 2));
+      if (ray.intersectTriangle(a, b, c, false, point) === null) continue;
+      // As Mesh.raycast does, out to the world (here the world is the cloth's own).
+      const world = point.clone().applyMatrix4(IDENTITY);
+      const d = ray.origin.distanceTo(world);
+      if (d < near) { near = d; best = world; }
+    }
+    return best;
+  };
+}
+const IDENTITY = new THREE.Matrix4();
+
 export function buildBag(kind: BagKind, body: THREE.BufferGeometry): THREE.BufferGeometry | null {
   if (!body.attributes.position?.count) return null;
-  const cloth = new THREE.Mesh(body, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
-  const ray = new THREE.Raycaster();
+  const cast = axisCaster(body);
   const from = new THREE.Vector3();
   const along = new THREE.Vector3();
   /** The outside of the top at a point, STRAP_LIFT clear of it, seen from one side. */
   const out = (x: number, y: number, z: number, side: 'front' | 'back' | 'up'): THREE.Vector3 => {
     if (side === 'up') { from.set(x, 1, z); along.set(0, -1, 0); }
     else { from.set(x, y, side === 'front' ? 1 : -1); along.set(0, 0, side === 'front' ? -1 : 1); }
-    ray.set(from, along);
-    const hit = ray.intersectObject(cloth)[0];
+    const hit = cast(from, along);
     if (!hit) return new THREE.Vector3(x, y, z);
-    return hit.point.addScaledVector(along, -STRAP_LIFT);
+    return hit.addScaledVector(along, -STRAP_LIFT);
   };
   const chain = (points: readonly THREE.Vector3[], w: number) =>
     points.slice(1).map((p, i) => strap(points[i]!, p, w, 0.008));

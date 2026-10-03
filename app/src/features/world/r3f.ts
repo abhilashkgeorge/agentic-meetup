@@ -33,6 +33,9 @@ export async function loadWorldRenderer(): Promise<WorldRenderer | null> {
     stage = 'canvas';
     const mod = await import('./canvas');
     cached = { WorldCanvas: mod.WorldCanvas, CharacterCanvas: mod.CharacterCanvas };
+    // The crowd's bodies take seconds to prepare on a phone, and the town waits for them:
+    // begun now, while the town's data is still on its way (crowd-gpu.ts warmGpuCrowd).
+    mod.warmGpuCrowd();
     rendererError = null;
   } catch (err) {
     rendererError = `${stage}: ${err instanceof Error ? err.message : String(err)}`;

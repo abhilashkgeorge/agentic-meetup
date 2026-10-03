@@ -50,7 +50,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
-   ([app/src/features/world/world-screen.tsx:306] `Your agent met ${r.met} people. See Matches.`,
+   ([app/src/features/world/world-screen.tsx:322] `Your agent met ${r.met} people. See Matches.`,
    [app/src/features/world/exchange-strip.tsx:83] `label="See the card" variant="primary" onPress={onSeeCard}`).
 7. **Meera** finds a new card in her Matches tab with a three-day clock. Whether she can
    read it yet depends on who decides first (stage 9).

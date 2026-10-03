@@ -50,7 +50,7 @@ describe('away from the park', () => {
     expect(presence).toContain('const { inPark, away } = parkPresence(inVenue, onScreen, held);');
     expect(presence).toContain('const onScreen = focused && front;');
     // The world screen gives the park and the focus separately, so leaving the tab is not leaving the park.
-    expect(read('features/world/world-screen.tsx')).toContain("useParkPresence(realm.phase === 'venue', focused, venueSim, venueLayout.benches);");
+    expect(read('features/world/world-screen.tsx')).toContain("useParkPresence(realm.phase === 'venue' && parkReady, focused, venueSim, venueLayout?.benches ?? NO_BENCHES);");
   });
 
   it('sends nothing about where you are while away, and says away and back', () => {

@@ -100,6 +100,55 @@ function inRing(p: Pt, ring: readonly Pt[]): boolean {
   return inside;
 }
 
+/**
+ * INSIDE A RING, QUICKLY, AND THE SAME ANSWER. The park's outline has 69 corners and
+ * the grass alone asks whether a point is inside it 218,000 times: 205 ms of the half
+ * second this park took to lay out on a laptop, ten times that on the Pixel, where
+ * the town waited for it (2026-10-04). So the ring's box is cut into cells and each
+ * cell is marked once: crossed by an edge (or within a hair of one), or wholly on one
+ * side -- the side its middle is on, since no edge passes through it. Only a crossed
+ * cell asks the ring itself; outside the box is outside.
+ */
+function ringTest(ring: readonly Pt[], cell = 1): (p: Pt) => boolean {
+  const box = boxOf(ring);
+  const x0 = box.minX - cell, z0 = box.minZ - cell;
+  const nx = Math.ceil((box.maxX - x0) / cell) + 2, nz = Math.ceil((box.maxZ - z0) / cell) + 2;
+  const CROSSED = 3, IN = 1, OUT = 2;
+  const state = new Uint8Array(nx * nz);
+  const HAIR = 1e-6;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]!, b = ring[(i + 1) % ring.length]!;
+    const ix0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - x0) / cell) - 1), ix1 = Math.min(nx - 1, Math.floor((Math.max(a[0], b[0]) - x0) / cell) + 1);
+    const iz0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - z0) / cell) - 1), iz1 = Math.min(nz - 1, Math.floor((Math.max(a[1], b[1]) - z0) / cell) + 1);
+    const ex = b[0] - a[0], ez = b[1] - a[1];
+    const len = Math.hypot(ex, ez) || 1;
+    for (let ix = ix0; ix <= ix1; ix++) {
+      for (let iz = iz0; iz <= iz1; iz++) {
+        // The cell's square, a hair larger, against the edge's own box and its line.
+        const cx0 = x0 + ix * cell - HAIR, cx1 = x0 + (ix + 1) * cell + HAIR;
+        const cz0 = z0 + iz * cell - HAIR, cz1 = z0 + (iz + 1) * cell + HAIR;
+        if (Math.max(a[0], b[0]) < cx0 || Math.min(a[0], b[0]) > cx1 || Math.max(a[1], b[1]) < cz0 || Math.min(a[1], b[1]) > cz1) continue;
+        const side = (x: number, z: number) => ((x - a[0]) * ez - (z - a[1]) * ex) / len;
+        const s0 = side(cx0, cz0), s1 = side(cx1, cz0), s2 = side(cx0, cz1), s3 = side(cx1, cz1);
+        if (Math.min(s0, s1, s2, s3) > HAIR || Math.max(s0, s1, s2, s3) < -HAIR) continue;
+        state[ix * nz + iz] = CROSSED;
+      }
+    }
+  }
+  for (let ix = 0; ix < nx; ix++) {
+    for (let iz = 0; iz < nz; iz++) {
+      if (state[ix * nz + iz] === CROSSED) continue;
+      state[ix * nz + iz] = inRing([x0 + (ix + 0.5) * cell, z0 + (iz + 0.5) * cell], ring) ? IN : OUT;
+    }
+  }
+  return (p: Pt) => {
+    const ix = Math.floor((p[0] - x0) / cell), iz = Math.floor((p[1] - z0) / cell);
+    if (ix < 0 || iz < 0 || ix >= nx || iz >= nz) return false;
+    const at = state[ix * nz + iz];
+    return at === IN ? true : at === OUT ? false : inRing(p, ring);
+  };
+}
+
 interface Box { minX: number; maxX: number; minZ: number; maxZ: number }
 function boxOf(ring: readonly Pt[]): Box {
   const b = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
@@ -112,11 +161,54 @@ function boxOf(ring: readonly Pt[]): Box {
 /** Whether p is within `pad` of the box (or in it). */
 const nearBox = (p: Pt, b: Box, pad: number): boolean =>
   p[0] >= b.minX - pad && p[0] <= b.maxX + pad && p[1] >= b.minZ - pad && p[1] <= b.maxZ + pad;
+/** How far p is from the box: nothing nearer than this can be in it. */
+const boxDist = (p: Pt, b: Box): number =>
+  Math.hypot(Math.max(b.minX - p[0], 0, p[0] - b.maxX), Math.max(b.minZ - p[1], 0, p[1] - b.maxZ));
+/** What an empty cell holds: one shared empty list, not a new one every miss. */
+const NONE: readonly never[] = [];
 /** A grid cell as one number rather than a string: no string built per lookup. */
 const cellKey = (cx: number, cz: number): number => (cx + 32768) * 65536 + (cz + 32768);
 
-/** Distance from a point to a polyline. */
-function toLine(p: Pt, line: readonly Pt[]): number {
+/**
+ * Lists by grid cell, over a known stretch of ground: an array's slot rather than a
+ * Map's lookup, the slow part of asking a quarter of a million times. A cell outside
+ * the stretch still works, in a Map, as before.
+ */
+class Cells<T> {
+  private readonly dense: (T[] | undefined)[];
+  private readonly far = new Map<number, T[]>();
+  constructor(private readonly cx0: number, private readonly cz0: number, private readonly nx: number, private readonly nz: number) {
+    this.dense = new Array<T[] | undefined>(Math.max(0, nx * nz));
+  }
+  static over<T>(box: Box, cell: number, pad = 2): Cells<T> {
+    const cx0 = Math.floor(box.minX / cell) - pad, cz0 = Math.floor(box.minZ / cell) - pad;
+    return new Cells<T>(cx0, cz0, Math.floor(box.maxX / cell) + pad - cx0 + 1, Math.floor(box.maxZ / cell) + pad - cz0 + 1);
+  }
+  get(cx: number, cz: number): readonly T[] {
+    const ix = cx - this.cx0, iz = cz - this.cz0;
+    if (ix >= 0 && iz >= 0 && ix < this.nx && iz < this.nz) return this.dense[ix * this.nz + iz] ?? NONE;
+    return this.far.get(cellKey(cx, cz)) ?? NONE;
+  }
+  add(cx: number, cz: number, item: T, once = false): void {
+    const ix = cx - this.cx0, iz = cz - this.cz0;
+    let at: T[] | undefined;
+    if (ix >= 0 && iz >= 0 && ix < this.nx && iz < this.nz) {
+      at = this.dense[ix * this.nz + iz];
+      if (!at) this.dense[ix * this.nz + iz] = at = [];
+    } else {
+      at = this.far.get(cellKey(cx, cz));
+      if (!at) this.far.set(cellKey(cx, cz), (at = []));
+    }
+    if (!once || !at.includes(item)) at.push(item);
+  }
+}
+
+/**
+ * Distance from a point to a polyline. Math.hypot is the slow part, so a segment is
+ * first measured squared, and only one that could be the nearest -- within a hair of it --
+ * is measured exactly: the answer is the same, to the last bit.
+ */
+function toLine(p: Pt, line: readonly Pt[], below = Infinity): number {
   let best = Infinity;
   for (let i = 0; i + 1 < line.length; i++) {
     const a = line[i]!;
@@ -125,7 +217,10 @@ function toLine(p: Pt, line: readonly Pt[]): number {
     const dz = b[1] - a[1];
     const len2 = dx * dx + dz * dz;
     const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / len2));
-    best = Math.min(best, Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dz)));
+    const ox = p[0] - (a[0] + t * dx), oz = p[1] - (a[1] + t * dz);
+    const near = Math.min(best, below);
+    if (near < Infinity && ox * ox + oz * oz > near * near * (1 + 1e-9)) continue;
+    best = Math.min(best, Math.hypot(ox, oz));
   }
   return best;
 }
@@ -192,9 +287,13 @@ function nearestOnRing(p: Pt, ring: readonly Pt[]): { d: number; q: Pt } {
  * it is walked in steps of 0.1, so it bends round a corner rather than cutting it.
  */
 function clearOf(line: readonly Pt[], rings: readonly (readonly Pt[])[], clear: number): Pt[] {
+  // A wall further than `clear` from a point -- its box is -- neither moves the point
+  // nor makes its stretch of path a corner to walk round: passed over without measuring.
+  const boxes = rings.map(boxOf);
   const push = (p: Pt): Pt => {
     let at = p;
-    for (const ring of rings) {
+    for (const [r, ring] of rings.entries()) {
+      if (boxDist(at, boxes[r]!) >= clear) continue;
       if (inRing(at, ring)) continue;
       const { d, q } = nearestOnRing(at, ring);
       if (d >= clear || d < 1e-9) continue;
@@ -202,7 +301,11 @@ function clearOf(line: readonly Pt[], rings: readonly (readonly Pt[])[], clear: 
     }
     return at;
   };
-  const near = (a: Pt, b: Pt) => rings.some((ring) => nearestOnRing(a, ring).d < clear + dist(a, b) || nearestOnRing(b, ring).d < clear + dist(a, b));
+  const near = (a: Pt, b: Pt) => rings.some((ring, r) => {
+    const reach = clear + dist(a, b);
+    if (boxDist(a, boxes[r]!) >= reach && boxDist(b, boxes[r]!) >= reach) return false;
+    return nearestOnRing(a, ring).d < reach || nearestOnRing(b, ring).d < reach;
+  });
   const out: Pt[] = [];
   for (let k = 0; k + 1 < line.length; k++) {
     const a = line[k]!, b = line[k + 1]!;
@@ -232,8 +335,7 @@ function clearOf(line: readonly Pt[], rings: readonly (readonly Pt[])[], clear: 
  * answer is identical because a path in a cell four cells away cannot be the nearest.
  */
 function pathIndex(paths: readonly Pt[][], cell: number) {
-  const grid = new Map<number, number[]>();
-  const key = (x: number, z: number) => cellKey(Math.floor(x / cell), Math.floor(z / cell));
+  const grid = Cells.over<number>(boxOf(paths.flat()), cell);
   paths.forEach((line, i) => {
     for (let k = 0; k + 1 < line.length; k++) {
       const a = line[k]!;
@@ -241,24 +343,28 @@ function pathIndex(paths: readonly Pt[][], cell: number) {
       const steps = Math.max(1, Math.ceil(dist(a, b) / cell));
       for (let s = 0; s <= steps; s++) {
         const t = s / steps;
-        const kk = key(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
-        const at = grid.get(kk);
-        if (at) { if (!at.includes(i)) at.push(i); } else grid.set(kk, [i]);
+        grid.add(Math.floor((a[0] + (b[0] - a[0]) * t) / cell), Math.floor((a[1] + (b[1] - a[1]) * t) / cell), i, true);
       }
     }
   });
+  // Each path's box, to pass over a path that cannot be the nearest; and a stamp per
+  // path instead of a new Set per question (218,000 of them for the grass alone).
+  const boxes = paths.map(boxOf);
+  const stamp = new Int32Array(paths.length);
+  let asked = 0;
   return (p: Pt, reach: number): number => {
     const span = Math.ceil(reach / cell);
     const cx = Math.floor(p[0] / cell);
     const cz = Math.floor(p[1] / cell);
-    const seen = new Set<number>();
+    asked++;
     let best = Infinity;
     for (let dx = -span; dx <= span; dx++) {
       for (let dz = -span; dz <= span; dz++) {
-        for (const i of grid.get(cellKey(cx + dx, cz + dz)) ?? []) {
-          if (seen.has(i)) continue;
-          seen.add(i);
-          best = Math.min(best, toLine(p, paths[i]!));
+        for (const i of grid.get(cx + dx, cz + dz)) {
+          if (stamp[i] === asked) continue;
+          stamp[i] = asked;
+          if (boxDist(p, boxes[i]!) >= best) continue;
+          best = Math.min(best, toLine(p, paths[i]!, best));
         }
       }
     }
@@ -275,14 +381,11 @@ function pathIndex(paths: readonly Pt[][], cell: number) {
  * frozen phone the first time somebody walks into the park. Bucketed, it is a handful
  * of comparisons each and the answer is identical.
  */
-function pointIndex(cell: number) {
-  const grid = new Map<number, { x: number; z: number; r: number }[]>();
-  const key = (x: number, z: number) => cellKey(Math.floor(x / cell), Math.floor(z / cell));
+function pointIndex(cell: number, over: Box) {
+  const grid = Cells.over<{ x: number; z: number; r: number }>(over, cell);
   return {
     add(x: number, z: number, r: number) {
-      const k = key(x, z);
-      const at = grid.get(k);
-      if (at) at.push({ x, z, r }); else grid.set(k, [{ x, z, r }]);
+      grid.add(Math.floor(x / cell), Math.floor(z / cell), { x, z, r });
     },
     /** Is anything within its own radius of this point? */
     hits(p: Pt, pad: number): boolean {
@@ -291,8 +394,11 @@ function pointIndex(cell: number) {
       const cz = Math.floor(p[1] / cell);
       for (let dx = -span; dx <= span; dx++) {
         for (let dz = -span; dz <= span; dz++) {
-          for (const q of grid.get(cellKey(cx + dx, cz + dz)) ?? []) {
-            if (Math.hypot(q.x - p[0], q.z - p[1]) < q.r + pad) return true;
+          for (const q of grid.get(cx + dx, cz + dz)) {
+            // Squared first, exactly only when it could be near enough: the same answer.
+            const ox = q.x - p[0], oz = q.z - p[1], lim = q.r + pad;
+            if (ox * ox + oz * oz > lim * lim * (1 + 1e-9)) continue;
+            if (Math.hypot(ox, oz) < lim) return true;
           }
         }
       }
@@ -382,7 +488,7 @@ export function makeCubbon(): Garden {
     });
 
   const near = pathIndex(lines, 4);
-  const inPark = (p: Pt) => inRing(p, outline);
+  const inPark = ringTest(outline);
   // A pond or a building is only asked about when the point is within `pad` of the box
   // round it: nowhere else can it be inside it or that near its edge. The answers are the
   // same; this whole park took the better part of eight seconds to lay out on the Pixel,
@@ -426,7 +532,7 @@ export function makeCubbon(): Garden {
   // The 42 OSM records first, because those are where trees genuinely are, then
   // enough invented ones to read as a park. Cubbon has something like 6,800; this
   // draws 700, which at a phone's draw distance is the same picture.
-  const treeGrid = pointIndex(2);
+  const treeGrid = pointIndex(2, bounds);
   /**
    * A point moved off every path surface, `clear` beyond its edge, to whichever side
    * is still park -- or null if neither is. For the SURVEYED trees: OSM puts an
@@ -518,13 +624,16 @@ export function makeCubbon(): Garden {
 
   // ── undergrowth ──────────────────────────────────────────────────────────
   const bushes: Bush[] = [];
+  // Asked of every candidate against every bush so far: bucketed, the same answer.
+  const bushGrid = pointIndex(1, bounds);
   for (let i = 0; i < 6000 && bushes.length < 900; i++) {
     const p = openGround(0.25, 1);
     if (!p) continue;
-    if (bushes.some((b) => dist([b.x, b.z], p) < 0.6)) continue;
+    if (bushGrid.hits(p, 0.6)) continue;
     const byTree = treeGrid.hits(p, 1.2);
     if (!byTree && rnd() < 0.55) continue;
     bushes.push({ x: p[0], z: p[1], scale: 0.7 + rnd() * 0.8 });
+    bushGrid.add(p[0], p[1], 0);
   }
 
   const flowers: Flower[] = [];

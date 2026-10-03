@@ -64,7 +64,8 @@ import { buildScale } from './character';
 import { RING_COLOR, ringShown, sightsToMark, useParkLive } from './park-live';
 import type { CityPlan } from './city-plan';
 import { buildCity, type BuiltCity } from './city-mesh';
-import { CUBBON_PARK, venueGarden, type Venue } from './venue';
+import { CUBBON_PARK, type Venue } from './venue';
+import type { Garden } from './garden';
 import { loadVenueFurniture, type BuiltVenueFurniture } from './venue-mesh';
 
 /** The middle of a person, off their feet, in world units (a person is 0.215 tall). */
@@ -148,6 +149,12 @@ export interface WorldCanvasProps {
   venueSim?: WorldSim;
   /** The real place represented by the local walkable world. */
   venue?: Venue;
+  /**
+   * The venue's layout, once it is wanted (world-screen.tsx builds it on the way in):
+   * until then nothing of the park -- its trees, grass, paths, the city round it, its
+   * benches and lamps -- is built at all, so the town opens without paying for it.
+   */
+  venueLayout?: Garden | null;
   /**
    * How many people can be on screen at once (SLOTS, 64, by default). Only the park's
    * crowd test raises it: every slot is a row in the markers' buffers, so the everyday
@@ -755,6 +762,8 @@ const SIGHT_MARK_Y = 2.5;
  * ground the mist had already painted over.
  */
 const WALK_FAR = VIEW + 6;
+/** The longest the town waits for its people's bodies before showing anyway (the first frame's useFrame). */
+const SHOW_ANYWAY_MS = 6000;
 /**
  * Flying, how near the lens a treetop or a trunk is cut away (garden-mesh.ts
  * seeThroughTrees): a whole canopy, three blobs about two and a half units across. At
@@ -791,7 +800,7 @@ const FOLLOW = 3;
 
 function Town({
   sim, colors, cap30, onStats, onTapAgent, onTapVenue, onFirstFrame, onBand, onWalking,
-  stick, venueSim, venue = CUBBON_PARK, cam, slots = SLOTS,
+  stick, venueSim, venue = CUBBON_PARK, venueLayout = null, cam, slots = SLOTS,
 }: WorldCanvasProps & { cam: CamState }) {
   const { gl, scene, size, set, get } = useThree();
   const mapCamera = useMemo(() => new THREE.OrthographicCamera(), []);
@@ -817,20 +826,24 @@ function Town({
   const map = useMemo(() => buildMap(MAP, colors), [colors]);
   useEffect(() => () => map.dispose(), [map]);
 
-  // The real venue's local layout. Its coordinates never leak onto the city map.
-  const layout = useMemo(() => venueGarden(venue), [venue]);
+  // The real venue's local layout, once it is wanted (venueLayout). Its coordinates
+  // never leak onto the city map.
+  const layout = venueLayout;
   const garden = useMemo(
-    () => buildGarden(layout, { night: colors.night, accent: colors.accent }, { assetFurniture: true, city: venue.id === CUBBON_PARK.id }),
+    () => (layout
+      ? buildGarden(layout, { night: colors.night, accent: colors.accent }, { assetFurniture: true, city: venue.id === CUBBON_PARK.id })
+      : null),
     [layout, colors.night, colors.accent, venue.id],
   );
-  useEffect(() => () => garden.dispose(), [garden]);
+  useEffect(() => () => garden?.dispose(), [garden]);
   // THE CITY ROUND THE PARK (city-mesh.ts): its road, buildings and traffic, beyond the
-  // fence. Planned once, offline (scripts/build-city.mts); only Cubbon Park has one.
+  // fence. Planned once, offline (scripts/build-city.mts); only Cubbon Park has one --
+  // built with the park, when it is wanted.
   const city = useMemo<BuiltCity | null>(
-    () => (venue.id === CUBBON_PARK.id
+    () => (layout && venue.id === CUBBON_PARK.id
       ? buildCity(require('../../../assets/venues/cubbon-park/city.json') as CityPlan, { night: colors.night })
       : null),
-    [venue.id, colors.night],
+    [layout, venue.id, colors.night],
   );
   useEffect(() => () => city?.dispose(), [city]);
 
@@ -886,6 +899,7 @@ function Town({
   useEffect(() => () => { bikes.geometry.dispose(); (bikes.material as THREE.Material).dispose(); }, [bikes]);
   const furniture = useRef<BuiltVenueFurniture | null>(null);
   useEffect(() => {
+    if (!layout) return;
     let alive = true;
     let made: BuiltVenueFurniture | null = null;
     loadVenueFurniture(layout).then((built) => {
@@ -1016,6 +1030,8 @@ function Town({
   const elapsed = useRef(0);
   const lastReport = useRef(0);
   const drawn = useRef(false);
+  /** When the first frame was drawn: the town is shown once its people are in, or SHOW_ANYWAY_MS after. */
+  const firstAt = useRef(0);
   /**
    * WHERE A FRAME'S TIME GOES, in a debug build while the park's crowd test is on
    * (slots above SLOTS): JS milliseconds per section, averaged and logged every two
@@ -1040,30 +1056,43 @@ function Town({
 
   useFrame((_, dt) => {
     if (prof.current.on) prof.current.start = performance.now();
-    if (!drawn.current) { drawn.current = true; onFirstFrame?.(); }
+    // THE TOWN IS SHOWN WITH ITS PEOPLE IN IT. Their bodies are read and baked after the
+    // first frame (loadGpuCrowd: about two seconds on the Pixel), and while that ran the
+    // camera's first move over to you was drawn at a frame a second (the founder,
+    // 2026-10-04: "the map when it loads initially, and moves to show my agent, it
+    // happens at 1 fps"). So the loading globe -- native, it keeps turning -- stays up
+    // until they are in, or SHOW_ANYWAY after the first frame if they never come.
+    const now = performance.now();
+    if (firstAt.current === 0) firstAt.current = now;
+    if (!drawn.current && (people.current || fallback || now - firstAt.current > SHOW_ANYWAY_MS)) {
+      drawn.current = true;
+      onFirstFrame?.();
+    }
     const clamped = Math.min(dt, 0.1);
     elapsed.current += clamped;
     const t = elapsed.current;
 
     // WHICH WORLD. Venue coordinates are local and live in their own sim; city
     // coordinates never get copied into it.
-    const walking = cam.walking && !!venueSim;
+    // Walking only in a park that is built (world-screen.tsx builds it on the way in).
+    const park = cam.walking && venueSim && garden ? garden : null;
+    const walking = !!park;
     const live = walking ? venueSim! : sim;
     // Set every frame, not only when it changes: two boolean writes cost nothing, and
     // a rule that only fires on a transition loses its grip the moment either world
     // is rebuilt -- a theme change or a reload left the garden drawn over the city,
     // and then the city drawn over the garden (on the phone, 2026-09-22).
     map.group.visible = !walking;
-    garden.group.visible = walking;
+    if (garden) garden.group.visible = walking;
     if (city) city.group.visible = walking;
     furnitureHolder.visible = walking;
     if (walking !== inGarden.current || appliedGarden.current !== garden) {
       inGarden.current = walking;
       appliedGarden.current = garden;
-      scene.fog = walking
-        ? new THREE.Fog(garden.horizon, MIST_NEAR, VIEW)
+      scene.fog = park
+        ? new THREE.Fog(park.horizon, MIST_NEAR, VIEW)
         : new THREE.Fog(colors.bg, EYE * 0.82, EYE * 1.42);
-      scene.background = new THREE.Color(walking ? garden.horizon : colors.bg);
+      scene.background = new THREE.Color(park ? park.horizon : colors.bg);
       onWalking?.(walking);
     }
     const p0 = prof.current.on ? performance.now() : 0;
@@ -1094,7 +1123,7 @@ function Town({
     }
     live.step(clamped, stepNear);
     const p1 = prof.current.on ? performance.now() : 0;
-    if (walking) garden.tick(t, clamped);
+    if (park) park.tick(t, clamped);
 
     // Your tile, lit once your agent knows which it is.
     // Your tile is lit wherever your agent actually stands -- including the central
@@ -1123,7 +1152,7 @@ function Town({
         const [dx, dz] = driveVector(jx, jy, cam.yaw);
         const len = Math.hypot(dx, dz) || 1;
         // On a bicycle, BIKE_PACE times a walk.
-        const pace = walkSpeedFor(walking ? layout.radius : 26) * (walking && live.get('you')?.riding ? BIKE_PACE : 1);
+        const pace = walkSpeedFor(walking && layout ? layout.radius : 26) * (walking && live.get('you')?.riding ? BIKE_PACE : 1);
         live.drive('you', (dx / len) * pace * push, (dz / len) * pace * push);
       } else live.drive('you', 0, 0);
     }
@@ -1243,15 +1272,15 @@ function Town({
       camera.position.set(eye[0], eye[1], eye[2]);
       camera.lookAt(look[0], look[1], look[2]);
       focus.set(look[0], 0, look[2]);
-      skyFollow(garden, eye[0], 0, eye[2]);
+      if (garden) skyFollow(garden, eye[0], 0, eye[2]);
       // No trunk between the lens and you: cut away along that line (garden-mesh.ts
       // seeThroughTrees). To the middle of you, wherever the camera is easing to.
       // Flying, nor any treetop over the lens either (garden-mesh.ts seeThroughTrees).
-      garden.sightLine(eye, [you.x, lift + SIGHT_MIDDLE, you.z], flying ? FLIGHT_CLEAR : 0);
+      garden?.sightLine(eye, [you.x, lift + SIGHT_MIDDLE, you.z], flying ? FLIGHT_CLEAR : 0);
       // Detailed benches and lamps near the camera, plain ones further out (venue-mesh).
       furniture.current?.follow(eye[0], eye[2]);
     } else {
-      garden.sightLine(null);
+      garden?.sightLine(null);
       // The angle follows the zoom: a map seen from above out at the city, a game
       // camera looking along the street once you are down in it.
       const [ex, ey, ez] = eyeOffset(elevationFor(cam.pose.zoom, cam.city.zoom), EYE);
@@ -1284,7 +1313,7 @@ function Town({
     const ex = camera.position.x;
     const ez = camera.position.z;
     // The same question of the trees, hedges and flowers (garden-mesh.ts packByCell).
-    if (walking) garden.cull(view, ex, ez);
+    if (park) park.cull(view, ex, ez);
     // The traffic moves on, and only what is near is drawn; so are the buildings.
     const c0 = prof.current.on ? performance.now() : 0;
     if (walking && city) { city.tick(clamped, ex, ez); city.cull(ex, ez); }
@@ -1520,7 +1549,7 @@ function Town({
       <directionalLight position={[-4, 10, 8]} intensity={colors.night ? 0.6 : 0.75} />
 
       <primitive object={map.group} onClick={tapTile} />
-      <primitive object={garden.group} />
+      {garden && <primitive object={garden.group} />}
       {city && <primitive object={city.group} />}
       <primitive object={furnitureHolder} />
       <primitive object={rigs.group} />
@@ -1542,3 +1571,5 @@ function Town({
 // The builder's stage and the You tab's card: the town's own body, one person at a
 // time (./character-canvas.tsx). Re-exported so `loadWorldRenderer()` finds it here.
 export { CharacterCanvas, type CharacterCanvasProps, type Focus } from './character-canvas';
+// Started by loadWorldRenderer() the moment this module is in (crowd-gpu.ts warmGpuCrowd).
+export { warmGpuCrowd } from './crowd-gpu';
