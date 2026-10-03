@@ -44,8 +44,12 @@ export const RETRY_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
  * internet -- the founder's friend, on the release app, 2026-09-30 -- can never reach it,
  * and "Voice lost. Trying again..." stayed over the park for good. Lost after it was on,
  * it still says so and keeps trying (RETRY_MS).
+ *
+ * FOUR, about 17 seconds (RETRY_MS 2 + 5 + 10). Two -- seven seconds -- ended voice for
+ * the session on the founder's Seeker after a flaky few seconds at the start
+ * (2026-10-03): the park said "Say something" with no mic until the app was restarted.
  */
-export const NEVER_ON_TRIES = 2;
+export const NEVER_ON_TRIES = 4;
 
 /**
  * WHY THE MIC DID NOT COME ON: the phone refused it, or something passing. Allowing the

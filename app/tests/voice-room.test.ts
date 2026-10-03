@@ -218,6 +218,15 @@ describe('voice after the voice server was lost', () => {
   // server's address is the laptop's own, so her phone could never reach it, and "Voice
   // lost. Trying again..." sat over the park for good. Negative control, run by hand: the
   // give-up branch taken out of the failed connect -> this fails.
+  // Two quiet tries (seven seconds) ended voice for the session on the Seeker after a
+  // flaky start (2026-10-03). Negative control, run by hand: NEVER_ON_TRIES back at 2 ->
+  // this fails.
+  it('gives a slow start most of twenty seconds before giving voice up for the session', () => {
+    const quiet = RETRY_MS.slice(0, NEVER_ON_TRIES - 1).reduce((a, b) => a + b, 0);
+    expect(quiet).toBeGreaterThanOrEqual(15_000);
+    expect(quiet).toBeLessThanOrEqual(20_000);
+  });
+
   it('on a phone that never reached the voice server, tries quietly, then goes on with typing', async () => {
     stop = startVoice(sim);
     fake.FakeRoom.unreachable = true;
