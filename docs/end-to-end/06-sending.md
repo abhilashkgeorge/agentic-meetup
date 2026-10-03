@@ -20,14 +20,14 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") ([app/src/app/(tabs)/index.tsx:1] `export { default } from '../../features/world/world-screen';`,
-   [app/src/features/world/hud.tsx:218] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
-   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:320] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   [app/src/features/world/hud.tsx:214] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
+   The same button is on the Matches tab ([app/src/features/matches/matches-screen.tsx:312] `label={active ? 'Your agent is out…' : 'Send my agent out'}`).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
    is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
    part of town?"), the line about the agent, and "40 people nearby · 5 visits left today". Before, up to
    eleven chips in a card covered the top half of the map
-   ([app/src/features/world/hud.tsx:358] `function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, onEnterVenue, onAppearance, cityCrowd, onCityCrowd }: {`,
+   ([app/src/features/world/hud.tsx:354] `function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, onEnterVenue, onAppearance, cityCrowd, onCityCrowd }: {`,
    [app/src/features/world/town-bar.ts:14] `export function nudgeFor(`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
@@ -35,7 +35,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    [server/src/api/dating.ts:997] `await ensureSheet(ctx);`,
    [server/src/api/dating.ts:1040] `return c.json({ roundId: round.id, status: round.status }, 202);`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
-   heading out…" ([app/src/features/world/hud.tsx:147] `? 'Your agent is heading out…'`).
+   heading out…" ([app/src/features/world/hud.tsx:146] `? 'Your agent is heading out…'`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
    all of them ([server/src/matching/rounds.ts:158] `UPDATE rounds SET status = 'running', started_at = now()`).
@@ -43,7 +43,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
    start this ([server/src/matching/orchestrator.ts:284] `type: 'round.met', roundId: null, rendezvousId: pair.rendezvousId,`,
-   [app/src/features/world/hud.tsx:149] `Your agent is out — meeting ${talking} ${talking === 1 ? 'person' : 'people'}`,
+   [app/src/features/world/hud.tsx:148] `Your agent is out — meeting ${talking} ${talking === 1 ? 'person' : 'people'}`,
    [app/src/features/world/agent-sheet.tsx:43] `: agent.state === 'talking' ? 'Your agent is with them now.'`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
@@ -183,9 +183,9 @@ off ([server/src/matching/profile.ts:207] `if (!agreed) missing.push('consent');
 - **How they are labelled.** "Practice match — this one is not a real person." on the card,
   "Practice match / Not a real person" in lists, their lines marked "(practice)", and the
   reveal says "This is not a real person. The pool is invented until enough people have
-  joined…" ([app/src/features/matches/matches-screen.tsx:394] `Practice match — this one is not a real person.`,
+  joined…" ([app/src/features/matches/matches-screen.tsx:386] `Practice match — this one is not a real person.`,
   [app/src/features/matches/exchange.ts:47] `${s.text} (practice)`,
-  [app/src/features/matches/reveal-screen.tsx:213] `This is not a real person. The pool is invented until enough people have`).
+  [app/src/features/matches/reveal-screen.tsx:205] `This is not a real person. The pool is invented until enough people have`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a
   production server refuses to start with it on
   ([server/src/env.ts:373] `if (env.NODE_ENV === 'production' && env.SYNTHETIC_AUTO_YES) {`).

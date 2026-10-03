@@ -24,8 +24,7 @@ import { getMyPlace, setEssential } from '../../lib/api';
 import { pointFromDevice } from '../../lib/location';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Chip, Field, Header, LoadFailed, Row, Screen, Skeleton, SkeletonBlock, SkeletonGroup,
-  radius, space, type, usePalette,
+  Button, Card, Chip, Field, Header, LoadFailed, Loading, Row, Screen, radius, space, type, usePalette,
 } from '../../components/ui';
 import { DistanceMap } from './distance-map';
 import {
@@ -159,13 +158,7 @@ export function DistanceStep({ detect, onChange }: {
   if (!ready) {
     // The step's own shape while your place is on its way: the map, how far, where.
     return (
-      <SkeletonGroup label="Loading the map" style={{ gap: space.md }}>
-        <SkeletonBlock height={mapHeight} radius={radius.lg} />
-        <Skeleton height={18} width="40%" />
-        <Skeleton height={28} />
-        <Skeleton height={18} width="60%" />
-        <SkeletonBlock height={52} radius={radius.xl} />
-      </SkeletonGroup>
+      <Loading label="Loading the map" orb="searching" />
     );
   }
 

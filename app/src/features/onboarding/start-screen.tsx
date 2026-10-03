@@ -12,12 +12,12 @@
  */
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { gradeSelfTest, nextSelfTest, tell, type SelfTestItem } from '../../lib/api';
 import { useSession } from '../../store/session';
 import { afterTell } from './start-state';
 import {
-  Animation, Bubble, Button, ButtonRow, Card, Field, Screen, space, type, usePalette,
+  Animation, Bubble, Button, ButtonRow, Card, Field, Orb, Screen, space, type, usePalette,
 } from '../../components/ui';
 
 type Stage = 'ask' | 'thinking' | 'judge' | 'done';
@@ -61,7 +61,7 @@ export default function StartScreen() {
     return (
       <Screen topInset={false} center>
         <View style={{ alignItems: 'center', gap: space.lg }}>
-          <ActivityIndicator color={p.accent} size="large" />
+          <Orb state="weaving" size={64} label="Learning that" />
           <Text style={[type.body, { color: p.textSecondary }]}>Learning that…</Text>
         </View>
       </Screen>

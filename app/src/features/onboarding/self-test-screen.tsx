@@ -14,14 +14,13 @@
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import {
   getReadiness, gradeSelfTest, nextSelfTest, type Readiness, type SelfTestItem,
 } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Animation, Bubble, Button, ButtonRow, Card, Field, Meter, Screen, Skeleton, SkeletonGroup, space,
-  type, usePalette,
+  Animation, Bubble, Button, ButtonRow, Card, Field, Loading, Meter, Screen, space, type, usePalette,
 } from '../../components/ui';
 
 export default function SelfTestScreen() {
@@ -148,10 +147,7 @@ export default function SelfTestScreen() {
         ) : readyFailed ? (
           <Text style={[type.callout, { color: p.textSecondary }]}>Could not load how it has done so far.</Text>
         ) : (
-          <SkeletonGroup label="Loading how it did">
-            <Skeleton height={24} width="45%" />
-            <Skeleton height={8} />
-          </SkeletonGroup>
+          <Loading label="Loading how it did" orb="working" />
         )}
         {ready && <Meter value={size ? passed / size : 0} />}
         {/* Named, never scored. A percentage turns this into a form to max out. */}

@@ -55,8 +55,8 @@ Nothing in sign-up differs by gender. Both see, in order:
    [app/src/features/auth/invite-screen.tsx:71] `<Button label="Back" variant="ghost"`).
 4. **"Before we start"**: three short documents and one button, "I agree". There is no decline
    button: "If you would rather not, close the app — nothing has been set up yet."
-   ([app/src/features/consent/consent-screen.tsx:114] `Before we start`,
-   [app/src/features/consent/consent-screen.tsx:107] `If you would rather not, close the app — nothing has been set up yet.`).
+   ([app/src/features/consent/consent-screen.tsx:113] `Before we start`,
+   [app/src/features/consent/consent-screen.tsx:106] `If you would rather not, close the app — nothing has been set up yet.`).
 5. Then setup (stage 2).
 
 ### 1.1 Phone and SMS code
@@ -114,10 +114,10 @@ Three documents, shown in plain words and accepted with one "I agree"
 [server/src/api/consent.ts:39] `{ document: 'privacy', version: '3', title: 'How your data is used' },`):
 
 - **Age:** "You have to be 18 or older to use this." "We keep the year you were born. Other people
-  only ever see your age." ([app/src/features/consent/consent-screen.tsx:38] `'You have to be 18 or older to use this.',`)
+  only ever see your age." ([app/src/features/consent/consent-screen.tsx:37] `'You have to be 18 or older to use this.',`)
 - **Terms:** "Be a person. No harassment, no pretending to be somebody else, no pictures that are not
   of you." "Your agent talks to other agents for you. You always make the final call about who you
-  meet" ([app/src/features/consent/consent-screen.tsx:43] `Your agent talks to other agents for you. You always make the final call about who you meet`)
+  meet" ([app/src/features/consent/consent-screen.tsx:42] `Your agent talks to other agents for you. You always make the final call about who you meet`)
 - **Privacy** (version 3 since 2026-09-29, so everybody reads it again): "Your clone uses what you tell
   it to represent you to other agents." "Someone your agent meets sees what you mark public, your age,
   your part of town and what you are here for, and whether you fit what they asked for about work,
@@ -128,7 +128,7 @@ Three documents, shown in plain words and accepted with one "I agree"
   for 30 days so the people you talked to can still report you. Only a reviewer reads them, and only after a
   report. Then they are deleted." "What you type and your messages go to AI providers,
   to run your clone and to search what it remembers. We do not sell anything to anybody."
-  ([app/src/features/consent/consent-screen.tsx:51] `'Someone your agent meets sees what you mark public, your age, your part of town and what you are here for, and whether you fit what they asked for about work, exercise, sleep or moving cities.',`,
+  ([app/src/features/consent/consent-screen.tsx:50] `'Someone your agent meets sees what you mark public, your age, your part of town and what you are here for, and whether you fit what they asked for about work, exercise, sleep or moving cities.',`,
   [server/src/api/consent.ts:39] `{ document: 'privacy', version: '3', title: 'How your data is used' },`)
 
 Stored as append-only rows; the app role cannot change or delete them

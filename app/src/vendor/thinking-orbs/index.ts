@@ -1,0 +1,5 @@
+// The geometry of thinking-orbs (https://github.com/Jakubantalik/thinking-orbs, MIT,
+// copied at de85557 -- see README.md): pure math, no canvas, no React.
+export { MODE_FRAMES } from './registry';
+export { resolvePreset, STATE_TO_MODE, type ModeKey, type OrbSize, type OrbState, type Resolved } from './presets';
+export type { Dot, Line, OrbFrame, ModeFrame } from './types';

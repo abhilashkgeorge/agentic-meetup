@@ -19,8 +19,8 @@ import type { WantView } from './wants-state';
 import { FEW_ON_THE_APP, costLabel, countLabel, fewOnTheApp, isUnder20 } from '../../lib/counts';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Row, Screen, ScreenTitle, Skeleton,
-  SkeletonGroup, SkeletonRows, StatRow, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Loading, Row, Screen, ScreenTitle, StatRow,
+  space, type, usePalette,
 } from '../../components/ui';
 
 
@@ -86,15 +86,7 @@ export default function PreferencesScreen() {
 
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
         {status === 'loading' ? (
-          <SkeletonGroup label="Loading what you are looking for" style={{ gap: space.lg }}>
-            <Card>
-              <Skeleton height={12} width="45%" />
-              <Skeleton height={34} width="40%" />
-              <Skeleton height={14} width="65%" />
-            </Card>
-            <Card><Skeleton height={12} width="30%" /><SkeletonRows count={2} /></Card>
-            <Card><Skeleton height={12} width="25%" /><SkeletonRows count={3} /></Card>
-          </SkeletonGroup>
+          <Loading label="Loading what you are looking for" orb="solving" />
         ) : status === 'failed' ? (
           <LoadFailed what="what you are looking for" onRetry={() => { setStatus('loading'); void load(); }} />
         ) : (<>

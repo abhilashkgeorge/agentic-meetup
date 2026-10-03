@@ -26,9 +26,8 @@ import { PHOTO_SLOTS } from '../photos/photos-screen';
 import { isBangalore, label, placeLine, setupRoute } from './fields';
 import { rangeFromText, rangeLabel } from './age-range';
 import {
-  Avatar, Button, Card, Chip, ChipGroup, Crease, LoadFailed, PhotoSlot, Row, Screen, ScreenTitle,
-  Skeleton, SkeletonBlock, SkeletonGroup, SkeletonRows, SkeletonTitle, Stats, radius, space, sunk, type,
-  usePalette,
+  Avatar, Button, Card, Chip, ChipGroup, Crease, LoadFailed, Loading, PhotoSlot, Row, Screen, ScreenTitle,
+  Stats, radius, space, sunk, type, usePalette,
 } from '../../components/ui';
 
 /**
@@ -60,54 +59,12 @@ function Slot({
 }
 
 /**
- * THE YOU TAB WHILE IT LOADS, in its own shape: the name, the three numbers, the photo
- * wells, the character, the basics. It used to draw the real page at once, wrong -- "You"
- * for a title, "—" for every number, empty photo wells saying "Add one", Points 0 and a
- * character "not built yet" -- and then correct itself.
+ * THE YOU TAB WHILE IT LOADS: the orb (components/ui/loading.tsx). It used to draw the real
+ * page at once, wrong -- "You" for a title, "—" for every number, empty photo wells saying
+ * "Add one", Points 0 and a character "not built yet" -- and then correct itself.
  */
-function ProfileSkeleton() {
-  return (
-    <SkeletonGroup label="Loading your profile" style={{ gap: space.lg }}>
-      <View style={{ gap: space.sm }}>
-        <SkeletonTitle width="45%" />
-        <Skeleton height={14} width="35%" />
-      </View>
-      <Card>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-          {[0, 1, 2].map((i) => (
-            <View key={i} style={{ alignItems: 'center', gap: space.sm, width: '28%' }}>
-              <Skeleton height={22} width="50%" />
-              <Skeleton height={10} width="90%" />
-            </View>
-          ))}
-        </View>
-      </Card>
-      <Card>
-        <Skeleton height={12} width="25%" />
-        <View style={{ flexDirection: 'row', gap: space.sm }}>
-          <View style={{ flex: 2 }}><SkeletonBlock height={220} radius={radius.md} /></View>
-          <View style={{ flex: 1, gap: space.sm }}>
-            <SkeletonBlock height={106} radius={radius.md} />
-            <SkeletonBlock height={106} radius={radius.md} />
-          </View>
-        </View>
-      </Card>
-      <Card>
-        <Skeleton height={12} width="35%" />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-          <SkeletonBlock width={112} height={150} radius={20} />
-          <View style={{ flex: 1, gap: space.sm }}>
-            <Skeleton height={14} />
-            <Skeleton height={14} width="80%" />
-          </View>
-        </View>
-      </Card>
-      <Card>
-        <Skeleton height={12} width="30%" />
-        <SkeletonRows count={5} />
-      </Card>
-    </SkeletonGroup>
-  );
+function ProfileLoading() {
+  return <Loading label="Loading your profile" orb="weaving" />;
 }
 
 /** Reads a single value out of the knowledge list, so the layout can stay declarative. */
@@ -185,7 +142,7 @@ export default function ProfileScreen() {
     return (
       <Screen onRefresh={() => void load()}>
         {status === 'loading'
-          ? <ProfileSkeleton />
+          ? <ProfileLoading />
           : <LoadFailed what="your profile" onRetry={() => { setStatus('loading'); void load(); }} />}
       </Screen>
     );

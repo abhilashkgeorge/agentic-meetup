@@ -10,13 +10,12 @@
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { parseChatExport, type ParsedChat } from '@clone/shared';
 import { getImportPrompts, importChat, type ImportPrompts, type VoiceResult } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Animation,
-  Button, Card, Crease, Field, Screen, space, type, usePalette,
+  Animation, Button, Card, Crease, Field, Orb, Screen, space, type, usePalette,
 } from '../../components/ui';
 
 /** Anything past this is an export WITH media, and reading it kills the app. */
@@ -134,7 +133,7 @@ export default function VoiceScreen() {
         <Text style={[type.display, { color: p.text }]}>Which one is you?</Text>
         {busy === 'learning' ? (
           <View style={{ alignItems: 'center', gap: space.md, paddingVertical: space.xxl }}>
-            <ActivityIndicator color={p.accent} size="large" />
+            <Orb state="composing" size={64} label="Working out how you write" />
             <Text style={[type.body, { color: p.textSecondary }]}>Working out how you write…</Text>
           </View>
         ) : (
@@ -185,7 +184,7 @@ export default function VoiceScreen() {
         <Text style={[type.callout, { color: p.textTertiary }]}>{g.privacy}</Text>
       </Card>
 
-      {busy === 'reading' && <ActivityIndicator color={p.accent} />}
+      {busy === 'reading' && <Orb state="composing" size={20} label="Reading" style={{ alignSelf: 'center' }} />}
 
       {showPaste && (
         <Card>

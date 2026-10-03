@@ -47,7 +47,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 
 - "Yes, share my profile with them" and "Not this one", and the note "This shows them your
   photos and first name. Nothing is shared until you tap it."
-  ([app/src/features/matches/matches-screen.tsx:471] `<Button label={m.practice ? WORDS.shareFirstPractice : WORDS.shareFirst}`,
+  ([app/src/features/matches/matches-screen.tsx:463] `<Button label={m.practice ? WORDS.shareFirstPractice : WORDS.shareFirst}`,
   [app/src/features/matches/turn.ts:37] `shareFirstNote: 'This shows them your photos and first name. Nothing is shared until you tap it.',`).
 - If she opens his profile screen anyway, it says "Not yet — Their photos and name show only after
   they share them. You decide first, on the card."
@@ -74,9 +74,9 @@ at 0), tag chips; "Your agent never decided whether you would find them attracti
 opinion about that and does not keep one."; then "Yes, share mine back" and "Not for me", and
 under them "Yes shows them your photos and first name, and opens a chat. If you say no, they
 are not told."
-([app/src/features/matches/matches-screen.tsx:483] `<Button label={m.practice ? WORDS.seeThemPractice : WORDS.seeThem}`,
-[app/src/features/matches/reveal-screen.tsx:259] `<Card label="Who they are">`,
-[app/src/features/matches/reveal-screen.tsx:186] `<Button label={them?.practice ? WORDS.shareBackPractice : WORDS.shareBack} variant="primary"`,
+([app/src/features/matches/matches-screen.tsx:475] `<Button label={m.practice ? WORDS.seeThemPractice : WORDS.seeThem}`,
+[app/src/features/matches/reveal-screen.tsx:251] `<Card label="Who they are">`,
+[app/src/features/matches/reveal-screen.tsx:178] `<Button label={them?.practice ? WORDS.shareBackPractice : WORDS.shareBack} variant="primary"`,
 [app/src/features/matches/turn.ts:47] `shareBackNote: 'Yes shows them your photos and first name, and opens a chat. If you say no, they are not told.',`).
 
 **Step 4 — Arjun taps "Yes, share mine back".** They are introduced (stage 10). Only now can
@@ -125,14 +125,14 @@ share mine back"; nothing of a person is shown to the other before their own tap
 The promises match: consent says "Your photos and first name reach a person only after you say yes to
 sharing your profile with them."; the photo screens say "Nobody sees these until you share your profile
 with them." and "Only people you share your profile with"
-([app/src/features/consent/consent-screen.tsx:53] `'Your photos and first name reach a person only after you say yes to sharing your profile with them.',`,
-[app/src/features/onboarding/photos-step.tsx:191] `Nobody sees these until you share your profile with them. Your agent never does,`,
-[app/src/features/photos/photos-screen.tsx:141] `<Card label="Only people you share your profile with">`).
+([app/src/features/consent/consent-screen.tsx:52] `'Your photos and first name reach a person only after you say yes to sharing your profile with them.',`,
+[app/src/features/onboarding/photos-step.tsx:184] `Nobody sees these until you share your profile with them. Your agent never does,`,
+[app/src/features/photos/photos-screen.tsx:140] `<Card label="Only people you share your profile with">`).
 
 ### 9.4 What "no" does
 
 - **One tap, final**, no confirmation: "Not this one" on the card or "Not for me" on the
-  profile screen ([app/src/features/matches/reveal-screen.tsx:188] `<Button label={WORDS.notForMe} disabled={busy}`).
+  profile screen ([app/src/features/matches/reveal-screen.tsx:180] `<Button label={WORDS.notForMe} disabled={busy}`).
   It cannot be undone ([server/src/matching/orchestrator.ts:574] `WHERE rendezvous_id = $1 AND for_user = $2 AND human_says_yes IS NULL`).
 - **The person saying no** sees "Done" / "They are not told anything. Your agent keeps
   looking." ([app/src/features/matches/reveal-screen.tsx:97] `They are not told anything. Your agent keeps looking.`).

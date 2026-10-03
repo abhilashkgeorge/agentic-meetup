@@ -45,8 +45,8 @@ import {
 } from './sentence-proposal';
 import { questionsOver, straightOn } from './questions-end';
 import {
-  Animation, Button, Card, Chip, ChipGroup, Field, LoadFailed, Screen, SkeletonQuestion, space, type,
-  useLate, usePalette,
+  Animation, Button, Card, Chip, ChipGroup, Field, LoadFailed, Loading, Screen, space, type, useLate,
+  usePalette,
 } from '../../components/ui';
 
 export default function InterviewScreen() {
@@ -162,7 +162,7 @@ export default function InterviewScreen() {
   if (!state || onward || late) {
     return (
       <Screen topInset={false}>
-        <SkeletonQuestion />
+        <Loading label="Loading the question" orb="solving" />
       </Screen>
     );
   }

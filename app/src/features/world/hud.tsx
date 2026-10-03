@@ -13,7 +13,7 @@ import type { World } from '../../lib/api';
 import { countLabel } from '../../lib/counts';
 import { missingLabel } from '../profile/fields';
 import {
-  Button, Skeleton, SkeletonBlock, radius, raised, space, type, usePalette,
+  Button, Orb, radius, raised, space, type, usePalette,
 } from '../../components/ui';
 import { roundActive } from './bridge';
 import { Stick } from './stick';
@@ -24,7 +24,6 @@ import { useLiveCount, useQuestsDone } from './park-hud';
 import { PARK_WHO_MEANS, parkWho } from './park-top';
 import { nudgeFor, townCounts } from './town-bar';
 import { useWorld } from './store';
-import { TownBarSkeleton } from './town-loading';
 
 export function Hud({
   world,
@@ -168,9 +167,7 @@ export function Hud({
       {venue ? (
         <ParkBar onBack={onLeaveVenue} agents={Math.min(here + 1, MAX_VENUE_AGENTS)} crowd={crowd}
                  onQuests={onQuests} onCrowd={onCrowd} />
-      ) : !world ? (
-        <TownBarSkeleton />
-      ) : (
+      ) : !world ? null : (
         <TownBar title={title} inPool={!!world?.me.inPool} area={areaName(myArea)} here={here} band={band}
                  onPeople={onPeople} onHome={onHome} onCity={onCity} onEnterVenue={onEnterVenue}
                  onAppearance={onAppearance} cityCrowd={cityCrowd} onCityCrowd={onCityCrowd} />
@@ -201,7 +198,8 @@ export function Hud({
               </Pressable>
             )}
             {/* What your agent is doing, or knows: said once, over the map, not in a card. */}
-            {!world && !failed ? <View style={{ alignSelf: 'center', width: '55%' }}><Skeleton height={22} /></View> : (
+            {/* The square on its way from the server: the orb where that line will be. */}
+            {!world && !failed ? <Orb state="searching" size={28} label="Loading the square" style={{ alignSelf: 'center' }} /> : (
             <Text numberOfLines={1}
                   style={[type.callout, { color: p.text, alignSelf: 'center', paddingHorizontal: space.md, paddingVertical: 2,
                                           borderRadius: radius.pill, backgroundColor: p.bg, opacity: 0.94, overflow: 'hidden' }]}>
@@ -210,9 +208,7 @@ export function Hud({
             )}
           </>
         )}
-        {walking || transitioning ? null : !world ? (
-          <SkeletonBlock height={52} radius={radius.xl} />
-        ) : !world.me.inPool ? (
+        {walking || transitioning || !world ? null : !world.me.inPool ? (
           <Button label="Finish setup" variant="primary" onPress={onFinishSetup} />
         ) : (
           <Button label={active ? 'Your agent is out…' : 'Send my agent out'} variant="primary"
@@ -299,7 +295,7 @@ function ParkBar({ onBack, agents, crowd, onQuests, onCrowd }: {
               <Text style={[type.callout, { color: questsDone > 0 ? p.accent : p.textSecondary, fontFamily: type.bodyStrong.fontFamily }]}>
                 {`${questsDone}/${questsAll}`}
               </Text>
-            ) : <View style={{ width: 28 }}><Skeleton height={14} /></View>}
+            ) : <View style={{ width: 28 }} />}
           </Pressable>
         )}
         {onCrowd && (

@@ -24,8 +24,8 @@ import { useSession } from '../../store/session';
 import { useTheme } from '../../store/theme';
 import { getApiBase } from '../../lib/env';
 import {
-  Button, Card, Chip, ChipGroup, Header, LoadFailed, Row, Screen, ScreenTitle, Skeleton, SkeletonBlock,
-  SkeletonGroup, radius, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Header, LoadFailed, Loading, Row, Screen, ScreenTitle, radius, space,
+  type, usePalette,
 } from '../../components/ui';
 
 export default function SettingsScreen() {
@@ -209,11 +209,7 @@ export default function SettingsScreen() {
         ) : (
           <Card>
             {invitesStatus === 'loading' ? (
-              <SkeletonGroup label="Loading your invites">
-                <Skeleton height={12} width="35%" />
-                <Skeleton height={14} width="80%" />
-                <SkeletonBlock height={52} radius={radius.xl} />
-              </SkeletonGroup>
+              <Loading label="Loading your invites" orb="working" />
             ) : (
               <LoadFailed what="your invites" onRetry={() => { setInvitesStatus('loading'); void load(); }} />
             )}

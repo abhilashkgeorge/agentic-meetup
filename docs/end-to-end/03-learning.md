@@ -32,9 +32,9 @@ used only to **extract** facts from what a person typed, to **point** at their o
   ([server/src/onboarding/questions.ts:430] `'works_in', 'exercise_habit', 'sleep_pattern', 'relocation_openness',`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
-  ([app/src/features/profile/profile-screen.tsx:200] `<Card label="Your agent heard something">`,
-  [app/src/features/profile/profile-screen.tsx:206] `Is that right? Nothing changes until you say so.`,
-  [app/src/features/profile/profile-screen.tsx:209] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
+  ([app/src/features/profile/profile-screen.tsx:157] `<Card label="Your agent heard something">`,
+  [app/src/features/profile/profile-screen.tsx:163] `Is that right? Nothing changes until you say so.`,
+  [app/src/features/profile/profile-screen.tsx:166] `<Chip label="Yes, that's right" selected={false} disabled={judging}`).
 - **If the card cannot read the words** (since 2026-09-29): a Yes on words a card has no answer for -- "socially"
   for how often you drink -- or on a place with no map point keeps the card's answer, drops the words, and says
   "Your card answer stays: Sometimes. If it has changed, change it on the card." Before, the Yes replaced the
@@ -124,7 +124,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **Where:** a chip "A question for you" in the town. For a bank question: "Other agents asked yours this"
   … "Answer it, and next time it can say what you said.", with "Save and share" / "Not now"
   ([app/src/features/question/question-state.ts:10] `Answer it, and next time it can say what you said.`,
-  [app/src/features/question/question-screen.tsx:120] `<Button label="Save and share" variant="primary" loading={busy}`).
+  [app/src/features/question/question-screen.tsx:112] `<Button label="Save and share" variant="primary" loading={busy}`).
   For a card or tied question it opens that one question in the interview.
 - **What an answer writes:** a shareable fact in the person's own words, put straight on their answer
   sheet. An answer naming a private topic or a contact detail is kept but never said: "Those are only ever
@@ -138,8 +138,8 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   [server/src/memory/pasteImport.ts:87] `A guess is NEVER a fact.`).
 - **WhatsApp export** ("Now, how you talk"): parsed on the phone; the person picks which speaker they are;
   only their own lines (at least 20, at most the last 2,000) are sent; one model call writes a style note;
-  the messages are not stored ([app/src/features/onboarding/voice-screen.tsx:93] `const mine = chat.lines.filter((l) => l.speaker === speaker).map((l) => l.text);`,
-  [app/src/features/onboarding/voice-screen.tsx:124] `Only this note is kept. The chat was never stored.`).
+  the messages are not stored ([app/src/features/onboarding/voice-screen.tsx:92] `const mine = chat.lines.filter((l) => l.speaker === speaker).map((l) => l.text);`,
+  [app/src/features/onboarding/voice-screen.tsx:123] `Only this note is kept. The chat was never stored.`).
 
 ### 3.5 Background jobs
 

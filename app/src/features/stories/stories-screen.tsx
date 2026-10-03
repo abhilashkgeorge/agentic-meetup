@@ -18,8 +18,7 @@ import { Text, View } from 'react-native';
 import { getStories, saveStory, type Story } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Field, Header, LoadFailed, Screen, ScreenTitle, Skeleton, SkeletonBlock, SkeletonGroup,
-  radius, space, type, usePalette,
+  Button, Card, Field, Header, LoadFailed, Loading, Screen, ScreenTitle, radius, space, type, usePalette,
 } from '../../components/ui';
 import { canSave, contactNote, tooShort } from './stories-state';
 
@@ -76,15 +75,7 @@ export default function StoriesScreen({ onboarding = false }: { onboarding?: boo
           <LoadFailed what="the questions" onRetry={() => void load()} />
         ) : !stories ? (
           // The shape of what is coming: a few question cards, each a box to write in.
-          <SkeletonGroup label="Loading the questions" style={{ gap: space.lg }}>
-            {[0, 1, 2].map((i) => (
-              <Card key={i}>
-                <Skeleton height={16} width={i === 1 ? '60%' : '75%'} />
-                <Skeleton height={12} width="45%" />
-                <SkeletonBlock height={80} radius={radius.md} />
-              </Card>
-            ))}
-          </SkeletonGroup>
+          <Loading label="Loading the questions" orb="solving" />
         ) : stories.map((s) => {
           const draft = drafts[s.id] ?? '';
           const saved = s.answer?.text ?? null;

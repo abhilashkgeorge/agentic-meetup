@@ -20,8 +20,7 @@ import { QUIET_LINE } from './date-idea';
 import { LEFT_LINE, leftNotice } from './left';
 import { SafetySheet } from '../safety/safety-sheet';
 import {
-  Crease, Empty, LoadFailed, Row, Screen, ScreenTitle, SkeletonGroup, SkeletonRows, Surface,
-  radius, space, type, usePalette,
+  Crease, Empty, LoadFailed, Loading, Row, Screen, ScreenTitle, Surface, radius, space, type, usePalette,
 } from '../../components/ui';
 
 export default function ConversationsScreen() {
@@ -89,9 +88,7 @@ export default function ConversationsScreen() {
 
         {status === 'loading' ? (
           <Surface radius={radius.lg} style={{ padding: space.screen }}>
-            <SkeletonGroup label="Loading your chats">
-              <SkeletonRows count={4} avatar={52} />
-            </SkeletonGroup>
+            <Loading label="Loading your chats" orb="composing" />
           </Surface>
         ) : status === 'failed' ? (
           <LoadFailed what="your chats" onRetry={() => { setStatus('loading'); void load(); }} />

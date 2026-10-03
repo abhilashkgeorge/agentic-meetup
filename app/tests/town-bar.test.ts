@@ -36,7 +36,8 @@ const townBar = hud.slice(hud.indexOf('function TownBar('));
 
 describe('the town\'s edges', () => {
   it('draws the TownBar, which holds no card and no chip', () => {
-    expect(hud).toMatch(/\) : \(\s*<TownBar /);
+    // Once the square is here: before it, nothing (an orb says it is on its way, below).
+    expect(hud).toMatch(/\) : !world \? null : \(\s*<TownBar /);
     expect(townBar.length).toBeGreaterThan(100);
     expect(townBar, 'the town wears a card again').not.toMatch(/<Card\b|<ChipGroup\b|<Chip\b/);
     expect(hud, 'a chip is back on the Home').not.toMatch(/<Chip\b|<ChipGroup\b|<Card\b/);

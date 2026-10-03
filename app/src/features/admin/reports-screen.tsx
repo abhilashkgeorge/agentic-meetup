@@ -15,8 +15,8 @@ import { Alert, Text, View } from 'react-native';
 import { decideReport, getAdminReports, getReportChat, type AdminReport, type ReportChatLine } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Button, ButtonRow, Card, Chip, ChipGroup, Empty, Header, LoadFailed, Screen, ScreenTitle,
-  SkeletonBlock, SkeletonCard, SkeletonGroup, radius, space, type, usePalette,
+  Button, ButtonRow, Card, Chip, ChipGroup, Empty, Header, LoadFailed, Loading, Screen, ScreenTitle,
+  radius, space, type, usePalette,
 } from '../../components/ui';
 import { chatButtonLabel, chatLineLabel, contextLine, outcomeLabel, reasonLabel, reportedLabel } from './queue';
 
@@ -71,9 +71,7 @@ export default function ReportsScreen() {
           <Chip label="All" selected={all} onPress={() => setAll(true)} />
         </ChipGroup>
         {!reports && !failed && (
-          <SkeletonGroup label="Loading the reports" style={{ gap: space.lg }}>
-            {[0, 1].map((i) => <Card key={i}><SkeletonCard /><SkeletonBlock height={44} radius={radius.xl} /></Card>)}
-          </SkeletonGroup>
+          <Loading label="Loading the reports" orb="working" />
         )}
         {!reports && failed && <LoadFailed what="the reports" onRetry={() => void load()} />}
         {reports && reports.length === 0 && (

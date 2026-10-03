@@ -10,7 +10,7 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Image, PanResponder, Text, View, type LayoutChangeEvent } from 'react-native';
-import { SkeletonBlock, radius, type, usePalette } from '../../components/ui';
+import { Orb, radius, type, usePalette } from '../../components/ui';
 import { nearestSpot, shifted, tilesFor, zoomFor, type PlacedTile, type Spot } from './geo';
 import { useTile } from './tiles';
 
@@ -105,7 +105,9 @@ export function DistanceMap({ token, spot, km, anywhere, onSpot, onMiss, height 
       {...responder.panHandlers}
     >
       {waiting && (
-        <SkeletonBlock height={height} radius={0} style={{ position: 'absolute', left: 0, top: 0 }} />
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, right: 0, height, alignItems: 'center', justifyContent: 'center' }}>
+          <Orb state="searching" size={72} label="Loading the map" />
+        </View>
       )}
       <Animated.View style={{ position: 'absolute', left: 0, top: 0, width, height, transform: pan.getTranslateTransform() }}>
         {tiles.map((t) => <Tile key={t.key} token={token} t={t} onSettled={onSettled} />)}

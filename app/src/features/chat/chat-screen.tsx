@@ -14,7 +14,7 @@ import { getConfig, getKnowledge, getPool, type Config, type Knowledge } from '.
 import { countLabel, isUnder20 } from '../../lib/counts';
 import { label, setupRoute, missingLabel } from '../profile/fields';
 import {
-  Button, Card, Chip, ChipGroup, Crease, Screen, Skeleton, SkeletonGroup, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Loading, Screen, space, type, usePalette,
 } from '../../components/ui';
 
 /** One tap instead of a blank box. */
@@ -62,10 +62,7 @@ export default function ChatScreen() {
                   Could not load what it knows. You can still talk to it.
                 </Text>
               ) : !k ? (
-                <SkeletonGroup label="Loading what it knows">
-                  <Skeleton height={18} />
-                  <Skeleton height={18} width="70%" />
-                </SkeletonGroup>
+                <Loading label="Loading what it knows" orb="weaving" />
               ) : k.knows.length === 0 ? (
                 <Text style={[type.body, { color: p.textSecondary }]}>
                   Nothing yet. Say one true thing and it starts from there.

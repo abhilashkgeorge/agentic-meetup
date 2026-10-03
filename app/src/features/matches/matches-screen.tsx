@@ -34,8 +34,8 @@ import { useWorld } from '../world/store';
 import { useSession } from '../../store/session';
 import { registerForPush } from '../../lib/push';
 import {
-  Button, Card, Crease, Empty, LoadFailed, Screen, ScreenTitle, Skeleton, SkeletonBlock, SkeletonCard,
-  SkeletonGroup, StatRow, Surface, radius, space, type, usePalette,
+  Button, Card, Crease, Empty, LoadFailed, Loading, Screen, ScreenTitle, StatRow, Surface, radius, space,
+  type, usePalette,
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
 import { chatRows, exchangeRows, sayOnCard, sharedSaid, wantRowsView, type Said } from './exchange';
@@ -253,15 +253,7 @@ export default function MatchesScreen() {
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
         {status === 'loading' && (
           // The shape of what is coming: the pool card, the button, a card.
-          <SkeletonGroup label="Loading your matches" style={{ gap: space.lg }}>
-            <Card>
-              <Skeleton height={12} width="45%" />
-              <Skeleton height={34} width="40%" />
-              <Skeleton height={14} width="70%" />
-            </Card>
-            <SkeletonBlock height={52} radius={radius.xl} />
-            <Card><SkeletonCard /></Card>
-          </SkeletonGroup>
+          <Loading label="Loading your matches" orb="connecting" />
         )}
         {status === 'failed' && (
           <LoadFailed what="your matches" onRetry={() => { setStatus('loading'); void load(); }} />

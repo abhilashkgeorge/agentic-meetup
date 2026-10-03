@@ -15,8 +15,7 @@ import {
 } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Field, Header, LoadFailed, Screen, ScreenTitle, Skeleton, SkeletonBlock, SkeletonGroup,
-  radius, space, type, usePalette,
+  Button, Card, Field, Header, LoadFailed, Loading, Screen, ScreenTitle, radius, space, type, usePalette,
 } from '../../components/ui';
 import { canSave, contactNote, tooShort } from '../stories/stories-state';
 import { askReason, cardReason, isAskQuestion, questionReason, unusedNote } from './question-state';
@@ -77,14 +76,7 @@ export default function QuestionScreen() {
         {failed && q === undefined ? (
           <LoadFailed what="today's question" onRetry={() => void load()} />
         ) : q === undefined ? (
-          <SkeletonGroup label="Loading today's question">
-            <Card>
-              <Skeleton height={12} width="30%" />
-              <Skeleton height={22} width="85%" />
-              <Skeleton height={14} width="60%" />
-              <SkeletonBlock height={52} radius={radius.xl} />
-            </Card>
-          </SkeletonGroup>
+          <Loading label="Loading today's question" orb="solving" />
         ) : unused ? (
           <Card>
             <Text style={[type.body, { color: p.text }]}>{unused}</Text>

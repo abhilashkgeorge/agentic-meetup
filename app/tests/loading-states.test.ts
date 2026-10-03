@@ -1,7 +1,9 @@
 /**
  * Every screen while it loads (the founder, 2026-10-02: "can you fix the loading issues on
  * all the screens ... add a skeleton loading screen when something is loading please ...
- * even the maps").
+ * even the maps"; and 2026-10-03: "for the map loading animation and all the other
+ * animation for loading https://github.com/Jakubantalik/thinking-orbs use this please" --
+ * the placeholders are thinking orbs now, components/ui/orb.tsx, and tests/orb.test.ts).
  *
  * WHAT WAS WRONG, found by reading every screen (and seen on the Seeker with its requests
  * slowed to 1.4 s):
@@ -23,9 +25,9 @@
  *     ever) and keep what they had when a refresh fails;
  *   - by reading the source (a navigator, a 3D view and a network wait do not run under
  *     vitest), comments stripped: no screen loads behind a bare spinner; each screen named
- *     above draws its placeholder while loading and has a way out when loading fails; the
- *     false empty states are only reached once the data is here; and the map's placeholder
- *     goes once every tile has arrived or been given up on.
+ *     above draws its orb while loading and has a way out when loading fails; the false
+ *     empty states are only reached once the data is here; and the map's orb goes once
+ *     every tile has arrived or been given up on.
  *
  * Negative control, run by hand and recorded in the commit: every screen file back to
  * HEAD (the shared pieces kept) -> the per-screen tests fail.
@@ -84,15 +86,13 @@ describe('the stores behind the town and the character', () => {
   });
 });
 
-describe('a placeholder looks like what it stands for', () => {
-  it('the town is the map\'s own ground -- a tilted square of tiles -- not a row of bars', () => {
-    // The first one was a skyline of bars of different heights; the founder saw a bar
-    // chart before the map (2026-10-03). The map is a square of tiles seen from above.
+describe('the town while it loads', () => {
+  it('is the "searching" orb -- a dotted globe turning -- not bars, not a grid of tiles', () => {
+    // The first one was a skyline of bars; the founder saw a bar chart before the map
+    // (2026-10-03). Then a tilted square of tiles; then, his choice, the thinking orbs.
     const town = src('features', 'world', 'town-loading.tsx');
-    expect(town).not.toMatch(/SKYLINE|Skyline/);
-    expect(town).toMatch(/transform: \[\{ scaleY: MAP_TILT \}, \{ rotate: '45deg' \}\]/);
-    expect(town).toMatch(/Array\.from\(\{ length: MAP_TILES \* MAP_TILES \}/);
-    expect(town).toContain('<MapGround />');
+    expect(town).not.toMatch(/SKYLINE|Skyline|MAP_TILES|MapGround/);
+    expect(town).toContain('<GlobeOrb size={TOWN_ORB} label="Loading the town" />');
   });
 
   it('the town\'s first frame is its placeholder: the park is built a frame later, under it', () => {
@@ -128,9 +128,9 @@ describe('no screen loads behind a bare spinner', () => {
     }
     expect(src('features', 'world', 'world-screen.tsx')).toContain('if (renderer === undefined) return <TownLoading />;');
     expect(src('features', 'world', 'world-screen.tsx')).toContain('{!drawn && <TownLoading overlay />}');
-    expect(src('features', 'onboarding', 'essentials-screen.tsx')).toContain('<SkeletonQuestion />');
-    expect(src('features', 'world', 'character-canvas.tsx')).toContain('<FigureSkeleton');
-    expect(src('features', 'look', 'preview.tsx')).toContain('if (renderer === undefined) return <FigureSkeleton');
+    expect(src('features', 'onboarding', 'essentials-screen.tsx')).toContain('<Loading label="Loading the question" orb="solving" />');
+    expect(src('features', 'world', 'character-canvas.tsx')).toContain('<FigureLoading');
+    expect(src('features', 'look', 'preview.tsx')).toContain('if (renderer === undefined) return <FigureLoading');
   });
 
   it('the interview\'s question that does not come is said, with a way to try again', () => {
@@ -143,13 +143,13 @@ describe('no screen loads behind a bare spinner', () => {
 
 /** Each screen: a placeholder while loading, a way out when it fails, and its empty state only once the data is here. */
 const SCREENS: { file: string[]; placeholder: string; failure: string; emptyAfter?: [string, string] }[] = [
-  { file: ['features', 'dm', 'conversations-screen.tsx'], placeholder: '<SkeletonRows count={4} avatar={52} />',
+  { file: ['features', 'dm', 'conversations-screen.tsx'], placeholder: 'label="Loading your chats"',
     failure: '<LoadFailed what="your chats"', emptyAfter: ["status === 'loading' ? (", 'title="No conversations yet"'] },
   { file: ['features', 'matches', 'matches-screen.tsx'], placeholder: 'label="Loading your matches"',
     failure: '<LoadFailed what="your matches"', emptyAfter: ["{status === 'ready' && (<>", 'title="Nothing waiting"'] },
-  { file: ['features', 'profile', 'profile-screen.tsx'], placeholder: '<ProfileSkeleton />',
+  { file: ['features', 'profile', 'profile-screen.tsx'], placeholder: '<ProfileLoading />',
     failure: '<LoadFailed what="your profile"', emptyAfter: ["if (status !== 'ready') {", "value: String(k?.knows.length ?? 0)"] },
-  { file: ['features', 'dm', 'thread-screen.tsx'], placeholder: '<SkeletonBubbles count={5} />',
+  { file: ['features', 'dm', 'thread-screen.tsx'], placeholder: 'label="Loading the conversation"',
     failure: '<LoadFailed what="this conversation"', emptyAfter: ["status !== 'ready' && messages.length === 0", 'You both said yes. Nobody else can message you here.'] },
   { file: ['features', 'matches', 'reveal-screen.tsx'], placeholder: 'label="Loading their profile"',
     failure: '<LoadFailed what="their profile"', emptyAfter: ["if (status !== 'ready') {", 'No photos yet'] },
@@ -189,9 +189,10 @@ const SCREENS: { file: string[]; placeholder: string; failure: string; emptyAfte
 
 describe('every screen while it loads', () => {
   for (const s of SCREENS) {
-    it(`${s.file.at(-1)}: its shape while loading, a way out on failure${s.emptyAfter ? ', and its empty state only after' : ''}`, () => {
+    it(`${s.file.at(-1)}: an orb while loading, a way out on failure${s.emptyAfter ? ', and its empty state only after' : ''}`, () => {
       const text = src(...s.file);
-      expect(text, 'no placeholder').toContain(s.placeholder);
+      expect(text, 'no orb').toContain(s.placeholder);
+      expect(text, 'a grey placeholder still').not.toMatch(/<Skeleton/);
       expect(text, 'no way out when loading fails').toContain(s.failure);
       if (s.emptyAfter) {
         expect(before(text, s.emptyAfter[0], s.emptyAfter[1]),
@@ -205,33 +206,35 @@ describe('every screen while it loads', () => {
     expect(before(r, "if (status !== 'ready') {", 'onPress={() => void answer(true)}')).toBe(true);
   });
 
-  it('the town\'s bar, line and button are placeholders while the square is on its way, and a failure is said', () => {
+  it('while the square is on its way the town shows a small orb where its line will be, no button yet; a failure is said', () => {
     const h = src('features', 'world', 'hud.tsx');
-    expect(h).toContain('<TownBarSkeleton />');
+    expect(h).toContain('{!world && !failed ? <Orb state="searching" size={28} label="Loading the square"');
     expect(h).toContain("(failed ? 'Cannot reach the server. Trying again…' : '')");
     expect(h).not.toContain('Finding the square');
-    expect(h).toMatch(/!world \? \(\s*<SkeletonBlock height=\{52\}/);
+    expect(h).toContain('{walking || transitioning || !world ? null : !world.me.inPool ? (');
     expect(h).toContain('questsKnown ? (');
   });
 });
 
 describe('pictures while they load', () => {
-  it('a photo, a face and a photo slot breathe while their picture is on its way, never for ever', () => {
+  it('a photo and a photo slot show an orb while their picture is on its way, a face its empty well; never for ever', () => {
     const photo = src('features', 'photos', 'photo.tsx');
     expect(photo).toContain('if (alive) setData(uri ?? null);');
-    expect(photo).toContain('if (uri === undefined) return <SkeletonBlock height="100%" radius={0} />;');
+    expect(photo).toMatch(/if \(uri === undefined\) \{\s*return \(\s*<View[^>]*>\s*<Orb state="breathing" size=\{48\}/);
     expect(photo).toContain('loading={Boolean(photoId) && uri === undefined}');
     const avatar = src('components', 'ui', 'avatar.tsx');
-    expect(avatar.match(/\) : loading \? \(/g)?.length, 'Avatar and PhotoSlot').toBe(2);
+    // A face is small and sits in lists, where a GL view each is too many: its empty well.
+    expect(avatar).toContain(') : loading ? null : (');
+    expect(avatar).toContain('<Orb state="breathing" size={40} label="Loading the photo" />');
     expect(src('features', 'profile', 'profile-screen.tsx')).toContain('loading={Boolean(photo) && uri === undefined}');
   });
 
-  it('the map breathes until every tile in view has arrived or been given up on', () => {
+  it('the map shows the searching orb until every tile in view has arrived or been given up on', () => {
     const tiles = src('features', 'distance', 'tiles.ts');
     expect(tiles).toContain('if (alive) setData(d ?? null);');
     const map = src('features', 'distance', 'distance-map.tsx');
     expect(map).toContain("const waiting = token !== null && (width === 0 || tiles.some((t) => !settled.has(t.key)));");
     expect(map).toContain('const settled = data !== undefined;');
-    expect(map).toMatch(/\{waiting && \(\s*<SkeletonBlock height=\{height\}/);
+    expect(map).toMatch(/\{waiting && \(\s*<View pointerEvents="none"[^>]*>\s*<Orb state="searching" size=\{72\}/);
   });
 });

@@ -23,8 +23,8 @@ import { decideMatch, getPhotosOf, getReveal, type Photo, type Reveal } from '..
 import { Portrait } from '../photos/photo';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Screen, Skeleton, SkeletonBlock, SkeletonChips,
-  SkeletonGroup, Surface, radius, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Loading, Screen, Surface, radius, space,
+  type, usePalette,
 } from '../../components/ui';
 import { CharacterAvatar } from '../look/character-avatar';
 import { SafetySheet } from '../safety/safety-sheet';
@@ -140,15 +140,7 @@ export default function RevealScreen() {
         <Header onBack={() => router.back()} />
         <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
           {status === 'loading' ? (
-            <SkeletonGroup label="Loading their profile" style={{ gap: space.lg }}>
-              <SkeletonBlock height={CARD_W * 4 / 3} width={CARD_W} radius={radius.xl} />
-              <Card>
-                <Skeleton height={12} width="35%" />
-                <Skeleton height={24} width="55%" />
-                <Skeleton height={14} width="40%" />
-                <SkeletonChips count={3} />
-              </Card>
-            </SkeletonGroup>
+            <Loading label="Loading their profile" orb="connecting" />
           ) : (
             <LoadFailed what="their profile" onRetry={() => { setStatus('loading'); void load(); }} />
           )}

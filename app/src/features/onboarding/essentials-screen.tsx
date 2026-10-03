@@ -26,8 +26,7 @@ import { ageRangeDefault, parseAgeRange } from '../profile/age-range';
 import { AgeRangeInput, type AgeRangeText } from '../profile/age-range-input';
 import { DistanceStep, saveDistance, type DistanceChoice } from '../distance/distance-step';
 import {
-  Animation, Button, Card, Chip, ChipGroup, Field, Screen, SkeletonQuestion, StepsLeft, space, type,
-  usePalette,
+  Animation, Button, Card, Chip, ChipGroup, Field, Loading, Screen, StepsLeft, space, type, usePalette,
 } from '../../components/ui';
 
 /** `AgeRangeText` is the two boxes of the age-range step, still as typed. */
@@ -276,7 +275,7 @@ export default function EssentialsScreen() {
   if (!questions) {
     return (
       <Screen topInset={false}>
-        <SkeletonQuestion />
+        <Loading label="Loading the question" orb="solving" />
       </Screen>
     );
   }

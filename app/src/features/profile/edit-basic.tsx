@@ -21,8 +21,7 @@ import { ageRangeDefault, parseAgeRange, rangeFromText } from './age-range';
 import { AgeRangeInput, type AgeRangeText } from './age-range-input';
 import { DistanceStep, saveDistance, type DistanceChoice } from '../distance/distance-step';
 import {
-  Button, Chip, ChipGroup, Field, Header, LoadFailed, Screen, SkeletonBlock, SkeletonChips,
-  SkeletonGroup, radius, space, type, usePalette,
+  Button, Chip, ChipGroup, Field, Header, LoadFailed, Loading, Screen, radius, space, type, usePalette,
 } from '../../components/ui';
 
 export default function EditBasic() {
@@ -149,18 +148,7 @@ export default function EditBasic() {
       ) : status === 'failed' ? (
         <LoadFailed what="your answer" onRetry={() => { setStatus('loading'); void load(); }} />
       ) : status === 'loading' ? (
-        <SkeletonGroup label="Loading your answer">
-          {field.kind === 'range' ? (
-            <View style={{ flexDirection: 'row', gap: space.md }}>
-              <SkeletonBlock height={56} width="45%" radius={radius.md} />
-              <SkeletonBlock height={56} width="45%" radius={radius.md} />
-            </View>
-          ) : field.options ? (
-            <SkeletonChips count={Math.min(6, field.options.length)} />
-          ) : (
-            <SkeletonBlock height={52} radius={radius.md} />
-          )}
-        </SkeletonGroup>
+        <Loading label="Loading your answer" orb="solving" />
       ) : field.kind === 'range' ? (
         <AgeRangeInput value={range} onChange={setRange} />
       ) : field.options ? (

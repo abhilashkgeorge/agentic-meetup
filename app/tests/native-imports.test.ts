@@ -77,6 +77,8 @@ const LAZY_ONLY = [
   'features/world/venue-mesh.ts',
   'features/world/crowd-gpu.ts',
   'features/world/character-canvas.tsx',
+  // The thinking orb's GL drawer (2026-10-03), reached only through orb.tsx's import().
+  'components/ui/orb-gl.tsx',
 ];
 
 function sources(dir: string): string[] {

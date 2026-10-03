@@ -14,7 +14,7 @@ can meet it.
 | Essentials: birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | [server/src/api/dating.ts:383] `extractorModel: 'direct',` |
 | Voice (optional): a WhatsApp export | Only the person's own lines are read; a style note is written | AI ({AI:voice}) | A "voice" note; the chat itself is not kept | The person's own clone | [server/src/memory/chatImport.ts:127] `VALUES ($1,$2,'voice',$3,$4,$5,'{}', now())` |
 | Self-test (optional) | The clone writes as the person; they grade it | AI ({AI:selftest}) | Grades | The person | [server/src/api/selftest.ts:44] `metered(ctx, 'render_profile', () => nextSelfTest(db, ctx), { db, setup: true }));` |
-| Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | [app/src/features/onboarding/photos-step.tsx:191] `Nobody sees these until you share your profile with them. Your agent never does,` |
+| Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | [app/src/features/onboarding/photos-step.tsx:184] `Nobody sees these until you share your profile with them. Your agent never does,` |
 
 ### Arjun and Meera
 
@@ -53,23 +53,23 @@ In order, each sees:
 7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Things to talk about"** (the
    stories its agent may repeat), **"Make your character"**, **"One last thing"** (photos) — all
    skippable
-   ([app/src/features/onboarding/voice-screen.tsx:162] `label="Skip this for now"`,
-   [app/src/features/onboarding/photos-step.tsx:123] `label="I'll do it later"`).
+   ([app/src/features/onboarding/voice-screen.tsx:161] `label="Skip this for now"`,
+   [app/src/features/onboarding/photos-step.tsx:122] `label="I'll do it later"`).
 8. **Home**, the town, with "Send my agent out".
 
 ### 2.1 The screens in order
 
 For a new person: start → (optional paste) → interview → essentials → voice → self-test → stories →
 character → photos → Home ([app/src/features/onboarding/interview-screen.tsx:245] `router.replace(state.ready ? '/onboarding/stories' : '/onboarding/essentials');`,
-[app/src/features/onboarding/essentials-screen.tsx:75] `router.push('/onboarding/voice');`,
-[app/src/features/onboarding/self-test-screen.tsx:81] `router.replace('/onboarding/stories');`,
+[app/src/features/onboarding/essentials-screen.tsx:74] `router.push('/onboarding/voice');`,
+[app/src/features/onboarding/self-test-screen.tsx:80] `router.replace('/onboarding/stories');`,
 [app/src/features/onboarding/character-step.tsx:23] `const next = () => router.replace('/onboarding/photos');`).
 Until 2026-10-02 the self-test went straight to the character, so a new person never saw the stories
 during setup -- and they are the only sentences an agent may repeat when it meets another, so the
 first two new people's agents had nothing at all to say. Someone already in the pool when the
 interview ends still goes straight to the stories.
 "Setup done" is remembered on the phone only after the photos step; closing the app earlier
-restarts setup at the first screen ([app/src/features/onboarding/photos-step.tsx:104] `await setOnboarded();`).
+restarts setup at the first screen ([app/src/features/onboarding/photos-step.tsx:103] `await setOnboarded();`).
 
 ### 2.2 Every question
 
@@ -174,7 +174,7 @@ A city among 46 listed ones becomes that city's centre; an unlisted city becomes
 **Wants** are not asked on their own during setup. "What would you love in someone?" is on the Stories
 screen, which setup shows after the self-test (optional, like every story there), and "What you're
 looking for" is reached from the You tab or Settings (stage 5)
-([app/src/features/settings/settings-screen.tsx:265] `<Row title="What you're looking for" onPress={() => router.push('/preferences')} />`).
+([app/src/features/settings/settings-screen.tsx:261] `<Row title="What you're looking for" onPress={() => router.push('/preferences')} />`).
 
 **The name others see comes only from that screen** (since 2026-09-28). One word of letters is kept
 (a number or an "@" gets "Just your first name, in letters."); the fact store refuses a first name
@@ -185,7 +185,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 [server/src/api/dating.ts:167] `const name = other.display_name ?? 'Someone';`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
 ("First name") ([app/src/features/world/town-bar.ts:19] `if (wants.askName) return { label: 'Add your first name', onPress: go.name };`,
-[app/src/features/profile/profile-screen.tsx:310] `<Row title="First name" value={name ?? 'Not set'}`).
+[app/src/features/profile/profile-screen.tsx:267] `<Row title="First name" value={name ?? 'Not set'}`).
 
 ### 2.3 Required vs optional, and "ready to send"
 
@@ -204,14 +204,14 @@ these hold ([server/src/matching/profile.ts:209] `const inPool = missing.length 
 
 Not required: photos, a name, age range, distance, neighbourhood, faith, the sentence, stories,
 voice, self-test, character. The self-test's "It's ready. It can go out and meet people for you."
-is a separate notion and gates nothing ([app/src/features/onboarding/self-test-screen.tsx:163] `It's ready. It can go out and meet people for you.`).
+is a separate notion and gates nothing ([app/src/features/onboarding/self-test-screen.tsx:159] `It's ready. It can go out and meet people for you.`).
 
 **When someone is not ready:** the Home's big button reads "Finish setup" and the status line names the
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
-([app/src/features/world/hud.tsx:216] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
-[app/src/features/matches/matches-screen.tsx:275] `It needs a few more things before it can talk to anyone.`).
+([app/src/features/world/hud.tsx:212] `<Button label="Finish setup" variant="primary" onPress={onFinishSetup} />`,
+[app/src/features/matches/matches-screen.tsx:267] `It needs a few more things before it can talk to anyone.`).
 
 ### 2.4 Model calls during setup
 

@@ -17,14 +17,13 @@
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { getMyPhotos, uploadPhoto, type Photo } from '../../lib/api';
 import { Portrait } from '../photos/photo';
 import { useSession } from '../../store/session';
 import { setOnboarded } from '../../lib/storage';
 import {
-  Animation, Button, LoadFailed, Screen, SkeletonBlock, SkeletonGroup, Surface, radius, space, type,
-  usePalette,
+  Animation, Button, LoadFailed, Loading, Orb, Screen, Surface, radius, space, type, usePalette,
 } from '../../components/ui';
 
 /**
@@ -137,13 +136,7 @@ export default function PhotosStep() {
       {status === 'ready' && !has && <Animation mood="camera" height={130} opacity={0.45} />}
 
       {status === 'loading' && (
-        <SkeletonGroup label="Loading your photos" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
-          {Array.from({ length: 6 }, (_, i) => (
-            <View key={i} style={{ width: '31%', aspectRatio: 3 / 4 }}>
-              <SkeletonBlock height="100%" radius={radius.md} />
-            </View>
-          ))}
-        </SkeletonGroup>
+        <Loading label="Loading your photos" orb="breathing" />
       )}
       {status === 'failed' && (
         <LoadFailed what="your photos" onRetry={() => { setStatus('loading'); void load(); }} />
@@ -181,7 +174,7 @@ export default function PhotosStep() {
 
       {busy && (
         <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'center' }}>
-          <ActivityIndicator color={p.accent} />
+          <Orb state="breathing" size={20} label="Uploading" />
           <Text style={[type.callout, { color: p.textSecondary }]}>Uploading…</Text>
         </View>
       )}

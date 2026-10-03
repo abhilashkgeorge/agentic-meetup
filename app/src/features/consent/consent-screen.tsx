@@ -22,8 +22,7 @@ import { acceptConsent, getConsent, type ConsentDoc } from '../../lib/api';
 import { isOnboarded } from '../../lib/storage';
 import { useSession } from '../../store/session';
 import {
-  Animation, Button, Card, Crease, LoadFailed, Screen, Skeleton, SkeletonGroup, space, type,
-  usePalette,
+  Animation, Button, Card, Crease, LoadFailed, Loading, Screen, space, type, usePalette,
 } from '../../components/ui';
 
 /**
@@ -120,16 +119,7 @@ export default function ConsentScreen() {
       {/* The three cards' shape while they are on their way: the page was a header and
           nothing, with "I agree" greyed out below it. */}
       {!docs && !failed && (
-        <SkeletonGroup label="Loading the terms" style={{ gap: space.lg }}>
-          {[0, 1, 2].map((i) => (
-            <Card key={i}>
-              <Skeleton height={12} width="40%" />
-              <Skeleton height={14} />
-              <Skeleton height={14} width="85%" />
-              <Skeleton height={14} width="70%" />
-            </Card>
-          ))}
-        </SkeletonGroup>
+        <Loading label="Loading the terms" orb="breathing" />
       )}
       {!docs && failed && <LoadFailed what="the terms" onRetry={() => void load()} />}
 

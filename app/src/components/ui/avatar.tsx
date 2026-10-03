@@ -9,7 +9,7 @@
  * shape rather than a hole.
  */
 import { Image, Text, View } from 'react-native';
-import { SkeletonShape } from './skeleton';
+import { Orb } from './orb';
 import { radius, raised, sunk, type, usePalette } from './theme';
 
 export function Avatar({
@@ -53,9 +53,7 @@ export function Avatar({
     >
       {source ? (
         <Image source={source} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-      ) : loading ? (
-        <SkeletonShape width={size} height={size} radius={size / 2} />
-      ) : (
+      ) : loading ? null : (
         <Text style={[type.bodyStrong, { color: p.textTertiary, fontSize: size * 0.34 }]}>
           {initials}
         </Text>
@@ -120,7 +118,7 @@ export function PhotoSlot({
       {source ? (
         <Image source={source} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
       ) : loading ? (
-        <SkeletonShape width="100%" height="100%" radius={radius.lg} />
+        <Orb state="breathing" size={40} label="Loading the photo" />
       ) : (
         <Text style={{ color: p.textTertiary, fontSize: 26 }}>+</Text>
       )}

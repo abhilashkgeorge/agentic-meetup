@@ -36,7 +36,7 @@ import { lookKey, type Look } from '@clone/shared';
 import { loadGpuCrowd, type CrowdFrame, type GpuCrowd } from './crowd-gpu';
 import { FRAMING, type Focus } from './framing';
 import { honourSubDataRanges } from './gl-subdata';
-import { FigureSkeleton } from '../look/figure-skeleton';
+import { FigureLoading } from '../look/figure-loading';
 
 export type { Focus };
 
@@ -95,10 +95,10 @@ export function CharacterCanvas({
         <Figure look={look} background={background} focus={focus} yaw={yaw} clock={clock}
                 onReady={() => setReady(true)} onFail={onFail} />
       </Canvas>
-      {/* The figure's shape while its model loads: a spinner on an empty well, before. */}
+      {/* The orb while the figure's model loads (look/figure-loading.tsx). */}
       {!ready && (
         <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-          <FigureSkeleton height={height ?? 240} />
+          <FigureLoading height={height ?? 240} />
         </View>
       )}
     </View>

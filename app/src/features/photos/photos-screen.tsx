@@ -11,15 +11,14 @@
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import {
   deletePhoto, getMyPhotos, getSelfieStatus, reorderPhotos, uploadPhoto, type Photo, type SelfieStatus,
 } from '../../lib/api';
 import { Portrait } from './photo';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Header, LoadFailed, Screen, SkeletonBlock, SkeletonGroup, Surface, radius, space, sunk,
-  type, usePalette,
+  Button, Card, Header, LoadFailed, Loading, Orb, Screen, Surface, radius, space, sunk, type, usePalette,
 } from '../../components/ui';
 
 /**
@@ -169,13 +168,7 @@ export default function PhotosScreen() {
         )}
 
         {status === 'loading' && (
-          <SkeletonGroup label="Loading your photos" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
-            {Array.from({ length: PHOTO_SLOTS }, (_, i) => (
-              <View key={i} style={{ width: `${100 / COLUMNS - 3}%`, aspectRatio: 3 / 4 }}>
-                <SkeletonBlock height="100%" radius={radius.md} />
-              </View>
-            ))}
-          </SkeletonGroup>
+          <Loading label="Loading your photos" orb="breathing" />
         )}
         {status === 'failed' && (
           <LoadFailed what="your photos" onRetry={() => { setStatus('loading'); void load(); }} />
@@ -236,7 +229,7 @@ export default function PhotosScreen() {
 
         {busy && (
           <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'center' }}>
-            <ActivityIndicator color={p.accent} />
+            <Orb state="breathing" size={20} label="Uploading" />
             <Text style={[type.callout, { color: p.textSecondary }]}>Uploading…</Text>
           </View>
         )}

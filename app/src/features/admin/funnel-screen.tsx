@@ -10,8 +10,7 @@ import { Text, View } from 'react-native';
 import { getFunnel, getUnmatchedWants } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Card, Header, LoadFailed, Row, Screen, ScreenTitle, Skeleton, SkeletonGroup, SkeletonRows, space,
-  type, usePalette,
+  Card, Header, LoadFailed, Loading, Row, Screen, ScreenTitle, space, type, usePalette,
 } from '../../components/ui';
 import { funnelRows, gapRows, type Funnel } from './funnel';
 
@@ -39,9 +38,7 @@ export default function FunnelScreen() {
       <ScreenTitle title="Numbers" subtitle="Real people only" />
       <View style={{ paddingHorizontal: space.screen, gap: space.lg }}>
         {!f && failed ? <LoadFailed what="the numbers" onRetry={() => void load()} /> : !f ? (
-          <SkeletonGroup label="Loading the numbers">
-            <Card><Skeleton height={12} width="40%" /><SkeletonRows count={5} /></Card>
-          </SkeletonGroup>
+          <Loading label="Loading the numbers" orb="working" />
         ) : (
           <>
             <Card label="HOW FAR MATCHES GET">

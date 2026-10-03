@@ -18,11 +18,11 @@
  * only make where it can keep it.
  */
 import { useEffect, useState } from 'react';
-import { Image, type ImageStyle, type StyleProp } from 'react-native';
+import { Image, View, type ImageStyle, type StyleProp } from 'react-native';
 import { dataUriOf } from '../../lib/data-uri';
 import { getApiBase } from '../../lib/env';
 import { useSession } from '../../store/session';
-import { Avatar, SkeletonBlock } from '../../components/ui';
+import { Avatar, Orb } from '../../components/ui';
 
 /** Data URIs by `${photoId}:${size}`. Small: a thumb is a couple of kilobytes. */
 const cache = new Map<string, string>();
@@ -127,9 +127,15 @@ export function Portrait({
   label?: string;
 }) {
   const uri = usePhoto(userId, photoId, size);
-  // On its way: a placeholder breathing where it will be. It used to be nothing at all,
-  // an empty well on the reveal and the photos screen.
-  if (uri === undefined) return <SkeletonBlock height="100%" radius={0} />;
+  // On its way: an orb where it will be (components/ui/orb.tsx). It used to be nothing at
+  // all, an empty well on the reveal and the photos screen.
+  if (uri === undefined) {
+    return (
+      <View style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
+        <Orb state="breathing" size={48} label={label ? `Loading ${label}` : 'Loading the photo'} />
+      </View>
+    );
+  }
   if (!uri) return null;
   return (
     <Image source={{ uri }} style={style} resizeMode="cover" accessibilityLabel={label} />

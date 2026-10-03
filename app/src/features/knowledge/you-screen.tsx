@@ -23,8 +23,8 @@ import {
 import { useSession } from '../../store/session';
 import { label } from '../profile/fields';
 import {
-  Button, ButtonRow, Card, Crease, Empty, Field, HIT, Header, LoadFailed, Screen, ScreenTitle,
-  Skeleton, SkeletonGroup, Surface, radius, space, type, usePalette,
+  Button, ButtonRow, Card, Crease, Empty, Field, HIT, Header, LoadFailed, Loading, Screen, ScreenTitle,
+  Surface, radius, space, type, usePalette,
 } from '../../components/ui';
 
 export default function YouScreen() {
@@ -193,15 +193,7 @@ export default function YouScreen() {
           <Card label="It knows">
             {/* Not an empty card while the list is on its way: rows in its shape. */}
             {!k && !failed && (
-              <SkeletonGroup label="Loading what it knows">
-                {[0, 1, 2, 3].map((i) => (
-                  <View key={i} style={{ gap: space.xs, paddingVertical: space.xs }}>
-                    <Skeleton height={10} width="30%" />
-                    <Skeleton height={16} width={i % 2 ? '55%' : '70%'} />
-                    <Skeleton height={12} width="45%" />
-                  </View>
-                ))}
-              </SkeletonGroup>
+              <Loading label="Loading what it knows" orb="weaving" />
             )}
             {!k && failed && <LoadFailed what="what it knows" onRetry={() => void load()} />}
             {k && k.knows.length === 0 && (

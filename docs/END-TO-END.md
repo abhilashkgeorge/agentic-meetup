@@ -152,8 +152,8 @@ Nothing in sign-up differs by gender. Both see, in order:
    `app/src/features/auth/invite-screen.tsx:71`).
 4. **"Before we start"**: three short documents and one button, "I agree". There is no decline
    button: "If you would rather not, close the app — nothing has been set up yet."
-   (`app/src/features/consent/consent-screen.tsx:114`,
-   `app/src/features/consent/consent-screen.tsx:107`).
+   (`app/src/features/consent/consent-screen.tsx:113`,
+   `app/src/features/consent/consent-screen.tsx:106`).
 5. Then setup (stage 2).
 
 ### 1.1 Phone and SMS code
@@ -211,10 +211,10 @@ Three documents, shown in plain words and accepted with one "I agree"
 `server/src/api/consent.ts:39`):
 
 - **Age:** "You have to be 18 or older to use this." "We keep the year you were born. Other people
-  only ever see your age." (`app/src/features/consent/consent-screen.tsx:38`)
+  only ever see your age." (`app/src/features/consent/consent-screen.tsx:37`)
 - **Terms:** "Be a person. No harassment, no pretending to be somebody else, no pictures that are not
   of you." "Your agent talks to other agents for you. You always make the final call about who you
-  meet" (`app/src/features/consent/consent-screen.tsx:43`)
+  meet" (`app/src/features/consent/consent-screen.tsx:42`)
 - **Privacy** (version 3 since 2026-09-29, so everybody reads it again): "Your clone uses what you tell
   it to represent you to other agents." "Someone your agent meets sees what you mark public, your age,
   your part of town and what you are here for, and whether you fit what they asked for about work,
@@ -225,7 +225,7 @@ Three documents, shown in plain words and accepted with one "I agree"
   for 30 days so the people you talked to can still report you. Only a reviewer reads them, and only after a
   report. Then they are deleted." "What you type and your messages go to AI providers,
   to run your clone and to search what it remembers. We do not sell anything to anybody."
-  (`app/src/features/consent/consent-screen.tsx:51`,
+  (`app/src/features/consent/consent-screen.tsx:50`,
   `server/src/api/consent.ts:39`)
 
 Stored as append-only rows; the app role cannot change or delete them
@@ -287,7 +287,7 @@ can meet it.
 | Essentials: birth year, age range, city, distance | Saved; city becomes a map point | Code | Facts, match profile | The person; age and area appear on cards | `server/src/api/dating.ts:383` |
 | Voice (optional): a WhatsApp export | Only the person's own lines are read; a style note is written | AI ([AI-5](#ai-5)) | A "voice" note; the chat itself is not kept | The person's own clone | `server/src/memory/chatImport.ts:127` |
 | Self-test (optional) | The clone writes as the person; they grade it | AI ([AI-2](#ai-2)) | Grades | The person | `server/src/api/selftest.ts:44` |
-| Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | `app/src/features/onboarding/photos-step.tsx:191` |
+| Character, photos (optional) | A 3D look; up to six photos | Code | Look, photos (location data removed) | Look: everyone in the town; photos: stage 9 | `app/src/features/onboarding/photos-step.tsx:184` |
 
 ### Arjun and Meera
 
@@ -326,23 +326,23 @@ In order, each sees:
 7. **"Now, how you talk"** (voice), **"Is this you?"** (self-test), **"Things to talk about"** (the
    stories its agent may repeat), **"Make your character"**, **"One last thing"** (photos) — all
    skippable
-   (`app/src/features/onboarding/voice-screen.tsx:162`,
-   `app/src/features/onboarding/photos-step.tsx:123`).
+   (`app/src/features/onboarding/voice-screen.tsx:161`,
+   `app/src/features/onboarding/photos-step.tsx:122`).
 8. **Home**, the town, with "Send my agent out".
 
 ### 2.1 The screens in order
 
 For a new person: start → (optional paste) → interview → essentials → voice → self-test → stories →
 character → photos → Home (`app/src/features/onboarding/interview-screen.tsx:245`,
-`app/src/features/onboarding/essentials-screen.tsx:75`,
-`app/src/features/onboarding/self-test-screen.tsx:81`,
+`app/src/features/onboarding/essentials-screen.tsx:74`,
+`app/src/features/onboarding/self-test-screen.tsx:80`,
 `app/src/features/onboarding/character-step.tsx:23`).
 Until 2026-10-02 the self-test went straight to the character, so a new person never saw the stories
 during setup -- and they are the only sentences an agent may repeat when it meets another, so the
 first two new people's agents had nothing at all to say. Someone already in the pool when the
 interview ends still goes straight to the stories.
 "Setup done" is remembered on the phone only after the photos step; closing the app earlier
-restarts setup at the first screen (`app/src/features/onboarding/photos-step.tsx:104`).
+restarts setup at the first screen (`app/src/features/onboarding/photos-step.tsx:103`).
 
 ### 2.2 Every question
 
@@ -447,7 +447,7 @@ A city among 46 listed ones becomes that city's centre; an unlisted city becomes
 **Wants** are not asked on their own during setup. "What would you love in someone?" is on the Stories
 screen, which setup shows after the self-test (optional, like every story there), and "What you're
 looking for" is reached from the You tab or Settings (stage 5)
-(`app/src/features/settings/settings-screen.tsx:265`).
+(`app/src/features/settings/settings-screen.tsx:261`).
 
 **The name others see comes only from that screen** (since 2026-09-28). One word of letters is kept
 (a number or an "@" gets "Just your first name, in letters."); the fact store refuses a first name
@@ -458,7 +458,7 @@ from any other writer, so a name said in chat never becomes it; and without one 
 `server/src/api/dating.ts:167`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
 ("First name") (`app/src/features/world/town-bar.ts:19`,
-`app/src/features/profile/profile-screen.tsx:310`).
+`app/src/features/profile/profile-screen.tsx:267`).
 
 ### 2.3 Required vs optional, and "ready to send"
 
@@ -477,14 +477,14 @@ these hold (`server/src/matching/profile.ts:209`,
 
 Not required: photos, a name, age range, distance, neighbourhood, faith, the sentence, stories,
 voice, self-test, character. The self-test's "It's ready. It can go out and meet people for you."
-is a separate notion and gates nothing (`app/src/features/onboarding/self-test-screen.tsx:163`).
+is a separate notion and gates nothing (`app/src/features/onboarding/self-test-screen.tsx:159`).
 
 **When someone is not ready:** the Home's big button reads "Finish setup" and the status line names the
 first missing item ("Your birth year", "Where you live"...); the Matches tab says "Your agent is still
 inside — It needs a few more things before it can talk to anyone."; a refused send says "Your agent
 needs a few more answers before it can go out."
-(`app/src/features/world/hud.tsx:216`,
-`app/src/features/matches/matches-screen.tsx:275`).
+(`app/src/features/world/hud.tsx:212`,
+`app/src/features/matches/matches-screen.tsx:267`).
 
 ### 2.4 Model calls during setup
 
@@ -550,9 +550,9 @@ used only to **extract** facts from what a person typed, to **point** at their o
   (`server/src/onboarding/questions.ts:430`).
 - **What Arjun sees** on the YOU tab: "Your agent heard something", the claim with his own words,
   "Is that right? Nothing changes until you say so.", and "Yes, that's right" / "No"
-  (`app/src/features/profile/profile-screen.tsx:200`,
-  `app/src/features/profile/profile-screen.tsx:206`,
-  `app/src/features/profile/profile-screen.tsx:209`).
+  (`app/src/features/profile/profile-screen.tsx:157`,
+  `app/src/features/profile/profile-screen.tsx:163`,
+  `app/src/features/profile/profile-screen.tsx:166`).
 - **If the card cannot read the words** (since 2026-09-29): a Yes on words a card has no answer for -- "socially"
   for how often you drink -- or on a place with no map point keeps the card's answer, drops the words, and says
   "Your card answer stays: Sometimes. If it has changed, change it on the card." Before, the Yes replaced the
@@ -642,7 +642,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 - **Where:** a chip "A question for you" in the town. For a bank question: "Other agents asked yours this"
   … "Answer it, and next time it can say what you said.", with "Save and share" / "Not now"
   (`app/src/features/question/question-state.ts:10`,
-  `app/src/features/question/question-screen.tsx:120`).
+  `app/src/features/question/question-screen.tsx:112`).
   For a card or tied question it opens that one question in the interview.
 - **What an answer writes:** a shareable fact in the person's own words, put straight on their answer
   sheet. An answer naming a private topic or a contact detail is kept but never said: "Those are only ever
@@ -656,8 +656,8 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   `server/src/memory/pasteImport.ts:87`).
 - **WhatsApp export** ("Now, how you talk"): parsed on the phone; the person picks which speaker they are;
   only their own lines (at least 20, at most the last 2,000) are sent; one model call writes a style note;
-  the messages are not stored (`app/src/features/onboarding/voice-screen.tsx:93`,
-  `app/src/features/onboarding/voice-screen.tsx:124`).
+  the messages are not stored (`app/src/features/onboarding/voice-screen.tsx:92`,
+  `app/src/features/onboarding/voice-screen.tsx:123`).
 
 ### 3.5 Background jobs
 
@@ -735,7 +735,7 @@ details), and **database roles** that limit what each part of the server can rea
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
 | A fact is written | It gets a level: public, match-only or private | Code | `facts.disclosure` | Public: can be quoted to others. Match-only: used for matching, never said. Private: hidden by the person | `server/migrations/0018_dating_schema.sql:39` |
-| "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | `app/src/features/appearance/appearance-screen.tsx:209` |
+| "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | `app/src/features/appearance/appearance-screen.tsx:197` |
 | "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | `server/src/api/me.ts:177` |
 | A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | `server/src/matching/brief.ts:204` |
 | A sentence naming a company, college or building | A suggestion: "This names a company. Hide this?" | Code | Nothing unless hidden | The person | `app/src/features/appearance/appearance-state.ts:81` |
@@ -791,7 +791,7 @@ details), and **database roles** that limit what each part of the server can rea
   wants, her card answers as values, her check-in answers, her reports or blocks, her exact location,
   her birth year or her phone number
   (`server/src/matching/brief.ts:266`,
-  `app/src/features/consent/consent-screen.tsx:39`).
+  `app/src/features/consent/consent-screen.tsx:38`).
 
 ### 4.1 The three levels
 
@@ -834,7 +834,7 @@ details), and **database roles** that limit what each part of the server can rea
   saved but never repeated (`server/src/matching/brief.ts:192`,
   `server/src/matching/brief.ts:177`).
   The stories screen says so as you type: "This one mentions something private, like kids or drinking,
-  so your agent will not repeat it." (`app/src/features/stories/stories-screen.tsx:109`).
+  so your agent will not repeat it." (`app/src/features/stories/stories-screen.tsx:100`).
 - **Contact details** ("when unsure, block"): phone numbers (8+ digits, or spelled out), emails
   including "at … dot", @handles and "my insta is…", links and domains, "dm me on…", street addresses,
   pin codes (`shared/src/contact.ts:12`,
@@ -859,9 +859,9 @@ details), and **database roles** that limit what each part of the server can rea
   (`app/src/features/appearance/appearance-screen.tsx:98`,
   `server/src/matching/readback.ts:29`,
   `app/src/features/appearance/appearance-state.ts:25`,
-  `app/src/features/appearance/appearance-screen.tsx:120`,
-  `app/src/features/appearance/appearance-screen.tsx:185`,
-  `app/src/features/appearance/appearance-screen.tsx:203`).
+  `app/src/features/appearance/appearance-screen.tsx:116`,
+  `app/src/features/appearance/appearance-screen.tsx:177`,
+  `app/src/features/appearance/appearance-screen.tsx:191`).
   Opening it can refresh the answer sheet, one model call ([AI-10](#ai-10)).
 - **Not shown there**, though others see it: the reveal (first name, tags, photos), the character, the
   neighbourhood, and "Matches"/"Doesn't match" on wants tied to a question (`server/src/api/me.ts:89`).
@@ -872,7 +872,7 @@ details), and **database roles** that limit what each part of the server can rea
   matching (`server/src/matching/brief.ts:764`).
 - **Other controls:** remove a photo ("It is deleted from the server as well."); answer a story again
   (the old answer is kept but replaced); no per-fact delete; no message unsend
-  (`app/src/features/photos/photos-screen.tsx:118`,
+  (`app/src/features/photos/photos-screen.tsx:117`,
   `app/src/features/knowledge/you-screen.tsx:188`).
 
 ### 4.4 Who can read what in the database
@@ -926,7 +926,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
   If it fails part way, the phone says only what it knows: "Only partly deleted", or "Not sure it was
   deleted" when the server did not answer; "Nothing was removed" only when the server refused before
   touching anything (`app/src/features/settings/delete-outcome.ts:12`)
-  (`app/src/features/settings/settings-screen.tsx:312`,
+  (`app/src/features/settings/settings-screen.tsx:308`,
   `server/src/memory/erasure.ts:35`,
   `server/src/memory/erasure.ts:295`).
 - **It leaves:** a receipt with counts, invites, reports they filed (without their name), reports about
@@ -965,7 +965,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
   `server/src/memory/erasure.ts:41`).
 - **The Settings promise** reads "Nobody sees your photos or first name until you say yes to them."
   (since 2026-09-29; it used to say "Nobody else has ever seen what your clone knows about you", which
-  was broader than the code) (`app/src/features/settings/settings-screen.tsx:319`).
+  was broader than the code) (`app/src/features/settings/settings-screen.tsx:315`).
 
 ### Docs vs code
 
@@ -1079,7 +1079,7 @@ three shapes:
   Your agent looks for it in what people say about themselves." and the label "Only for
   your agent" (`server/src/onboarding/stories.ts:57`,
   `server/src/onboarding/stories.ts:58`,
-  `app/src/features/stories/stories-screen.tsx:94`).
+  `app/src/features/stories/stories-screen.tsx:85`).
   12 to 300 characters (`server/src/onboarding/stories.ts:67`,
   `server/src/onboarding/stories.ts:68`). Saving writes one
   `seeking` fact, visibility "match-only"
@@ -1129,7 +1129,7 @@ three shapes:
   tied to the basics, the five core cards or the faith card.
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
   must-haves remove anybody. Everything else just ranks."
-  (`app/src/features/profile/profile-screen.tsx:355`,
+  (`app/src/features/profile/profile-screen.tsx:312`,
   `app/src/features/preferences/preferences-screen.tsx:85`).
   The "Your wants" card lists each want with one line
   (`app/src/features/preferences/wants-state.ts:47`,
@@ -1207,7 +1207,7 @@ three shapes:
   when the asks were why nobody was left, and sat under "nobody fits what you have asked for")
   (`server/src/matching/candidates.ts:279`,
   `app/src/lib/counts.ts:12`,
-  `app/src/features/preferences/preferences-screen.tsx:130`,
+  `app/src/features/preferences/preferences-screen.tsx:122`,
   `app/src/lib/counts.ts:38`).
 
 ### 5.4 When the other person has not answered
@@ -1276,7 +1276,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-(`app/src/features/matches/matches-screen.tsx:441`):
+(`app/src/features/matches/matches-screen.tsx:433`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|
@@ -1323,12 +1323,12 @@ asking only when it matched would say how it came out
   `server/src/matching/brief.ts:456`).
 - The app says wants "move people up the list". Since 2026-09-29 that is what a round does with Really want and
   Nice to have (above); before, nothing moved anybody up
-  (`app/src/features/preferences/preferences-screen.tsx:173`).
+  (`app/src/features/preferences/preferences-screen.tsx:165`).
 - The app says a private want is "Checked against your card". It is checked against the
   **other person's** card (`server/src/matching/wants.ts:196`).
 - The footer "Must-haves come from your cards" is no longer the whole story: a tied want
   set to Must have is a must-have too
-  (`app/src/features/preferences/preferences-screen.tsx:204`).
+  (`app/src/features/preferences/preferences-screen.tsx:196`).
 - The interview says a sentence no card holds "can't be checked on paper" ("We can't check
   that on paper. You'll spot it in the first chat."). Since 2026-09-25 that sentence is a
   want and is checked every round
@@ -1370,14 +1370,14 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
 
 1. **Arjun taps "Send my agent out"** on the Home tab, which is a 3D map of Bengaluru (the
    "town") (`app/src/app/(tabs)/index.tsx:1`,
-   `app/src/features/world/hud.tsx:218`).
-   The same button is on the Matches tab (`app/src/features/matches/matches-screen.tsx:320`).
+   `app/src/features/world/hud.tsx:214`).
+   The same button is on the Matches tab (`app/src/features/matches/matches-screen.tsx:312`).
    Since 2026-09-30 the map is not under a card: the city's name and a "📍 MG Road · 5 here" pill (who
    is there) sit top left; top right a "Whole city" / "Back to MG Road" switch, "🌳 Cubbon Park" and "How
    you appear"; by the button, one nudge at a time ("A question for you", "Add your first name", "Which
    part of town?"), the line about the agent, and "40 people nearby · 5 visits left today". Before, up to
    eleven chips in a card covered the top half of the map
-   (`app/src/features/world/hud.tsx:358`,
+   (`app/src/features/world/hud.tsx:354`,
    `app/src/features/world/town-bar.ts:14`).
 2. **The server** re-checks that Arjun is ready, refreshes his answer sheet if his
    shareable sentences changed (at most one model call), checks the daily limit and queues
@@ -1385,7 +1385,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    `server/src/api/dating.ts:997`,
    `server/src/api/dating.ts:1040`).
 3. **Arjun sees** the button change to "Your agent is out…" and the line "Your agent is
-   heading out…" (`app/src/features/world/hud.tsx:147`).
+   heading out…" (`app/src/features/world/hud.tsx:146`).
 4. **Within about 5 seconds** the worker starts the round. Meera passes every rule both
    ways (below). Real people are listed before practice profiles, so she comes ahead of
    all of them (`server/src/matching/rounds.ts:158`).
@@ -1393,7 +1393,7 @@ some model calls (the agents' talk and the want checks, stages 5 and 7).
    out — meeting 3 people". **On Meera's phone**, if the app is open, Arjun's agent walks
    over to hers and the seat reads "Your agent is with them now." Meera did nothing to
    start this (`server/src/matching/orchestrator.ts:284`,
-   `app/src/features/world/hud.tsx:149`,
+   `app/src/features/world/hud.tsx:148`,
    `app/src/features/world/agent-sheet.tsx:43`).
 6. **When it is done** Arjun sees "Your agent met 3 people. See Matches." and a short replay
    of the agents' exchange as speech bubbles, ending on the date idea and "See the card"
@@ -1533,9 +1533,9 @@ off (`server/src/matching/profile.ts:207`,
 - **How they are labelled.** "Practice match — this one is not a real person." on the card,
   "Practice match / Not a real person" in lists, their lines marked "(practice)", and the
   reveal says "This is not a real person. The pool is invented until enough people have
-  joined…" (`app/src/features/matches/matches-screen.tsx:394`,
+  joined…" (`app/src/features/matches/matches-screen.tsx:386`,
   `app/src/features/matches/exchange.ts:47`,
-  `app/src/features/matches/reveal-screen.tsx:213`).
+  `app/src/features/matches/reveal-screen.tsx:205`).
 - **They never say yes** in this setup. A switch (`SYNTHETIC_AUTO_YES`) could make them, and a
   production server refuses to start with it on
   (`server/src/env.ts:373`).
@@ -1681,7 +1681,7 @@ shareable sentences change ([AI-10](#ai-10);
 Only fact ids are stored. When there is no talk, the card shows "WHAT YOUR AGENTS ASKED EACH
 OTHER": questions both answered, then only theirs, then up to two the reader answered and
 they did not (`server/src/matching/answer-sheet.ts:348`,
-`app/src/features/matches/matches-screen.tsx:425`).
+`app/src/features/matches/matches-screen.tsx:417`).
 
 ### 7.5 What is saved, and what people can read
 
@@ -1747,8 +1747,8 @@ A card never shows the other person's name or photos; those are on the "reveal"
 | Meera's age, intent and neighbourhood | Become the headline, e.g. "Here for something long-term · 27 · Jayanagar" | Code | Card row (`headline`) | Arjun, on his turn | `server/src/matching/brief.ts:334` |
 | Tags both share | "You both like …" (up to 5), "You both work in …" (up to 2), public tags only | Code | Card row | Arjun, on his turn | `server/src/matching/brief.ts:500` |
 | Meera's own public sentences | Up to 2 quotes, "In their words, <month year>" | Code | Card row | Arjun, on his turn | `server/src/matching/brief.ts:468` |
-| The talk or the answer sheets | Shown as the agents' exchange (stage 7) | [AI-11](#ai-11) earlier, code now | Card row | Arjun, on his turn | `app/src/features/matches/matches-screen.tsx:422` |
-| Arjun's wants | "WHAT YOU ASKED FOR" (stage 5) | [AI-12](#ai-12) earlier, code now | Card row, with each want's status | Arjun only | `app/src/features/matches/matches-screen.tsx:441` |
+| The talk or the answer sheets | Shown as the agents' exchange (stage 7) | [AI-11](#ai-11) earlier, code now | Card row | Arjun, on his turn | `app/src/features/matches/matches-screen.tsx:414` |
+| Arjun's wants | "WHAT YOU ASKED FOR" (stage 5) | [AI-12](#ai-12) earlier, code now | Card row, with each want's status | Arjun only | `app/src/features/matches/matches-screen.tsx:433` |
 | Every time the card is opened | Each of Meera's sentences is re-checked; anything she hid or changed comes off | Code | Nothing | | `server/src/matching/brief.ts:750` |
 
 ### Arjun and Meera
@@ -1763,11 +1763,11 @@ In this example Meera decides first (stage 9 explains why).
   date idea and what the agents said, "WHAT YOU ASKED FOR" with **her** wants, an opener
   such as "Ask them about travel", and the buttons "Yes, share my profile with them" and "Not
   this one". No photo and no name: she decides on these words and his character (stage 9)
-  (`app/src/features/matches/matches-screen.tsx:378`,
-  `app/src/features/matches/matches-screen.tsx:399`,
-  `app/src/features/matches/matches-screen.tsx:413`,
-  `app/src/features/matches/matches-screen.tsx:471`,
-  `app/src/features/matches/matches-screen.tsx:475`).
+  (`app/src/features/matches/matches-screen.tsx:370`,
+  `app/src/features/matches/matches-screen.tsx:391`,
+  `app/src/features/matches/matches-screen.tsx:405`,
+  `app/src/features/matches/matches-screen.tsx:463`,
+  `app/src/features/matches/matches-screen.tsx:477`).
 - **Arjun's card about Meera, while it is not his turn**, is the "plain card": Meera's
   character, "WAITING ON THEM", "Your agent met someone", the fixed line, and "They decide
   first. If they share their profile, you will see it here." Nothing else: no age, no area, no
@@ -1776,7 +1776,7 @@ In this example Meera decides first (stage 9 explains why).
   `app/src/features/matches/turn.ts:43`).
 - **After Meera shares her profile**, Arjun's card fills in (the same sections, built for him),
   with "See who it is" to open her profile, and "Not this one"
-  (`app/src/features/matches/matches-screen.tsx:483`).
+  (`app/src/features/matches/matches-screen.tsx:475`).
   Her own card now says "You shared your profile. If they share theirs back, you can talk."
   (`app/src/features/matches/turn.ts:41`).
 
@@ -1784,26 +1784,26 @@ In this example Meera decides first (stage 9 explains why).
 
 | # | On screen | Where it comes from | Code |
 |---|---|---|---|
-| 1 | Their character (a small 3D look) | The look they built; sent even on a plain card | `app/src/features/matches/matches-screen.tsx:376` |
-| 2 | "WAITING ON YOU" / "WAITING ON THEM" | Whose turn it is | `app/src/features/matches/matches-screen.tsx:378` |
+| 1 | Their character (a small 3D look) | The look they built; sent even on a plain card | `app/src/features/matches/matches-screen.tsx:368` |
+| 2 | "WAITING ON YOU" / "WAITING ON THEM" | Whose turn it is | `app/src/features/matches/matches-screen.tsx:370` |
 | 3 | Headline | Intent · age · neighbourhood (or city) of the other person; nothing known → "Your agent met someone" | `server/src/matching/brief.ts:336` |
 | 4 | "Passes your rules both ways, on everything they've answered" | The same fixed words on every card | `server/src/matching/brief.ts:66` |
-| 5 | "Practice match — this one is not a real person." | Practice profiles only | `app/src/features/matches/matches-screen.tsx:394` |
+| 5 | "Practice match — this one is not a real person." | Practice profiles only | `app/src/features/matches/matches-screen.tsx:386` |
 | 6 | "You both like …" / "You both work in …" | Tags both have, only from **public** facts, each word checked for private topics | `server/src/matching/rendezvous.ts:384` |
 | 7 | "In their words, <month year>" + a quote | Up to 2 of their own public sentences, typed by them, 12–300 characters, of allowed kinds (interests, things done, topics, media, pets, story answers, work, exercise, sleep, transport) | `server/src/matching/brief.ts:88` |
 | 8a | "DATE IDEA", "SOMETHING YOU SHARE", "Read what your agents said" | The talk (stage 7) | `app/src/features/matches/matches-screen.tsx:83` |
-| 8b | or "WHAT YOUR AGENTS ASKED EACH OTHER" | The answer sheets, when there is no talk | `app/src/features/matches/matches-screen.tsx:425` |
+| 8b | or "WHAT YOUR AGENTS ASKED EACH OTHER" | The answer sheets, when there is no talk | `app/src/features/matches/matches-screen.tsx:417` |
 | 9 | "WHAT YOU ASKED FOR" | The reader's own wants (stage 5) | `app/src/features/matches/exchange.ts:197` |
 | 10 | "Ask them about …" | First that applies: a question they could not answer in the talk; one from the sheets; a shared interest; a quote; a shared work field; one of their tags | `server/src/matching/brief.ts:543` |
 | 11 | "Fades tomorrow if you don't answer." / "Fades today if you don't answer." | Days left on the reader's turn | `app/src/features/matches/fade.ts:15` |
-| 12 | First move: "Yes, share my profile with them" and "Not this one". Second move: "See who it is" and "Not this one". Otherwise one line saying whose move it is | By whose turn it is (stage 9) | `app/src/features/matches/matches-screen.tsx:469` |
-| 13 | "Block or report" | On every card | `app/src/features/matches/matches-screen.tsx:502` |
+| 12 | First move: "Yes, share my profile with them" and "Not this one". Second move: "See who it is" and "Not this one". Otherwise one line saying whose move it is | By whose turn it is (stage 9) | `app/src/features/matches/matches-screen.tsx:461` |
+| 13 | "Block or report" | On every card | `app/src/features/matches/matches-screen.tsx:494` |
 
 Only one "waiting on you" card shows at a time. Since 2026-09-29 it is the one that fades soonest, so a
 card can only run out while it is the one on screen, and under "WAITING ON YOU" it says "2 more waiting"
 when there are more; before, it was simply the first, and the others could run out unseen. The server
 orders cards newest round first, then by a hash of the pair's id, never by a score
-(`app/src/features/matches/matches-screen.tsx:370`,
+(`app/src/features/matches/matches-screen.tsx:362`,
 `app/src/features/matches/waiting.ts:15`,
 `server/src/api/dating.ts:628`).
 
@@ -1902,7 +1902,7 @@ back, or not. Each turn lasts three days. Code decides everything here; no model
 
 - "Yes, share my profile with them" and "Not this one", and the note "This shows them your
   photos and first name. Nothing is shared until you tap it."
-  (`app/src/features/matches/matches-screen.tsx:471`,
+  (`app/src/features/matches/matches-screen.tsx:463`,
   `app/src/features/matches/turn.ts:37`).
 - If she opens his profile screen anyway, it says "Not yet — Their photos and name show only after
   they share them. You decide first, on the card."
@@ -1929,9 +1929,9 @@ at 0), tag chips; "Your agent never decided whether you would find them attracti
 opinion about that and does not keep one."; then "Yes, share mine back" and "Not for me", and
 under them "Yes shows them your photos and first name, and opens a chat. If you say no, they
 are not told."
-(`app/src/features/matches/matches-screen.tsx:483`,
-`app/src/features/matches/reveal-screen.tsx:259`,
-`app/src/features/matches/reveal-screen.tsx:186`,
+(`app/src/features/matches/matches-screen.tsx:475`,
+`app/src/features/matches/reveal-screen.tsx:251`,
+`app/src/features/matches/reveal-screen.tsx:178`,
 `app/src/features/matches/turn.ts:47`).
 
 **Step 4 — Arjun taps "Yes, share mine back".** They are introduced (stage 10). Only now can
@@ -1980,14 +1980,14 @@ share mine back"; nothing of a person is shown to the other before their own tap
 The promises match: consent says "Your photos and first name reach a person only after you say yes to
 sharing your profile with them."; the photo screens say "Nobody sees these until you share your profile
 with them." and "Only people you share your profile with"
-(`app/src/features/consent/consent-screen.tsx:53`,
-`app/src/features/onboarding/photos-step.tsx:191`,
-`app/src/features/photos/photos-screen.tsx:141`).
+(`app/src/features/consent/consent-screen.tsx:52`,
+`app/src/features/onboarding/photos-step.tsx:184`,
+`app/src/features/photos/photos-screen.tsx:140`).
 
 ### 9.4 What "no" does
 
 - **One tap, final**, no confirmation: "Not this one" on the card or "Not for me" on the
-  profile screen (`app/src/features/matches/reveal-screen.tsx:188`).
+  profile screen (`app/src/features/matches/reveal-screen.tsx:180`).
   It cannot be undone (`server/src/matching/orchestrator.ts:574`).
 - **The person saying no** sees "Done" / "They are not told anything. Your agent keeps
   looking." (`app/src/features/matches/reveal-screen.tsx:97`).
@@ -2090,7 +2090,7 @@ words are the date idea, written earlier (stage 7).
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    (`server/migrations/0073_consent_first_reveal.sql:42`,
    `server/src/matching/orchestrator.ts:617`,
-   `app/src/features/dm/conversations-screen.tsx:126`). If her app is closed,
+   `app/src/features/dm/conversations-screen.tsx:123`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
    (`server/src/api/chat.ts:293`,
@@ -2099,8 +2099,8 @@ words are the date idea, written earlier (stage 7).
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
    both said yes. Nobody else can message you here."
    (`app/src/features/dm/date-idea.ts:39`,
-   `app/src/features/dm/thread-screen.tsx:287`,
-   `app/src/features/dm/thread-screen.tsx:320`).
+   `app/src/features/dm/thread-screen.tsx:286`,
+   `app/src/features/dm/thread-screen.tsx:319`).
 4. **Arjun taps "Propose this date".** Meera receives an ordinary message from Arjun, for example
    "How about this: Sunrise walk in Cubbon Park, then filter coffee?". The idea card disappears
    for both.
@@ -2128,7 +2128,7 @@ words are the date idea, written earlier (stage 7).
   (`server/src/matching/brief.ts:199`,
   `app/src/features/stories/stories-state.ts:29`).
 - **Receipts:** "Sent", "Delivered", "Read", "typing…", always on
-  (`app/src/features/dm/thread-screen.tsx:43`).
+  (`app/src/features/dm/thread-screen.tsx:42`).
   A message is read when the conversation is opened, and since 2026-10-03 also when it arrives
   while the conversation is open on screen with the app in front (before, it stayed "Delivered" on
   the other phone until the reader left and came back)
@@ -2207,7 +2207,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
 
 - **Where:** every card ("Block or report"), the reveal and chat headers ("⋯"), a met
   person's sheet in the town, and the check-in's "felt unsafe" step
-  (`app/src/features/dm/thread-screen.tsx:259`).
+  (`app/src/features/dm/thread-screen.tsx:258`).
 - **Block:** "Block Meera?" / "You will never see each other again, anywhere in the app. They
   are not told." (`app/src/features/safety/safety-sheet.tsx:55`).
 - **Report:** "REPORT -- WHAT HAPPENED?" with seven reasons: "Harassment or threats",
@@ -2273,7 +2273,7 @@ Both are for the **reviewer** only: an account listed in `ADMIN_USER_IDS`. For a
 (`server/src/api/admin.ts:44`,
 `server/src/env.ts:190`).
 The way in: YOU → Manage → Settings → "Help and safety" → "Numbers" ("How far matches get, real people only")
-(`app/src/features/settings/settings-screen.tsx:294`).
+(`app/src/features/settings/settings-screen.tsx:290`).
 
 ### At a glance
 
@@ -2300,8 +2300,8 @@ A **pair** counts only when both people are real and the round has finished
 ### 11.2 The numbers, top to bottom
 
 Title "Numbers", "Real people only"; card "HOW FAR MATCHES GET"; counts only, no percentages
-(`app/src/features/admin/funnel-screen.tsx:39`,
-`app/src/features/admin/funnel-screen.tsx:47`):
+(`app/src/features/admin/funnel-screen.tsx:38`,
+`app/src/features/admin/funnel-screen.tsx:44`):
 
 | Row | Counts | Code |
 |---|---|---|
@@ -2310,11 +2310,11 @@ Title "Numbers", "Real people only"; card "HOW FAR MATCHES GET"; counts only, no
 | First message | Introduced pairs with at least one message | `server/migrations/0070_founder_funnel.sql:40` |
 | Date proposed | Pairs where someone tapped "Propose this date" | `server/migrations/0070_founder_funnel.sql:42` |
 | Met | Pairs where either person said yes to "Did you two meet up?" | `server/migrations/0070_founder_funnel.sql:45` |
-| People | Real people, including those still setting up | `app/src/features/admin/funnel-screen.tsx:53` |
+| People | Real people, including those still setting up | `app/src/features/admin/funnel-screen.tsx:50` |
 | Expired, nobody answered | Pairs that ran out of time | `server/migrations/0070_founder_funnel.sql:46` |
 
 Footer: "Invented people, test accounts and anybody who never signed in on a phone are left out. Met counts either
-check-in." (`app/src/features/admin/funnel-screen.tsx:57`).
+check-in." (`app/src/features/admin/funnel-screen.tsx:54`).
 
 **Today's values** on the development database (queried 2026-09-28): People 11; Matches 0; every later step 0.
 Of the 11, 4 are ready to be sent out. The pool also holds 5,008 practice profiles, which these numbers leave out.
@@ -2334,8 +2334,8 @@ Of the 11, 4 are ready to be sent out. The pool also holds 5,008 practice profil
 - **What is shown:** card "WANTS WITH NO QUESTION YET": the 10 most common topic words ("theatre · 2 people"),
   then up to 10 whole wants that two or more people share, most people first; "Every want so far fits a
   question." when empty; footer "A want only one person has shows as its topic, never their words."
-  (`app/src/features/admin/funnel-screen.tsx:62`,
-  `app/src/features/admin/funnel-screen.tsx:69`).
+  (`app/src/features/admin/funnel-screen.tsx:59`,
+  `app/src/features/admin/funnel-screen.tsx:66`).
 - **Why:** to tell the founder which situation questions to add next. It measures demand, not accuracy.
 
 ### 11.4 The want-check accuracy test (not in the app)
@@ -2657,8 +2657,8 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 
 | Feature | What it does | Who can reach it | Code |
 |---|---|---|---|
-| **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about as full 3D bodies; tap your own agent to talk to it. Development builds add a "Test: add 1000 people" chip that spreads a test crowd over all 30 neighbourhoods (since 2026-09-29). Since 2026-09-30 the 3D map is kept while another tab or screen covers it; before, Android dropping its drawing surface threw the whole map away, and every return built it again (a blank moment, and more memory each time). Also since 2026-09-30 it is drawn once per screen refresh on the UI thread's own clock (every other refresh with Settings' "30 fps"): React Native's frame timer, which drew it before, got stuck at every second or fourth refresh after about half of all returns to the town -- 30 or 15 fps on the Pixel, the "22 fps". And Android's Back closes what is open on the map, topmost first, and in Cubbon Park goes back to the city; only with nothing open does it leave the app (since 2026-09-30; before, Back with any sheet open, or from inside the park, closed the app) | Everyone | `app/src/features/world/map.ts:4`, `patches/expo-gl+57.0.2.patch:64`, `app/package.json:8`, `app/src/features/world/vsync-clock.ts:51`, `app/src/features/world/back.ts:31`, `server/src/matching/world.ts:50`, `app/src/features/world/hud.tsx:398` |
-| **Cubbon Park** | A walkable version of the real park; up to 32 agents. Since 2026-09-29 the park keeps its whole screen: no card over it, only small controls on the top edges -- top left "‹ Bengaluru" (back to the city); top right who is here in one line ("2 people · 6 agents", or "6 agents" when nobody else is), which says "People are here right now, like you. Agents walk the park for people who aren't." when tapped; under it "Things to do" with today's count. Before, a white card with six chips covered the top half, among them "Directions" (a Google Maps search, gone) and "Nobody else here now", which did nothing. Everybody is a full walking body drawn by the graphics chip, in less detail further away (since 2026-09-28; before, the nearest 12 had bodies and everyone else was a capsule). A mist ends the view at about 365 m: past it no person, tree, bench or lamp is drawn, and people out of sight are moved less often. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Since 2026-09-29 each is sized against the people using it: a bench's seat is where a sitting person's seat is (it was 28 cm higher, so people sat inside benches), and grass is ankle to knee high, bushes waist to shoulder. Every path can be walked or ridden end to end: no tree, bench, lamp or rock stands on one, the paths keep clear of the buildings' walls, and the park's edge stops you at its real boundary (since 2026-09-29; before, it was a ring of invisible circles that stopped you up to a metre and a half short of it, or let you a metre past it). An iron railing you can see through runs all the way round that boundary, with a gate wherever a path meets it; beyond it is a road with Bengaluru's traffic -- two-wheelers, autos, cars and BMTC buses, keeping left -- and buildings, none of which anybody can reach (since 2026-09-29; before, the park ran into a green plain). "Ride a bike", above the stick, puts you on a bicycle anywhere in the park: twice as fast as walking, pedalling as you go, and everybody near sees you on it; you get off to sit on a bench, and to fly. Talking with someone, "Things to do" lists what the two can do together -- walk side by side 250 m, ride side by side 500 m, sit on a bench and each say three things, stand at three of the park's sights -- and each done pays both of them points (10 to 30) once a day, to spend on their look; the server decides from where they are, never from what they say, and the one you are with wears a ring at their feet. While you two have sights left to see, each is marked by a purple diamond high over it, seen from anywhere in the park, and the card says the nearest and how far. Development builds add a small "Test: add 1000 people" line under those, to watch the frame rate. Since 2026-09-29 the park is live: real people in it at the same time see each other ("3 people · 6 agents" at the top right), each in place of their agent, and "Say something" reaches whoever is within about 20 m, over their heads and in a short log; the server keeps each line ten minutes, in memory only, for one use -- a report about somebody here carries the lines the two typed to each other, marked "in the park" for the reviewer (since 2026-09-29; before, stored nowhere, and a park report carried no words); tapping one of them offers "Block or report". "Find someone to talk to" asks the free person here with most in common (never anybody talking, asking or being asked); they get "Someone here would like to talk" ("You both like …" only for something both made public) and say yes or not now; on a yes the one who asked is taken over by an emergency pickup, as in PUBG: a balloon rises out of their back on a rope hooked between the shoulder blades, the rope snatches them off the ground with their arms flung up, and they hang from it over the trees, arms out, swinging like a pendulum from the hook -- trailing as the balloon speeds up, swinging ahead as it slows -- then let go and come down by parachute beside the other person, hands up on its lines, swung by its opening, and flare to land: hands down, knees bent -- about three seconds, seen by everybody near, and the flier sees themselves in the air too (since 2026-10-03; before, a small car drove them, drawn on their own phone only, so everybody else saw them slide across the grass sitting in nothing; for a few hours the same day, a beam of light and a puff of smoke, then arms flapping and legs kicking on a loop whatever the balloon did, each pose cut into the next -- both turned down by the founder). Each pose blends into the next, and the rope and the parachute's lines end on the body however it swings. They land beside the other person, never inside a tree, a bench or somebody; standing within about 8 m of them already, they walk over instead. The two can then "Sit on a bench": they get to the nearest free bench in about three seconds -- a brisk walk or a run when it is near, the pickup when it is further -- and sit, and from then on what they say reaches only each other, and nothing said near them reaches them. Since 2026-10-03 somebody walking to a bench is shown walking (before, everybody else saw them sit down in the middle of the path and slide to the bench seated), and once seated the camera comes round in front of the two of them and shows them in the top third of the screen, clear of the cards and buttons. The bench button holds still for a moment after it changes, and only a firm push of the stick gets you up (since 2026-10-03; before, a double tap or a brushed stick sat and stood the two of you again and again, and each time both voices moved to another room). Since 2026-10-03 the voice plays from the loudspeaker, or from headphones or Bluetooth when connected, never the earpiece: moving between the park's voice room and a bench's left the phone with no audio routing at all (LiveKit's stop is queued and its start was dropped behind it), so Android played the call in the earpiece, where the other person was nearly silent until voice started afresh -- the two reasons voice seemed to work only after leaving the park's screen and coming back. There are 180 benches, enough for 360 people sitting at once; no more are added. Since 2026-10-03 people walking in come down by parachute onto their own free spot by the bandstand, never on top of somebody, and somebody near who leaves is taken up by a balloon. The one you are talking with has a thin yellow ring at their feet, gone while the two of you sit on a bench (since 2026-10-03; before, a solid blue band). Another tab, or the phone put away, keeps you in the park, standing where you were, for ten seconds -- come back before then and nobody saw you go -- and then you are out -- even if the phone loses its connection meanwhile, as one in the background does within seconds; back on a new one, you are still with whoever you were with, on the same bench; a tap on another tab first asks "Leave Cubbon Park?" and says so (since 2026-10-03; before, you vanished at once). While away your mic is off and you hear nobody. Since 2026-09-29 the park has voice, and talking out loud is the main way to talk: a big mic button (off until you tap it; a ring pulses while you are heard), a speaker button, and a keyboard button that opens the line to type in, as before. Talking with strangers is a choice: "Talk with people nearby" is off until you turn it on (the phone first says people nearby could record it), and then you hear, and are heard by, only the people near you who turned it on too; the one you are talking with (both said yes) you hear either way, and with it off, a tap on the mic asks first. You hear the people within about 20 m, louder the nearer, and on a bench only each other; a speaker mark floats over whoever is talking. The speaker button opens "Voices near you" -- each person by the colour they wear, how far, and whether they are talking -- to hear nobody, or to mute one person (for you only; they are not told; it lasts until you unmute them) or report them; tapping a person offers the same mute. A report says whether it was said out loud or typed, and three different people reporting somebody's voice within a day take that person's mic for 24 hours, at once. If the voice server is lost (a phone off its cable, off the Wi-Fi) the mic line says "Voice lost. Trying again…" and voice comes back by itself when it can, with a fresh pass. A phone that has never reached it since the app started -- one on the internet rather than the laptop's cable, like a friend's on the release app -- tries twice without saying anything and then shows the typing button only, for the rest of that session (since 2026-09-30; before, "Voice lost. Trying again…" stayed over the park for good). Voice needs the voice server (`npm run voice`: LiveKit, open source, run on the laptop) and an app build made after it was added; without either, the park is typing only | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/crowd-gpu.ts:118`, `app/src/features/world/camera.ts:77`, `app/src/features/world/venue-mesh.ts:55`, `app/src/features/world/venue-mesh.ts:94`, `app/src/features/world/hud.tsx:243`, `app/src/features/world/park-top.ts:18`, `app/src/features/world/park-hud.tsx:181`, `app/src/features/world/park-hud.tsx:441`, `server/src/park/pairs.ts:67`, `app/src/features/world/garden.ts:605`, `app/src/features/world/fence-mesh.ts:23`, `app/src/features/world/city-plan.ts:28`, `app/src/features/world/traffic.ts:26`, `app/src/features/world/bike.ts:55`, `shared/src/park-quests.ts:29`, `server/migrations/0078_park_points.sql:22`, `app/src/features/world/park-voice.ts:29`, `app/src/features/world/park-voice-hud.tsx:264`, `server/src/park/voice.ts:41`, `server/src/park/lines.ts:12`, `server/package.json:7`, `app/src/features/world/voice-room.ts:38`, `app/src/features/world/flight.ts:84`, `shared/src/park-arrival.ts:32`, `app/src/features/world/park-comings.ts:14`, `app/src/features/world/park-live.ts:189`, `app/src/features/world/sim.ts:433`, `app/src/features/world/camera.ts:120`, `shared/src/events.ts:88`, `app/src/features/world/leave-park.ts:10` |
+| **The town** (Home tab) | A 3D miniature Bengaluru built from OpenStreetMap, 30 neighbourhoods; your agent, up to 40 strangers and the people you met walk about as full 3D bodies; tap your own agent to talk to it. Development builds add a "Test: add 1000 people" chip that spreads a test crowd over all 30 neighbourhoods (since 2026-09-29). Since 2026-09-30 the 3D map is kept while another tab or screen covers it; before, Android dropping its drawing surface threw the whole map away, and every return built it again (a blank moment, and more memory each time). Also since 2026-09-30 it is drawn once per screen refresh on the UI thread's own clock (every other refresh with Settings' "30 fps"): React Native's frame timer, which drew it before, got stuck at every second or fourth refresh after about half of all returns to the town -- 30 or 15 fps on the Pixel, the "22 fps". And Android's Back closes what is open on the map, topmost first, and in Cubbon Park goes back to the city; only with nothing open does it leave the app (since 2026-09-30; before, Back with any sheet open, or from inside the park, closed the app) | Everyone | `app/src/features/world/map.ts:4`, `patches/expo-gl+57.0.2.patch:64`, `app/package.json:8`, `app/src/features/world/vsync-clock.ts:51`, `app/src/features/world/back.ts:31`, `server/src/matching/world.ts:50`, `app/src/features/world/hud.tsx:394` |
+| **Cubbon Park** | A walkable version of the real park; up to 32 agents. Since 2026-09-29 the park keeps its whole screen: no card over it, only small controls on the top edges -- top left "‹ Bengaluru" (back to the city); top right who is here in one line ("2 people · 6 agents", or "6 agents" when nobody else is), which says "People are here right now, like you. Agents walk the park for people who aren't." when tapped; under it "Things to do" with today's count. Before, a white card with six chips covered the top half, among them "Directions" (a Google Maps search, gone) and "Nobody else here now", which did nothing. Everybody is a full walking body drawn by the graphics chip, in less detail further away (since 2026-09-28; before, the nearest 12 had bodies and everyone else was a capsule). A mist ends the view at about 365 m: past it no person, tree, bench or lamp is drawn, and people out of sight are moved less often. Benches, lamps and bins: the detailed models near you, plain shapes further out (since 2026-09-28; before, the full set was 13 times over its budget and the park had none). Since 2026-09-29 each is sized against the people using it: a bench's seat is where a sitting person's seat is (it was 28 cm higher, so people sat inside benches), and grass is ankle to knee high, bushes waist to shoulder. Every path can be walked or ridden end to end: no tree, bench, lamp or rock stands on one, the paths keep clear of the buildings' walls, and the park's edge stops you at its real boundary (since 2026-09-29; before, it was a ring of invisible circles that stopped you up to a metre and a half short of it, or let you a metre past it). An iron railing you can see through runs all the way round that boundary, with a gate wherever a path meets it; beyond it is a road with Bengaluru's traffic -- two-wheelers, autos, cars and BMTC buses, keeping left -- and buildings, none of which anybody can reach (since 2026-09-29; before, the park ran into a green plain). "Ride a bike", above the stick, puts you on a bicycle anywhere in the park: twice as fast as walking, pedalling as you go, and everybody near sees you on it; you get off to sit on a bench, and to fly. Talking with someone, "Things to do" lists what the two can do together -- walk side by side 250 m, ride side by side 500 m, sit on a bench and each say three things, stand at three of the park's sights -- and each done pays both of them points (10 to 30) once a day, to spend on their look; the server decides from where they are, never from what they say, and the one you are with wears a ring at their feet. While you two have sights left to see, each is marked by a purple diamond high over it, seen from anywhere in the park, and the card says the nearest and how far. Development builds add a small "Test: add 1000 people" line under those, to watch the frame rate. Since 2026-09-29 the park is live: real people in it at the same time see each other ("3 people · 6 agents" at the top right), each in place of their agent, and "Say something" reaches whoever is within about 20 m, over their heads and in a short log; the server keeps each line ten minutes, in memory only, for one use -- a report about somebody here carries the lines the two typed to each other, marked "in the park" for the reviewer (since 2026-09-29; before, stored nowhere, and a park report carried no words); tapping one of them offers "Block or report". "Find someone to talk to" asks the free person here with most in common (never anybody talking, asking or being asked); they get "Someone here would like to talk" ("You both like …" only for something both made public) and say yes or not now; on a yes the one who asked is taken over by an emergency pickup, as in PUBG: a balloon rises out of their back on a rope hooked between the shoulder blades, the rope snatches them off the ground with their arms flung up, and they hang from it over the trees, arms out, swinging like a pendulum from the hook -- trailing as the balloon speeds up, swinging ahead as it slows -- then let go and come down by parachute beside the other person, hands up on its lines, swung by its opening, and flare to land: hands down, knees bent -- about three seconds, seen by everybody near, and the flier sees themselves in the air too (since 2026-10-03; before, a small car drove them, drawn on their own phone only, so everybody else saw them slide across the grass sitting in nothing; for a few hours the same day, a beam of light and a puff of smoke, then arms flapping and legs kicking on a loop whatever the balloon did, each pose cut into the next -- both turned down by the founder). Each pose blends into the next, and the rope and the parachute's lines end on the body however it swings. They land beside the other person, never inside a tree, a bench or somebody; standing within about 8 m of them already, they walk over instead. The two can then "Sit on a bench": they get to the nearest free bench in about three seconds -- a brisk walk or a run when it is near, the pickup when it is further -- and sit, and from then on what they say reaches only each other, and nothing said near them reaches them. Since 2026-10-03 somebody walking to a bench is shown walking (before, everybody else saw them sit down in the middle of the path and slide to the bench seated), and once seated the camera comes round in front of the two of them and shows them in the top third of the screen, clear of the cards and buttons. The bench button holds still for a moment after it changes, and only a firm push of the stick gets you up (since 2026-10-03; before, a double tap or a brushed stick sat and stood the two of you again and again, and each time both voices moved to another room). Since 2026-10-03 the voice plays from the loudspeaker, or from headphones or Bluetooth when connected, never the earpiece: moving between the park's voice room and a bench's left the phone with no audio routing at all (LiveKit's stop is queued and its start was dropped behind it), so Android played the call in the earpiece, where the other person was nearly silent until voice started afresh -- the two reasons voice seemed to work only after leaving the park's screen and coming back. There are 180 benches, enough for 360 people sitting at once; no more are added. Since 2026-10-03 people walking in come down by parachute onto their own free spot by the bandstand, never on top of somebody, and somebody near who leaves is taken up by a balloon. The one you are talking with has a thin yellow ring at their feet, gone while the two of you sit on a bench (since 2026-10-03; before, a solid blue band). Another tab, or the phone put away, keeps you in the park, standing where you were, for ten seconds -- come back before then and nobody saw you go -- and then you are out -- even if the phone loses its connection meanwhile, as one in the background does within seconds; back on a new one, you are still with whoever you were with, on the same bench; a tap on another tab first asks "Leave Cubbon Park?" and says so (since 2026-10-03; before, you vanished at once). While away your mic is off and you hear nobody. Since 2026-09-29 the park has voice, and talking out loud is the main way to talk: a big mic button (off until you tap it; a ring pulses while you are heard), a speaker button, and a keyboard button that opens the line to type in, as before. Talking with strangers is a choice: "Talk with people nearby" is off until you turn it on (the phone first says people nearby could record it), and then you hear, and are heard by, only the people near you who turned it on too; the one you are talking with (both said yes) you hear either way, and with it off, a tap on the mic asks first. You hear the people within about 20 m, louder the nearer, and on a bench only each other; a speaker mark floats over whoever is talking. The speaker button opens "Voices near you" -- each person by the colour they wear, how far, and whether they are talking -- to hear nobody, or to mute one person (for you only; they are not told; it lasts until you unmute them) or report them; tapping a person offers the same mute. A report says whether it was said out loud or typed, and three different people reporting somebody's voice within a day take that person's mic for 24 hours, at once. If the voice server is lost (a phone off its cable, off the Wi-Fi) the mic line says "Voice lost. Trying again…" and voice comes back by itself when it can, with a fresh pass. A phone that has never reached it since the app started -- one on the internet rather than the laptop's cable, like a friend's on the release app -- tries twice without saying anything and then shows the typing button only, for the rest of that session (since 2026-09-30; before, "Voice lost. Trying again…" stayed over the park for good). Voice needs the voice server (`npm run voice`: LiveKit, open source, run on the laptop) and an app build made after it was added; without either, the park is typing only | Everyone, "Visit Cubbon Park" | `app/src/features/world/venue.ts:61`, `app/src/features/world/crowd-gpu.ts:118`, `app/src/features/world/camera.ts:77`, `app/src/features/world/venue-mesh.ts:55`, `app/src/features/world/venue-mesh.ts:94`, `app/src/features/world/hud.tsx:239`, `app/src/features/world/park-top.ts:18`, `app/src/features/world/park-hud.tsx:181`, `app/src/features/world/park-hud.tsx:441`, `server/src/park/pairs.ts:67`, `app/src/features/world/garden.ts:605`, `app/src/features/world/fence-mesh.ts:23`, `app/src/features/world/city-plan.ts:28`, `app/src/features/world/traffic.ts:26`, `app/src/features/world/bike.ts:55`, `shared/src/park-quests.ts:29`, `server/migrations/0078_park_points.sql:22`, `app/src/features/world/park-voice.ts:29`, `app/src/features/world/park-voice-hud.tsx:264`, `server/src/park/voice.ts:41`, `server/src/park/lines.ts:12`, `server/package.json:7`, `app/src/features/world/voice-room.ts:38`, `app/src/features/world/flight.ts:84`, `shared/src/park-arrival.ts:32`, `app/src/features/world/park-comings.ts:14`, `app/src/features/world/park-live.ts:189`, `app/src/features/world/sim.ts:433`, `app/src/features/world/camera.ts:120`, `shared/src/events.ts:88`, `app/src/features/world/leave-park.ts:10` |
 | **"Who's here"** | A list of the same people as the town, practice profiles marked "Not a real person". Since 2026-09-30 each row shows the person's character as the map draws them (before, rows that all said "Practice match" could not be told apart), and the list scrolls inside the sheet, so Close stays on screen (it was pushed off the bottom on the Pixel) | Everyone | `app/src/features/world/people.ts:53`, `app/src/features/world/voice-room.ts:48`, `app/src/features/world/people.ts:54`, `app/src/features/world/people-sheet.tsx:46` |
 | **Character builder** | The 3D figure others see in the town and on cards until you share your profile with them; items bought with points. Seven tabs (Body, Face, Hair, Top, Bottoms, Shoes, Extras), each a few titled rows, every colour named for what it colours ("Top colour"); the camera goes to what is being changed, and a line says when a pick changed something else ("Your bottoms changed to fit."). Since 2026-09-29: hairstyle apart from the face (11, one of them Shaved, men's faces only), eye colour, height, colours for trousers and shoes ("As made" first), more skin tones, hair and cloth colours, and five places to wear things instead of one "extra": hat (cap, beanie, bucket hat, hard hat, beret), glasses, earrings, round the neck, bag. Anything bought before keeps its meaning | Everyone | `app/src/features/look/builder-screen.tsx:32`, `shared/src/look.ts:70`, `app/src/features/look/builder-model.ts:64` |
 | **Points** | +50 for a check-in, +10 for "did you meet", +20 first look, +30 photos checked; in Cubbon Park, +10 to +30 for each thing done together, once a day (since 2026-09-29); only the person sees the balance | Everyone | `server/src/points/ledger.ts:14`, `server/src/points/ledger.ts:18` |
@@ -2669,10 +2669,10 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Selfie check** | "Photos checked" badge from a local face model | Off (`FACE_CHECK=off`) | `server/src/api/verify.ts:39` |
 | **"What it knows"** | Every fact, its history, and the confirm questions. Since 2026-09-30 each reads in words -- the field as a person says it and a tapped answer by its chip: "Kids: Want kids", "One person or open: One person", "How far you would go: 25 km" (it was the column and the stored value: "wants children: yes"); what the person typed is shown exactly as typed | Everyone | `app/src/features/knowledge/you-screen.tsx:96`, `server/src/memory/fact-words.ts:48` |
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:98` |
-| **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:258` |
+| **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:254` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable, and once an address answers it runs its whole start-up check again (account, consent, setup) instead of opening the town (since 2026-10-02: it used to open the town with no account loaded) | Everyone | `app/src/features/settings/connect-screen.tsx:37` |
-| **Loading** | While a screen loads it shows its own shape, breathing gently: list rows, cards, chat bubbles, photo wells, the town's map ground (a tilted square of tiles with yours tinted, since 2026-10-03; before, a row of bars that read as a bar chart) and its bars, the 3D figure, the distance map until its tiles arrive -- never a spinner on an empty page, and never an empty state that is only a wait ("No conversations yet", "Nothing waiting", "0 left" used to show before the data came). The reveal's two answers appear only once the profile has. A load that fails says "Could not load ... Check your connection." with "Try again" instead of a placeholder left breathing. Under the phone's Reduce Motion the placeholders stay still. Opening the app shows the town's shape while it checks your session, instead of a blank white page (since 2026-10-03; it could be ten seconds over a slow connection). Since 2026-10-02 | Everyone | `app/src/components/ui/skeleton.tsx:25`, `app/src/features/world/town-loading.tsx:26` |
-| **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only). A report on two people who had messages shows "Read their chat (12 messages)": their chat as it stood when the report was made, "Them:" or "Reporter:" on each line, still there after either deletes their account (since 2026-09-29; before, no reviewer could read a reported chat) | Reviewer | `app/src/features/settings/settings-screen.tsx:292`, `server/src/api/admin.ts:80`, `app/src/features/admin/reports-screen.tsx:99` |
+| **Loading** | While something loads the app shows a thinking orb -- a small animated figure of dots from [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs) (MIT; its geometry copied into the app, drawn with the phone's GL), in the state that says what is coming: a dotted globe being scanned for the town, the park and the maps, a constellation wiring itself for matches and a person, an undulating sash for conversations, strands plaiting for what your agent knows, bands scrambling for questions and rules, a shape changing circle to square for your character, a slow ring for photos and the terms, orbits for the rest. Light dots on a dark page, dark on a light one. The town's globe, shown at launch and while the town builds, runs on the native animation driver so it keeps turning while the app is busy building the city; the others are drawn each frame (since 2026-10-03, the founder's choice; before, grey placeholders in each screen's shape, breathing, and before those a spinner). Never an empty state that is only a wait ("No conversations yet", "Nothing waiting", "0 left" used to show before the data came). The reveal's two answers appear only once the profile has. A load that fails says "Could not load ... Check your connection." with "Try again" instead of an orb left turning. Under the phone's Reduce Motion an orb holds still. Opening the app shows the globe while it checks your session, instead of a blank white page (since 2026-10-03; it could be ten seconds over a slow connection). Since 2026-10-02 | Everyone | `app/src/components/ui/orb.tsx:58`, `app/src/components/ui/globe-tables.ts:35`, `app/src/features/world/town-loading.tsx:20` |
+| **Reports to review** | The reviewer's queue: "No action", "Hide photos", "Ban". Waiting reports come first, and among them the serious ones -- under 18, felt unsafe, harassment, inappropriate -- before the rest, newest first after that (since 2026-09-29; before, newest first only). A report on two people who had messages shows "Read their chat (12 messages)": their chat as it stood when the report was made, "Them:" or "Reporter:" on each line, still there after either deletes their account (since 2026-09-29; before, no reviewer could read a reported chat) | Reviewer | `app/src/features/settings/settings-screen.tsx:288`, `server/src/api/admin.ts:80`, `app/src/features/admin/reports-screen.tsx:97` |
 | **Identity flags** | Counts of people whose dates said the photos or age were wrong, or felt unsafe; no screen | Reviewer, API only | `server/src/api/admin.ts:91` |
 | **Public pages** | `/health`, `/v1/config` (the AI notice), and `/stats`, an unlinked "How small this is" page with the people count and self-test pass rate | Anyone with the server address | `server/src/api/stats.ts:53` |
 | **Graphics bench** | A hidden 3D benchmark: tap the version line in Settings five times | Anyone | `app/src/features/settings/settings-screen.tsx:39` |
@@ -2697,7 +2697,7 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | **Show a score or percentage** to a person. The card query does not even select the score columns. | Yes | `server/src/api/dating.ts:595` | Counts appear: "Confirmed by N people who met them", rounded pool sizes, the reviewer's Numbers page. |
 | **Say yes for anyone.** Only a person's own tap decides; agent verdicts gate nothing. | Yes | `server/src/api/dating.ts:877`, `server/src/matching/orchestrator.ts:92` | Practice profiles can be switched to say yes automatically (off; a production server refuses to start with it on) (`server/src/env.ts:373`). |
 | **Let a model write what others read about you.** Cards are written by code from your own words. | Mostly | `server/src/matching/brief.ts:4` | The date idea is model-written (and checked by code) (`server/src/matching/talk.ts:28`). |
-| **Judge looks.** No photo is ever sent to a model; matching never uses photos. | Yes | `server/src/llm/port.ts:29`, `app/src/features/matches/reveal-screen.tsx:291` | — |
+| **Judge looks.** No photo is ever sent to a model; matching never uses photos. | Yes | `server/src/llm/port.ts:29`, `app/src/features/matches/reveal-screen.tsx:283` | — |
 | **Show your photos or first name to anyone you have not said yes to.** The photo rule and the profile screen both test your own yes in that pair. | Yes | `server/migrations/0073_consent_first_reveal.sql:42`, `server/src/api/dating.ts:760` | Your 3D character, age, neighbourhood and shareable sentences are on the words card before any yes. |
 | **Let strangers message you.** A message can only go to an introduced pair. | Yes | `server/migrations/0024_messages.sql:12` | — |
 | **Tell anyone they were turned down.** Nothing is sent on a no. | In words, yes | `server/src/matching/orchestrator.ts:591` | The other person's card disappears early, which can give it away (Known gaps). |
@@ -2705,7 +2705,7 @@ Each line was checked against the code. "Mostly" means true with an exception, n
 | **Hide anyone for a "Really want" or "Nice to have".** Only must-haves exclude. | Yes | `server/src/matching/candidates.ts:126` | — |
 | **Match the same two people twice.** | Yes | `server/migrations/0022_rendezvous.sql:44` | They can still appear to each other as strangers in the town. |
 | **Store your phone number** in the database. Only a keyed hash is kept. | Yes | `server/migrations/0045_phone_identity.sql:22` | In development, the console SMS sender writes full numbers to the server log. |
-| **Track your location.** Location is read only on a screen asking where you are: when you tap "Use my location", and when the distance map opens in setup if you already allowed location (to start on your neighbourhood). Never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:388`, `app/src/features/distance/distance-step.tsx:99` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
+| **Track your location.** Location is read only on a screen asking where you are: when you tap "Use my location", and when the distance map opens in setup if you already allowed location (to start on your neighbourhood). Never in the background. | Yes | `app/src/features/onboarding/essentials-screen.tsx:387`, `app/src/features/distance/distance-step.tsx:98` | For a city not on the list, the phone's position is stored rounded to about 1 km. |
 | **Act on reports automatically.** A person reviews each one. | Yes | `server/migrations/0039_trust_and_safety.sql:21` | — |
 | **Put a name or anybody's words on the lock screen.** Push notifications say only what kind of thing happened. | Yes | `server/src/push/index.ts:34` | Push reaches phones only after the founder's Expo setup (stage 9.5). |
 | **Hold free conversations between agents.** | Yes, by default | `server/src/matching/rendezvous.ts:75` | The code exists behind a switch ([AI-13](#ai-13)). |
@@ -2764,7 +2764,7 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     every chat of somebody who deletes is held hidden for 30 days, for the other person to report: section 4.5.)
 8. **Closed on 2026-09-29: promises broader than the code.** The consent screen's privacy notice (version 2, read
     again by everybody) and the Settings line now say what the code does
-    (`app/src/features/settings/settings-screen.tsx:319`).
+    (`app/src/features/settings/settings-screen.tsx:315`).
 9. **Closed on 2026-09-29: the matchmaker and the profile summaries.** The round's role could read every profile
     summary, written from all facts including private ones. It now has no access to that table at all; the one thing
     a round took from it -- a person's style note, for the agent conversations -- is read as that person, and only
@@ -2803,7 +2803,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
     Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.
 19. **Closed on 2026-09-29: a waiting card running out unseen.** The one waiting card on screen is the one that fades
     soonest, and "2 more waiting" says how many are behind it; each card also wakes the phone when it arrives and the
-    day it fades, once push is set up (`app/src/features/matches/matches-screen.tsx:370`).
+    day it fades, once push is set up (`app/src/features/matches/matches-screen.tsx:362`).
 20. **Check-in details.** "Not yet" is final. Closed on 2026-09-29: a Block from "Did you feel safe?" sends the unsafe
     answer first, and "Not sure" no longer counts toward "Confirmed by N people"
     (`app/src/features/dm/checkin-flow.ts:58`,

@@ -86,7 +86,7 @@ three shapes:
   Your agent looks for it in what people say about themselves." and the label "Only for
   your agent" ([server/src/onboarding/stories.ts:57] `id: 'story-want', text: 'What would you love in someone?', forYou: true,`,
   [server/src/onboarding/stories.ts:58] `Only you see this. Your agent looks for it in what people say about themselves.`,
-  [app/src/features/stories/stories-screen.tsx:94] `<Card key={s.id} {...(s.forYou ? { label: 'Only for your agent' } : {})}>`).
+  [app/src/features/stories/stories-screen.tsx:85] `<Card key={s.id} {...(s.forYou ? { label: 'Only for your agent' } : {})}>`).
   12 to 300 characters ([server/src/onboarding/stories.ts:67] `export const STORY_MIN = 12;`,
   [server/src/onboarding/stories.ts:68] `export const STORY_MAX = 300;`). Saving writes one
   `seeking` fact, visibility "match-only"
@@ -136,7 +136,7 @@ three shapes:
   tied to the basics, the five core cards or the faith card.
 - **The screen** is YOU → Manage → "What you're looking for", titled "Looking for": "Only
   must-haves remove anybody. Everything else just ranks."
-  ([app/src/features/profile/profile-screen.tsx:355] `<Row title="What you're looking for" subtitle="Your filters, and what each one costs"`,
+  ([app/src/features/profile/profile-screen.tsx:312] `<Row title="What you're looking for" subtitle="Your filters, and what each one costs"`,
   [app/src/features/preferences/preferences-screen.tsx:85] `title="Looking for" subtitle="Only must-haves remove anybody. Everything else just ranks."`).
   The "Your wants" card lists each want with one line
   ([app/src/features/preferences/wants-state.ts:47] `'Checked against your card. Nobody sees your answer.'`,
@@ -214,7 +214,7 @@ three shapes:
   when the asks were why nobody was left, and sat under "nobody fits what you have asked for")
   ([server/src/matching/candidates.ts:279] `export const SHOWN_FLOOR = 20;`,
   [app/src/lib/counts.ts:12] `return n === null || n === undefined ? 'Under 20' : n.toLocaleString();`,
-  [app/src/features/preferences/preferences-screen.tsx:130] `Very few people fit. Turn a must-have into a want to reach more.`,
+  [app/src/features/preferences/preferences-screen.tsx:122] `Very few people fit. Turn a must-have into a want to reach more.`,
   [app/src/lib/counts.ts:38] `export const FEW_ON_THE_APP = 'Very few people are on the app yet. As more join, your agent will have more people to meet.';`).
 
 ### 5.4 When the other person has not answered
@@ -283,7 +283,7 @@ three shapes:
 ### 5.6 What the card shows
 
 Section "WHAT YOU ASKED FOR", with each of the reader's own wants
-([app/src/features/matches/matches-screen.tsx:441] `WHAT YOU ASKED FOR`):
+([app/src/features/matches/matches-screen.tsx:433] `WHAT YOU ASKED FOR`):
 
 | Kind of want | Label | Answer line |
 |---|---|---|
@@ -330,12 +330,12 @@ asking only when it matched would say how it came out
   [server/src/matching/brief.ts:456] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
 - The app says wants "move people up the list". Since 2026-09-29 that is what a round does with Really want and
   Nice to have (above); before, nothing moved anybody up
-  ([app/src/features/preferences/preferences-screen.tsx:173] `These never remove anybody. They move people up the list.`).
+  ([app/src/features/preferences/preferences-screen.tsx:165] `These never remove anybody. They move people up the list.`).
 - The app says a private want is "Checked against your card". It is checked against the
   **other person's** card ([server/src/matching/wants.ts:196] `const answer = m ? cardsOf[pi]?.[m.card] : undefined;`).
 - The footer "Must-haves come from your cards" is no longer the whole story: a tied want
   set to Must have is a must-have too
-  ([app/src/features/preferences/preferences-screen.tsx:204] `Must-haves come from your cards. Your agent never adds one by itself: what you`).
+  ([app/src/features/preferences/preferences-screen.tsx:196] `Must-haves come from your cards. Your agent never adds one by itself: what you`).
 - The interview says a sentence no card holds "can't be checked on paper" ("We can't check
   that on paper. You'll spot it in the first chat."). Since 2026-09-25 that sentence is a
   want and is checked every round

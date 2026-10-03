@@ -30,8 +30,8 @@ import {
 } from '../../lib/api';
 import { useSession } from '../../store/session';
 import {
-  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Screen, ScreenTitle, Skeleton,
-  SkeletonChips, SkeletonGroup, space, type, usePalette,
+  Button, Card, Chip, ChipGroup, Crease, Header, LoadFailed, Loading, Screen, ScreenTitle, space, type,
+  usePalette,
 } from '../../components/ui';
 import { everyCardSays, hideAsk, sheetView, withHidden, withShared } from './appearance-state';
 
@@ -97,11 +97,7 @@ export default function AppearanceScreen() {
         ) : (<>
         <Card label="Your agent only brings you people who">
           {loading ? (
-            <SkeletonGroup label="Loading your rules">
-              <Skeleton height={14} width="85%" />
-              <Skeleton height={14} width="70%" />
-              <Skeleton height={14} width="60%" />
-            </SkeletonGroup>
+            <Loading label="Loading your rules" orb="solving" />
           ) : rules && rules.lines.length ? (
             <>
               {rules.lines.map((l) => (
@@ -119,11 +115,7 @@ export default function AppearanceScreen() {
 
         <Card label="What someone sees about you">
           {loading || !look ? (
-            <SkeletonGroup label="Loading what others see">
-              <Skeleton height={18} width="75%" />
-              <Skeleton height={14} width="90%" />
-              <SkeletonChips count={3} />
-            </SkeletonGroup>
+            <Loading label="Loading what others see" orb="shaping" />
           ) : (
             <>
               <Text style={[type.bodyStrong, { color: p.text }]}>{look.headline}</Text>
@@ -184,11 +176,7 @@ export default function AppearanceScreen() {
         {(loading || look?.sheet) && (
           <Card label="When another agent asks yours">
             {loading || !look ? (
-              <SkeletonGroup label="Loading what others see">
-                <Skeleton height={18} width="75%" />
-                <Skeleton height={14} width="90%" />
-                <SkeletonChips count={3} />
-              </SkeletonGroup>
+              <Loading label="Loading what others see" orb="shaping" />
             ) : (
               <SheetAnswers look={look} busy={busy} onToggle={(id, hidden) => void toggle(id, hidden)} />
             )}

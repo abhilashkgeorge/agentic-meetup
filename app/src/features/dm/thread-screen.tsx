@@ -32,8 +32,7 @@ import { newestTheirs, readNow } from './read-on-arrival';
 import { useSession } from '../../store/session';
 import { useDm, type Dm } from '../../store/dm';
 import {
-  Bubble, Button, Field, Header, LoadFailed, SkeletonBubbles, SkeletonGroup, Surface, radius, space, type,
-  usePalette,
+  Bubble, Button, Field, Header, LoadFailed, Loading, Surface, radius, space, type, usePalette,
 } from '../../components/ui';
 
 /** Sent, delivered, read — shown only on your own messages, like every other app. */
@@ -296,7 +295,7 @@ export default function ThreadScreen() {
         // already have messages on their way.
         <View style={{ flex: 1, justifyContent: 'flex-end', padding: space.screen }}>
           {status === 'loading'
-            ? <SkeletonGroup label="Loading the conversation"><SkeletonBubbles count={5} /></SkeletonGroup>
+            ? <Loading label="Loading the conversation" orb="composing" />
             : <LoadFailed what="this conversation" onRetry={() => { setStatus('loading'); void loadThread(); }} />}
         </View>
       ) : (
