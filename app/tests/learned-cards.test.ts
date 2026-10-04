@@ -99,6 +99,10 @@ describe('where it is (SOURCE SHAPE: React Native)', () => {
     expect(src('features', 'chat', 'clone-chat.tsx')).toContain('ListHeaderComponent={<LearnedCards />}');
     const hud = src('features', 'world', 'hud.tsx');
     expect(hud).toContain('<EdgePill glyph="💬" label={clone.label} detail={clone.detail} onPress={onClone}');
+    // Read aloud as words, in the singular for one: "1 agents here", "1 new things" were
+    // heard on the Pixel (2026-10-04).
+    expect(hud).toContain("accessibilityLabel={`${area}, ${here} ${here === 1 ? 'agent' : 'agents'} here. Who they are`} />");
+    expect(hud).toContain("new ${learned === 1 ? 'thing' : 'things'} it learned");
     const world = src('features', 'world', 'world-screen.tsx');
     expect(world).toContain('onClone={() => setChatOpen(true)} learned={learned.items.length}');
     // Counted again when the chat closes, by the Back key as well as by a tap outside.

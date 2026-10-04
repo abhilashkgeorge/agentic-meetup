@@ -389,7 +389,7 @@ function TownBar({ title, inPool, area, here, band, onPeople, onHome, onCity, on
         <Text numberOfLines={1} style={[type.title, { color: p.text }]}>{title}</Text>
         {inPool && (
           <EdgePill glyph="📍" label={area} detail={`· ${here} here`} onPress={onPeople}
-                    accessibilityLabel={`${area}, ${here} agents here. Who they are`} />
+                    accessibilityLabel={`${area}, ${here} ${here === 1 ? 'agent' : 'agents'} here. Who they are`} />
         )}
         {/* YOUR CLONE, ALWAYS A TAP AWAY (the founder, 2026-10-04: "we need to have a chat
             option in the town square to chat with my clone to keep it updated on things
