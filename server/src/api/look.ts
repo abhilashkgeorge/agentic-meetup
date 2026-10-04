@@ -10,7 +10,7 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { CATALOG, Look, clampLook, lockedIn, starterLookFor } from '@clone/shared';
+import { CATALOG, Look, clampLook, figureForGender, lockedIn, starterLookFor } from '@clone/shared';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { tenantSession } from '../db/client.js';
 import { lookSeed } from '../looks/store.js';
@@ -31,9 +31,13 @@ export const lookRoutes = new Hono()
     if (!ctx) return c.json({ error: res }, 401);
     const out = await tenantSession(ctx, async (db) => {
       const { rows } = await db.query<{ look: unknown }>('SELECT look FROM looks WHERE user_id = $1', [ctx.userId]);
+      // Not built yet: the look everybody else sees of them (looks/store.ts), on the
+      // figure for what they said they are, which the builder then starts from.
+      const said = rows[0] ? null : (await db.query<{ gender: string | null }>(
+        'SELECT gender FROM match_profile WHERE user_id = $1', [ctx.userId])).rows[0]?.gender;
       return {
         saved: rows.length > 0,
-        look: rows[0] ? clampLook(rows[0].look) : starterLookFor(lookSeed(ctx.userId)),
+        look: rows[0] ? clampLook(rows[0].look) : starterLookFor(lookSeed(ctx.userId), figureForGender(said)),
         owned: await owned(db, ctx.userId),
         balance: await balance(db, ctx.userId),
       };

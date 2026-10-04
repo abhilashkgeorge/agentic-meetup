@@ -441,8 +441,19 @@ export function lookFor(seed: number): Look {
   return fitted(out, 'top');
 }
 
-/** Free items only: a real person who has not built one yet. */
-export function starterLookFor(seed: number): Look {
+/** The figure for what a person said they are -- 'man' the first, 'woman' the second -- or none. */
+export function figureForGender(gender: string | null | undefined): number | null {
+  return gender === 'man' ? 0 : gender === 'woman' ? 1 : null;
+}
+
+/**
+ * Free items only: a real person who has not built one yet -- on `figure` when given, the
+ * figure for what they said they are (figureForGender). The figure used to be drawn like
+ * the rest, so half of the people who skipped the builder walked the town and the park as
+ * the other sex: a woman shown as a man, on the Pixel, 2026-10-04. Still drawn, then set,
+ * so every other part draws as it did.
+ */
+export function starterLookFor(seed: number, figure: number | null = null): Look {
   const rnd = lcg(seed);
   const out = { ...STARTER };
   const free = (part: LookPart, from: readonly number[]) =>
@@ -453,6 +464,7 @@ export function starterLookFor(seed: number): Look {
     const pick = free(part, all);
     out[part] = pick[Math.floor(rnd() * pick.length)] ?? 0;
   }
+  if (figure !== null) out.figure = figure;
   for (const part of SLOT_PARTS) {
     const pick = free(part, offeredFor(part, out.figure));
     out[part] = pick[Math.floor(rnd() * pick.length)] ?? 0;
