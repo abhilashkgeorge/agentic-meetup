@@ -254,7 +254,11 @@ try {
     matchesA.body.matches[0]);
 
   // ───────────────────────────────────────────── the reveal, in order
-  step('6. the reveal — whoever gets more matches looks first');
+  // SINCE 2026-09-28 nobody sees a name or a photo before the other person shares them:
+  // the first mover decides on the card alone, and a yes shares their profile with the
+  // second, whose yes shares theirs back (docs/end-to-end/09-deciding.md). This step
+  // still asserted the old order -- the first mover looking first -- until 2026-10-04.
+  step('6. the reveal — each decides on the card; a yes shares your profile');
   const firstMover = await owner.query<{ first_mover: string }>(
     'SELECT first_mover FROM rendezvous WHERE id = $1', [conversation]);
   const firstId = firstMover.rows[0]!.first_mover;
@@ -263,10 +267,10 @@ try {
   const early = await api<{ waiting: boolean }>(`/v1/matches/${conversation}`, second.token);
   check(early.body.waiting === true, 'the second person cannot see them yet', early.body);
 
-  const firstLook = await api<{ waiting: boolean; name: string }>(
+  const firstLook = await api<{ waiting: boolean; name?: string }>(
     `/v1/matches/${conversation}`, first.token);
-  check(firstLook.body.waiting === false && Boolean(firstLook.body.name),
-    'the first person sees a real person', firstLook.body);
+  check(firstLook.body.waiting === true && !firstLook.body.name,
+    'the first mover decides on the card: no name yet', firstLook.body);
 
   const secondSees = await api<{ photos: unknown[] }>(
     `/v1/photos/of/${await userIdOf(first)}`, second.token);
@@ -275,14 +279,14 @@ try {
 
   const firstSees = await api<{ photos: unknown[] }>(
     `/v1/photos/of/${await userIdOf(second)}`, first.token);
-  check(firstSees.body.photos.length === 1, 'the first mover can', firstSees.body);
+  check(firstSees.body.photos.length === 0, 'and the first mover cannot see theirs', firstSees.body);
 
   const stranger = stranger0;
   const peek = await api(`/v1/matches/${conversation}`, stranger.token);
   check(peek.status === 404, 'a stranger holding the id sees nothing', peek.status);
-  const peekMsgs = await api<{ messages: unknown[] }>(
+  const peekMsgs = await api<{ messages?: unknown[] }>(
     `/v1/conversations/${conversation}/messages`, stranger.token);
-  check(peekMsgs.body.messages?.length === 0, 'and no messages either', peekMsgs.body);
+  check(peekMsgs.status === 404 && !peekMsgs.body.messages, 'and no messages either', peekMsgs.body);
 
   // ──────────────────────────────────────── nobody can write yet
   step('7. no messages before both have said yes');
@@ -303,6 +307,9 @@ try {
   const nowVisible = await api<{ waiting: boolean; name: string }>(
     `/v1/matches/${conversation}`, second.token);
   check(nowVisible.body.waiting === false, 'now the second person can look', nowVisible.body);
+  const sharedOneWay = await api<{ photos: unknown[] }>(
+    `/v1/photos/of/${await userIdOf(second)}`, first.token);
+  check(sharedOneWay.body.photos.length === 0, 'but the first mover still cannot see theirs', sharedOneWay.body);
 
   const yes2 = await post<{ introduced: boolean }>(
     `/v1/matches/${conversation}/decide`, second.token, { yes: true });
@@ -311,6 +318,9 @@ try {
   const nowSees = await api<{ photos: unknown[] }>(
     `/v1/photos/of/${await userIdOf(first)}`, second.token);
   check(nowSees.body.photos.length === 1, 'and now the second person can see their photos');
+  const backAgain = await api<{ photos: unknown[] }>(
+    `/v1/photos/of/${await userIdOf(second)}`, first.token);
+  check(backAgain.body.photos.length === 1, 'and the first mover theirs', backAgain.body);
 
   const convs = await api<{ conversations: { id: string; name: string; photoId: string | null }[] }>(
     '/v1/conversations', a.token);
