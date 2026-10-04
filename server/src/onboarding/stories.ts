@@ -118,7 +118,7 @@ export async function saveStory(
   ctx: { tenantId: string; userId: string },
   storyId: string,
   text: string,
-): Promise<{ factId: string; replaced: number }> {
+): Promise<{ factId: string; replaced: number; sessionId: string }> {
   return saveOwnSentence(c, ctx, storyId, text, STORIES.find((s) => s.id === storyId)?.forYou === true);
 }
 
@@ -135,13 +135,15 @@ export async function saveOwnSentence(
   prompt: string,
   text: string,
   want = false,
-): Promise<{ factId: string; replaced: number }> {
+): Promise<{ factId: string; replaced: number; sessionId: string }> {
   const storyId = prompt;
   const words = text.trim();
   // What makes the sentence verifiable: the person typed it. The quote check looks for
-  // the fact's source_quote inside a user-role episode, word for word.
+  // the fact's source_quote inside a user-role episode, word for word. A session of its
+  // own, which the sweeper reads for anything else it says (session.ts).
+  const sessionId = crypto.randomUUID();
   const ep = await episodes.append(c, {
-    tenantId: ctx.tenantId, userId: ctx.userId, sessionId: crypto.randomUUID(),
+    tenantId: ctx.tenantId, userId: ctx.userId, sessionId,
     turnId: crypto.randomUUID(), role: 'user', source: 'text', rawText: words, occurredAt: new Date(),
   });
   // The want is `seeking`, single-valued, so a new one supersedes the old by itself --
@@ -171,5 +173,5 @@ export async function saveOwnSentence(
       [ctx.tenantId, ctx.userId, old.id, JSON.stringify({ objectText: old.object_text }),
        JSON.stringify({ supersededBy: r.factId, story: storyId })]);
   }
-  return { factId: r.factId, replaced: rows.length };
+  return { factId: r.factId, replaced: rows.length, sessionId };
 }

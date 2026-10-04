@@ -499,8 +499,9 @@ export interface Story {
 }
 export const getStories = (token: string) =>
   get<{ stories: Story[]; min: number; max: number }>('/v1/stories', token);
-export const saveStory = (token: string, id: string, text: string) =>
-  post<{ ok: boolean; factId: string }>('/v1/stories', token, { id, text });
+/** `setup`: written in the setup chat -- read at once, on setup's own count (server api/stories.ts). */
+export const saveStory = (token: string, id: string, text: string, setup = false) =>
+  post<{ ok: boolean; factId: string }>('/v1/stories', token, setup ? { id, text, setup } : { id, text });
 
 /**
  * The question of the day (server matching/unknowns.ts): something other agents asked

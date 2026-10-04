@@ -15,7 +15,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 | A tap in the interview or setup | Saved as a fact, live at once | Code | `facts` (+ `question_answers`) | The person; matching | [server/src/api/interview.ts:456] `extractorModel: 'interview',` |
 | A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | {AI:extract} | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | [server/src/memory/session.ts:29] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);` |
 | A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | [server/src/memory/extract.ts:237] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',` |
-| A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | [server/src/onboarding/stories.ts:150] `predicate: want ? 'seeking' : 'prompt_answer'` |
+| A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | [server/src/onboarding/stories.ts:152] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Question of the day | Saved like a story and put on the answer sheet | Code | Episode + fact + answer sheet | Others, via the agents | [server/src/matching/unknowns.ts:212] `INSERT INTO answer_sheets (user_id, tenant_id, answers, basis)` |
 | A paste from another AI | A model extracts facts; every one is held for checking | {AI:paste} | `facts` (all `staged`); the pasted text is not kept | The person | [server/src/memory/pasteImport.ts:189] `originClass: 'untrusted',` |
 | A WhatsApp export | A model describes how the person writes | {AI:voice} | A style note only | The person's own clone | [server/src/memory/chatImport.ts:55] `Ignore the CONTENT of what they discuss. You are describing the voice, not the topics.` |
@@ -112,7 +112,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   multi-answer field, never a card's answer (who they want to meet, work field...), and each retirement is
   written down. Before, it was fed the held sentences too and retired what it liked with no record --
   run on 2026-09-29, a held sentence did retire a card's answer
-  ([server/src/memory/session.ts:147] `.filter((e) => !TAPPED_PREDICATES.has(e.predicate));`).
+  ([server/src/memory/session.ts:150] `.filter((e) => !TAPPED_PREDICATES.has(e.predicate));`).
 
 ### 3.3 Question of the day
 

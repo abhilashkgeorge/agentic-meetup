@@ -401,7 +401,7 @@ export default function SetupChat() {
       const text = draft.trim();
       if (text.length < storyLimits.min) { setNote('A little more than that, please: a sentence or two.'); return; }
       setBusy(true);
-      const saved = await saveStory(token, s.id, text);
+      const saved = await saveStory(token, s.id, text, true);
       setBusy(false);
       if (!saved) { setNote(DID_NOT_SAVE); return; }
       add('me', text);

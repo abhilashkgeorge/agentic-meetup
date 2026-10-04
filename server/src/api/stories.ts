@@ -1,12 +1,14 @@
 /**
  * The stories: a few open questions whose answers give a person's agent something true
- * to say. See onboarding/stories.ts. No model call on either route.
+ * to say. See onboarding/stories.ts. No model call on either route -- except that a story
+ * written while setting up is read for anything else it says at once, as a setup call.
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { resolveCtx, Unauthorized } from '../auth.js';
 import { tenantSession } from '../db/client.js';
 import { log } from '../log.js';
+import { extractSession } from '../memory/session.js';
 import { STORY_IDS, STORY_MAX, STORY_MIN, readStories, saveStory } from '../onboarding/stories.js';
 
 async function ctxOr401(c: { req: { header: (k: string) => string | undefined } }) {
@@ -18,7 +20,7 @@ async function ctxOr401(c: { req: { header: (k: string) => string | undefined } 
   }
 }
 
-const Body = z.object({ id: z.string().min(1).max(64), text: z.string().max(2000) });
+const Body = z.object({ id: z.string().min(1).max(64), text: z.string().max(2000), setup: z.boolean().optional() });
 
 export const storyRoutes = new Hono()
   /** Every story, with this person's answer or null. */
@@ -40,5 +42,14 @@ export const storyRoutes = new Hono()
     if (text.length > STORY_MAX) return c.json({ error: 'too_long', max: STORY_MAX }, 400);
     const out = await tenantSession(ctx, (db) => saveStory(db, ctx, body.data.id, text));
     log.info({ userId: ctx.userId, story: body.data.id, replaced: out.replaced }, 'story saved');
+    // WRITTEN WHILE SETTING UP (the setup chat says so): read now, as a setup call, and
+    // marked read -- not swept five minutes later on the day's ten, which chat, learning
+    // and rounds share. Setting up never uses those (the founder, 2026-09-28); three
+    // stories in the setup chat used three of them (the Pixel, 2026-10-04). After the
+    // reply: what it learns is not needed to answer, and a failure leaves it to the sweeper.
+    if (body.data.setup) {
+      void extractSession(ctx, out.sessionId, { setup: true })
+        .catch((err: unknown) => log.warn({ err, userId: ctx.userId }, 'setup story not read; the sweeper will'));
+    }
     return c.json({ ok: true, factId: out.factId });
   });

@@ -12,7 +12,8 @@
  *   - a setup call runs when the day's ten are used up, and does not add to them;
  *   - it has its own bound (SETUP_CALLS_PER_DAY), and the cost cap still holds;
  *   - an operation opened inside a setup one is setup too;
- *   - the five setup steps say so. SOURCE SHAPE, on purpose: each route would need its
+ *   - the setup steps say so (a story written in the setup chat too, since 2026-10-04:
+ *     setup-stories.test.ts drives it). SOURCE SHAPE, on purpose: each route would need its
  *     model stubbed and its screen's state built to be driven here, and the rule is one
  *     word per call site -- so the words are checked, comments stripped.
  *
@@ -107,6 +108,7 @@ describe('the five setup steps', () => {
     const imports = said('src/api/import.ts');
     expect(imports).toContain('parsed.data.source), { db, setup: true })');
     expect(imports).toContain("metered(ctx, 'extract', () => extractVoice(ctx, messages), { setup: true })");
+    expect(said('src/api/stories.ts')).toContain('void extractSession(ctx, out.sessionId, { setup: true })');
     // And nothing else is: chat, learning from chat and rounds stay on the ten.
     for (const f of ['src/api/chat.ts', 'src/memory/session.ts', 'src/matching/orchestrator.ts']) {
       expect(said(f), f).not.toContain('setup: true');

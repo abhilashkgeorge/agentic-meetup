@@ -83,7 +83,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 17. **Closed on 2026-09-29: unconfirmed chat retiring answers.** Run first, it did: a sentence still waiting for a Yes
     retired a card's answer, and a hedged one retired a plain one. Now only sentences that became true take part, a
     card's answer is never retired this way, and every retirement is recorded
-    ([server/src/memory/session.ts:147] `.filter((e) => !TAPPED_PREDICATES.has(e.predicate));`).
+    ([server/src/memory/session.ts:150] `.filter((e) => !TAPPED_PREDICATES.has(e.predicate));`).
 18. **Closed on 2026-09-29: rule clashes.** Two wants tied to the same question keep a rule each, and every rule --
     a must-have too -- has "Remove" on "Looking for" ([server/migrations/0085_one_rule_per_want.sql:21] `ON preferences (user_id, predicate, operator, source_quote) WHERE retired_at IS NULL;`).
     Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.

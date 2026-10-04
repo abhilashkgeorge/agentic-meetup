@@ -253,8 +253,8 @@ needs a few more answers before it can go out."
 ### 2.4 Model calls during setup
 
 The one true thing already calls a model (fact extraction, then a sample reply); so do the paste, the
-"couldn't be with" sentence, the WhatsApp import and each self-test. The clone's own lines in the
-setup chat call none. Since 2026-09-28 these setup calls
+"couldn't be with" sentence, the WhatsApp import, each self-test and each story written in the setup
+chat (read for anything else it says). The clone's own lines in the setup chat call none. Since 2026-09-28 these setup calls
 are counted apart, up to 40 a day, and never use the 10 a day that chat, learning and rounds share;
 the $2.00 daily cost cap still covers them. Measured before the change: real people's setup used 1 to
 4 of the 10 on their first day ([server/src/api/tell.ts:76] `), { setup: true });`,

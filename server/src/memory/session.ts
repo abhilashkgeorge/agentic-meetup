@@ -48,17 +48,20 @@ export interface ExtractionSummary {
 export async function extractSession(
   ctx: TenantCtx,
   sessionId: string,
+  /** Read as part of setting up (a story in the setup chat): counted as setup (metering.ts). */
+  opts: { setup?: boolean } = {},
 ): Promise<ExtractionSummary | null> {
   // Metered around the whole thing rather than around each phase: extraction,
   // conflict resolution and the profile rebuild are three model calls belonging to
   // one operation, and the budget question is whether this session is affordable, not
   // whether its third call is. The meter takes its own connection, since the phases
   // deliberately open and close their own.
-  const out = await metered(ctx, 'extract', () => extractSessionInner(ctx, sessionId));
+  const setup = opts.setup ?? false;
+  const out = await metered(ctx, 'extract', () => extractSessionInner(ctx, sessionId), { setup });
   // THE ANSWER SHEET, when something new was learned: after -- and outside -- the
   // extraction's own meter, since it keeps its own. At most one small call, none when
   // no sentence it could point at changed, and it never throws (answer-sheet.ts).
-  if (out && out.asserted + out.superseded > 0) await ensureSheet(ctx);
+  if (out && out.asserted + out.superseded > 0) await ensureSheet(ctx, { setup });
   return out;
 }
 

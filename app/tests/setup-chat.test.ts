@@ -139,7 +139,7 @@ describe('saved as the old screens saved it (SOURCE SHAPE: React Native)', () =>
     for (const call of [
       'await tell(token, text, sessionId)', 'void gradeSelfTest(token, sample.id, verdict)', 'await answerQuestion(token, q.id, values, text, whoFine)',
       'await setWhoFine(token, proposal.questionId, proposedWhoFine(proposal))', 'await setEssential(token, f.key, value, declined ? undefined : place)',
-      'await saveDistance(token, distance)', 'await saveStory(token, s.id, text)',
+      'await saveDistance(token, distance)', 'await saveStory(token, s.id, text, true)',
     ]) expect(chat, call).toContain(call);
   });
 

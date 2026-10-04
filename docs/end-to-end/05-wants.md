@@ -18,7 +18,7 @@ three shapes:
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | [server/src/onboarding/stories.ts:150] `predicate: want ? 'seeking' : 'prompt_answer'` |
+| Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | [server/src/onboarding/stories.ts:152] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Answer to "Anyone else you couldn't be with?" | Saved as a `dealbreaker` fact; a model may also propose a card change | Code, plus {AI:dealbreaker} | `facts` row | Same as above | [server/src/api/interview.ts:341] `predicate: 'dealbreaker',` |
 | A want's words match a question | The question is offered; Arjun ticks the answers he accepts | Code (word patterns) | `preferences` row: field, ticked values, strength | Arjun, on "Looking for" | [server/src/matching/want-questions.ts:84] `if (w.pattern.test(text)) return { want: w` |
 | Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:126] `// The only place a personal rule excludes anybody. Both directions.` |
@@ -90,9 +90,9 @@ three shapes:
   12 to 300 characters ([server/src/onboarding/stories.ts:67] `export const STORY_MIN = 12;`,
   [server/src/onboarding/stories.ts:68] `export const STORY_MAX = 300;`). Saving writes one
   `seeking` fact, visibility "match-only"
-  ([server/src/onboarding/stories.ts:154] `...(want ? { disclosure: 'matchable_only' as const } : {}),`).
+  ([server/src/onboarding/stories.ts:156] `...(want ? { disclosure: 'matchable_only' as const } : {}),`).
   There is only ever one live `seeking` fact: saving again replaces the whole sentence
-  ([server/src/onboarding/stories.ts:147] `single-valued, so a new one supersedes the old by itself`).
+  ([server/src/onboarding/stories.ts:149] `single-valued, so a new one supersedes the old by itself`).
 - **The interview's free sentence.** "Anyone else you couldn't be with?", up to 400
   characters, stored as a `dealbreaker` fact
   ([server/src/onboarding/questions.ts:217] `text: 'Anyone else you couldn\'t be with?',`,

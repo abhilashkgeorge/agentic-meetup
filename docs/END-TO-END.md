@@ -526,8 +526,8 @@ needs a few more answers before it can go out."
 ### 2.4 Model calls during setup
 
 The one true thing already calls a model (fact extraction, then a sample reply); so do the paste, the
-"couldn't be with" sentence, the WhatsApp import and each self-test. The clone's own lines in the
-setup chat call none. Since 2026-09-28 these setup calls
+"couldn't be with" sentence, the WhatsApp import, each self-test and each story written in the setup
+chat (read for anything else it says). The clone's own lines in the setup chat call none. Since 2026-09-28 these setup calls
 are counted apart, up to 40 a day, and never use the 10 a day that chat, learning and rounds share;
 the $2.00 daily cost cap still covers them. Measured before the change: real people's setup used 1 to
 4 of the 10 on their first day (`server/src/api/tell.ts:76`,
@@ -572,7 +572,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 | A tap in the interview or setup | Saved as a fact, live at once | Code | `facts` (+ `question_answers`) | The person; matching | `server/src/api/interview.ts:456` |
 | A message to your own clone | Stored; about 5 minutes after the chat goes quiet, a model reads the whole session and pulls out facts | [AI-1](#ai-1) | `episodes` (both sides), then `facts` | The person; learned facts are private until "OK to share" | `server/src/memory/session.ts:29` |
 | A heard answer on a "tapped" field (city, cards, work, exercise...) | Held, not live, until the person says "Yes, that's right" | Code | `facts` with status `staged` | The person, as a question | `server/src/memory/extract.ts:237` |
-| A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | `server/src/onboarding/stories.ts:150` |
+| A story ("Things to talk about") | Saved word for word | Code | Episode + fact, shareable | Others' cards, via the agents | `server/src/onboarding/stories.ts:152` |
 | Question of the day | Saved like a story and put on the answer sheet | Code | Episode + fact + answer sheet | Others, via the agents | `server/src/matching/unknowns.ts:212` |
 | A paste from another AI | A model extracts facts; every one is held for checking | [AI-4](#ai-4) | `facts` (all `staged`); the pasted text is not kept | The person | `server/src/memory/pasteImport.ts:189` |
 | A WhatsApp export | A model describes how the person writes | [AI-5](#ai-5) | A style note only | The person's own clone | `server/src/memory/chatImport.ts:55` |
@@ -669,7 +669,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
   multi-answer field, never a card's answer (who they want to meet, work field...), and each retirement is
   written down. Before, it was fed the held sentences too and retired what it liked with no record --
   run on 2026-09-29, a held sentence did retire a card's answer
-  (`server/src/memory/session.ts:147`).
+  (`server/src/memory/session.ts:150`).
 
 ### 3.3 Question of the day
 
@@ -1051,7 +1051,7 @@ three shapes:
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | `server/src/onboarding/stories.ts:150` |
+| Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | `server/src/onboarding/stories.ts:152` |
 | Answer to "Anyone else you couldn't be with?" | Saved as a `dealbreaker` fact; a model may also propose a card change | Code, plus [AI-3](#ai-3) | `facts` row | Same as above | `server/src/api/interview.ts:341` |
 | A want's words match a question | The question is offered; Arjun ticks the answers he accepts | Code (word patterns) | `preferences` row: field, ticked values, strength | Arjun, on "Looking for" | `server/src/matching/want-questions.ts:84` |
 | Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | `server/src/matching/candidates.ts:126` |
@@ -1123,9 +1123,9 @@ three shapes:
   12 to 300 characters (`server/src/onboarding/stories.ts:67`,
   `server/src/onboarding/stories.ts:68`). Saving writes one
   `seeking` fact, visibility "match-only"
-  (`server/src/onboarding/stories.ts:154`).
+  (`server/src/onboarding/stories.ts:156`).
   There is only ever one live `seeking` fact: saving again replaces the whole sentence
-  (`server/src/onboarding/stories.ts:147`).
+  (`server/src/onboarding/stories.ts:149`).
 - **The interview's free sentence.** "Anyone else you couldn't be with?", up to 400
   characters, stored as a `dealbreaker` fact
   (`server/src/onboarding/questions.ts:217`,
@@ -2466,10 +2466,12 @@ $0.02; not measured, because no round has run since the talk was added.
 - **When:** the first setup screen, at once; and for every chat session, about 5 minutes after it goes quiet
   (`server/src/api/tell.ts:73`,
   `server/src/memory/session.ts:29`).
-  Story and question-of-the-day answers are also swept later. The first sentence was extracted a second time
+  Story and question-of-the-day answers are also swept later -- except a story written in the setup chat,
+  read at once as a setup call (since 2026-10-04; three stories there used three of the day's ten)
+  (`server/src/api/stories.ts:51`). The first sentence was extracted a second time
   by the sweeper, five minutes on -- the same words, and one of the day's ten turns on the person's first day;
   since 2026-10-04 its session is marked read once it is
-  (`server/src/memory/session.ts:325`,
+  (`server/src/memory/session.ts:328`,
   `server/src/api/tell.ts:105`).
 - **What goes in:** the person's own lines from the session -- never the clone's (since 2026-09-28) --
   plus their current facts; a session with nothing they typed makes no call. Key instructions: "You extract
@@ -2590,14 +2592,14 @@ $0.02; not measured, because no round has run since the talk was added.
   `server/src/memory/resolve.ts:63`).
 - **Checks:** must parse; out-of-range numbers dropped. **Stored:** contradicted facts are retired, and the
   retirement recorded; uncertain ones become a question. It sees only sentences that became true, and never a
-  card's answer (since 2026-09-29) (`server/src/memory/session.ts:147`).
+  card's answer (since 2026-09-29) (`server/src/memory/session.ts:150`).
 
 <a id="ai-9"></a>
 ### AI-9. Profile summary
 
 - **Task / model:** `render_profile` → Flash-Lite (`server/src/memory/profile.ts:146`).
 - **When:** inside AI-1, when 3 or more facts changed, and only if the new summary would not drop more than a
-  quarter of the old (`server/src/memory/session.ts:204`).
+  quarter of the old (`server/src/memory/session.ts:207`).
 - **In:** up to 60 confirmed facts, any visibility. Instructions: "Write a short profile of this person from the
   facts given." "Use ONLY the facts given. Add nothing." (`server/src/memory/profile.ts:71`,
   `server/src/memory/profile.ts:82`).
@@ -2861,7 +2863,7 @@ woken for a new card, a share, an introduction, a message and a card fading toda
 17. **Closed on 2026-09-29: unconfirmed chat retiring answers.** Run first, it did: a sentence still waiting for a Yes
     retired a card's answer, and a hedged one retired a plain one. Now only sentences that became true take part, a
     card's answer is never retired this way, and every retirement is recorded
-    (`server/src/memory/session.ts:147`).
+    (`server/src/memory/session.ts:150`).
 18. **Closed on 2026-09-29: rule clashes.** Two wants tied to the same question keep a rule each, and every rule --
     a must-have too -- has "Remove" on "Looking for" (`server/migrations/0085_one_rule_per_want.sql:21`).
     Left as it was: a want sentence changed later in chat leaves the rule it wrote until the person removes it.
