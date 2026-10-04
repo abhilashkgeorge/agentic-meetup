@@ -33,6 +33,9 @@ export function CloneChat({
   const { send } = useChat();
   const [draft, setDraft] = useState('');
   const list = useRef<FlatList>(null);
+  const toEnd = useCallback(() => {
+    requestAnimationFrame(() => list.current?.scrollToEnd({ animated: true }));
+  }, []);
 
   const submit = useCallback(() => {
     const text = draft.trim();
@@ -78,7 +81,13 @@ export function CloneChat({
         // WHAT IT LEARNED, AND MAY IT SAY SO (knowledge/learned.ts): first thing in the
         // conversation, so opening it is where you see them.
         ListHeaderComponent={<LearnedCards />}
-        onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
+        // THE NEWEST LINE IN VIEW, the whole of it. On a new line or a growing reply, a
+        // frame later -- scrolled at once, the end was where it had been before the last
+        // line was measured -- and when the list itself changes size, as the keyboard
+        // opens: with it up, the end of a reply sat under the box you type in (the Pixel,
+        // 2026-10-04).
+        onContentSizeChange={toEnd}
+        onLayout={toEnd}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
