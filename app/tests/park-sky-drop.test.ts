@@ -256,10 +256,33 @@ describe('drawing the flight', () => {
 });
 
 describe('where you land', () => {
-  it('beside them, a step short on the line from where you were', () => {
+  it('not knowing which way they look: beside them, a step short on the line from where you were', () => {
     const [x, z] = landingBeside([0, 0], [10, 0], () => true);
     expect(x).toBeCloseTo(9.5, 5);
     expect(z).toBeCloseTo(0, 5);
+  });
+
+  it('in front of them, where they look -- not behind them, between them and their camera', () => {
+    // Arjun flew in from behind Kavya (the two phones, 2026-10-04): she looks along +x,
+    // away from him; the line from where he was put him at her back, under her camera.
+    const looksAlongX = Math.atan2(1, 0);
+    const [x, z] = landingBeside([0, 0], [10, 0], () => true, 0.5, looksAlongX);
+    expect(x, 'landed behind her').toBeCloseTo(10.5, 5);
+    expect(z).toBeCloseTo(0, 5);
+    // Looking back at him: the same spot as the line from where he was.
+    const [bx] = landingBeside([0, 0], [10, 0], () => true, 0.5, Math.atan2(-1, 0));
+    expect(bx).toBeCloseTo(9.5, 5);
+    // In front blocked: round them, still clear, still close.
+    const [cx, cz] = landingBeside([0, 0], [10, 0], (px) => px < 10.2, 0.5, looksAlongX);
+    expect(cx < 10.2).toBe(true);
+    expect(Math.hypot(cx - 10, cz)).toBeLessThanOrEqual(1.0 + 1e-9);
+  });
+
+  it('the pickup lands you where your partner looks (SOURCE SHAPE: the park on a phone)', () => {
+    const presence = readFileSync(join(import.meta.dirname, '..', 'src', 'features', 'world', 'park-presence.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    expect(presence).toContain('const facing = s.people.get(s.partner!.ref)?.facing ?? null;');
+    expect(presence).toContain('landingBeside([me.x, me.z], to, clear, undefined, facing);');
   });
 
   it('never lands inside a tree, a bench or somebody: round them to the nearest clear spot', () => {

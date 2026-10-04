@@ -142,8 +142,8 @@ export function useParkPresence(
   }, [inPark, venueSim]);
 
   // A yes to your "Find someone": the emergency pickup takes you over (flight.ts) --
-  // beside them, never inside a tree, a bench or somebody. The one who said yes stays
-  // where they are and watches you come down.
+  // in front of them, where they look, never inside a tree, a bench or somebody. The one
+  // who said yes stays where they are and watches you come down.
   useEffect(() => {
     if (!inPark) return;
     return useParkLive.subscribe((s, prev) => {
@@ -154,7 +154,8 @@ export function useParkPresence(
       if (!me) { done(); return; }
       const clear = (x: number, z: number) => venueSim.standable(x, z)
         && !venueSim.agents().some((a) => a.ref !== 'you' && Math.hypot(a.x - x, a.z - z) < PERSONAL);
-      const [lx, lz] = landingBeside([me.x, me.z], to, clear);
+      const facing = s.people.get(s.partner!.ref)?.facing ?? null;
+      const [lx, lz] = landingBeside([me.x, me.z], to, clear, undefined, facing);
       // Near enough to walk: a few steps over, not a lift on the spot.
       if (!flies([me.x, me.z], [lx, lz])) { venueSim.walkTo('you', lx, lz); done(); return; }
       const flying = venueSim.flyTo('you', lx, lz, () => {

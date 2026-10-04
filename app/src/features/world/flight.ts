@@ -633,19 +633,26 @@ export function flies(from: readonly [number, number], to: readonly [number, num
 }
 
 /**
- * Where to land: beside them, a step short on the line from where you were so you land
- * facing them -- or, if a trunk, a bench or somebody already stands there, the nearest
- * clear spot on a ring round them. `clear` says whether a spot is free to stand on.
+ * Where to land: a step in front of them, where they are looking (`facing`, as the sim
+ * keeps it), so the one who said yes watches you come down and you land face to face --
+ * or, not knowing which way they look, a step short on the line from where you were.
+ * If a trunk, a bench or somebody already stands there, the nearest clear spot on a ring
+ * round them. `clear` says whether a spot is free to stand on.
+ *
+ * It was always the line from where you were: on the two phones (2026-10-04) Arjun flew
+ * in from behind Kavya and came down between her and her camera -- on her screen, feet
+ * under the tab bar, after a trip she never saw.
  */
 export function landingBeside(
   you: readonly [number, number],
   them: readonly [number, number],
   clear: (x: number, z: number) => boolean,
   gap = 0.5,
+  facing: number | null = null,
 ): [number, number] {
   const dx = you[0] - them[0], dz = you[1] - them[1];
   const d = Math.hypot(dx, dz);
-  const toward = d > 1e-6 ? Math.atan2(dx, dz) : 0;
+  const toward = facing !== null && Number.isFinite(facing) ? facing : d > 1e-6 ? Math.atan2(dx, dz) : 0;
   // Straight in first, then either side of it, further round each time.
   for (const r of [gap, gap * 1.5, gap * 2]) {
     for (let k = 0; k <= 6; k++) {
