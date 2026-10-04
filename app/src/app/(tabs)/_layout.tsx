@@ -10,6 +10,8 @@ import { Tabs } from 'expo-router';
 import { Alert, Text, View } from 'react-native';
 import { radius, space, sunk, type, usePalette } from '../../components/ui';
 import { LEAVE_PARK, asksBeforeLeaving } from '../../features/world/leave-park';
+import { withDot } from '../../features/tabs/dots';
+import { useTabDots } from '../../features/tabs/use-tab-dots';
 import { useParkLive } from '../../features/world/park-live';
 
 /** In the park, another tab asks first (features/world/leave-park.ts). */
@@ -26,7 +28,7 @@ function leavingParkFirst({ navigation, route }: { navigation: { navigate: (name
   };
 }
 
-function TabIcon({ glyph, focused, label }: { glyph: string; focused: boolean; label: string }) {
+function TabIcon({ glyph, focused, label, dot = false }: { glyph: string; focused: boolean; label: string; dot?: boolean }) {
   const p = usePalette();
   return (
     <View style={{ alignItems: 'center', gap: 2, width: 72 }}>
@@ -39,6 +41,11 @@ function TabIcon({ glyph, focused, label }: { glyph: string; focused: boolean; l
         }}
       >
         <Text style={{ fontSize: 19, color: focused ? p.accent : p.textTertiary }}>{glyph}</Text>
+        {/* Something waits there (features/tabs/dots.ts): a dot, never a number. */}
+        {dot && (
+          <View style={{ position: 'absolute', top: 6, right: 6, width: 9, height: 9,
+                         borderRadius: 5, backgroundColor: p.accent }} />
+        )}
       </View>
       <Text
         style={[
@@ -54,8 +61,11 @@ function TabIcon({ glyph, focused, label }: { glyph: string; focused: boolean; l
 
 export default function TabsLayout() {
   const p = usePalette();
+  const dots = useTabDots();
   return (
     <Tabs
+      // Any tab opened: the dots read again (deciding a card or reading a chat clears one).
+      screenListeners={{ focus: () => dots.refresh() }}
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: p.bg },
@@ -81,8 +91,8 @@ export default function TabsLayout() {
         name="matches"
         listeners={leavingParkFirst}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon glyph="◈" focused={focused} label="MATCHES" />,
-          tabBarAccessibilityLabel: 'People your agent found',
+          tabBarIcon: ({ focused }) => <TabIcon glyph="◈" focused={focused} label="MATCHES" dot={dots.matches} />,
+          tabBarAccessibilityLabel: withDot('People your agent found', dots.matches, 'one waits on you'),
         }}
       />
       {/* Chats sits between the two, because that is the order the product runs in:
@@ -91,8 +101,8 @@ export default function TabsLayout() {
         name="chats"
         listeners={leavingParkFirst}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon glyph="◎" focused={focused} label="CHATS" />,
-          tabBarAccessibilityLabel: 'Your conversations',
+          tabBarIcon: ({ focused }) => <TabIcon glyph="◎" focused={focused} label="CHATS" dot={dots.chats} />,
+          tabBarAccessibilityLabel: withDot('Your conversations', dots.chats, 'something new'),
         }}
       />
       <Tabs.Screen

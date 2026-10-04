@@ -1504,7 +1504,7 @@ words: "That's all for today. Chat, learning and your agent's rounds share 10 tu
 today's are used up. Your clone can talk again tomorrow." (since 2026-09-29; before, nothing was
 shown, and the clone's previous reply was blanked)
 (`server/src/metering.ts:34`,
-`app/src/lib/socket.ts:219`).
+`app/src/lib/socket.ts:226`).
 
 ### 6.3 The rules: who the agent may meet
 
@@ -2138,8 +2138,10 @@ words are the date idea, written earlier (stage 7).
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    (`server/migrations/0073_consent_first_reveal.sql:42`,
    `server/src/matching/orchestrator.ts:617`,
-   `app/src/features/dm/conversations-screen.tsx:121`). If her app is closed,
-   her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
+   `app/src/features/dm/conversations-screen.tsx:121`). With the app open, a dot
+   on Chats says something is there (since 2026-10-04; before, nothing outside the tab did, and
+   push is not set up) (`app/src/app/(tabs)/_layout.tsx:104`).
+   If her app is closed, her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
    (`server/src/api/chat.ts:301`,
    `server/src/push/index.ts:39`).
@@ -2728,6 +2730,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **Points** | +50 for a check-in, +10 for "did you meet", +20 first look, +30 photos checked; in Cubbon Park, +10 to +30 for each thing done together, once a day (since 2026-09-29); only the person sees the balance | Everyone | `server/src/points/ledger.ts:14`, `server/src/points/ledger.ts:18` |
 | **Round recap** | "WHAT YOUR AGENT DID" after your own round: template sentences, up to two of your own sentences it used, topics, and what it had to say "I don't know" to | The round's sender | `server/src/matching/recap.ts:36` |
 | **Live updates** | One connection carries clone chat, messages and town events (queued, met, talking, decided, done, your turn, introduced) | Everyone | `shared/src/events.ts:246` |
+| **Dots on Matches and Chats** | A small dot on the Matches tab when a card waits on your answer, and on Chats when a conversation has something you have not read -- a dot, never a number; read again when the app opens or comes back, when any tab is opened, and when a card is decided, it is your turn, you are introduced or a message arrives (since 2026-10-04: on the two phones, Kavya's card, Arjun's yes and his first message all came with nothing outside the two tabs saying so) | Everyone | `app/src/features/tabs/dots.ts:13`, `app/src/features/tabs/use-tab-dots.ts:31` |
 | **Push notifications** | A closed app is woken for a new card, "they shared their profile", "you can talk now", a message, and "a card fades today"; no names or words on the lock screen. Needs the founder's Expo setup before it reaches phones (stage 9.5) | Everyone, once allowed | `server/src/push/index.ts:34` |
 | **Photos screen** | Up to six photos, re-encoded to drop location data | Everyone | `server/src/photos/store.ts:30` |
 | **Selfie check** | "Photos checked" badge from a local face model | Off (`FACE_CHECK=off`) | `server/src/api/verify.ts:39` |

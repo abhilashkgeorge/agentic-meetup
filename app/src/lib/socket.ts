@@ -20,6 +20,7 @@ import { useParkLive } from '../features/world/park-live';
 import { useParkVoice } from '../features/world/park-voice';
 import { noteFor } from '../features/chat/turn-note';
 import { retrySoon } from './retry-soon';
+import { useTabPulse } from '../features/tabs/pulse';
 
 /** Two missed heartbeats and we assume the socket is dead, whatever it claims. */
 const DEAD_AFTER_MS = HEARTBEAT_MS * 2 + 5_000;
@@ -121,6 +122,9 @@ function connect(): void {
       case 'dm.message':
         d.received(ev.message);
         outboxAgain.reset();
+        // The Chats dot (features/tabs): a message for a conversation this phone has not
+        // listed yet counts only once the list is read again.
+        useTabPulse.getState().bump();
         break;
       case 'dm.receipt':
         d.receipt(ev.rendezvousId, ev.messageIds, ev.state);
@@ -148,6 +152,9 @@ function connect(): void {
         // down" and "the town drew nothing", which look the same on screen.
         if (__DEV__) console.log(`[town] ${ev.type}`);
         useWorld.getState().apply(ev);
+        // A card decided, your turn, an introduction: the Matches and Chats dots.
+        if (ev.type === 'round.decided' || ev.type === 'round.done' || ev.type === 'match.turn'
+          || ev.type === 'match.introduced') useTabPulse.getState().bump();
         break;
 
       case 'photos.checked':

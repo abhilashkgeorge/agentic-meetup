@@ -28,8 +28,10 @@ words are the date idea, written earlier (stage 7).
    "Say something"; only now can she see his photos and first name, which his yes shared with her
    ([server/migrations/0073_consent_first_reveal.sql:42] `AND b.human_says_yes IS TRUE));`,
    [server/src/matching/orchestrator.ts:617] `notify(other, { type: 'match.introduced', rendezvousId, agent: agentRef(other, userId) });`,
-   [app/src/features/dm/conversations-screen.tsx:121] `: 'Say something'`). If her app is closed,
-   her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
+   [app/src/features/dm/conversations-screen.tsx:121] `: 'Say something'`). With the app open, a dot
+   on Chats says something is there (since 2026-10-04; before, nothing outside the tab did, and
+   push is not set up) ([app/src/app/(tabs)/_layout.tsx:104] `<TabIcon glyph="◎" focused={focused} label="CHATS" dot={dots.chats} />`).
+   If her app is closed, her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
    ([server/src/api/chat.ts:301] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,
    [server/src/push/index.ts:39] `const MESSAGE_QUIET_MS = 2 * 60_000;`).
