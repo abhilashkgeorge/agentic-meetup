@@ -108,10 +108,10 @@ Each person has an **answer sheet**: for each of the 12 bank questions, a pointe
 their own sentences, or nothing. A model builds it outside the round, whenever their
 shareable sentences change ({AI:sheet};
 [server/src/matching/answer-sheet.ts:104] `For each question, give the number of the ONE sentence that answers it directly, or null.`,
-[server/src/matching/answer-sheet.ts:185] `if (had.rows[0]?.basis === basis) return { built: false, answered: -1 };`).
+[server/src/matching/answer-sheet.ts:203] `if (had.rows[0]?.basis === basis) return { built: false, answered: -1 };`).
 Only fact ids are stored. When there is no talk, the card shows "WHAT YOUR AGENTS ASKED EACH
 OTHER": questions both answered, then only theirs, then up to two the reader answered and
-they did not ([server/src/matching/answer-sheet.ts:348] `const answered = [...both, ...onlyTheirs].slice(0, LINES);`,
+they did not ([server/src/matching/answer-sheet.ts:366] `const answered = [...both, ...onlyTheirs].slice(0, LINES);`,
 [app/src/features/matches/matches-screen.tsx:421] `WHAT YOUR AGENTS ASKED EACH OTHER</Text>`).
 
 ### 7.5 What is saved, and what people can read

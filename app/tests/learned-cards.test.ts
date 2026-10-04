@@ -12,18 +12,33 @@
  *   - one or two learned things are asked in the chat, each; more, one card opens them all;
  *   - kept private is never asked again, and remembered for the newest KEPT_MAX;
  *   - "OK to share" is the server's disclosure call, "Keep private" changes nothing there;
- *   - the town has "Your clone", always, with how many wait; the chat shows the cards first.
+ *   - the town has "Your clone", always, with how many wait; the chat shows the cards first;
+ *   - the list is read by its own call, which costs no model call, and once however many
+ *     ask at the same time: opening the town asked "How you appear" three times at once,
+ *     and each could build the answer sheet -- three of a new person's ten turns (the
+ *     Pixel, 2026-10-04; the server side is server/tests/first-day-turns.test.ts).
  *
  * Negative controls, run by hand and recorded in the commit:
  *   - CARDS_AT_ONCE at 5 -> "more, one card" fails;
  *   - keepPrivate without its cap -> "the newest KEPT_MAX" fails;
- *   - "Okay to share all" sharing only the first -> "every one" fails.
+ *   - "Okay to share all" sharing only the first -> "every one" fails;
+ *   - readLearned without the shared read -> "once" fails;
+ *   - the hook reading "How you appear" again -> "its own call" fails.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 const store = new Map<string, string>();
+const server = vi.hoisted(() => ({ asked: 0, learned: [] as { factId: string; text: string }[] }));
+vi.mock('../src/lib/api', () => ({
+  getLearned: async () => {
+    server.asked++;
+    await new Promise((r) => setTimeout(r, 20));
+    return { learned: server.learned };
+  },
+  setQuoteHidden: async () => ({ ok: true }),
+}));
 vi.mock('expo-secure-store', () => ({
   getItemAsync: async (k: string) => store.get(k) ?? null,
   setItemAsync: async (k: string, v: string) => { store.set(k, v); },
@@ -88,5 +103,29 @@ describe('where it is (SOURCE SHAPE: React Native)', () => {
     expect(world).toContain('onClone={() => setChatOpen(true)} learned={learned.items.length}');
     // Counted again when the chat closes, by the Back key as well as by a tap outside.
     expect(world).toContain('useEffect(() => { if (!chatOpen) void refreshLearned(); }, [chatOpen, refreshLearned]);');
+  });
+});
+
+describe('reading what it learned', () => {
+  it('asks the server once however many ask at the same time', async () => {
+    const { readLearned } = await import('../src/features/knowledge/read-learned');
+    server.asked = 0;
+    server.learned = L(3);
+    const [a, b, c] = await Promise.all([readLearned('t'), readLearned('t'), readLearned('t')]);
+    expect(server.asked, 'the town asked once per reason, not once').toBe(1);
+    expect(a).toEqual(b);
+    expect(c?.map((l) => l.factId)).toEqual(['f0', 'f1', 'f2']);
+    // And asks again next time: the shared read is only while one is running.
+    await readLearned('t');
+    expect(server.asked).toBe(2);
+  });
+
+  it('by its own call, which costs no model call -- never through "How you appear" (SOURCE SHAPE)', () => {
+    const read = src('features', 'knowledge', 'read-learned.ts');
+    expect(read).toContain('const [seen, kept] = await Promise.all([getLearned(token), getKeptPrivate()]);');
+    const use = src('features', 'knowledge', 'use-learned.ts');
+    expect(use).toContain('const now = await readLearned(token);');
+    expect(use + read).not.toContain('getAppearance');
+    expect(src('lib', 'api.ts')).toContain("get<{ learned: { factId: string; text: string }[] }>('/v1/me/learned', token);");
   });
 });

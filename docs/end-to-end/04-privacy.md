@@ -10,7 +10,7 @@ details), and **database roles** that limit what each part of the server can rea
 |---|---|---|---|---|---|
 | A fact is written | It gets a level: public, match-only or private | Code | `facts.disclosure` | Public: can be quoted to others. Match-only: used for matching, never said. Private: hidden by the person | [server/migrations/0018_dating_schema.sql:39] `CHECK (disclosure IN ('public', 'matchable_only', 'private'))` |
 | "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | [app/src/features/appearance/appearance-screen.tsx:197] `<Chip label="OK to share"` |
-| "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | [server/src/api/me.ts:177] `const to = hidden ? 'private' : 'public';` |
+| "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | [server/src/api/me.ts:197] `const to = hidden ? 'private' : 'public';` |
 | A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | [server/src/matching/brief.ts:204] `return !namesCoreValue(text) && contactDetail(text) === null;` |
 | A sentence naming a company, college or building | A suggestion: "This names a company. Hide this?" | Code | Nothing unless hidden | The person | [app/src/features/appearance/appearance-state.ts:81] `This names a ${names}. Hide this?` |
 
@@ -139,7 +139,7 @@ details), and **database roles** that limit what each part of the server can rea
   [app/src/features/appearance/appearance-screen.tsx:191] `Only you see these. Your agent uses them to find people`).
   Opening it can refresh the answer sheet, one model call ({AI:sheet}).
 - **Not shown there**, though others see it: the reveal (first name, tags, photos), the character, the
-  neighbourhood, and "Matches"/"Doesn't match" on wants tied to a question ([server/src/api/me.ts:89] `const quotes = all.slice(0, 8).map((q) => {`).
+  neighbourhood, and "Matches"/"Doesn't match" on wants tied to a question ([server/src/api/me.ts:100] `const quotes = all.slice(0, 8).map((q) => {`).
 - **"Hide this?"** is a suggestion under any sentence that names a company, college or building, found
   by word lists; it never blocks ([shared/src/identifying.ts:11] `A SUGGESTION, NEVER A BLOCK. Nothing here stops a sentence; it only lets the screen`).
 - **Hiding** makes the fact private: new cards, sheets, talk and want checks skip it; cards already

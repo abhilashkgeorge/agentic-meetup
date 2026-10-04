@@ -24,7 +24,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 
 - **Arjun tells his clone** "I work in AI and run most mornings." His phone sends it over the live
   chat connection; the server stores it, and the clone replies. No fact is written yet
-  ([server/src/api/chat.ts:339] `const stored = await episodes.append(c, {`).
+  ([server/src/api/chat.ts:347] `const stored = await episodes.append(c, {`).
 - **About five minutes after he stops**, a background sweep runs the extractor over the whole
   session ({AI:extract}) ([server/src/index.ts:154] `}, Math.min(SESSION_IDLE_MS, 60_000));`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
@@ -147,7 +147,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 |---|---|---|---|---|
 | Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | {AI:extract}, {AI:resolve}, {AI:profile}, {AI:sheet} | [server/src/index.ts:152] `const sweeper = setInterval(() => {` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | [server/src/memory/consolidate.ts:26] `Deliberately deterministic: every step here is SQL.` |
-| Embeddings | After each chat reply | Turns both messages into vectors for recall | {AI:embed} (not metered) | [server/src/api/chat.ts:484] `void embedPair(ctx, [` |
+| Embeddings | After each chat reply | Turns both messages into vectors for recall | {AI:embed} (not metered) | [server/src/api/chat.ts:497] `void embedPair(ctx, [` |
 | Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | [server/src/index.ts:160] `const rounds = setInterval(() => {` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs
@@ -173,13 +173,13 @@ The matchmaker's database role can read a person's facts only where they are pub
 **In the person's own chat**, the clone is a model prompt ({AI:chat}) that says "You are this person's clone:
 an agent that knows them and speaks with their voice and judgement." and "Never invent a detail about them
 that is not in the fragments." ([server/src/api/chat.ts:35] `You are this person's clone: an agent that knows them and speaks with their voice and judgement.`,
-[server/src/api/chat.ts:41] `Never invent a detail about them that is not in the fragments.`). It is given the
+[server/src/api/chat.ts:43] `Never invent a detail about them that is not in the fragments.`). It is given the
 profile summary, the style note, the last 20 messages of this chat, **every** live fact (private ones
 included, since it talks only to its own person), and up to 5 recalled old messages
-([server/src/api/chat.ts:98] `[...core, ...style, ...recent, ...truth, ...fragments,`). Its replies are not
+([server/src/api/chat.ts:106] `[...core, ...style, ...recent, ...truth, ...fragments,`). Its replies are not
 checked by code. They are stored, but since 2026-09-28 neither the extractor nor recall reads them: facts
 and "things they said before" come only from the person's own lines
-([server/src/api/chat.ts:91] `Fragments recalled from things they said before:`,
+([server/src/api/chat.ts:99] `Fragments recalled from things they said before:`,
 [server/src/memory/retrieval.ts:81] `WHERE user_id = $1 AND role = 'user' AND embedding IS NOT NULL`).
 
 ### Docs vs code

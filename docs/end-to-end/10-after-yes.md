@@ -31,7 +31,7 @@ words are the date idea, written earlier (stage 7).
    [app/src/features/dm/conversations-screen.tsx:121] `: 'Say something'`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
-   ([server/src/api/chat.ts:293] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,
+   ([server/src/api/chat.ts:301] `if (!online) void wake(pair.otherId, 'message', msg.rendezvousId);`,
    [server/src/push/index.ts:39] `const MESSAGE_QUIET_MS = 2 * 60_000;`).
 3. **The chat** opens with the agents' date idea at the top: "YOUR AGENTS' DATE IDEA", the idea,
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
@@ -52,7 +52,7 @@ words are the date idea, written earlier (stage 7).
 - **Only introduced pairs can write**, enforced by the database policy and by the live
   connection; a message can only be addressed to a pair, never to a person, so nobody can
   message a stranger ([server/migrations/0024_messages.sql:12] `-- there is. Unsolicited contact is not policed, it is unrepresentable.`,
-  [server/src/api/chat.ts:245] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'not introduced yet' });`).
+  [server/src/api/chat.ts:253] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'not introduced yet' });`).
 - **Limits:** 1 to 4,000 characters; 60 events a minute per person ("Slow down a moment."); no
   daily cap. "Typing…" has its own 120 a minute and never uses up a message's: the app says it
   when typing starts, every four seconds while it goes on, and when it stops (since 2026-10-02:
@@ -173,7 +173,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   both; sends are refused; they are never matched again
   ([server/migrations/0064_bans_and_apart.sql:54] `SELECT block_exists(me, other) OR is_banned(other)`).
   The blocked person is told nothing; a message they try to send shows "not sent"
-  ([server/src/api/chat.ts:265] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'cannot send' });`).
+  ([server/src/api/chat.ts:273] `send(ws, { type: 'dm.rejected', messageId: msg.messageId, reason: 'cannot send' });`).
 - **No automatic action on reports**; a reviewer looks at them
   ([server/migrations/0039_trust_and_safety.sql:21] `--    AUTO-HIDING ON REPORT IS DELIBERATELY NOT DONE HERE. One malicious report would`).
 

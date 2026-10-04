@@ -581,7 +581,7 @@ used only to **extract** facts from what a person typed, to **point** at their o
 
 - **Arjun tells his clone** "I work in AI and run most mornings." His phone sends it over the live
   chat connection; the server stores it, and the clone replies. No fact is written yet
-  (`server/src/api/chat.ts:339`).
+  (`server/src/api/chat.ts:347`).
 - **About five minutes after he stops**, a background sweep runs the extractor over the whole
   session ([AI-1](#ai-1)) (`server/src/index.ts:154`).
   Likely results (they depend on the model; unverified): work field "AI", exercise "runs most
@@ -704,7 +704,7 @@ It is rebuilt by the interview, setup, the pool check and "send my agent out", n
 |---|---|---|---|---|
 | Session sweeper | Every 60 s, for chats quiet 5+ minutes | Extracts facts; may resolve conflicts, re-render the profile, refresh the answer sheet | [AI-1](#ai-1), [AI-8](#ai-8), [AI-9](#ai-9), [AI-10](#ai-10) | `server/src/index.ts:152` |
 | Consolidator | Every hour | Merges exact duplicates, lowers the weight of old unused facts, re-opens one old question | No (plain SQL) | `server/src/memory/consolidate.ts:26` |
-| Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:484` |
+| Embeddings | After each chat reply | Turns both messages into vectors for recall | [AI-7](#ai-7) (not metered) | `server/src/api/chat.ts:497` |
 | Round worker | Every 5 s | Runs rounds; records "I don't know"s for the question of the day | See stages 6–7 | `server/src/index.ts:160` |
 
 Two configured model tasks, `reflect` and `canon`, have no caller: no reflection or canonicalisation runs
@@ -730,13 +730,13 @@ The matchmaker's database role can read a person's facts only where they are pub
 **In the person's own chat**, the clone is a model prompt ([AI-6](#ai-6)) that says "You are this person's clone:
 an agent that knows them and speaks with their voice and judgement." and "Never invent a detail about them
 that is not in the fragments." (`server/src/api/chat.ts:35`,
-`server/src/api/chat.ts:41`). It is given the
+`server/src/api/chat.ts:43`). It is given the
 profile summary, the style note, the last 20 messages of this chat, **every** live fact (private ones
 included, since it talks only to its own person), and up to 5 recalled old messages
-(`server/src/api/chat.ts:98`). Its replies are not
+(`server/src/api/chat.ts:106`). Its replies are not
 checked by code. They are stored, but since 2026-09-28 neither the extractor nor recall reads them: facts
 and "things they said before" come only from the person's own lines
-(`server/src/api/chat.ts:91`,
+(`server/src/api/chat.ts:99`,
 `server/src/memory/retrieval.ts:81`).
 
 ### Docs vs code
@@ -775,7 +775,7 @@ details), and **database roles** that limit what each part of the server can rea
 |---|---|---|---|---|---|
 | A fact is written | It gets a level: public, match-only or private | Code | `facts.disclosure` | Public: can be quoted to others. Match-only: used for matching, never said. Private: hidden by the person | `server/migrations/0018_dating_schema.sql:39` |
 | "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | `app/src/features/appearance/appearance-screen.tsx:197` |
-| "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | `server/src/api/me.ts:177` |
+| "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | `server/src/api/me.ts:197` |
 | A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | `server/src/matching/brief.ts:204` |
 | A sentence naming a company, college or building | A suggestion: "This names a company. Hide this?" | Code | Nothing unless hidden | The person | `app/src/features/appearance/appearance-state.ts:81` |
 
@@ -904,7 +904,7 @@ details), and **database roles** that limit what each part of the server can rea
   `app/src/features/appearance/appearance-screen.tsx:191`).
   Opening it can refresh the answer sheet, one model call ([AI-10](#ai-10)).
 - **Not shown there**, though others see it: the reveal (first name, tags, photos), the character, the
-  neighbourhood, and "Matches"/"Doesn't match" on wants tied to a question (`server/src/api/me.ts:89`).
+  neighbourhood, and "Matches"/"Doesn't match" on wants tied to a question (`server/src/api/me.ts:100`).
 - **"Hide this?"** is a suggestion under any sentence that names a company, college or building, found
   by word lists; it never blocks (`shared/src/identifying.ts:11`).
 - **Hiding** makes the fact private: new cards, sheets, talk and want checks skip it; cards already
@@ -1380,7 +1380,7 @@ asking only when it matched would say how it came out
 - HOW-IT-WORKS.md §12 says no multi-answer field can be a must-have; since 0071 the work
   field can be (`HOW-IT-WORKS.md:891`).
 - "How you appear" reads back only must-haves on the five cards; a must-have on a tied want
-  is not read back (`server/src/api/me.ts:136`).
+  is not read back (`server/src/api/me.ts:156`).
 
 ### Unverified
 
@@ -1725,10 +1725,10 @@ Each person has an **answer sheet**: for each of the 12 bank questions, a pointe
 their own sentences, or nothing. A model builds it outside the round, whenever their
 shareable sentences change ([AI-10](#ai-10);
 `server/src/matching/answer-sheet.ts:104`,
-`server/src/matching/answer-sheet.ts:185`).
+`server/src/matching/answer-sheet.ts:203`).
 Only fact ids are stored. When there is no talk, the card shows "WHAT YOUR AGENTS ASKED EACH
 OTHER": questions both answered, then only theirs, then up to two the reader answered and
-they did not (`server/src/matching/answer-sheet.ts:348`,
+they did not (`server/src/matching/answer-sheet.ts:366`,
 `app/src/features/matches/matches-screen.tsx:421`).
 
 ### 7.5 What is saved, and what people can read
@@ -2141,7 +2141,7 @@ words are the date idea, written earlier (stage 7).
    `app/src/features/dm/conversations-screen.tsx:121`). If her app is closed,
    her phone is woken: "You can talk now" (stage 9.5); a message to a closed app wakes the phone
    too, at most once every two minutes per chat, saying only "New message"
-   (`server/src/api/chat.ts:293`,
+   (`server/src/api/chat.ts:301`,
    `server/src/push/index.ts:39`).
 3. **The chat** opens with the agents' date idea at the top: "YOUR AGENTS' DATE IDEA", the idea,
    "Propose this date", "It goes as a message from you. You two pick the day." Below it: "You
@@ -2162,7 +2162,7 @@ words are the date idea, written earlier (stage 7).
 - **Only introduced pairs can write**, enforced by the database policy and by the live
   connection; a message can only be addressed to a pair, never to a person, so nobody can
   message a stranger (`server/migrations/0024_messages.sql:12`,
-  `server/src/api/chat.ts:245`).
+  `server/src/api/chat.ts:253`).
 - **Limits:** 1 to 4,000 characters; 60 events a minute per person ("Slow down a moment."); no
   daily cap. "Typing…" has its own 120 a minute and never uses up a message's: the app says it
   when typing starts, every four seconds while it goes on, and when it stops (since 2026-10-02:
@@ -2283,7 +2283,7 @@ The chat shows "IT HAS BEEN QUIET FOR TWO DAYS" and either the date idea with it
   both; sends are refused; they are never matched again
   (`server/migrations/0064_bans_and_apart.sql:54`).
   The blocked person is told nothing; a message they try to send shows "not sent"
-  (`server/src/api/chat.ts:265`).
+  (`server/src/api/chat.ts:273`).
 - **No automatic action on reports**; a reviewer looks at them
   (`server/migrations/0039_trust_and_safety.sql:21`).
 
@@ -2466,8 +2466,11 @@ $0.02; not measured, because no round has run since the talk was added.
 - **When:** the first setup screen, at once; and for every chat session, about 5 minutes after it goes quiet
   (`server/src/api/tell.ts:73`,
   `server/src/memory/session.ts:29`).
-  Story and question-of-the-day answers are also swept later, and a first-screen sentence is extracted a second
-  time by the sweeper (`server/src/memory/session.ts:325`).
+  Story and question-of-the-day answers are also swept later. The first sentence was extracted a second time
+  by the sweeper, five minutes on -- the same words, and one of the day's ten turns on the person's first day;
+  since 2026-10-04 its session is marked read once it is
+  (`server/src/memory/session.ts:325`,
+  `server/src/api/tell.ts:105`).
 - **What goes in:** the person's own lines from the session -- never the clone's (since 2026-09-28) --
   plus their current facts; a session with nothing they typed makes no call. Key instructions: "You extract
   durable facts about ONE person from what they typed to their AI clone.", "NEVER generalise the object.",
@@ -2546,18 +2549,24 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-6"></a>
 ### AI-6. Own-clone chat reply
 
-- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens (`server/src/api/chat.ts:396`,
-  `server/src/api/chat.ts:421`).
+- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens (`server/src/api/chat.ts:404`,
+  `server/src/api/chat.ts:429`).
 - **When:** every message a person sends to their own clone.
 - **In:** the profile summary, style note, last 20 messages, **every** live fact (including private ones: it
   talks only to its own person), up to 5 recalled old messages. Instructions: "You are this person's clone: an
-  agent that knows them and speaks with their voice and judgement." "Never invent a detail about them that is not
+  agent that knows them and speaks with their voice and judgement." "The person writing to you is that person,
+  talking to their own clone ... When they tell you something, take it in and reply to it ... Never repeat their
+  message back to them." (since 2026-10-04: nothing said who was writing, and "I just started learning the
+  guitar." came back word for word, the whole 7-token reply). "Never invent a detail about them that is not
   in the fragments." "Speak plainly, in their register."
   (`server/src/api/chat.ts:35`,
-  `server/src/api/chat.ts:41`,
-  `server/src/api/chat.ts:43`).
-- **Out:** free text. **Checks:** none; streamed straight to the phone
-  (`server/src/api/chat.ts:428`).
+  `server/src/api/chat.ts:37`,
+  `server/src/api/chat.ts:43`,
+  `server/src/api/chat.ts:45`).
+- **Out:** free text. **Checks:** none; streamed straight to the phone. A reply that is the person's own
+  words is logged ("clone said the message back"), so it can be counted
+  (`server/src/api/chat.ts:436`,
+  `server/src/api/chat.ts:473`).
 - **Stored:** the reply, as a message in the person's history.
 
 <a id="ai-7"></a>
@@ -2566,7 +2575,7 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Model:** Gemini Embedding 001, 768 numbers per text (`server/src/llm/adapters/google.ts:216`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
   are embedded and stored (`server/src/memory/retrieval.ts:64`,
-  `server/src/api/chat.ts:494`).
+  `server/src/api/chat.ts:507`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   (`server/src/llm/embeddings.ts:26`).
 
@@ -2598,9 +2607,14 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-10"></a>
 ### AI-10. Answer sheet
 
-- **Task / model:** `extract` → Flash-Lite, 600 tokens (`server/src/matching/answer-sheet.ts:200`).
+- **Task / model:** `extract` → Flash-Lite, 600 tokens (`server/src/matching/answer-sheet.ts:218`).
 - **When:** only when the person's shareable sentences changed: after learning, when "How you appear" opens, and
-  when they tap "Send my agent out" (`server/src/matching/answer-sheet.ts:185`).
+  when they tap "Send my agent out" (`server/src/matching/answer-sheet.ts:203`).
+  One build at a time for one person: callers that arrive during a build wait for it (since 2026-10-04: opening
+  the town asked "How you appear" three times at once for the "Your clone" count, and a new person's sheet was
+  built three times, twice -- six of her ten turns; that count now has its own read, which builds nothing)
+  (`server/src/matching/answer-sheet.ts:184`,
+  `server/src/api/me.ts:135`).
 - **In:** up to 40 of the person's own public, verified sentences, numbered, and the 12 bank questions.
   Instructions: "For each question, give the number of the ONE sentence that answers it directly, or null."
   "Never write any words of your own." "Null is always safe. A wrong number is shown to another person as
@@ -2718,7 +2732,7 @@ server itself, with no vendor; the frames are deleted and only the verdict is ke
 | **"What it knows"** | Every fact, its history, and the confirm questions. Since 2026-09-30 each reads in words -- the field as a person says it and a tapped answer by its chip: "Kids: Want kids", "One person or open: One person", "How far you would go: 25 km" (it was the column and the stored value: "wants children: yes"); what the person typed is shown exactly as typed | Everyone | `app/src/features/knowledge/you-screen.tsx:96`, `server/src/memory/fact-words.ts:48` |
 | **Clarifying questions** | "It wants to know" cards in chat, from facts that may be stale or from paste guesses; they never close | Everyone | `app/src/features/chat/clone-chat.tsx:102` |
 | **"Your clone"** | A "💬 Your clone" button on the town, under the place pill, opens the chat with your own clone over the map: tell it what is new, or what to look for (since 2026-10-04, the founder: "we need to have a chat option in the town square to chat with my clone to keep it updated"; before, the only way in was to tap your own agent on the map). "· 2 new" on it when it has learned things it has not asked about yet | Everyone | `app/src/features/world/hud.tsx:399`, `app/src/features/knowledge/learned.ts:37` |
-| **"It learned this"** | What the clone learned from your chats, asked about at the top of the chat with it: one or two as cards -- the sentence, "Your agent may say it to people it meets?", "OK to share" / "Keep private"; three or more as one card, "N things from your chats", that opens **"What it learned"**: every one, each with its own buttons, and "Okay to share all" (since 2026-10-04, the founder's ask). "OK to share" is the same switch as on "How you appear"; "Keep private" changes nothing on the server and only stops the asking, remembered on the phone (up to 40). Learning runs about five minutes after a chat goes quiet (stage 3), so a card appears on the next visit | Everyone | `app/src/features/knowledge/learned.ts:20`, `app/src/features/knowledge/learned-screen.tsx:29`, `app/src/features/knowledge/use-learned.ts:32`, `app/src/lib/storage.ts:208` |
+| **"It learned this"** | What the clone learned from your chats, asked about at the top of the chat with it: one or two as cards -- the sentence, "Your agent may say it to people it meets?", "OK to share" / "Keep private"; three or more as one card, "N things from your chats", that opens **"What it learned"**: every one, each with its own buttons, and "Okay to share all" (since 2026-10-04, the founder's ask). "OK to share" is the same switch as on "How you appear"; "Keep private" changes nothing on the server and only stops the asking, remembered on the phone (up to 40). Learning runs about five minutes after a chat goes quiet (stage 3), so a card appears on the next visit. The list has a read of its own, which calls no model, made once however many ask at the same time (since 2026-10-04; it was read through "How you appear", which can rebuild the answer sheet, three times as the town opened) | Everyone | `app/src/features/knowledge/learned.ts:20`, `app/src/features/knowledge/learned-screen.tsx:29`, `app/src/features/knowledge/use-learned.ts:35`, `app/src/features/knowledge/read-learned.ts:19`, `app/src/lib/storage.ts:208` |
 | **Settings** | Theme, 3D town on/off, 30 fps battery mode, contact support, "Download everything", "Delete everything", sign out, server address, credits | Everyone | `app/src/features/settings/settings-screen.tsx:254` |
 | **Server address** | Anyone can point the app at another server; the app also opens this screen by itself when the server is unreachable, and once an address answers it runs its whole start-up check again (account, consent, setup) instead of opening the town (since 2026-10-02: it used to open the town with no account loaded). Opened from Settings it is titled "Server", with "The app talks to this address:" and a back button, and "Use the default again" carries on the same way (since 2026-10-03; before, it said "Can't reach the server -- It tried this and nothing answered" over a working address, warned that a working localhost meant the phone, and stayed put after the reset while Settings showed the old address); the failure words are kept for when nothing answered at launch (`app/src/features/settings/connect-words.ts:18`) | Everyone | `app/src/features/settings/connect-screen.tsx:42` |
 | **Loading** | While something loads the app shows a thinking orb -- a small animated figure of dots from [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs) (MIT; its geometry copied into the app, drawn with the phone's GL), in the state that says what is coming: a dotted globe being scanned for the town, the park and the maps, a constellation wiring itself for matches and a person, an undulating sash for conversations, strands plaiting for what your agent knows, bands scrambling for questions and rules, a shape changing circle to square for your character, a slow ring for photos and the terms, orbits for the rest. Light dots on a dark page, dark on a light one. Since 2026-10-04 a waiting screen IS the orb: most of the screen's width, in the middle of the screen, with the words under it ("Loading your matches…"), and big orbs carry up to three times the library's dots so they read as figures, not specks; a part of a screen inside a card ("Loading your invites") gets a smaller one in its card (before, a 64-point orb sat small in an empty page -- the founder: "very small ... cover the screen with it") (`app/src/components/ui/loading-size.ts:19`). The town's globe, shown at launch and while the town builds, runs on the native animation driver so it keeps turning while the app is busy building the city; the others are drawn each frame (since 2026-10-03, the founder's choice; before, grey placeholders in each screen's shape, breathing, and before those a spinner). Never an empty state that is only a wait ("No conversations yet", "Nothing waiting", "0 left" used to show before the data came). The reveal's two answers appear only once the profile has. A load that fails says "Could not load ... Check your connection." with "Try again" instead of an orb left turning. Under the phone's Reduce Motion an orb holds still. Opening the app shows the globe while it checks your session, instead of a blank white page (since 2026-10-03; it could be ten seconds over a slow connection). Since 2026-10-04 the town opens in about half the time -- on the Pixel, from the app's code starting to the town on screen, 14 s became 6.4 s: Cubbon Park (its 62,000 tufts of grass, 700 trees, paths, the city round it, its benches and lamps) is built the first time you go in, under the "Entering the park" globe, not as the app opens; laid out two and a half times faster, it is the same park to the last tuft; and the town's globe stays up until the people on the map are ready -- their bodies prepared in batches from the moment the 3D renderer loads, four times quicker (the straps of their bags were found by testing every triangle of a top) -- so the camera's first move to your agent is drawn smoothly, not at a frame or two a second while they were prepared (the founder: "why does it take 10 secs+ to load the initial tabs and the map") (`app/src/features/world/crowd-gpu.ts:1477`). Since 2026-10-02 | Everyone | `app/src/components/ui/orb.tsx:58`, `app/src/components/ui/globe-tables.ts:43`, `app/src/features/world/town-loading.tsx:28` |

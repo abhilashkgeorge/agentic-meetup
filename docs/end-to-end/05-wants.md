@@ -347,7 +347,7 @@ asking only when it matched would say how it came out
 - HOW-IT-WORKS.md §12 says no multi-answer field can be a must-have; since 0071 the work
   field can be ([HOW-IT-WORKS.md:891] `can never exclude anybody: no multi-valued predicate`).
 - "How you appear" reads back only must-haves on the five cards; a must-have on a tied want
-  is not read back ([server/src/api/me.ts:136] `[ctx.userId, ALL_CARDS.map((k) => k.predicate)]`).
+  is not read back ([server/src/api/me.ts:156] `[ctx.userId, ALL_CARDS.map((k) => k.predicate)]`).
 
 ### Unverified
 

@@ -60,8 +60,11 @@ $0.02; not measured, because no round has run since the talk was added.
 - **When:** the first setup screen, at once; and for every chat session, about 5 minutes after it goes quiet
   ([server/src/api/tell.ts:73] `out = await metered(ctx, 'extract', () => extractSessionFacts(`,
   [server/src/memory/session.ts:29] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);`).
-  Story and question-of-the-day answers are also swept later, and a first-screen sentence is extracted a second
-  time by the sweeper ([server/src/memory/session.ts:325] `AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)`).
+  Story and question-of-the-day answers are also swept later. The first sentence was extracted a second time
+  by the sweeper, five minutes on -- the same words, and one of the day's ten turns on the person's first day;
+  since 2026-10-04 its session is marked read once it is
+  ([server/src/memory/session.ts:325] `AND (x.last_turn_index IS NULL OR MAX(e.turn_index) > x.last_turn_index)`,
+  [server/src/api/tell.ts:105] `SET last_turn_index = GREATEST(session_extractions.last_turn_index, EXCLUDED.last_turn_index),`).
 - **What goes in:** the person's own lines from the session -- never the clone's (since 2026-09-28) --
   plus their current facts; a session with nothing they typed makes no call. Key instructions: "You extract
   durable facts about ONE person from what they typed to their AI clone.", "NEVER generalise the object.",
@@ -140,18 +143,24 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-6"></a>
 ### AI-6. Own-clone chat reply
 
-- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens ([server/src/api/chat.ts:396] `const model = modelFor('chat');`,
-  [server/src/api/chat.ts:421] `maxOutputTokens: 2048,`).
+- **Task / model:** `chat` → Flash-Lite, streamed, 2,048 tokens ([server/src/api/chat.ts:404] `const model = modelFor('chat');`,
+  [server/src/api/chat.ts:429] `maxOutputTokens: 2048,`).
 - **When:** every message a person sends to their own clone.
 - **In:** the profile summary, style note, last 20 messages, **every** live fact (including private ones: it
   talks only to its own person), up to 5 recalled old messages. Instructions: "You are this person's clone: an
-  agent that knows them and speaks with their voice and judgement." "Never invent a detail about them that is not
+  agent that knows them and speaks with their voice and judgement." "The person writing to you is that person,
+  talking to their own clone ... When they tell you something, take it in and reply to it ... Never repeat their
+  message back to them." (since 2026-10-04: nothing said who was writing, and "I just started learning the
+  guitar." came back word for word, the whole 7-token reply). "Never invent a detail about them that is not
   in the fragments." "Speak plainly, in their register."
   ([server/src/api/chat.ts:35] `You are this person's clone: an agent that knows them and speaks with their voice and judgement.`,
-  [server/src/api/chat.ts:41] `Never invent a detail about them that is not in the fragments.`,
-  [server/src/api/chat.ts:43] `Speak plainly, in their register. No preamble, no hedging, no restating the question.`).
-- **Out:** free text. **Checks:** none; streamed straight to the phone
-  ([server/src/api/chat.ts:428] `send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });`).
+  [server/src/api/chat.ts:37] `The person writing to you is that person, talking to their own clone`,
+  [server/src/api/chat.ts:43] `Never invent a detail about them that is not in the fragments.`,
+  [server/src/api/chat.ts:45] `Speak plainly, in their register. No preamble, no hedging, no restating the question.`).
+- **Out:** free text. **Checks:** none; streamed straight to the phone. A reply that is the person's own
+  words is logged ("clone said the message back"), so it can be counted
+  ([server/src/api/chat.ts:436] `send(ws, { type: 'text.delta', turnId: msg.turnId, text: ev.text });`,
+  [server/src/api/chat.ts:473] `if (sameWords(text, msg.text)) log.warn({ userId: ctx.userId, model }, 'clone said the message back');`).
 - **Stored:** the reply, as a message in the person's history.
 
 <a id="ai-7"></a>
@@ -160,7 +169,7 @@ $0.02; not measured, because no round has run since the talk was added.
 - **Model:** Gemini Embedding 001, 768 numbers per text ([server/src/llm/adapters/google.ts:216] `model: env.EMBEDDING_MODEL.replace(/^google:/, ''),`).
 - **When:** each chat message is embedded to search the person's past messages; after the reply, both messages
   are embedded and stored ([server/src/memory/retrieval.ts:64] `[vector] = await embed([query]);`,
-  [server/src/api/chat.ts:494] `const vectors = await embed(todo.map(([, t]) => t));`).
+  [server/src/api/chat.ts:507] `const vectors = await embed(todo.map(([, t]) => t));`).
 - **Checks / metering:** none; these calls bypass the meter and the ledger
   ([server/src/llm/embeddings.ts:26] `export async function embed(texts: readonly string[]): Promise<number[][]> {`).
 
@@ -192,9 +201,14 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-10"></a>
 ### AI-10. Answer sheet
 
-- **Task / model:** `extract` → Flash-Lite, 600 tokens ([server/src/matching/answer-sheet.ts:200] `maxOutputTokens: 600,`).
+- **Task / model:** `extract` → Flash-Lite, 600 tokens ([server/src/matching/answer-sheet.ts:218] `maxOutputTokens: 600,`).
 - **When:** only when the person's shareable sentences changed: after learning, when "How you appear" opens, and
-  when they tap "Send my agent out" ([server/src/matching/answer-sheet.ts:185] `if (had.rows[0]?.basis === basis) return { built: false, answered: -1 };`).
+  when they tap "Send my agent out" ([server/src/matching/answer-sheet.ts:203] `if (had.rows[0]?.basis === basis) return { built: false, answered: -1 };`).
+  One build at a time for one person: callers that arrive during a build wait for it (since 2026-10-04: opening
+  the town asked "How you appear" three times at once for the "Your clone" count, and a new person's sheet was
+  built three times, twice -- six of her ten turns; that count now has its own read, which builds nothing)
+  ([server/src/matching/answer-sheet.ts:184] `const running = building.get(who.userId);`,
+  [server/src/api/me.ts:135] `.get('/v1/me/learned', async (c) => {`).
 - **In:** up to 40 of the person's own public, verified sentences, numbered, and the 12 bank questions.
   Instructions: "For each question, give the number of the ONE sentence that answers it directly, or null."
   "Never write any words of your own." "Null is always safe. A wrong number is shown to another person as

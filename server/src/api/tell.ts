@@ -93,6 +93,20 @@ export const tellRoutes = new Hono().post('/v1/tell', async (c) => {
     return { learned: n, toConfirm: staged };
   });
 
+  // READ ONCE. The sentence was just read, so its session is marked read, as the sweeper
+  // marks the ones it reads: without this it read the same words again five minutes
+  // later as an idle chat session -- a second call, and one of the person's ten turns
+  // for the day, on their first day (the Pixel, 2026-10-04: llm_calls 04:24 and 04:30).
+  if (stored) {
+    await tenantSession(ctx, (db) => db.query(
+      `INSERT INTO session_extractions (tenant_id, user_id, session_id, last_turn_index, facts_staged)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (tenant_id, user_id, session_id) DO UPDATE
+         SET last_turn_index = GREATEST(session_extractions.last_turn_index, EXCLUDED.last_turn_index),
+             extracted_at = now()`,
+      [ctx.tenantId, ctx.userId, sessionId, stored.turnIndex, toConfirm]));
+  }
+
   log.info({ userId: ctx.userId, learned, toConfirm }, 'told');
   // Something new about them may be an answer another agent will ask for. Only when
   // something was actually learned; a no-op when no sentence it could point at changed.

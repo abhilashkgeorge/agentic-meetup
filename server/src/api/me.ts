@@ -23,6 +23,17 @@ async function ctxOr401(c: { req: { header: (k: string) => string | undefined } 
 /** A brief shows up to this many of a person's own sentences. */
 const QUOTES_ON_A_CARD = 2;
 
+/**
+ * LEARNED, NOT YET SHARED (extract.ts, 2026-09-25): what the clone picked up in chat that
+ * passes every check but the person's say-so. Their agent uses it for matching; it is
+ * quoted nowhere until they tap "OK to share", which writes 'public' through the
+ * disclosure route below.
+ */
+async function learnedNotShared(ctx: { tenantId: string; userId: string }): Promise<{ factId: string; text: string }[]> {
+  return (await loadQuotes(ctx, { disclosures: ['matchable_only'], predicates: SHEET_SOURCES, limit: MAX_SENTENCES }))
+    .map((q) => ({ factId: q.id, text: q.text }));
+}
+
 export const meRoutes = new Hono()
   .get('/v1/me/export', async (c) => {
     let ctx;
@@ -106,16 +117,25 @@ export const meRoutes = new Hono()
       .filter((q) => q.hidden && !listed.has(q.id))
       .map((q) => ({ factId: q.id, text: q.text }));
 
-    // LEARNED, NOT YET SHARED (extract.ts, 2026-09-25): what the clone picked up in chat
-    // that passes every check but the person's say-so. Their agent uses it for matching;
-    // it is quoted nowhere until they tap "OK to share", which writes 'public' through
-    // the disclosure route below.
-    const learned = (await loadQuotes(ctx, { disclosures: ['matchable_only'], predicates: SHEET_SOURCES, limit: MAX_SENTENCES }))
-      .map((q) => ({ factId: q.id, text: q.text }));
+    const learned = await learnedNotShared(ctx);
 
     // The same question on every answer the agent gives another agent.
     const sheetAsks = sheet.map((e) => (e.answer ? { ...e, answer: { ...e.answer, names: namesPlace(e.answer.text) } } : e));
     return c.json({ headline: headlineOf(card), line: BRIEF_LINE, tags, quotes, sheet: sheetAsks, hidden, learned });
+  })
+
+  /**
+   * What the clone learned and has not been told it may say -- the list on "How you
+   * appear", alone. For the town's "Your clone" and the cards in the chat with it, which
+   * ask on every visit: this only reads. "How you appear" brings the answer sheet up to
+   * date first, a model call whenever a sentence changed -- and one opening of the town
+   * asked it three times at once, three of a new person's ten turns (the Pixel,
+   * 2026-10-04).
+   */
+  .get('/v1/me/learned', async (c) => {
+    const { ctx, res } = await ctxOr401(c);
+    if (!ctx) return c.json({ error: res }, 401);
+    return c.json({ learned: await learnedNotShared(ctx) });
   })
 
   /** The person's own rules, read back in words. A template, not a model (readback.ts). */

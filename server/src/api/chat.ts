@@ -34,6 +34,8 @@ import { handleParkFrame, isParkFrame, socketClosed } from '../park/socket.js';
  */
 const SYSTEM_PROMPT = `You are this person's clone: an agent that knows them and speaks with their voice and judgement.
 
+The person writing to you is that person, talking to their own clone: telling you what is new in their life or what they want you to look for, or asking what you think. When they tell you something, take it in and reply to it, briefly and in your own words: what it changes, or one short question about it. Never repeat their message back to them.
+
 You are given recalled fragments of things they have actually said, verbatim. Treat them as evidence, not as script.
 
 Recompute the person's current state from the fragments. Do not simply answer from them. When two fragments disagree, the later one usually reflects the present, but say so rather than asserting silently.
@@ -41,6 +43,12 @@ Recompute the person's current state from the fragments. Do not simply answer fr
 Never invent a detail about them that is not in the fragments. If you do not know something about them, say you do not know and ask.
 
 Speak plainly, in their register. No preamble, no hedging, no restating the question.`;
+
+/** The same words, ignoring case, spacing and punctuation. */
+export function sameWords(a: string, b: string): boolean {
+  const words = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return words(a).length > 0 && words(a) === words(b);
+}
 
 function send(ws: WebSocket, ev: ServerEvent): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(ev));
@@ -458,6 +466,11 @@ async function handle(ws: WebSocket, ctx: TenantCtx, raw: string): Promise<void>
     }
     throw err;
   }
+
+  // An echo -- the reply is their own message -- is what the prompt above was missing
+  // (the Pixel, 2026-10-04: "I just started learning the guitar." came back, word for
+  // word, 7 tokens). Logged so it can be counted if it ever comes back.
+  if (sameWords(text, msg.text)) log.warn({ userId: ctx.userId, model }, 'clone said the message back');
 
   // --- Phase 3: persist + meter. New short transaction. ---
   const assistantTurnId = crypto.randomUUID();

@@ -172,10 +172,28 @@ export function withExplicit(
  * none at all when nothing changed or there is nothing to point at. A failure --
  * including the day's cap -- keeps the sheet they had; it never throws at the caller.
  */
-export async function ensureSheet(
+export function ensureSheet(
   who: { tenantId: string; userId: string },
   /** Built as part of setting up (the first sentence): counted as setup (metering.ts). */
   opts: { setup?: boolean } = {},
+): Promise<{ built: boolean; answered: number }> {
+  // ONE BUILD AT A TIME FOR ONE PERSON. Callers that arrive while one is running wait for
+  // it, rather than each reading the old basis and each paying for the same build: three
+  // at once, twice in five minutes, from one new person's phone (the Pixel, 2026-10-04,
+  // llm_calls). In-process: one server.
+  const running = building.get(who.userId);
+  if (running) return running;
+  const now = buildIfChanged(who, opts).finally(() => building.delete(who.userId));
+  building.set(who.userId, now);
+  return now;
+}
+
+/** The build running now, per person (ensureSheet). */
+const building = new Map<string, Promise<{ built: boolean; answered: number }>>();
+
+async function buildIfChanged(
+  who: { tenantId: string; userId: string },
+  opts: { setup?: boolean },
 ): Promise<{ built: boolean; answered: number }> {
   try {
     const sentences = await loadQuotes(who, { predicates: SHEET_SOURCES, limit: MAX_SENTENCES });

@@ -459,6 +459,13 @@ export interface SheetEntry {
 export type NamedPlace = 'company' | 'college' | 'building';
 export const getAppearance = (token: string) => get<Appearance>('/v1/me/appearance', token);
 
+/**
+ * What the clone learned and has not been told it may say: the list on "How you appear",
+ * read alone -- no model call behind it, so the town can ask on every visit (me.ts).
+ */
+export const getLearned = (token: string) =>
+  get<{ learned: { factId: string; text: string }[] }>('/v1/me/learned', token);
+
 /** Your wants, each with the question the other person answers (server api/wants.ts). */
 export const getWants = (token: string) =>
   get<{ wants: import('../features/preferences/wants-state').WantView[] }>('/v1/me/wants', token);
