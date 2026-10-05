@@ -22,15 +22,26 @@ interface Stats {
   soundedRight: number;
 }
 
+/**
+ * WHO IS A PERSON, for "People here". Not the practice pool (`__synthetic__`), and not the
+ * accounts the eval tools keep so their model spend stays on the ledger -- deleting one
+ * would take its llm_calls rows with it (`__eval_*`: evals/wants, evals/clone-brain).
+ * The clone-brain baseline created `__eval_clone_brain__` on 2026-09-28 and this page
+ * counted it as somebody, on the one page whose whole purpose is honesty about how small
+ * this is. `t` is the tenant.
+ */
+export const PERSON_TENANT = `t.name <> '__synthetic__' AND t.name NOT LIKE '\\_\\_eval\\_%'`;
+
 export const statsRoutes = new Hono().get('/stats', async (c) => {
   const s = await discoverySession(async (db) => {
     const { rows } = await db.query<Stats>(`
       SELECT
-        -- Synthetic profiles exist to exercise matching and are not people. Counting
-        -- them here would make the one page in this product whose entire purpose is
-        -- honesty about how small it is into the least honest thing in it.
+        -- Synthetic profiles exist to exercise matching and are not people, and neither
+        -- are the eval accounts. Counting them here would make the one page in this
+        -- product whose entire purpose is honesty about how small it is into the least
+        -- honest thing in it.
         (SELECT count(*) FROM app_users u JOIN tenants t ON t.id = u.tenant_id
-          WHERE t.name <> '__synthetic__')                               AS people,
+          WHERE ${PERSON_TENANT})                                        AS people,
         (SELECT count(*) FROM self_tests WHERE verdict IS NOT NULL)     AS "testsGraded",
         (SELECT count(*) FROM self_tests WHERE verdict = 'me')          AS "soundedRight"
     `);

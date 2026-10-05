@@ -32,13 +32,16 @@ the person's own lines (stages 2, 3, 5, 6, 9 and AI-1). What remains:
     ([server/src/api/dating.ts:612] `AND r.status NOT IN ('lapsed', 'expired')`).
 4. **Closed on 2026-09-29: "Matches" on a situation want.** A want tied to a situation question shows only
     "A private topic. Their answer is never shown.", whatever the check found, and the after-date check-in no
-    longer asks about it ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
+    longer asks about it ([server/src/matching/brief.ts:468] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
 5. **Closed on 2026-09-29: probing the square.** The square's strangers are picked once a day with both people's
     rules as they stand then, so flipping a must-have (or your own answer) changes nothing there until tomorrow;
     a block, a ban or leaving the pool still takes somebody out at once
     ([server/src/api/world.ts:178] `let ids = hit?.day === today ? hit.ids : null;`,
     [server/src/matching/candidates.ts:165] `export async function stillThere(c: PoolClient, userId: string, ids: readonly string[]): Promise<string[]> {`).
-6. **Word lists have gaps.** The private-topic list is finite ("family", "wedding", "Diwali" are not on it), and the
+6. **Word lists have gaps, where they are the only check.** Learned sentences are judged by meaning since 2026-09-28
+    (section 4.2), but story and question-of-the-day answers, and sentences learned before that day, have only the
+    word list, which is finite ("family", "wedding", "Diwali" are not on it)
+    ([server/migrations/0077_private_topic.sql:22] `what still guards sentences written before today and the typed story answers, which`). The
     talk and answer sheets also use "goal" and "dislikes" sentences, which the card's own rule leaves out as the place
     "where faith, politics and children are said in prose"
     ([server/src/matching/answer-sheet.ts:79] `export const SHEET_SOURCES: readonly string[] = [...QUOTABLE, 'goal', 'dislikes'];`,

@@ -18,7 +18,7 @@ three shapes:
 
 | Input | What happens | AI or code? | What gets stored | Who can see it | Code |
 |---|---|---|---|---|---|
-| Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | [server/src/onboarding/stories.ts:152] `predicate: want ? 'seeking' : 'prompt_answer'` |
+| Arjun types "What would you love in someone?" | Saved as one `seeking` fact, match-only | Code | `facts` row + an episode with his words | Arjun; his agent's checks; the founder's list (topic words or shared text only) | [server/src/onboarding/stories.ts:153] `predicate: want ? 'seeking' : 'prompt_answer'` |
 | Answer to "Anyone else you couldn't be with?" | Saved as a `dealbreaker` fact; a model may also propose a card change | Code, plus {AI:dealbreaker} | `facts` row | Same as above | [server/src/api/interview.ts:341] `predicate: 'dealbreaker',` |
 | A want's words match a question | The question is offered; Arjun ticks the answers he accepts | Code (word patterns) | `preferences` row: field, ticked values, strength | Arjun, on "Looking for" | [server/src/matching/want-questions.ts:84] `if (w.pattern.test(text)) return { want: w` |
 | Arjun taps "Must have" | The rule becomes a hard filter, both directions | Code (SQL) | `preferences.strength = 'dealbreaker'` | Arjun | [server/src/matching/candidates.ts:126] `// The only place a personal rule excludes anybody. Both directions.` |
@@ -64,7 +64,7 @@ three shapes:
   Arjun's card says the same either way: "A private topic. Their answer is never shown." A
   situation answer is never repeated to anybody, and "Matches" beside a want that accepts one
   answer told him hers, until 2026-09-29
-  ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
+  ([server/src/matching/brief.ts:468] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
   Answering "A treat", she moves later in Arjun's order, never out
   ([server/src/matching/wants.ts:297] `[c.synthetic ? 1 : 0, notMet.get(c.userId) ?? 0, i]`).
 - **If Arjun had tapped "Must have"**, a Meera who answered "A treat" would never be met by
@@ -90,9 +90,9 @@ three shapes:
   12 to 300 characters ([server/src/onboarding/stories.ts:67] `export const STORY_MIN = 12;`,
   [server/src/onboarding/stories.ts:68] `export const STORY_MAX = 300;`). Saving writes one
   `seeking` fact, visibility "match-only"
-  ([server/src/onboarding/stories.ts:156] `...(want ? { disclosure: 'matchable_only' as const } : {}),`).
+  ([server/src/onboarding/stories.ts:157] `...(want ? { disclosure: 'matchable_only' as const } : {}),`).
   There is only ever one live `seeking` fact: saving again replaces the whole sentence
-  ([server/src/onboarding/stories.ts:149] `single-valued, so a new one supersedes the old by itself`).
+  ([server/src/onboarding/stories.ts:150] `single-valued, so a new one supersedes the old by itself`).
 - **The interview's free sentence.** "Anyone else you couldn't be with?", up to 400
   characters, stored as a `dealbreaker` fact
   ([server/src/onboarding/questions.ts:217] `text: 'Anyone else you couldn\'t be with?',`,
@@ -102,7 +102,7 @@ three shapes:
   person's "Keep this" writes it ({AI:dealbreaker}; [server/src/api/interview.ts:359] `const m = await metered(ctx, 'extract', () => mapDealbreaker(ctx, sentence), { setup: true });`).
 - **Chat.** The chat extractor may also write `seeking` or `dealbreaker` facts. These fields
   are not "tapped" fields, so they go live at once, without a confirm step
-  ([server/src/memory/extract.ts:237] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',`).
+  ([server/src/memory/extract.ts:276] `originClass: TAPPED_PREDICATES.has(f.predicate) ? 'untrusted' : 'owner',`).
   Unverified: how often this happens in practice.
 - **How a want is read.** Only live `seeking` and `dealbreaker` facts count
   ([server/src/matching/wants.ts:43] `export const WANT_SOURCES = ['seeking', 'dealbreaker'] as const;`).
@@ -243,7 +243,7 @@ three shapes:
   ([server/src/matching/orchestrator.ts:428] `(pair.b.synthetic ? [] : [{ tenantId: pair.b.tenantId`).
 - **A written card is not updated** when the answer arrives later: the want results are
   stored with the card when the round runs
-  ([server/src/matching/brief.ts:640] `wants: made.wants,`).
+  ([server/src/matching/brief.ts:655] `wants: made.wants,`).
 
 ### 5.5 Untied and private wants: the model check
 
@@ -261,9 +261,9 @@ three shapes:
 - **Whose words go in.** The reader's own want text, and the other person's own public
   sentences: never interview answers, 12 to 300 characters, found word for word in
   something they typed, with no private topic and no contact detail
-  ([server/src/matching/brief.ts:267] `AND f.extractor_model <> 'interview'`,
-  [server/src/matching/brief.ts:269] `AND length(btrim(f.source_quote)) BETWEEN 12 AND 300`,
-  [server/src/matching/brief.ts:280] `opts.includeHidden ? ['public', 'private'] : ['public']`).
+  ([server/src/matching/brief.ts:282] `AND f.extractor_model <> 'interview'`,
+  [server/src/matching/brief.ts:284] `AND length(btrim(f.source_quote)) BETWEEN 12 AND 300`,
+  [server/src/matching/brief.ts:295] `opts.includeHidden ? ['public', 'private'] : ['public']`).
   Another person's wants are never sent as sentences.
 - **Code checks the answer.** A "met" or "not met" survives only with the number of one of
   that person's sentences; the quote shown is looked up by that number, never copied from
@@ -277,7 +277,7 @@ three shapes:
   [server/src/matching/wants.ts:198] `m.values.has(answer) ? 'met' : 'not_met'`). The result is
   stored and moves a not-met person later in the round, but whatever it is -- met, not met, or no
   card to check (politics, health) -- Arjun's card says only "A private topic. Their answer is never
-  shown." ([server/src/matching/brief.ts:453] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
+  shown." ([server/src/matching/brief.ts:468] `if (namesCoreValue(w.want) || (w.private && isSituationWant(w.want))) return 'private';`).
   "Matches" beside "Someone who doesn't drink" used to tell him Meera's card answer, which she was
   promised nobody sees.
 - **If the call fails**, every want on that side, tied ones included, reads "We can't
@@ -302,10 +302,10 @@ Sources: [app/src/features/matches/exchange.ts:197] `const label = w.kind === 'n
 [app/src/features/matches/exchange.ts:201] `w.check === 'matches' ? 'Matches' : w.check === 'doesnt_match' ? "Doesn't match"`,
 [app/src/features/matches/exchange.ts:178] `export const PRIVATE_TOPIC = 'A private topic. Their answer is never shown.';`.
 An untied want shows no verdict: "met" and "not met" look the same, and the reader judges
-the sentence ([server/src/matching/brief.ts:715] `// NO STATUS. The want and the quote, side by side; the reader judges. A want tied to`).
+the sentence ([server/src/matching/brief.ts:730] `// NO STATUS. The want and the quote, side by side; the reader judges. A want tied to`).
 Never shown: the other person's wants, their actual card answer, how a private-topic want came
 out, and any quote beside a tied or private want
-([server/src/matching/brief.ts:721] `want: w.want, kind: w.kind, theirs: w.private || check === 'private' ? null : w.theirs,`).
+([server/src/matching/brief.ts:736] `want: w.want, kind: w.kind, theirs: w.private || check === 'private' ? null : w.theirs,`).
 
 ### 5.7 After a date
 
@@ -331,7 +331,7 @@ asking only when it matched would say how it came out
 - HOW-IT-WORKS.md says a want's status is "never sent to a phone". That is true for untied
   and private-topic wants; for a tied want "Matches"/"Doesn't match" and "can't check" are sent
   ([HOW-IT-WORKS.md:545] `brief for measurement and never sent to a phone.`,
-  [server/src/matching/brief.ts:456] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
+  [server/src/matching/brief.ts:471] `w.status === 'met' ? 'matches' : w.status === 'not_met' ? 'doesnt_match'`).
 - The app says wants "move people up the list". Since 2026-09-29 that is what a round does with Really want and
   Nice to have (above); before, nothing moved anybody up
   ([app/src/features/preferences/preferences-screen.tsx:165] `These never remove anybody. They move people up the list.`).

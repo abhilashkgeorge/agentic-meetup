@@ -173,9 +173,10 @@ export const meRoutes = new Hono()
    *
    * Hiding writes 'private', which is only ever set this way; a brief reads 'public'
    * alone (brief.ts loadQuotes). Showing again writes 'public' -- except for the kinds
-   * NEVER_PUBLIC names, which nobody can volunteer whatever they set: an agent that
-   * can be talked into disclosing somebody's health or faith is a headline, and the
-   * person unticking a box must not be the way it happens. Own facts only: RLS scopes
+   * NEVER_PUBLIC names, and any fact learned on a private topic, which nobody can
+   * volunteer whatever they set: an agent that can be talked into disclosing somebody's
+   * health or faith is a headline, and the person unticking a box must not be the way
+   * it happens. Own facts only: RLS scopes
    * the session, and the query names the user as well.
    */
   .post('/v1/facts/:id/disclosure', async (c) => {
@@ -187,13 +188,16 @@ export const meRoutes = new Hono()
     const hidden = body.data.hidden;
 
     const out = await tenantSession(ctx, async (db) => {
-      const { rows } = await db.query<{ predicate: string; disclosure: string }>(
-        `SELECT predicate, disclosure FROM facts
+      const { rows } = await db.query<{ predicate: string; disclosure: string; private_topic: string | null }>(
+        `SELECT predicate, disclosure, private_topic FROM facts
           WHERE id = $1 AND user_id = $2 AND status = 'active' AND valid_to IS NULL`,
         [id.data, ctx.userId]);
       const f = rows[0];
       if (!f) return 'not_found' as const;
-      if (!hidden && NEVER_PUBLIC.has(f.predicate)) return 'never_public' as const;
+      // A private topic -- relationship history filed as `did`, say -- is refused the same
+      // way as the kinds NEVER_PUBLIC names: judged when it was learned (facts.ts
+      // PRIVATE_TOPICS), and the database would refuse the write anyway (0077).
+      if (!hidden && (NEVER_PUBLIC.has(f.predicate) || f.private_topic)) return 'never_public' as const;
       const to = hidden ? 'private' : 'public';
       if (f.disclosure !== to) {
         await db.query('UPDATE facts SET disclosure = $3 WHERE id = $1 AND user_id = $2',

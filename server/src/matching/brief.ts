@@ -166,6 +166,18 @@ const CORE_STEMS = [
   'pregnan', 'parent', 'moms?\\b', 'mum\\b', 'mummy', 'dads?\\b', 'daddy', 'mother',
   'father', 'husband', 'wife\\b', 'wives\\b', 'married', 'marriage', 'divorc', 'widow',
   'separated', 'have and done', 'have and want more',
+  // relationship history, however it was filed (relationship_status is NEVER_PUBLIC).
+  // The SECOND line: the first is the private topic the extractor names when it learns
+  // a sentence (facts.ts PRIVATE_TOPICS), because no list knows every phrasing. Until
+  // 2026-09-28 this list had "married" and "divorce" and nothing else, and "I called off
+  // an engagement" passed (the clone-brain test found it).
+  '(?:was|were|got|been|getting|get) engaged', 'engaged to\\b', 'engagements?\\b', 'fianc',
+  'ex\\b', 'exes\\b', 'boyfriend', 'girlfriend', 'break ?ups?\\b', 'broke up', 'split up',
+  'called (?:it )?off (?:the |our |my )?(?:wedding|engagement)', 'left me\\b', 'dumped',
+  'cheated on', 'heartbr',
+  '(?:previous|past|last|former|old|long) relationships?',
+  'relationships? (?:ended|broke|fell apart|is over|was over)',
+  '(?:ended|ending|end|out of) (?:a |my |our |the )?(?:[a-z0-9]+ ){0,3}relationship',
   // monogamy
   'monogam', 'non monogam', 'polyam', 'poly\\b', 'open relationship', 'open marriage',
   'open to either',
@@ -264,6 +276,9 @@ export async function loadQuotes(
          FROM facts f
         WHERE f.user_id = $1 AND f.status = 'active' AND f.valid_to IS NULL
           AND f.disclosure = ANY($3::text[])
+          -- A private topic is never offered, not even to its owner as "OK to share":
+          -- it can never be shared (facts.ts PRIVATE_TOPICS, 0077).
+          AND f.private_topic IS NULL
           AND f.extractor_model <> 'interview'
           AND f.predicate = ANY($2::text[])
           AND length(btrim(f.source_quote)) BETWEEN 12 AND 300

@@ -65,7 +65,7 @@ words are the date idea, written earlier (stage 7).
   [server/src/ratelimit.ts:222] `typing: { max: 120, windowMs: 60_000 },`).
 - **Contact details are allowed in chat.** The contact-detail filter guards what agents say,
   not what people type to each other; the app itself tells people to swap details in chat
-  ([server/src/matching/brief.ts:199] `street address (shared/src/contact.ts). People swap those themselves, in chat, after`,
+  ([server/src/matching/brief.ts:211] `street address (shared/src/contact.ts). People swap those themselves, in chat, after`,
   [app/src/features/stories/stories-state.ts:29] `Swap those in chat after you both say yes.`).
 - **Receipts:** "Sent", "Delivered", "Read", "typing…", always on
   ([app/src/features/dm/thread-screen.tsx:42] `state === 'queued' ? 'waiting to send'`).

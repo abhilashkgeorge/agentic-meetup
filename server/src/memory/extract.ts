@@ -19,14 +19,34 @@ import type { PoolClient } from 'pg';
 import { CORE_PREDICATES, INTENTS, OPEN_PREDICATES } from '@clone/shared';
 import { llm, modelFor } from '../llm/index.js';
 import { modelIdOf } from '../llm/caps.js';
-import type { FactCandidate } from './facts.js';
+import { PRIVATE_TOPICS, type FactCandidate } from './facts.js';
 import { TAPPED_PREDICATES } from '../onboarding/questions.js';
 import { learnedDisclosure } from '../matching/brief.js';
 
 /** Bumped on any change below. Recorded on every fact, so a bad prompt is findable
  *  and reversible after the fact rather than merely regrettable. */
-export const PROMPT_VERSION = '2026-09-28.1';
+export const PROMPT_VERSION = '2026-09-28.2';
 export const EXTRACTOR_VERSION = '1';
+
+/** "none", or the private topic a sentence is about (facts.ts PRIVATE_TOPICS). */
+export const TOPIC_VALUES = ['none', ...PRIVATE_TOPICS] as const;
+
+/**
+ * THE PRIVATE-TOPIC RULE, one text for every prompt that learns sentences (this one and
+ * pasteImport.ts), so the two can never judge differently. Judged by meaning, because
+ * the word list behind it (brief.ts namesCoreValue) only knows the phrasings somebody
+ * thought of; see facts.ts PRIVATE_TOPICS for what went wrong.
+ */
+export const PRIVATE_TOPIC_RULE = `For every fact, set private_topic to the private topic that the sentence it came from is ABOUT, or "none". Anything on these topics is never repeated to anybody, so judge the meaning, not the words, and name the topic even when the sentence only touches it in passing:
+- relationships: past or present relationships and dating history -- engagements, marriages, divorces, exes, break-ups, being left, being single again. "I called off an engagement", "we split last spring", "my ex and I still talk", "two people have left me over my work".
+- children: having, wanting or not wanting children; pregnancy.
+- family: who they live with; parents, siblings and how close they are.
+- faith: religion, prayer, caste or community.
+- politics: parties, voting, political views.
+- health: illness, conditions, therapy, medication, allergies, disability.
+- substances: drinking, smoking, drugs, being sober.
+- diet: what they eat or will not eat, fasting.
+It is about the person's own life, not a subject they like: "I read about the history of royal marriages" is "none"; "I cook for my parents every Sunday" is "family".`;
 
 /** Kept inside Anthropic's grammar subset: no recursion, no min/max, no minLength,
  *  no external $ref. Empty strings rather than optionals, for the same reason. */
@@ -39,6 +59,7 @@ const Extraction = z.object({
       hedge_span: z.string(),
       source_quote: z.string(),
       valid_from: z.string(),
+      private_topic: z.enum(TOPIC_VALUES),
     }),
   ),
   possibly_false: z.array(
@@ -54,6 +75,19 @@ const Extraction = z.object({
   ),
 });
 export type Extraction = z.infer<typeof Extraction>;
+
+/**
+ * What is READ back: the same, except that a fact without a private_topic reads "none".
+ * The model is sent the field as required (above), so a provider keeping to the schema
+ * always fills it; this is for a reply that drops it, and for stubs written before it
+ * existed. "none" is not "public": the word list (brief.ts namesCoreValue) still stands
+ * behind every sentence, and a learned one still starts match-only.
+ */
+const ExtractionRead = Extraction.extend({
+  facts: z.array(Extraction.shape.facts.element.extend({
+    private_topic: z.enum(TOPIC_VALUES).catch('none'),
+  })),
+});
 
 const VOCAB = CORE_PREDICATES.map(
   (p) => `  ${p.name} (${p.cardinality}, ${p.durability})`,
@@ -92,6 +126,10 @@ Only "asserted" becomes something the clone will state as fact. Getting this wro
 
 A temporary situation is not a change of state. "Staying at my sister's for two weeks" is not a new lives_in. "I had the prawn curry" does not retract a shellfish allergy. Extract those as topic/did, if at all.
 
+## Private topics
+
+${PRIVATE_TOPIC_RULE}
+
 ## The second question
 
 After extracting, look at the person's CURRENT KNOWN FACTS below and ask: is anything there now FALSE, given what they just said? List those in possibly_false, with the reason.
@@ -128,9 +166,10 @@ PERSON: "Cheese doesn't agree with me, never has."
 -> Verbatim. Do not upgrade this to "lactose intolerant" — that is a diagnosis they did not make.
 
 PERSON: "Had the tasting menu at that place my ex used to love."
--> did / "had the tasting menu" / asserted
+-> did / "had the tasting menu" / asserted / private_topic "relationships"
 -> Nothing about relationship_status. "ex" in a reminiscence is not a status change,
-   and mentioning a person is not a fact about the speaker.
+   and mentioning a person is not a fact about the speaker -- but the sentence still
+   tells a stranger there was an ex, so its private topic is relationships.
 
 PERSON: "Work's been heavy lately."
 -> nothing. Too vague to name an employer, a role, or a feeling that will still be
@@ -210,7 +249,7 @@ export async function extractSessionFacts(
     model,
   );
 
-  const parsed = Extraction.safeParse(res.parsed);
+  const parsed = ExtractionRead.safeParse(res.parsed);
   if (!parsed.success) {
     // Structured output failed. Return nothing rather than guessing: a wrong fact is
     // far more expensive than a missing one, because it will be stated confidently.
@@ -243,6 +282,9 @@ export async function extractSessionFacts(
     // save and share -- start shareable. A tapped field that nothing ever quotes keeps
     // its own default; the rule and why live in brief.ts learnedDisclosure.
     ...learnedDisclosure(f.predicate),
+    // A PRIVATE TOPIC, JUDGED NOW, BY MEANING: commit() keeps it match-only for good,
+    // whatever the kind, and "OK to share" refuses it (facts.ts PRIVATE_TOPICS).
+    ...(f.private_topic !== 'none' ? { privateTopic: f.private_topic } : {}),
     extractorModel: modelIdOf(model),
     extractorVersion: EXTRACTOR_VERSION,
     promptVersion: PROMPT_VERSION,

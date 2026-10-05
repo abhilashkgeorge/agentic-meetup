@@ -17,13 +17,13 @@ import type { PoolClient } from 'pg';
 import { CORE_PREDICATES, OPEN_PREDICATES, PASTE_MAX_CHARS, type PasteSource } from '@clone/shared';
 import { llm, modelFor } from '../llm/index.js';
 import { modelIdOf } from '../llm/caps.js';
-import { commit, type FactCandidate } from './facts.js';
-import { EXTRACTOR_VERSION } from './extract.js';
+import { commit, type FactCandidate, type PrivateTopic } from './facts.js';
+import { EXTRACTOR_VERSION, PRIVATE_TOPIC_RULE, TOPIC_VALUES } from './extract.js';
 import { TAPPED_PREDICATES } from '../onboarding/questions.js';
 import { learnedDisclosure } from '../matching/brief.js';
 import { cardItWouldWipe } from './card-guard.js';
 
-export const PASTE_PROMPT_VERSION = '2026-09-09.paste.2';
+export const PASTE_PROMPT_VERSION = '2026-09-28.paste.3';
 
 const VOCAB = CORE_PREDICATES.map((p) => `  ${p.name} (${p.cardinality})`).join('\n');
 
@@ -37,6 +37,8 @@ const Imported = z.object({
        *  user is shown when asked to confirm it later. */
       source_span: z.string(),
       valid_from: z.string(),
+      /** "none", or the private topic the span is about (extract.ts PRIVATE_TOPIC_RULE). */
+      private_topic: z.enum(TOPIC_VALUES),
     }),
   ),
   /**
@@ -55,6 +57,14 @@ const Imported = z.object({
       question: z.string(),
     }),
   ),
+});
+
+/** Read back leniently, as the extractor's is (extract.ts ExtractionRead): a fact
+ *  without a private_topic reads "none", and the word list still stands behind it. */
+const ImportedRead = Imported.extend({
+  facts: z.array(Imported.shape.facts.element.extend({
+    private_topic: z.enum(TOPIC_VALUES).catch('none'),
+  })),
 });
 
 /**
@@ -81,6 +91,10 @@ NEVER generalise. If the text says "Gamecube", the object is "Gamecube", not "ga
 Extract only what the text actually says. This is somebody else's description of a person and it will contain flattery, inference and padding. "Thoughtful and curious" is not a fact. "Reads two or three books a month" is.
 
 Set valid_from ONLY when the text states a time. Leave it empty otherwise. Do not infer dates.
+
+## Private topics
+
+${PRIVATE_TOPIC_RULE}
 
 ## The one rule that matters
 
@@ -163,7 +177,7 @@ export async function importPastedText(
     model,
   );
 
-  const parsed = Imported.safeParse(res.parsed);
+  const parsed = ImportedRead.safeParse(res.parsed);
   if (!parsed.success) {
     return {
       staged: 0, rejected: 0, questions: 0,
@@ -189,6 +203,8 @@ export async function importPastedText(
       originClass: 'untrusted',
       // Learned, not shared: match-only until "OK to share" (brief.ts learnedDisclosure).
       ...learnedDisclosure(f.predicate),
+      // And a private topic never goes further than match-only (facts.ts PRIVATE_TOPICS).
+      ...(f.private_topic !== 'none' ? { privateTopic: f.private_topic } : {}),
       extractorModel: modelIdOf(model),
       extractorVersion: EXTRACTOR_VERSION,
       promptVersion: `${PASTE_PROMPT_VERSION}:${source}`,
@@ -328,8 +344,9 @@ export async function confirmStagedFact(
 ): Promise<{ confirmed: boolean; cardKept?: string }> {
   const { rows } = await c.query<{
     predicate: string; object_text: string; source_quote: string; valid_from: Date | null;
+    private_topic: PrivateTopic | null;
   }>(
-    `SELECT predicate, object_text, source_quote, valid_from FROM facts
+    `SELECT predicate, object_text, source_quote, valid_from, private_topic FROM facts
       WHERE id = $1 AND user_id = $2 AND status = 'staged'`,
     [factId, ctx.userId],
   );
@@ -360,6 +377,8 @@ export async function confirmStagedFact(
     // "Yes, that's true" is not "OK to share": a confirmed import stays match-only, the
     // work field, exercise and sleep included (brief.ts learnedDisclosure).
     ...learnedDisclosure(row.predicate),
+    // "Yes, that's true" keeps the topic it was learned with: still never shared.
+    ...(row.private_topic ? { privateTopic: row.private_topic } : {}),
     extractorModel: 'user-confirmed',
     extractorVersion: EXTRACTOR_VERSION,
     promptVersion: PASTE_PROMPT_VERSION,

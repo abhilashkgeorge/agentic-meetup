@@ -217,7 +217,7 @@ looking for" is reached from the You tab or Settings (stage 5)
 (a number or an "@" gets "Just your first name, in letters."); the fact store refuses a first name
 from any other writer, so a name said in chat never becomes it; and without one the other person sees
 "Someone" ([server/src/api/dating.ts:303] `return c.json({ error: 'bad_name', message: 'Just your first name, in letters.' }, 400);`,
-[server/src/memory/facts.ts:103] `if (SCREEN_ONLY.has(cand.predicate) && cand.extractorModel !== 'direct') {`,
+[server/src/memory/facts.ts:131] `if (SCREEN_ONLY.has(cand.predicate) && cand.extractorModel !== 'direct') {`,
 [server/src/matching/profile.ts:76] `if (f.extractor_model === 'direct') displayName = firstName(f.object_text);`,
 [server/src/api/dating.ts:167] `const name = other.display_name ?? 'Someone';`). People who set up
 before the step existed are asked on the Home ("Add your first name") and can set it on the You tab
@@ -268,7 +268,7 @@ the $2.00 daily cost cap still covers them. Measured before the change: real peo
   conversation in which the paste is not offered (it is on the You tab, "Write them"); the chat asks only
   the essentials still missing, and a paste can never put a new person in the pool, because pasted
   facts are held until confirmed ([HOW-IT-WORKS.md:63] `start → interview → (essentials → voice → self-test) → character → photos → home`,
-  [server/src/memory/pasteImport.ts:189] `originClass: 'untrusted',`).
+  [server/src/memory/pasteImport.ts:203] `originClass: 'untrusted',`).
 - HOW-IT-WORKS.md §2a describes the partner row as "Anyone is fine" or "Let me choose". The screen shows
   "All are okay" and every answer, unticked ([HOW-IT-WORKS.md:82] `one explicit tap -- "Anyone is fine" or "Let me choose".`).
 - HOW-IT-WORKS.md §2b says "which part of town" is asked in setup; it is not asked until the person has

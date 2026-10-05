@@ -37,7 +37,35 @@ export interface FactCandidate {
   promptVersion: string;
   /** What an agent may volunteer about it. Defaults from the predicate. */
   disclosure?: 'public' | 'matchable_only' | 'private';
+  /**
+   * The private topic the sentence is ABOUT, judged by meaning when it is learned
+   * (extract.ts, pasteImport.ts). Set, it keeps the fact match-only for good: see
+   * PRIVATE_TOPICS.
+   */
+  privateTopic?: PrivateTopic;
 }
+
+/**
+ * THE TOPICS NO AGENT EVER SAYS, however the sentence was filed.
+ *
+ * WHAT WAS WRONG (clone-brain test, 2026-09-28). Relationship history had no line of its
+ * own. NEVER_PUBLIC stops the kind `relationship_status`, but the extractor files "I
+ * called off an engagement three weeks before the date" under `did`; the word list
+ * (brief.ts namesCoreValue) knew "married" and "divorce" and not "engaged", "my ex",
+ * "ended a seven-year relationship" or "two people have left me" -- all five passed
+ * mayRepeat, so one tap on "OK to share" put them on a stranger's card.
+ *
+ * WHY BY TOPIC (the founder, 2026-09-28: "caught by topic when a sentence is learned,
+ * and kept match-only by default -- not by a word list alone"). A word list is only as
+ * good as the last phrasing somebody thought of ("we split last spring"). The model that
+ * already reads the sentence to learn from it judges what it is about, and commit()
+ * keeps anything on these topics match-only; the database refuses it going public
+ * (0077), and the word list stays as the second line.
+ */
+export const PRIVATE_TOPICS = [
+  'relationships', 'children', 'family', 'faith', 'politics', 'health', 'substances', 'diet',
+] as const;
+export type PrivateTopic = (typeof PRIVATE_TOPICS)[number];
 
 export interface CommitResult {
   factId: string | null;
@@ -134,8 +162,9 @@ export async function commit(
   // supersession history with self-supersessions.
   const existing = await c.query<{
     id: string; object_text: string; object_value: unknown; corroboration_count: number;
+    private_topic: string | null; disclosure: string;
   }>(
-    `SELECT id, object_text, object_value, corroboration_count FROM facts
+    `SELECT id, object_text, object_value, corroboration_count, private_topic, disclosure FROM facts
       WHERE user_id = $1 AND predicate = $2 AND status = 'active' AND valid_to IS NULL
       ORDER BY recorded_at DESC`,
     [ctx.userId, cand.predicate],
@@ -169,6 +198,18 @@ export async function commit(
     );
     await audit(c, ctx, same.id, 'corroborate', null,
       { count: same.corroboration_count + 1, ...(fills ? { filledValue: true } : {}) }, cand);
+    // SAID AGAIN, AND NOW KNOWN TO BE PRIVATE. A sentence learned before topics were
+    // judged (or judged wrongly then) is caught the next time it is heard: it takes
+    // the topic, and leaves the cards if it was on them. Never loosened this way.
+    if (cand.privateTopic && !same.private_topic) {
+      await c.query(
+        `UPDATE facts SET private_topic = $3,
+                          disclosure = CASE WHEN disclosure = 'public' THEN 'matchable_only' ELSE disclosure END
+          WHERE id = $1 AND user_id = $2`,
+        [same.id, ctx.userId, cand.privateTopic]);
+      await audit(c, ctx, same.id, 'disclosure', { disclosure: same.disclosure },
+        { privateTopic: cand.privateTopic, disclosure: same.disclosure === 'public' ? 'matchable_only' : same.disclosure }, cand);
+    }
     return { factId: same.id, outcome: 'corroborated' };
   }
 
@@ -198,8 +239,8 @@ export async function commit(
        id, tenant_id, user_id, subject_entity_id, predicate, is_single_valued,
        object_text, object_value, valid_from, status, supersedes_id,
        origin_class, stance, hedge_span, source_quote, source_episode_ids,
-       extractor_model, extractor_version, prompt_version, disclosure)
-     VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+       extractor_model, extractor_version, prompt_version, disclosure, private_topic)
+     VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [
       newId, ctx.tenantId, ctx.userId, cand.predicate, isSingle,
       // Derived here, from the words, at the moment the fact is written. Never asked
@@ -217,8 +258,13 @@ export async function commit(
       // What the agent may volunteer about this, decided by the KIND of thing rather
       // than by the row. The column defaulted to `matchable_only` and nothing ever
       // moved a fact off it, so every dossier came out empty and two agents spent five
-      // conversations agreeing about nobody. The person can change any of their own.
-      cand.disclosure ?? defaultDisclosure(cand.predicate),
+      // conversations agreeing about nobody. The person can change any of their own --
+      // except a private topic, which starts match-only whatever the kind would say
+      // and never goes further (PRIVATE_TOPICS; the database refuses it too, 0077).
+      cand.privateTopic
+        ? (cand.disclosure === 'private' ? 'private' : 'matchable_only')
+        : cand.disclosure ?? defaultDisclosure(cand.predicate),
+      cand.privateTopic ?? null,
     ],
   );
   await audit(c, ctx, newId, status === 'active' ? 'assert' : 'stage', null,

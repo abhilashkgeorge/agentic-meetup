@@ -56,7 +56,7 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-1"></a>
 ### AI-1. Fact extraction
 
-- **Task / model:** `extract` → Gemini 3.5 Flash-Lite ([server/src/memory/extract.ts:175] `const model = modelFor('extract');`).
+- **Task / model:** `extract` → Gemini 3.5 Flash-Lite ([server/src/memory/extract.ts:214] `const model = modelFor('extract');`).
 - **When:** the first setup screen, at once; and for every chat session, about 5 minutes after it goes quiet
   ([server/src/api/tell.ts:73] `out = await metered(ctx, 'extract', () => extractSessionFacts(`,
   [server/src/memory/session.ts:29] `export const SESSION_IDLE_MS = Number(process.env.SESSION_IDLE_MS ?? 300_000);`).
@@ -71,17 +71,20 @@ $0.02; not measured, because no round has run since the talk was added.
   plus their current facts; a session with nothing they typed makes no call. Key instructions: "You extract
   durable facts about ONE person from what they typed to their AI clone.", "NEVER generalise the object.",
   "when in doubt choose the weaker stance", "Silence is not evidence."
-  ([server/src/memory/extract.ts:187] `const said = input.transcript.filter((t) => t.role === 'user');`,
-  [server/src/memory/extract.ts:67] `You extract durable facts about ONE person from what they typed to their AI clone.`,
-  [server/src/memory/extract.ts:79] `NEVER generalise the object.`,
-  [server/src/memory/extract.ts:91] `when in doubt choose the weaker stance`,
-  [server/src/memory/extract.ts:99] `Silence is not evidence.`).
-- **What comes out:** a list of facts (field, words, how sure, the exact quote, when), facts that may now be
-  false, and what the session was for ([server/src/memory/extract.ts:203] `outputSchemaName: 'extraction',`).
+  ([server/src/memory/extract.ts:226] `const said = input.transcript.filter((t) => t.role === 'user');`,
+  [server/src/memory/extract.ts:101] `You extract durable facts about ONE person from what they typed to their AI clone.`,
+  [server/src/memory/extract.ts:113] `NEVER generalise the object.`,
+  [server/src/memory/extract.ts:125] `when in doubt choose the weaker stance`,
+  [server/src/memory/extract.ts:137] `Silence is not evidence.`).
+- **What comes out:** a list of facts (field, words, how sure, the exact quote, when, and the private topic it is
+  about, if any), facts that may now be false, and what the session was for
+  ([server/src/memory/extract.ts:242] `outputSchemaName: 'extraction',`,
+  [server/src/memory/extract.ts:62] `private_topic: z.enum(TOPIC_VALUES),`).
 - **Code checks:** the reply must parse, or nothing is kept; unknown fields and under-18 birth years are
-  refused; tapped fields are held; anything not asserted is held; learned facts start match-only
-  ([server/src/memory/extract.ts:213] `const parsed = Extraction.safeParse(res.parsed);`,
-  [server/src/memory/facts.ts:119] `if (!isAdult(parsed)) {`). The model never sees the clone's words, so a
+  refused; tapped fields are held; anything not asserted is held; learned facts start match-only, and one on a
+  private topic stays match-only for good (section 4.2)
+  ([server/src/memory/extract.ts:252] `const parsed = ExtractionRead.safeParse(res.parsed);`,
+  [server/src/memory/facts.ts:147] `if (!isAdult(parsed)) {`). The model never sees the clone's words, so a
   fact cannot come from them; a first name is refused whatever the model says (it is set on a screen).
 - **Stored:** facts, an audit trail, questions the clone wants to ask, session intents.
 
@@ -119,14 +122,15 @@ $0.02; not measured, because no round has run since the talk was added.
 <a id="ai-4"></a>
 ### AI-4. Paste import
 
-- **Task / model:** `extract` → Flash-Lite, 8,192 tokens ([server/src/memory/pasteImport.ts:160] `maxOutputTokens: 8192,`).
+- **Task / model:** `extract` → Flash-Lite, 8,192 tokens ([server/src/memory/pasteImport.ts:174] `maxOutputTokens: 8192,`).
 - **When:** "Paste from another AI", "In your words", "Catch it up fast".
 - **In:** the pasted text, up to 60,000 characters. Instructions: "Extract only what the text actually says." "A
-  guess is NEVER a fact." ([server/src/memory/pasteImport.ts:81] `Extract only what the text actually says.`,
-  [server/src/memory/pasteImport.ts:87] `A guess is NEVER a fact.`).
-- **Out:** facts, and guesses with a question for each.
+  guess is NEVER a fact." ([server/src/memory/pasteImport.ts:91] `Extract only what the text actually says.`,
+  [server/src/memory/pasteImport.ts:101] `A guess is NEVER a fact.`).
+- **Out:** facts, each with the private topic it is about if any (the same rule as AI-1), and guesses with a
+  question for each ([server/src/memory/pasteImport.ts:41] `private_topic: z.enum(TOPIC_VALUES),`).
 - **Checks:** must parse; every fact is forced to "reported" and "untrusted", so it is held
-  ([server/src/memory/pasteImport.ts:184] `stance: 'reported',`).
+  ([server/src/memory/pasteImport.ts:198] `stance: 'reported',`).
 - **Stored:** held facts and questions; the pasted text is thrown away.
 
 <a id="ai-5"></a>

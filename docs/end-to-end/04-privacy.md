@@ -10,8 +10,9 @@ details), and **database roles** that limit what each part of the server can rea
 |---|---|---|---|---|---|
 | A fact is written | It gets a level: public, match-only or private | Code | `facts.disclosure` | Public: can be quoted to others. Match-only: used for matching, never said. Private: hidden by the person | [server/migrations/0018_dating_schema.sql:39] `CHECK (disclosure IN ('public', 'matchable_only', 'private'))` |
 | "OK to share" on a learned sentence | Match-only → public | Code | `facts.disclosure`, audit row | Others, via cards and agents | [app/src/features/appearance/appearance-screen.tsx:197] `<Chip label="OK to share"` |
-| "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | [server/src/api/me.ts:197] `const to = hidden ? 'private' : 'public';` |
-| A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | [server/src/matching/brief.ts:204] `return !namesCoreValue(text) && contactDetail(text) === null;` |
+| "Hide" on a sentence or answer | → private; comes off cards already written, at the next load | Code | `facts.disclosure`, audit row | Nobody else | [server/src/api/me.ts:201] `const to = hidden ? 'private' : 'public';` |
+| A sentence naming kids, faith, drinking… or holding a phone number, email, handle, link or address | Kept, but never repeated to anyone | Code | Nothing extra | Only the person | [server/src/matching/brief.ts:216] `return !namesCoreValue(text) && contactDetail(text) === null;` |
+| A learned sentence on a private topic: relationship history, kids, family, faith, politics, health, drinking, smoking or drugs, diet | Judged by meaning when it is learned; kept match-only for good: "OK to share" refuses it, and so does the database | AI (the extraction call) + code | `facts.private_topic` | Only the person | [server/src/memory/facts.ts:65] `export const PRIVATE_TOPICS = [` |
 | A sentence naming a company, college or building | A suggestion: "This names a company. Hide this?" | Code | Nothing unless hidden | The person | [app/src/features/appearance/appearance-state.ts:81] `This names a ${names}. Hide this?` |
 
 ### Arjun and Meera
@@ -64,16 +65,16 @@ details), and **database roles** that limit what each part of the server can rea
 - **Arjun never sees** her facts list, her chat, her hidden or match-only sentences, her rules and
   wants, her card answers as values, her check-in answers, her reports or blocks, her exact location,
   her birth year or her phone number
-  ([server/src/matching/brief.ts:266] `AND f.disclosure = ANY($3::text[])`,
+  ([server/src/matching/brief.ts:278] `AND f.disclosure = ANY($3::text[])`,
   [app/src/features/consent/consent-screen.tsx:38] `'We keep the year you were born. Other people only ever see your age.',`).
 
 ### 4.1 The three levels
 
 | Founder's word | Code name | Meaning | Code |
 |---|---|---|---|
-| share | `public` | May be quoted to other people through cards and agents | [server/src/matching/brief.ts:280] `opts.includeHidden ? ['public', 'private'] : ['public']` |
-| match-only | `matchable_only` | Used for matching, never said to anyone | [server/src/memory/extract.ts:245] `...learnedDisclosure(f.predicate),` |
-| never | `private` | Set only by the person's own "Hide" | [server/src/matching/brief.ts:277] `// 'private' is only ever set by the person hiding a quote (POST` |
+| share | `public` | May be quoted to other people through cards and agents | [server/src/matching/brief.ts:295] `opts.includeHidden ? ['public', 'private'] : ['public']` |
+| match-only | `matchable_only` | Used for matching, never said to anyone | [server/src/memory/extract.ts:284] `...learnedDisclosure(f.predicate),` |
+| never | `private` | Set only by the person's own "Hide" | [server/src/matching/brief.ts:292] `// 'private' is only ever set by the person hiding a quote (POST` |
 
 - **Defaults.** Some kinds of fact start public (city, work field, interests, story answers,
   intent, kids and one-person-or-open answers, diet, exercise...), the rest start match-only
@@ -82,6 +83,9 @@ details), and **database roles** that limit what each part of the server can rea
   ethnicity, full name, birth date, employer, children, relationships, drugs
   ([shared/src/facts.ts:90] `'medical_condition', 'allergy', 'religion', 'politics', 'ethnicity',`,
   [shared/src/facts.ts:91] `'full_name', 'birth_date', 'works_at', 'has_children', 'close_to', 'lives_with',`).
+  Nor can a fact learned on a private topic, whatever its kind: "OK to share" refuses it and the database
+  refuses the write ([server/src/api/me.ts:200] `if (!hidden && (NEVER_PUBLIC.has(f.predicate) || f.private_topic)) return 'never_public' as const;`,
+  [server/migrations/0077_private_topic.sql:33] `private_topic IS NULL OR disclosure <> 'public');`).
 - **Learned is private.** Anything learned from chat, the first sentence or a paste starts match-only,
   until the person taps "OK to share" on "How you appear" -- or, since 2026-10-04, on its card in the
   chat with their clone or on "What it learned" (stage 13)
@@ -94,7 +98,7 @@ details), and **database roles** that limit what each part of the server can rea
   transport; the agents also use goals and dislikes), was typed by the person (found word for word
   in their messages), is 12 to 300 characters, is not an interview tap, and passes the word filters
   ([server/src/matching/brief.ts:88] `'interest', 'did', 'topic', 'media_taste', 'pet', 'prompt_answer',`,
-  [server/src/matching/brief.ts:267] `AND f.extractor_model <> 'interview'`).
+  [server/src/matching/brief.ts:282] `AND f.extractor_model <> 'interview'`).
   Card answers (kids, one person or open, smoking, drinking, food, faith) are never quoted; they are
   only used to filter.
 - **Where levels are not applied:** the matching row is built from every live fact whatever its level,
@@ -104,10 +108,19 @@ details), and **database roles** that limit what each part of the server can rea
 
 ### 4.2 Private topics and contact details
 
-- **Private topics** are matched by a list of about 150 word stems: smoking, drinking, kids, family and
-  marriage words, monogamy, diet, faith and caste, politics, health and drugs. A sentence with one is
-  saved but never repeated ([server/src/matching/brief.ts:192] `export function namesCoreValue(text: string): boolean {`,
-  [server/src/matching/brief.ts:177] `'church', 'temple', 'mosque', 'gurdwara', 'pray', 'relig', 'faith',`).
+- **Private topics** are caught twice. **When a sentence is learned** (chat, the first sentence, a paste), the
+  extraction model also names the private topic it is about -- relationship history, kids, family, faith, politics,
+  health, drinking, smoking or drugs, diet -- judged by meaning, so "we split last spring" counts though it names
+  nothing ([server/src/memory/extract.ts:40] `set private_topic to the private topic that the sentence it came from is ABOUT`).
+  Such a fact stays match-only for good and is never offered as "OK to share"
+  ([server/src/memory/facts.ts:267] `cand.privateTopic ?? null,`). **On everything repeated to anyone**, about 170
+  word stems are the second line: smoking, drinking, kids, family and marriage words, relationship history (engaged,
+  ex, broke up, left me...), monogamy, diet, faith and caste, politics, health and drugs. A sentence with one is
+  saved but never repeated ([server/src/matching/brief.ts:204] `export function namesCoreValue(text: string): boolean {`,
+  [server/src/matching/brief.ts:174] `'(?:was|were|got|been|getting|get) engaged'`,
+  [server/src/matching/brief.ts:189] `'church', 'temple', 'mosque', 'gurdwara', 'pray', 'relig', 'faith',`).
+  Story and question-of-the-day answers are typed to be said, not learned: no model reads them, so the word list
+  is their only check.
   The stories screen says so as you type: "This one mentions something private, like kids or drinking,
   so your agent will not repeat it." ([app/src/features/stories/stories-screen.tsx:100] `This one mentions something private, like kids or drinking, so your agent will not repeat it.`).
 - **Contact details** ("when unsure, block"): phone numbers (8+ digits, or spelled out), emails
@@ -116,7 +129,7 @@ details), and **database roles** that limit what each part of the server can rea
   [shared/src/contact.ts:21] `export type ContactKind = 'phone' | 'email' | 'handle' | 'link' | 'invite' | 'address';`).
 - **Where the filters run:** every path that repeats a person's words to someone else: card quotes,
   shared tags, answer sheets, the agents' talk, the date idea (twice), want quotes, the recap, and every
-  time a card is shown ([server/src/matching/brief.ts:285] `return rows.filter((r) => mayRepeat(r.source_quote)).map((r) => ({`,
+  time a card is shown ([server/src/matching/brief.ts:300] `return rows.filter((r) => mayRepeat(r.source_quote)).map((r) => ({`,
   [server/src/matching/talk.ts:193] `PERSON.test(idea) || CLAIM.test(idea) || VERDICT.test(idea) || !mayRepeat(idea)`).
 - **Where they do not run:** direct messages after both say yes (by design: people swap details there),
   report text, and the reveal's name, city and tags ([server/src/messaging/store.ts:107] `INSERT INTO messages (id, rendezvous_id, sender_id, body, seq, kind)`).
@@ -144,7 +157,7 @@ details), and **database roles** that limit what each part of the server can rea
   by word lists; it never blocks ([shared/src/identifying.ts:11] `A SUGGESTION, NEVER A BLOCK. Nothing here stops a sentence; it only lets the screen`).
 - **Hiding** makes the fact private: new cards, sheets, talk and want checks skip it; cards already
   written drop it at the next load; a date idea resting on it is withdrawn. It stays usable for
-  matching ([server/src/matching/brief.ts:764] `const date = talk.date && keep(talk.date.theirs) ? talk.date : null;`).
+  matching ([server/src/matching/brief.ts:779] `const date = talk.date && keep(talk.date.theirs) ? talk.date : null;`).
 - **Other controls:** remove a photo ("It is deleted from the server as well."); answer a story again
   (the old answer is kept but replaced); no per-fact delete; no message unsend
   ([app/src/features/photos/photos-screen.tsx:117] `'Remove this photo?', 'It is deleted from the server as well.'`,
@@ -170,7 +183,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **One important exception to "the database decides":** in a round, a person's quotable sentences are
   read under **that person's own** session, where they can see all their facts; one SQL clause
   (`disclosure = public`) is what keeps the rest off a stranger's card
-  ([server/src/matching/brief.ts:259] `// private, matchable_only and the NEVER_PUBLIC kinds alike. Nothing but this`).
+  ([server/src/matching/brief.ts:271] `// private, matchable_only and the NEVER_PUBLIC kinds alike. Nothing but this`).
 - **Phone numbers** are never stored, only a keyed hash; the screen shows only the last two digits
   ([server/migrations/0045_phone_identity.sql:22] `so it works as a lookup key and as a ban key`,
   [shared/src/phone.ts:95] `What to print back at somebody: the last two digits, nothing else.`).
@@ -227,7 +240,7 @@ Row-level security is the boundary. Each part of the server connects as its own 
 - **Logs** carry user ids, not message text; the redaction list covers text fields. In development the
   console SMS sender logs full numbers and codes ([server/src/log.ts:8] `redact: { paths: ['*.rawText', '*.raw_text', '*.text', 'req.headers.authorization']`).
 - **AI providers** receive: everything typed to the clone, and its replies, for chat; only the
-  person's own lines for extraction ([server/src/memory/extract.ts:187] `const said = input.transcript.filter((t) => t.role === 'user');`);
+  person's own lines for extraction ([server/src/memory/extract.ts:226] `const said = input.transcript.filter((t) => t.role === 'user');`);
   every message's text for embeddings, and in a round the other person's public sentences and both
   people's wants. The per-session notice names every provider -- the embedding one too, since
   2026-09-29: "You are talking to an AI. Your messages are processed by…"

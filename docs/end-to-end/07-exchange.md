@@ -25,10 +25,10 @@ person ever reads are the **date idea**, and code checks those.
   "I spend Sunday mornings at the Cubbon Park run club." A sentence qualifies only if it
   is public, current, not an interview tap, 12 to 300 characters, found word for word in
   something he typed, and names no private topic and no contact detail
-  ([server/src/matching/brief.ts:266] `AND f.disclosure = ANY($3::text[])`,
-  [server/src/matching/brief.ts:269] `AND length(btrim(f.source_quote)) BETWEEN 12 AND 300`,
-  [server/src/matching/brief.ts:272] `WHERE e.user_id = $1 AND e.role = 'user'`,
-  [server/src/matching/brief.ts:204] `return !namesCoreValue(text) && contactDetail(text) === null;`).
+  ([server/src/matching/brief.ts:278] `AND f.disclosure = ANY($3::text[])`,
+  [server/src/matching/brief.ts:284] `AND length(btrim(f.source_quote)) BETWEEN 12 AND 300`,
+  [server/src/matching/brief.ts:287] `WHERE e.user_id = $1 AND e.role = 'user'`,
+  [server/src/matching/brief.ts:216] `return !namesCoreValue(text) && contactDetail(text) === null;`).
   Things his clone learned in chat stay private until he taps "OK to share" (stage 4), so
   they do not go in ([server/migrations/0063_learned_is_private.sql:25] `UPDATE facts SET disclosure = 'matchable_only'`).
 - **The same for Meera,** loaded under her own session.
@@ -99,7 +99,7 @@ will know next time." ([app/src/features/matches/recap.ts:22] `It had to say "I 
   [server/src/matching/talk.ts:156] `'bengaluru', 'bangalore', 'cubbon', 'lalbagh', 'ulsoor', 'nandi', 'hebbal', 'sankey',`).
 - **Checked again** when the card is written, every time it is read (it disappears if the
   other person's sentence is no longer shareable), and when someone proposes it in chat
-  ([server/src/matching/brief.ts:764] `const date = talk.date && keep(talk.date.theirs) ? talk.date : null;`,
+  ([server/src/matching/brief.ts:779] `const date = talk.date && keep(talk.date.theirs) ? talk.date : null;`,
   [server/src/api/date-idea.ts:88] `const idea = raw ? safeIdea(raw) : null;`).
 
 ### 7.4 The fallback: answer sheets
@@ -119,7 +119,7 @@ they did not ([server/src/matching/answer-sheet.ts:366] `const answered = [...bo
 - **Saved:** one `rendezvous` row per pair and one card row per person (headline, shared tags,
   work, quotes, the talk or the sheet exchange, wants with their status, an opener). No
   transcript is saved on the default path, and the model's raw reply is not kept
-  ([server/src/matching/brief.ts:639] `v: 2, shared: made.shared, work: made.work, quotes: made.quotes`,
+  ([server/src/matching/brief.ts:654] `v: 2, shared: made.shared, work: made.work, quotes: made.quotes`,
   [server/src/matching/rendezvous.ts:625] `INSERT INTO rendezvous_runs`).
 - **Readable:** each person reads only their own card, and only on their turn (stage 9)
   ([server/src/api/dating.ts:676] `const myTurn = r.first_mover === ctx.userId || r.other_decided === true;`).

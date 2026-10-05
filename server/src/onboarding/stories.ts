@@ -86,8 +86,8 @@ export async function readStories(
     `SELECT id, object_text FROM facts
       WHERE user_id = $1 AND predicate = 'seeking' AND status = 'active' AND valid_to IS NULL
       ORDER BY recorded_at DESC LIMIT 1`, [userId]);
-  const { rows } = await c.query<{ id: string; prompt: string; source_quote: string }>(
-    `SELECT id, object_value->>'prompt' AS prompt, source_quote FROM facts
+  const { rows } = await c.query<{ id: string; prompt: string; source_quote: string; private_topic: string | null }>(
+    `SELECT id, object_value->>'prompt' AS prompt, source_quote, private_topic FROM facts
       WHERE user_id = $1 AND predicate = 'prompt_answer' AND status = 'active'
         AND valid_to IS NULL AND object_value ? 'prompt'
       ORDER BY recorded_at DESC`,
@@ -97,7 +97,8 @@ export async function readStories(
     if (!byStory.has(r.prompt)) {
       byStory.set(r.prompt, {
         factId: r.id, text: r.source_quote,
-        private: namesCoreValue(r.source_quote), contact: contactDetail(r.source_quote) !== null,
+        private: namesCoreValue(r.source_quote) || r.private_topic !== null,
+        contact: contactDetail(r.source_quote) !== null,
       });
     }
   }
